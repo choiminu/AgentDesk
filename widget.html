@@ -1,0 +1,4172 @@
+<title>Orca Dashboard</title>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --bg: rgb(10 12 18);
+    --bg-solid: #0a0c12;
+    --surface: rgba(18, 22, 32, 0.95);
+    --surface-hover: rgba(28, 33, 48, 0.95);
+    --surface-raised: rgba(24, 28, 40, 0.98);
+    --border: rgba(55, 63, 80, 0.45);
+    --border-subtle: rgba(55, 63, 80, 0.25);
+    --text: #e8edf5;
+    --text2: #a0aabb;
+    --text3: #6b7588;
+    --accent: #5b9cf5;
+    --accent-dim: rgba(91, 156, 245, 0.12);
+    --green: #3ecf8e;
+    --green-dim: rgba(62, 207, 142, 0.12);
+    --yellow: #efb041;
+    --yellow-dim: rgba(239, 176, 65, 0.12);
+    --red: #f06560;
+    --red-dim: rgba(240, 101, 96, 0.12);
+    --purple: #b694f6;
+    --purple-dim: rgba(182, 148, 246, 0.12);
+    --mono: 'JetBrains Mono', 'SF Mono', monospace;
+    --sans: 'Inter', -apple-system, sans-serif;
+    --fs-xs: 9px;
+    --fs-sm: 10px;
+    --fs-md: 11px;
+    --fs-base: 13px;
+    --fs-lg: 14px;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.24), 0 0 0 1px var(--border-subtle);
+    --shadow-float: 0 4px 16px rgba(0,0,0,0.4), 0 0 0 1px var(--border);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: rgb(245 247 250);
+      --bg-solid: #f5f7fa;
+      --surface: rgb(255, 255, 255);
+      --surface-hover: rgba(240, 242, 245, 0.95);
+      --surface-raised: rgba(248, 249, 252, 0.98);
+      --border: rgba(200, 210, 225, 0.5);
+      --border-subtle: rgba(200, 210, 225, 0.3);
+      --text: #1a1d24;
+      --text2: #5a6374;
+      --text3: #8b95a8;
+      --accent: #3b7de0;
+      --accent-dim: rgba(59, 125, 224, 0.1);
+      --green: #2da872;
+      --green-dim: rgba(45, 168, 114, 0.1);
+      --yellow: #d49520;
+      --yellow-dim: rgba(212, 149, 32, 0.1);
+      --red: #d94a45;
+      --red-dim: rgba(217, 74, 69, 0.1);
+      --purple: #8b6ce0;
+      --purple-dim: rgba(139, 108, 224, 0.1);
+      --shadow-card: 0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px var(--border-subtle);
+      --shadow-float: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 1px var(--border);
+    }
+  }
+
+  :root[data-theme="light"] {
+    --bg: rgba(245, 247, 250);
+    --bg-solid: #f5f7fa;
+    --surface: rgb(255, 255, 255);
+    --surface-hover: rgba(240, 242, 245, 0.95);
+    --surface-raised: rgba(248, 249, 252, 0.98);
+    --border: rgba(200, 210, 225, 0.5);
+    --border-subtle: rgba(200, 210, 225, 0.3);
+    --text: #1a1d24;
+    --text2: #5a6374;
+    --text3: #8b95a8;
+    --accent: #3b7de0;
+    --accent-dim: rgba(59, 125, 224, 0.1);
+    --green: #2da872;
+    --green-dim: rgba(45, 168, 114, 0.1);
+    --yellow: #d49520;
+    --yellow-dim: rgba(212, 149, 32, 0.1);
+    --red: #d94a45;
+    --red-dim: rgba(217, 74, 69, 0.1);
+    --purple: #8b6ce0;
+    --purple-dim: rgba(139, 108, 224, 0.1);
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px var(--border-subtle);
+    --shadow-float: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 1px var(--border);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: var(--fs-base);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  .widget {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--bg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    backdrop-filter: blur(32px) saturate(1.4);
+    -webkit-backdrop-filter: blur(32px) saturate(1.4);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+  }
+
+  /* ── Header (drag zone) ── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 16px;
+    -webkit-app-region: drag;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, rgba(91,156,245,0.06) 0%, transparent 60%);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 16px;
+    right: 16px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent), var(--purple), transparent);
+    opacity: 0.35;
+  }
+  .header * { -webkit-app-region: no-drag; }
+  .minimize-btn {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border-subtle);
+    color: var(--text3);
+    font-size: 11px;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .minimize-btn:hover { color: var(--text); background: var(--surface-hover); border-color: var(--border); }
+  .widget.minimized .page-nav,
+  .widget.minimized .page { display: none !important; }
+  .widget.minimized .header { border-bottom: none; }
+  .widget.minimized .header::after { display: none; }
+  .logo {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: var(--fs-lg);
+    color: var(--accent);
+    -webkit-app-region: drag;
+    letter-spacing: -0.03em;
+  }
+  .stats {
+    display: flex;
+    gap: 10px;
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    color: var(--text2);
+    -webkit-app-region: drag;
+  }
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+  }
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot.g { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.y { background: var(--yellow); }
+  .dot.d { background: var(--text3); }
+
+  /* ── Page nav ── */
+  .page-nav {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+    padding: 6px 8px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-subtle);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .page-nav::-webkit-scrollbar { height: 0; }
+  .page-nav-btn {
+    flex: 0 0 auto;
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text3);
+    font-family: var(--sans);
+    font-size: var(--fs-sm);
+    font-weight: 500;
+    padding: 5px 8px;
+    cursor: pointer;
+    text-align: center;
+    border-radius: var(--radius-sm);
+    transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+  .page-nav-btn:hover { color: var(--text2); background: var(--surface-hover); }
+  .page-nav-btn.active {
+    color: var(--text);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-card);
+  }
+
+  /* ── Pages ── */
+  .page { display: none; flex-direction: column; flex: 1; overflow: hidden; position: relative; }
+  .page.active { display: flex; }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .tab {
+    flex: 1;
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text3);
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+    font-weight: 500;
+    padding: 5px 0;
+    cursor: pointer;
+    text-align: center;
+    border-radius: var(--radius-sm);
+    transition: color 0.15s, background 0.15s;
+  }
+  .tab:hover { color: var(--text2); background: var(--surface-hover); }
+  .tab.active {
+    color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    font-size: 9px;
+    font-weight: 600;
+    font-family: var(--mono);
+    margin-left: 3px;
+    background: var(--border-subtle);
+    color: var(--text3);
+    font-variant-numeric: tabular-nums;
+  }
+  .tab.active .tab-badge {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* ── Search ── */
+  .search-wrap {
+    padding: 8px 12px;
+    flex-shrink: 0;
+  }
+  .search-input {
+    width: 100%;
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+    padding: 7px 10px;
+    border-radius: var(--radius-md);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .search-input::placeholder { color: var(--text3); }
+  .search-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+
+  /* ── Session list ── */
+  .list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 8px;
+  }
+  .list::-webkit-scrollbar { width: 5px; }
+  .list::-webkit-scrollbar-track { background: transparent; }
+  .list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .list::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+  .session {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    border-radius: var(--radius-md);
+    position: relative;
+    margin-bottom: 2px;
+  }
+  .session:hover {
+    background: var(--surface-hover);
+  }
+  .session:active { transform: scale(0.995); }
+  .session.drop-over {
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
+    background: var(--accent-dim);
+  }
+  .session.pulse {
+    animation: statusPulse 0.8s ease-out;
+  }
+  @keyframes statusPulse {
+    0% { background: var(--accent-dim); }
+    100% { background: transparent; }
+  }
+
+  /* ── Group headers ── */
+  .group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px 4px;
+    font-family: var(--sans);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .group-header .gh-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border-subtle);
+  }
+  .group-header .gh-count {
+    font-weight: 400;
+    color: var(--text3);
+    opacity: 0.7;
+  }
+
+  .s-icon {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--fs-base);
+    line-height: 1;
+    margin-top: 1px;
+  }
+  .s-icon.waiting .ic-bounce {
+    display: inline-block;
+    animation: icBounce 2s ease-in-out infinite;
+  }
+  .s-icon.done { opacity: 0.45; }
+  .s-icon.error .ic-shake {
+    display: inline-block;
+    animation: icShake 0.5s ease-in-out infinite;
+  }
+  @keyframes icBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+  @keyframes icShake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+
+  .typing-bubble {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: linear-gradient(135deg, var(--accent), #7b6cf6);
+    border-radius: 8px 8px 8px 3px;
+    padding: 3px 5px;
+    height: 14px;
+    box-shadow: 0 1px 4px rgba(91,156,245,0.3);
+  }
+  .typing-bubble .dot {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: #fff;
+    animation: typingDot 1.4s ease-in-out infinite;
+  }
+  .typing-bubble .dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-bubble .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingDot {
+    0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-2px); }
+  }
+
+  .s-info { flex: 1; min-width: 0; }
+  .s-name {
+    font-weight: 600;
+    font-size: var(--fs-base);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+  }
+  .s-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    color: var(--text3);
+  }
+  .s-agent {
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .s-agent.claude { background: var(--purple-dim); color: var(--purple); }
+  .s-agent.opencode { background: var(--green-dim); color: var(--green); }
+  .s-agent.gemini { background: var(--accent-dim); color: var(--accent); }
+  .s-agent.shell { background: var(--yellow-dim); color: var(--yellow); }
+
+  .s-time { font-variant-numeric: tabular-nums; }
+  .s-elapsed {
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    font-weight: 500;
+    font-size: var(--fs-xs);
+    opacity: 0.85;
+  }
+  .s-tool {
+    color: var(--text3);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+    opacity: 0.8;
+  }
+  .s-branch {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+  }
+
+  /* ── Hover actions ── */
+  .s-actions {
+    display: none;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .session:hover .s-actions { display: flex; }
+  .s-act {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text3);
+    font-size: var(--fs-md);
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.12s;
+    line-height: 1;
+  }
+  .s-act:hover { background: var(--surface-raised); color: var(--text); }
+  .s-act.pinned { color: var(--accent); }
+  .s-act.danger:hover { color: var(--red); background: var(--red-dim); }
+
+  /* ── Hover prompt peek ── */
+  .s-prompt {
+    display: none;
+    padding: 4px 0 0 0;
+    font-size: var(--fs-xs);
+    line-height: 1.4;
+    color: var(--text3);
+    font-family: var(--mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.7;
+  }
+  .session:hover .s-prompt { display: block; }
+
+  /* ── Footer ── */
+  .footer {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 8px 12px;
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    color: var(--text3);
+    gap: 5px;
+  }
+  .footer-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .footer .spinner {
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: none;
+  }
+  .footer.loading .spinner { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .token-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--fs-sm);
+    color: var(--text3);
+  }
+  .token-bar .label { flex-shrink: 0; min-width: 28px; font-weight: 500; }
+  .token-bar .bar-bg {
+    flex: 1;
+    height: 5px;
+    background: rgba(55, 63, 80, 0.5);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .token-bar .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+  .token-bar .pct { flex-shrink: 0; min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+  .bar-fill.green { background: linear-gradient(90deg, #2ea87a, var(--green)); }
+  .bar-fill.yellow { background: linear-gradient(90deg, #c8922e, var(--yellow)); }
+  .bar-fill.red { background: linear-gradient(90deg, #c94e49, var(--red)); }
+
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text3);
+    font-size: var(--fs-md);
+    opacity: 0.7;
+    gap: 6px;
+  }
+  .empty-icon {
+    font-size: 28px;
+    opacity: 0.4;
+    line-height: 1;
+  }
+  .empty-text {
+    font-size: var(--fs-sm);
+  }
+
+  /* ── In-app toast ── */
+  .toast-stack {
+    position: absolute;
+    bottom: 48px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+    z-index: 50;
+  }
+  .toast {
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+    font-weight: 500;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    border: 1px solid var(--green);
+    color: var(--green);
+    backdrop-filter: blur(16px);
+    animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: auto;
+    box-shadow: var(--shadow-float);
+  }
+  .toast.err { border-color: var(--red); color: var(--red); background: linear-gradient(135deg, var(--red-dim), var(--surface-raised)); }
+  .toast.waiting { border-color: var(--yellow); color: var(--yellow); background: linear-gradient(135deg, var(--yellow-dim), var(--surface-raised)); }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateY(8px) scale(0.96); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* ── Sessions viewer page ── */
+  .cs-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 12px;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    margin: 0 0 2px 0;
+    transition: background 0.15s;
+  }
+  .cs-item:hover { background: var(--surface-hover); }
+  .cs-title {
+    font-weight: 600;
+    font-size: var(--fs-base);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cs-meta {
+    display: flex;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    color: var(--text3);
+    flex-wrap: wrap;
+  }
+  .cs-meta .highlight { color: var(--accent); font-weight: 500; }
+  .cs-meta .cost { color: var(--yellow); }
+
+  /* ── Session detail view ── */
+  .detail-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+  .back-btn {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    color: var(--accent);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 3px 7px;
+    border-radius: var(--radius-sm);
+    transition: background 0.15s;
+  }
+  .back-btn:hover { background: var(--surface-hover); }
+  .detail-title {
+    font-weight: 600;
+    font-size: var(--fs-base);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .detail-stats {
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    color: var(--text3);
+    display: flex;
+    gap: 10px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .msg-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+  }
+  .msg-list::-webkit-scrollbar { width: 5px; }
+  .msg-list::-webkit-scrollbar-track { background: transparent; }
+  .msg-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .msg {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .msg-role {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+  .msg-role.user { color: var(--green); }
+  .msg-role.assistant { color: var(--purple); }
+  .msg-text {
+    font-size: var(--fs-base);
+    line-height: 1.55;
+    color: var(--text2);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .msg-tool {
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    padding: 5px 10px;
+    margin: 4px 0;
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    border-left: 2px solid var(--accent);
+    color: var(--text3);
+  }
+  .msg-tool .tool-name { color: var(--accent); font-weight: 600; }
+  .msg-tool .tool-status { margin-left: 6px; }
+  .msg-tool .tool-status.completed { color: var(--green); }
+  .msg-tool .tool-status.error { color: var(--red); }
+  .msg-tool-output {
+    max-height: 80px;
+    overflow-y: auto;
+    margin-top: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: var(--fs-sm);
+    opacity: 0.8;
+  }
+  .msg-reasoning {
+    font-size: var(--fs-sm);
+    color: var(--text3);
+    font-style: italic;
+    padding: 4px 10px;
+    margin: 4px 0;
+    border-left: 2px solid var(--purple);
+    background: var(--purple-dim);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    max-height: 100px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+
+  /* ── Orchestration page ── */
+  .orch-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    gap: 0;
+  }
+  .orch-left {
+    width: 220px;
+    min-width: 180px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .orch-left-header {
+    padding: 10px 12px;
+    font-family: var(--sans);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+  }
+  .orch-terminal-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .orch-terminal-list::-webkit-scrollbar { width: 5px; }
+  .orch-terminal-list::-webkit-scrollbar-track { background: transparent; }
+  .orch-terminal-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .orch-terminal-card {
+    padding: 8px 10px;
+    background: var(--surface-raised);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    font-size: var(--fs-md);
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: border-color 0.2s, box-shadow 0.2s, opacity 0.15s;
+  }
+  .orch-terminal-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-dim);
+  }
+  .orch-terminal-card.dragging { opacity: 0.35; }
+  .orch-terminal-card .agent-badge {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: linear-gradient(135deg, var(--accent), #7b6cf6);
+    color: #fff;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .orch-terminal-card .term-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .orch-terminal-card .term-name {
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .orch-terminal-card .term-handle {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    color: var(--text3);
+  }
+  .orch-terminal-card .conn-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .orch-terminal-card .conn-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .orch-terminal-card .conn-dot.off { background: var(--text3); opacity: 0.5; }
+
+  .orch-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .orch-right-top {
+    display: flex;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    align-items: center;
+    background: var(--surface);
+  }
+  .orch-right-top select {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .orch-right-top select:focus { border-color: var(--accent); }
+
+  .phase-columns-wrap {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: auto;
+    padding: 10px;
+  }
+  .phase-columns-wrap::-webkit-scrollbar { height: 5px; width: 5px; }
+  .phase-columns-wrap::-webkit-scrollbar-track { background: transparent; }
+  .phase-columns-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .phase-columns {
+    display: flex;
+    gap: 10px;
+    min-width: max-content;
+    align-items: flex-start;
+  }
+  .phase-column {
+    width: 180px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    border-top: 3px solid var(--border);
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .phase-column.drag-over {
+    box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(91,156,245,0.15);
+  }
+  .phase-column-head {
+    padding: 8px 12px;
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .phase-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .phase-column-count {
+    font-weight: 400;
+    color: var(--text3);
+    margin-left: auto;
+    font-size: var(--fs-sm);
+  }
+  .phase-column-body {
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 44px;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  .phase-column-body::-webkit-scrollbar { width: 4px; }
+  .phase-column-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .phase-empty {
+    color: var(--text3);
+    font-size: var(--fs-sm);
+    text-align: center;
+    padding: 10px 4px;
+    opacity: 0.6;
+  }
+
+  .phase-session-card {
+    padding: 6px 8px;
+    background: var(--bg-solid);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    font-size: var(--fs-md);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: border-color 0.15s;
+  }
+  .phase-session-card:hover { border-color: var(--border); }
+  .phase-session-card .ps-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .phase-session-card .ps-name {
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: var(--fs-md);
+  }
+  .phase-session-card .ps-handle {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    color: var(--text3);
+  }
+  .phase-session-card .ps-actions {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+  .phase-session-card .ps-btn {
+    appearance: none;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface);
+    color: var(--text3);
+    font-size: var(--fs-sm);
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .phase-session-card .ps-btn:hover { color: var(--text); background: var(--surface-hover); border-color: var(--border); }
+  .phase-session-card .ps-btn.rm:hover { color: var(--red); background: var(--red-dim); border-color: var(--red); }
+
+  /* Task cards (in task section below) */
+  .task-section {
+    border-top: 1px solid var(--border);
+    padding: 10px;
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+  .task-section-header {
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    color: var(--text2);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .task-lanes {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    min-width: max-content;
+  }
+  .task-lane {
+    min-width: 155px;
+    max-width: 185px;
+    flex-shrink: 0;
+    background: var(--surface-raised);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    overflow: hidden;
+  }
+  .task-lane-header {
+    padding: 6px 10px;
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .task-lane-body {
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+  .task-card {
+    padding: 6px 8px;
+    background: var(--bg-solid);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    font-size: var(--fs-md);
+    line-height: 1.35;
+    color: var(--text2);
+    cursor: grab;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .task-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-dim);
+  }
+  .task-card.dragging { opacity: 0.35; }
+  .task-card .task-title {
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 3px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .task-card .task-status {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 500;
+  }
+  .task-card .task-status.pending { color: var(--text3); }
+  .task-card .task-status.dispatched { color: var(--yellow); }
+  .task-card .task-status.in_progress { color: var(--accent); }
+  .task-card .task-status.completed { color: var(--green); }
+  .task-card .task-status.failed { color: var(--red); }
+
+  .new-task-form {
+    display: flex;
+    gap: 5px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+  .new-task-form select {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+    padding: 5px 8px;
+    border-radius: var(--radius-sm);
+    outline: none;
+    width: 76px;
+    transition: border-color 0.15s;
+  }
+  .new-task-form select:focus { border-color: var(--accent); }
+  .new-task-form input {
+    flex: 1;
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .new-task-form input::placeholder { color: var(--text3); }
+  .new-task-form input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-dim);
+  }
+  .new-task-form button {
+    appearance: none;
+    border: none;
+    background: linear-gradient(135deg, var(--accent), #7b6cf6);
+    color: #fff;
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    box-shadow: 0 1px 3px rgba(91,156,245,0.3);
+  }
+  .new-task-form button:hover { opacity: 0.9; }
+  .new-task-form button:active { transform: scale(0.97); }
+  .new-task-form button:disabled { opacity: 0.35; cursor: default; transform: none; }
+
+  .orch-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 60px;
+    color: var(--text3);
+    font-size: var(--fs-sm);
+    opacity: 0.6;
+  }
+
+  /* Worker drop zone for task dispatching */
+  .worker-drop-zone {
+    padding: 5px 8px;
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    border: 1.5px dashed var(--border);
+    font-size: var(--fs-md);
+    color: var(--text3);
+    text-align: center;
+    transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .worker-drop-zone.drag-over {
+    border-color: var(--accent);
+    border-style: solid;
+    background: var(--accent-dim);
+    color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-dim);
+  }
+  .worker-drop-zone.dispatching { color: var(--yellow); }
+  .worker-drop-zone.err { color: var(--red); }
+
+  /* ── Collaboration Page Layout ── */
+  .collab-layout {
+    display: flex;
+    gap: 10px;
+    height: 100%;
+    overflow: hidden;
+  }
+  .collab-left {
+    width: 200px;
+    min-width: 160px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-right: 1px solid var(--border-subtle);
+    padding-right: 10px;
+    overflow-y: auto;
+  }
+  .collab-left-header {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text2);
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .collab-left .debate-session-list {
+    max-height: none;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .collab-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    min-width: 0;
+  }
+  .collab-zones {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* ── Hierarchy Tree (vertical org-chart style) ── */
+  .collab-tree {
+    padding: 16px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    min-height: 80px;
+    overflow-x: auto;
+  }
+  .collab-tree-empty {
+    color: var(--text3);
+    font-size: var(--fs-xs);
+    text-align: center;
+    padding: 20px 0;
+  }
+  .collab-tree-root {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    position: relative;
+  }
+  .collab-node {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 10px;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    position: relative;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .collab-node:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.18);
+  }
+  .collab-node .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 20%, transparent);
+  }
+  .collab-node-master {
+    background: var(--yellow-dim);
+    border: 1.5px solid color-mix(in srgb, var(--yellow) 60%, transparent);
+    color: var(--text);
+    font-size: 12px;
+  }
+  .collab-node-master::before {
+    content: '👑';
+    font-size: 11px;
+    margin-right: 2px;
+  }
+  .collab-node-worker-a {
+    background: var(--accent-dim);
+    border: 1.5px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    color: var(--text);
+  }
+  .collab-node-worker-b {
+    background: color-mix(in srgb, var(--green) 10%, var(--surface));
+    border: 1.5px solid color-mix(in srgb, var(--green) 35%, transparent);
+    color: var(--text);
+  }
+
+  /* vertical connector line */
+  .ct-vline {
+    width: 2px;
+    background: var(--border);
+    position: relative;
+  }
+  .ct-vline::after {
+    content: '';
+    position: absolute;
+    bottom: -3px; left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid var(--border);
+  }
+  .ct-vline-short { height: 20px; }
+  .ct-vline-long  { height: 32px; }
+
+  /* horizontal rail connecting branches */
+  .ct-hline {
+    height: 2px;
+    background: var(--border);
+    align-self: stretch;
+    margin: 0 20%;
+    border-radius: 1px;
+  }
+
+  /* branch container */
+  .ct-branches {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    width: 100%;
+  }
+  .ct-branch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    flex: 1;
+    max-width: 180px;
+  }
+
+  /* group label badge */
+  .ct-group-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--bg);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 2px 10px;
+    border-radius: 8px;
+    margin-bottom: 6px;
+  }
+  .ct-group-label-a { background: var(--accent); }
+  .ct-group-label-b { background: var(--green); }
+
+  /* stacked node list in a branch */
+  .ct-node-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+  }
+  .ct-node-stack .collab-node + .collab-node::before {
+    content: '';
+    position: absolute;
+    width: 2px;
+    height: 6px;
+    background: var(--border-subtle);
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  /* flow direction indicator */
+  .ct-flow-badge {
+    font-size: 10px;
+    color: var(--text3);
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    padding: 3px 10px;
+    border-radius: 10px;
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .ct-flow-badge .arrow { font-size: 13px; }
+
+  /* relay mode: dual arrows between groups */
+  .ct-relay-arrow {
+    display: flex;
+    align-items: center;
+    align-self: center;
+    font-size: 20px;
+    color: var(--accent);
+    padding: 0 4px;
+    flex-shrink: 0;
+    animation: ct-pulse 2s ease-in-out infinite;
+  }
+  @keyframes ct-pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  /* ── Debate Room (shared styles) ── */
+
+  .debate-flow {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+  }
+  .debate-pool {
+    flex: 1;
+    min-height: 60px;
+  }
+  .debate-pool-label {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text3);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .debate-pool-label .pool-color {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .debate-dropzone {
+    min-height: 48px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .debate-dropzone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .debate-dropzone-empty {
+    font-size: var(--fs-xs);
+    color: var(--text3);
+    text-align: center;
+    padding: 10px 4px;
+    pointer-events: none;
+  }
+  .debate-flow-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: var(--text3);
+    font-size: 16px;
+    min-width: 28px;
+    flex-shrink: 0;
+  }
+  .debate-flow-arrow span { font-size: var(--fs-xs); }
+
+  .debate-session-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    max-height: 72px;
+    overflow-y: auto;
+    padding: 2px 0;
+  }
+  .debate-session-list::-webkit-scrollbar { width: 3px; }
+  .debate-session-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .debate-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: var(--fs-xs);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text2);
+    cursor: grab;
+    user-select: none;
+    transition: all 0.12s;
+    white-space: nowrap;
+  }
+  .debate-tag:active { cursor: grabbing; }
+  .debate-tag:hover { border-color: var(--text3); }
+  .debate-tag .dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .debate-tag .remove-tag {
+    margin-left: 2px;
+    font-size: 10px;
+    color: var(--text3);
+    cursor: pointer;
+    line-height: 1;
+  }
+  .debate-tag .remove-tag:hover { color: var(--red); }
+  .debate-tag.dragging { opacity: 0.4; }
+
+  .debate-config-row {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+  }
+  .debate-config-row textarea {
+    flex: 1;
+    resize: none;
+    height: 42px;
+    padding: 6px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+  }
+  .debate-config-row textarea::placeholder { color: var(--text3); }
+  .debate-config-row textarea:focus { border-color: var(--accent); outline: none; }
+  .debate-config-side {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 65px;
+  }
+  .debate-config-side label { font-size: var(--fs-xs); color: var(--text3); }
+  .debate-config-side select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: var(--fs-xs);
+    padding: 2px 3px;
+  }
+  .debate-actions {
+    display: flex;
+    gap: 6px;
+  }
+  .debate-actions button {
+    flex: 1;
+    padding: 5px 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-md);
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .debate-actions button:hover { opacity: 0.85; }
+  .debate-actions button:disabled { opacity: 0.35; cursor: default; }
+  .debate-start-btn { background: var(--accent); color: #fff; }
+  .debate-stop-btn { background: var(--red); color: #fff; }
+  .debate-status {
+    font-size: var(--fs-xs);
+    color: var(--text3);
+    min-height: 14px;
+  }
+  .debate-log {
+    max-height: 280px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px;
+  }
+  .debate-log::-webkit-scrollbar { width: 5px; }
+  .debate-log::-webkit-scrollbar-track { background: transparent; }
+  .debate-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .debate-msg {
+    padding: 6px 10px;
+    border-radius: var(--radius-md);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+    max-width: 90%;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .debate-msg.system {
+    align-self: center;
+    max-width: 100%;
+    text-align: center;
+    color: var(--text3);
+    font-size: var(--fs-xs);
+    font-style: italic;
+    background: none;
+    padding: 2px 0;
+  }
+  .debate-msg.group-a { align-self: flex-start; background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+  .debate-msg.group-b { align-self: flex-end; background: var(--surface); border: 1px solid var(--border-subtle); }
+  .debate-msg .debate-sender {
+    font-weight: 600;
+    font-size: var(--fs-xs);
+    margin-bottom: 2px;
+    display: block;
+  }
+  .debate-msg.group-master { align-self: center; background: var(--yellow-dim); border: 1px solid color-mix(in srgb, var(--yellow) 30%, transparent); max-width: 95%; }
+  .debate-master-zone {
+    margin-bottom: 6px;
+    padding: 6px;
+    border: 1.5px dashed var(--yellow);
+    border-radius: var(--radius-sm);
+    min-height: 36px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .debate-master-zone.drag-over { border-color: var(--yellow); background: var(--yellow-dim); }
+  .debate-master-label {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--yellow);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .debate-layout-toggle { display: none; }
+  .debate-layout-toggle.visible { display: block; }
+
+  /* ── Chat panel (dashboard, slide-up) ── */
+  .chat-panel {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 220px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 80;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.25);
+    transform: translateY(100%);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+  }
+  .chat-panel.open {
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .chat-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .chat-header-name {
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-header-status {
+    font-size: var(--fs-xs);
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .chat-header-status.idle { background: var(--green-dim); color: var(--green); }
+  .chat-header-status.busy { background: var(--yellow-dim); color: var(--yellow); }
+  .chat-header-status.offline { background: var(--red-dim); color: var(--red); }
+  .chat-orca-btn {
+    background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    color: var(--accent); cursor: pointer; font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap;
+  }
+  .chat-orca-btn:hover { background: var(--accent); color: var(--bg); }
+  .chat-close-btn {
+    background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; padding: 2px 4px; line-height: 1;
+  }
+  .chat-close-btn:hover { color: var(--text); }
+  .chat-screen {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 10px;
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--text2);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .chat-screen::-webkit-scrollbar { width: 5px; }
+  .chat-screen::-webkit-scrollbar-track { background: transparent; }
+  .chat-screen::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .chat-screen .chat-line-prompt { color: var(--accent); }
+  .chat-screen .chat-line-response { color: var(--text); }
+  .chat-screen .chat-line-done { color: var(--text3); font-style: italic; }
+  .chat-screen .chat-line-status { color: var(--text3); }
+  .chat-input-row {
+    display: flex;
+    gap: 6px;
+    padding: 6px 10px;
+    border-top: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .chat-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    padding: 5px 8px;
+    outline: none;
+  }
+  .chat-input:focus { border-color: var(--accent); }
+  .chat-input:disabled { opacity: 0.5; }
+  .chat-send-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 5px 12px;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .chat-send-btn:hover { opacity: 0.85; }
+  .chat-send-btn:disabled { opacity: 0.35; cursor: default; }
+  .chat-refresh-btn {
+    background: var(--surface-hover);
+    color: var(--text2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    font-size: var(--fs-sm);
+    cursor: pointer;
+  }
+  .chat-refresh-btn:hover { color: var(--text); border-color: var(--border); }
+
+  /* ── Clipboard history page ── */
+  .clip-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 8px;
+  }
+  .clip-list::-webkit-scrollbar { width: 5px; }
+  .clip-list::-webkit-scrollbar-track { background: transparent; }
+  .clip-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .clip-item {
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    margin-bottom: 3px;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .clip-item:hover { background: var(--surface-hover); }
+  .clip-item.active { background: var(--accent-dim); }
+  .clip-text {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    color: var(--text2);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 60px;
+    overflow: hidden;
+    line-height: 1.4;
+  }
+  .clip-time {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    color: var(--text3);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .clip-actions {
+    display: flex;
+    gap: 6px;
+    padding: 6px 12px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .clip-actions button {
+    flex: 1;
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text2);
+    font-family: var(--sans);
+    font-size: var(--fs-sm);
+    padding: 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .clip-actions button:hover { background: var(--surface-hover); color: var(--text); }
+
+  /* ── Port monitor page ── */
+  .port-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .port-header button {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text2);
+    font-family: var(--sans);
+    font-size: var(--fs-sm);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    margin-left: auto;
+  }
+  .port-header button:hover { background: var(--surface-hover); color: var(--text); }
+  .port-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px;
+  }
+  .port-list::-webkit-scrollbar { width: 5px; }
+  .port-list::-webkit-scrollbar-track { background: transparent; }
+  .port-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .port-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    margin-bottom: 2px;
+    transition: background 0.15s;
+  }
+  .port-item:hover { background: var(--surface-hover); }
+  .port-num {
+    font-family: var(--mono);
+    font-size: var(--fs-lg);
+    font-weight: 600;
+    color: var(--accent);
+    min-width: 50px;
+  }
+  .port-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .port-name {
+    font-weight: 500;
+    font-size: var(--fs-base);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .port-pid {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    color: var(--text3);
+  }
+  .port-kill {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text3);
+    font-size: var(--fs-sm);
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.12s;
+  }
+  .port-kill:hover { color: var(--red); border-color: var(--red); background: var(--red-dim); }
+
+  /* ── Memo page ── */
+  .memo-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .memo-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .memo-toolbar .memo-status {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    color: var(--text3);
+    margin-left: auto;
+  }
+  .memo-toolbar .memo-status.saved { color: var(--green); }
+  .memo-editor {
+    flex: 1;
+    width: 100%;
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: var(--fs-base);
+    line-height: 1.6;
+    padding: 12px 14px;
+    resize: none;
+    outline: none;
+    overflow-y: auto;
+  }
+  .memo-editor::placeholder { color: var(--text3); }
+  .memo-editor::-webkit-scrollbar { width: 5px; }
+  .memo-editor::-webkit-scrollbar-track { background: transparent; }
+  .memo-editor::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .memo-char-count {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    color: var(--text3);
+    padding: 4px 14px;
+    border-top: 1px solid var(--border-subtle);
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  /* ── Pomodoro page ── */
+  .pomo-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 20px;
+  }
+  .pomo-mode-btns {
+    display: flex;
+    gap: 4px;
+  }
+  .pomo-mode-btn {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text3);
+    font-family: var(--sans);
+    font-size: var(--fs-sm);
+    font-weight: 500;
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .pomo-mode-btn:hover { color: var(--text2); background: var(--surface-hover); }
+  .pomo-mode-btn.active { color: var(--text); background: var(--accent-dim); border-color: var(--accent); }
+  .pomo-timer-display {
+    font-family: var(--mono);
+    font-size: 56px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .pomo-progress {
+    width: 200px;
+    height: 5px;
+    background: var(--surface);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .pomo-progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--accent);
+    transition: width 1s linear;
+  }
+  .pomo-controls {
+    display: flex;
+    gap: 8px;
+  }
+  .pomo-btn {
+    appearance: none;
+    border: none;
+    font-family: var(--sans);
+    font-size: var(--fs-base);
+    font-weight: 600;
+    padding: 8px 24px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .pomo-btn:active { transform: scale(0.97); }
+  .pomo-btn.primary {
+    background: linear-gradient(135deg, var(--accent), #7b6cf6);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(91,156,245,0.3);
+  }
+  .pomo-btn.primary:hover { opacity: 0.9; }
+  .pomo-btn.secondary {
+    background: var(--surface);
+    color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .pomo-btn.secondary:hover { color: var(--text); background: var(--surface-hover); }
+  .pomo-count {
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    color: var(--text3);
+  }
+
+
+  /* ── Cost summary ── */
+
+  /* ── Footer controls ── */
+  .footer-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+  }
+  .theme-btn {
+    appearance: none;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-hover);
+    color: var(--text3);
+    font-size: 12px;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .theme-btn:hover { color: var(--text); background: var(--surface-raised); border-color: var(--border); }
+  .opacity-label, .opacity-slider { display: none; }
+    min-width: 14px;
+  }
+
+  [hidden] { display: none !important; }
+</style>
+
+<div class="widget">
+  <div class="header">
+    <span class="logo">ORCA</span>
+    <div class="stats" id="stats">
+      <span class="stat"><span class="typing-bubble" style="padding:2px 4px;height:14px"><span class="dot" style="width:3px;height:3px"></span><span class="dot" style="width:3px;height:3px"></span><span class="dot" style="width:3px;height:3px"></span></span><span id="nRun">0</span></span>
+      <span class="stat">💤<span id="nWait">0</span></span>
+      <span class="stat">✅<span id="nDone">0</span></span>
+    </div>
+    <button class="minimize-btn" id="minimize-btn" title="최소화">▾</button>
+  </div>
+
+  <!-- Page navigation -->
+  <div class="page-nav">
+    <button class="page-nav-btn active" data-page="dashboard">대시보드</button>
+    <button class="page-nav-btn" data-page="orchestration">오케스트레이션</button>
+    <button class="page-nav-btn" data-page="collab">협력</button>
+    <button class="page-nav-btn" data-page="clipboard">클립보드</button>
+    <button class="page-nav-btn" data-page="ports">포트</button>
+    <button class="page-nav-btn" data-page="memo">메모</button>
+    <button class="page-nav-btn" data-page="pomodoro">타이머</button>
+  </div>
+
+  <!-- PAGE: Dashboard -->
+  <div class="page active" id="page-dashboard">
+    <div class="tabs">
+      <button class="tab active" data-tab="all">전체<span class="tab-badge" id="badge-all">0</span></button>
+      <button class="tab" data-tab="recent">최근</button>
+      <button class="tab" data-tab="running">실행 중<span class="tab-badge" id="badge-running">0</span></button>
+      <button class="tab" data-tab="done">완료<span class="tab-badge" id="badge-done">0</span></button>
+    </div>
+    <div class="search-wrap">
+      <input class="search-input" id="search" type="text" placeholder="검색..." />
+    </div>
+    <div class="list" id="list"></div>
+    <div id="chat-panel" class="chat-panel">
+      <div class="chat-header">
+        <span class="chat-header-name" id="chat-name"></span>
+        <span class="chat-header-status" id="chat-status"></span>
+        <button class="chat-orca-btn" id="chat-orca" title="Orca 터미널로 전환">Orca 보기</button>
+        <button class="chat-refresh-btn" id="chat-refresh" title="화면 새로고침">↻</button>
+        <button class="chat-close-btn" id="chat-close" title="닫기">✕</button>
+      </div>
+      <div class="chat-screen" id="chat-screen"></div>
+      <div class="chat-input-row">
+        <input class="chat-input" id="chat-input" type="text" placeholder="메시지 입력..." />
+        <button class="chat-send-btn" id="chat-send">전송</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE: Sessions viewer -->
+  <div class="page" id="page-sessions">
+    <!-- List view -->
+    <div id="sessions-list-view">
+      <div class="search-wrap">
+        <input class="search-input" id="cs-search" type="text" placeholder="세션 검색..." />
+      </div>
+      <div class="list" id="cs-list"></div>
+    </div>
+    <!-- Detail view -->
+    <div id="sessions-detail-view" hidden>
+      <div class="detail-header">
+        <button class="back-btn" id="cs-back">←</button>
+        <span class="detail-title" id="cs-detail-title"></span>
+      </div>
+      <div class="detail-stats" id="cs-detail-stats"></div>
+      <div class="msg-list" id="cs-messages"></div>
+    </div>
+  </div>
+
+  <!-- PAGE: Orchestration -->
+  <div class="page" id="page-orchestration">
+    <div class="orch-layout">
+      <!-- Left: terminal/session list -->
+      <div class="orch-left">
+        <div class="orch-left-header">세션 목록 (드래그)</div>
+        <div class="orch-terminal-list" id="orch-terminals"></div>
+      </div>
+      <!-- Right: phase columns + task section -->
+      <div class="orch-right">
+        <div class="orch-right-top">
+          <select id="orch-run-sel"><option value="">전체 Run</option></select>
+          <span style="font-size: var(--fs-sm);color:var(--text3)">태스크를 터미널에 드래그하여 배정</span>
+        </div>
+        <div class="phase-columns-wrap">
+          <div class="phase-columns" id="orch-phase-cols"></div>
+        </div>
+        <div class="task-section" id="orch-task-section">
+          <div class="task-section-header">태스크</div>
+          <div class="task-lanes" id="orch-task-lanes"></div>
+        </div>
+        <form class="new-task-form" id="orch-new-task-form">
+          <select id="orch-new-task-phase"></select>
+          <input type="text" id="orch-new-task-spec" placeholder="태스크 내용 입력..." />
+          <button type="submit">추가</button>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- PAGE: Collaboration -->
+  <div class="page" id="page-collab">
+    <div class="collab-layout">
+      <!-- Left: session pool -->
+      <div class="collab-left">
+        <div class="collab-left-header">세션 목록 (드래그)</div>
+        <div class="debate-session-list" id="debate-session-list"></div>
+      </div>
+      <!-- Right: hierarchy + config + log -->
+      <div class="collab-right">
+        <!-- Hierarchy tree -->
+        <div class="collab-tree" id="collab-tree"></div>
+
+        <!-- Drop zones -->
+        <div class="collab-zones">
+          <div id="debate-master-section">
+            <div class="debate-master-label">👑 마스터 (결과 수신)</div>
+            <div class="debate-master-zone" id="debate-zone-master">
+              <div class="debate-dropzone-empty">마스터 세션을 드롭</div>
+            </div>
+          </div>
+
+          <div class="debate-flow">
+            <div class="debate-pool" style="flex:1">
+              <div class="debate-pool-label"><span class="pool-color" style="background:var(--accent)"></span>A 그룹</div>
+              <div class="debate-dropzone" id="debate-zone-a" data-zone="a">
+                <div class="debate-dropzone-empty">여기에 드롭</div>
+              </div>
+            </div>
+            <div class="debate-flow-arrow">
+              <span>→</span>
+              <span>←</span>
+            </div>
+            <div class="debate-pool" style="flex:1">
+              <div class="debate-pool-label"><span class="pool-color" style="background:var(--green)"></span>B 그룹</div>
+              <div class="debate-dropzone" id="debate-zone-b" data-zone="b">
+                <div class="debate-dropzone-empty">여기에 드롭</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Config -->
+        <div class="debate-config-row">
+          <textarea id="debate-topic" placeholder="공통 주제 또는 해결할 문제..."></textarea>
+          <div class="debate-config-side">
+            <label>라운드</label>
+            <select id="debate-rounds">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3" selected>3</option>
+              <option value="5">5</option>
+              <option value="10">10</option>
+            </select>
+            <label>모드</label>
+            <select id="debate-mode">
+              <option value="debate">토론</option>
+              <option value="brainstorm">브레인스톰</option>
+              <option value="review">코드리뷰</option>
+              <option value="master-worker">마스터-워커</option>
+            </select>
+          </div>
+        </div>
+        <div class="debate-actions">
+          <button class="debate-start-btn" id="debate-start-btn">시작</button>
+          <button class="debate-stop-btn" id="debate-stop-btn" disabled>중단</button>
+        </div>
+        <div class="debate-status" id="debate-status"></div>
+        <div class="debate-log" id="debate-log"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE: Clipboard History -->
+  <div class="page" id="page-clipboard">
+    <div class="clip-actions">
+      <button id="clip-clear-btn">전체 삭제</button>
+    </div>
+    <div class="clip-list" id="clip-list">
+      <div class="empty"><span class="empty-icon">📋</span><span class="empty-text">클립보드 히스토리가 비어 있습니다</span></div>
+    </div>
+  </div>
+
+  <!-- PAGE: Port Monitor -->
+  <div class="page" id="page-ports">
+    <div class="port-header">
+      <span style="font-size:var(--fs-sm);color:var(--text2);font-weight:600">리스닝 포트</span>
+      <button id="port-refresh-btn">새로고침</button>
+    </div>
+    <div class="port-list" id="port-list">
+      <div class="empty"><span class="empty-icon">🔌</span><span class="empty-text">스캔 중...</span></div>
+    </div>
+  </div>
+
+  <!-- PAGE: Memo -->
+  <div class="page" id="page-memo">
+    <div class="memo-wrap">
+      <div class="memo-toolbar">
+        <span style="font-size:var(--fs-sm);color:var(--text2);font-weight:600">빠른 메모</span>
+        <span class="memo-status" id="memo-status"></span>
+      </div>
+      <textarea class="memo-editor" id="memo-editor" placeholder="여기에 메모를 작성하세요..."></textarea>
+      <div class="memo-char-count" id="memo-char-count">0자</div>
+    </div>
+  </div>
+
+  <!-- PAGE: Pomodoro -->
+  <div class="page" id="page-pomodoro">
+    <div class="pomo-wrap">
+      <div class="pomo-mode-btns">
+        <button class="pomo-mode-btn active" data-pomo="work">집중 25분</button>
+        <button class="pomo-mode-btn" data-pomo="short">휴식 5분</button>
+        <button class="pomo-mode-btn" data-pomo="long">긴 휴식 15분</button>
+      </div>
+      <div class="pomo-timer-display" id="pomo-display">25:00</div>
+      <div class="pomo-progress"><div class="pomo-progress-fill" id="pomo-progress" style="width:0%"></div></div>
+      <div class="pomo-controls">
+        <button class="pomo-btn primary" id="pomo-start">시작</button>
+        <button class="pomo-btn secondary" id="pomo-reset">초기화</button>
+      </div>
+      <div class="pomo-count" id="pomo-count">완료: 0회</div>
+    </div>
+  </div>
+
+  <div class="toast-stack" id="toasts"></div>
+
+  <div class="footer" id="footer">
+    <div id="tokenBars"></div>
+    <div class="footer-row">
+      <div class="spinner"></div>
+      <span id="updatedAt">--</span>
+    </div>
+    <div class="footer-controls">
+      <button class="theme-btn" id="theme-btn" title="테마 전환">🌙</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Shared utilities ──
+const POLL = 5000;
+const $ = id => document.getElementById(id);
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function trunc(s, n) { return !s ? '' : s.length > n ? s.slice(0, n) + '…' : s; }
+function timeAgo(ts) {
+  if (!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return `${s}s`; const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`; const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`; return `${Math.floor(h / 24)}d`;
+}
+function barColor(pct) { if (pct >= 80) return 'red'; if (pct >= 50) return 'yellow'; return 'green'; }
+function formatTokens(n) { return n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n); }
+
+// ── Minimize / Restore ──
+let isMinimized = false;
+let prevHeight = null;
+const HEADER_H = 44;
+$('minimize-btn').addEventListener('click', () => {
+  const widget = document.querySelector('.widget');
+  if (!isMinimized) {
+    prevHeight = window.outerHeight;
+    widget.classList.add('minimized');
+    window.orca.resizeWindow(window.outerWidth, HEADER_H, true);
+    $('minimize-btn').textContent = '▴';
+    $('minimize-btn').title = '복원';
+  } else {
+    widget.classList.remove('minimized');
+    window.orca.resizeWindow(window.outerWidth, prevHeight || 480, true);
+    $('minimize-btn').textContent = '▾';
+    $('minimize-btn').title = '최소화';
+  }
+  isMinimized = !isMinimized;
+});
+
+// ── Theme toggle ──
+const themeBtn = $('theme-btn');
+let currentTheme = 'system';
+try { currentTheme = localStorage.getItem('roca-theme') || 'system'; } catch {}
+
+function applyTheme(theme) {
+  currentTheme = theme;
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    themeBtn.textContent = '☀️';
+    themeBtn.title = '라이트 모드 (클릭: 다크)';
+  } else if (theme === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    themeBtn.textContent = '🌙';
+    themeBtn.title = '다크 모드 (클릭: 시스템)';
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    themeBtn.textContent = isDark ? '🌙' : '☀️';
+    themeBtn.title = '시스템 모드 (클릭: 라이트)';
+  }
+  try { localStorage.setItem('roca-theme', theme); } catch {}
+}
+applyTheme(currentTheme);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (currentTheme === 'system') applyTheme('system');
+});
+themeBtn.addEventListener('click', () => {
+  const next = currentTheme === 'system' ? 'light' : currentTheme === 'light' ? 'dark' : 'system';
+  applyTheme(next);
+});
+
+// ── Opacity removed ──
+window.orca.setOpacity(1);
+
+// ── Cost summary ──
+async function updateCostSummary() { return; // removed
+  try {
+    const allSessions = await window.orca.claudeSessions({});
+    if (!allSessions || !allSessions.length) { $('cost-summary').innerHTML = ''; return; }
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dayOfWeek = now.getDay() || 7;
+    const weekStart = todayStart - (dayOfWeek - 1) * 86400000;
+
+    let todayCost = 0, todayTokens = 0, todayCount = 0, weekCost = 0;
+    for (const s of allSessions) {
+      const created = s.timeCreated || s.timeUpdated || 0;
+      const cost = s.cost || 0;
+      const tokens = (s.tokensInput || 0) + (s.tokensOutput || 0);
+      if (created >= weekStart) weekCost += cost;
+      if (created >= todayStart) { todayCost += cost; todayTokens += tokens; todayCount++; }
+    }
+
+    if (todayCount === 0 && weekCost === 0) { $('cost-summary').innerHTML = ''; return; }
+
+    let html = '';
+    html += `<span class="cost-item"><span class="cost-label">오늘</span><span class="cost-value money">$${todayCost.toFixed(2)}</span></span>`;
+    html += `<span class="cost-item"><span class="cost-label">토큰</span><span class="cost-value">${formatTokens(todayTokens)}</span></span>`;
+    html += `<span class="cost-item"><span class="cost-label">세션</span><span class="cost-value">${todayCount}</span></span>`;
+    html += `<span class="cost-item"><span class="cost-label">주간</span><span class="cost-value money">$${weekCost.toFixed(2)}</span></span>`;
+    $('cost-summary').innerHTML = html;
+  } catch { $('cost-summary').innerHTML = ''; }
+}
+updateCostSummary();
+setInterval(updateCostSummary, 60000);
+
+// ── Prevent default file drop (navigating to file) ──
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => e.preventDefault());
+
+// ── Page navigation ──
+const PAGE_SIZES = {
+  dashboard:     { w: 320, h: 480 },
+  sessions:      { w: 320, h: 480 },
+  orchestration: { w: 1200, h: 800, forceHeight: true },
+  collab:        { w: 1200, h: 800, forceHeight: true },
+  clipboard:     { w: 340, h: 500 },
+  ports:         { w: 360, h: 480 },
+  memo:          { w: 380, h: 520 },
+  pomodoro:      { w: 320, h: 420 },
+};
+let currentPage = 'dashboard';
+document.querySelectorAll('.page-nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelector('.page-nav-btn.active').classList.remove('active');
+    btn.classList.add('active');
+    document.querySelector('.page.active').classList.remove('active');
+    currentPage = btn.dataset.page;
+    $(`page-${currentPage}`).classList.add('active');
+    const size = PAGE_SIZES[currentPage] || PAGE_SIZES.dashboard;
+    window.orca.resizeWindow(size.w, size.h, !!size.forceHeight);
+    if (currentPage === 'sessions') loadClaudeSessions();
+    if (currentPage === 'orchestration') loadOrchestration();
+    if (currentPage === 'collab') { renderDebateSessionList(); renderCollabTree(); }
+    if (currentPage === 'clipboard') loadClipboardHistory();
+    if (currentPage === 'ports') loadPorts();
+  });
+});
+
+// ══════════════════════════════════════════
+// PAGE 1: DASHBOARD (orca worktree sessions)
+// ══════════════════════════════════════════
+let sessions = [];
+let handles = new Map();
+let tab = 'all';
+let prevStatuses = new Map();
+let notifiedDone = new Set();
+let notifiedWaiting = new Set();
+let isFirstFetch = true;
+let searchQuery = '';
+let pinnedSessions = new Set();
+try { const saved = localStorage.getItem('roca-pinned'); if (saved) pinnedSessions = new Set(JSON.parse(saved)); } catch {};
+
+const api = {
+  ps: () => window.orca.ps(),
+  terminals: () => window.orca.terminals(),
+  switchTo: h => window.orca.terminalSwitch(h),
+  interrupt: h => window.orca.terminalInterrupt(h),
+  close: h => window.orca.terminalClose(h),
+};
+
+function agentType(t) {
+  if (!t) return 'shell';
+  if (t.includes('claude')) return 'claude';
+  if (t.includes('opencode')) return 'opencode';
+  if (t.includes('gemini')) return 'gemini';
+  return t;
+}
+
+const STALE_MS = 10 * 60 * 1000;
+const IDLE_MS = 2 * 60 * 1000;
+function status(wt) {
+  const a = wt.agents?.[0];
+  if (a) {
+    const s = a.state;
+    if (s === 'working' || s === 'tool_use') {
+      const now = Date.now();
+      const latest = Math.max(a.updatedAt || 0, wt.lastOutputAt || 0, wt.lastActivityAt || 0);
+      if (now - latest > STALE_MS) return 'done';
+      const sinceOutput = now - (wt.lastOutputAt || 0);
+      if (sinceOutput < IDLE_MS) return 'running';
+      if (a.toolName) return 'running';
+      return 'done';
+    }
+    if (s === 'waiting' || s === 'pending') return 'waiting';
+    if (s === 'error') return 'error';
+    return 'done';
+  }
+  return 'done';
+}
+
+function statusFromScreen(lines) {
+  if (!lines || !lines.length) return null;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const t = lines[i].trim();
+    if (!t || t.startsWith('────') || t.startsWith('branch:') || t.includes('[OMC#') || t.includes('bypass permissions')) continue;
+    if (t === '❯' || t === '$') return 'waiting';
+    if (t.includes('✻') && t.includes('done')) return 'waiting';
+    if (t.startsWith('❯') && t.length > 2) return 'running';
+    if (t.startsWith('⏺') || t.startsWith('⠋') || t.startsWith('⠙') || t.startsWith('⠹')) return 'running';
+    break;
+  }
+  return null;
+}
+
+const screenStatusCache = new Map();
+
+async function refreshScreenStatuses() {
+  const entries = [...handles.entries()].filter(([id, h]) => h);
+  const results = await Promise.allSettled(
+    entries.map(([id, h]) =>
+      window.orca.terminalRead(h, true).then(res => {
+        const tail = extractTail(res);
+        const screenSt = statusFromScreen(tail);
+        if (screenSt) screenStatusCache.set(id, screenSt);
+        else screenStatusCache.delete(id);
+      })
+    )
+  );
+}
+
+function statusIcon(s) {
+  switch (s) {
+    case 'running': return '<span class="typing-bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+    case 'waiting': return '<span class="ic-bounce">💤</span>';
+    case 'done':    return '✅';
+    case 'error':   return '<span class="ic-shake">⚠️</span>';
+    default:        return '·';
+  }
+}
+
+const persistentToasts = new Map();
+
+function showInAppToast(name, type, sessionId) {
+  const el = document.createElement('div');
+  if (type === 'error') { el.className = 'toast err'; el.textContent = `⚠ ${name} 오류 발생`; }
+  else if (type === 'waiting') { el.className = 'toast waiting'; el.textContent = `💬 ${name} 응답 대기 중`; }
+  else { el.className = 'toast'; el.textContent = `✓ ${name} 완료`; }
+  $('toasts').appendChild(el);
+
+  if (type === 'waiting' && sessionId) {
+    persistentToasts.set(sessionId, el);
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => { el.remove(); persistentToasts.delete(sessionId); });
+  } else {
+    setTimeout(() => el.remove(), 5000);
+  }
+}
+
+function clearWaitingToast(sessionId) {
+  const el = persistentToasts.get(sessionId);
+  if (el) { el.remove(); persistentToasts.delete(sessionId); }
+}
+
+async function fetchData() {
+  $('footer').classList.add('loading');
+  try {
+    const [ps, terms, rl] = await Promise.all([api.ps(), api.terminals(), window.orca.rateLimits()]);
+    const wts = ps?.result?.worktrees || [];
+    const ts = terms?.result?.terminals || [];
+    const rateLimits = rl?.result?.rateLimits || {};
+
+    handles.clear();
+    const tMap = new Map();
+    for (const t of ts) {
+      if (!tMap.has(t.worktreeId)) tMap.set(t.worktreeId, t);
+      handles.set(t.worktreeId, t.handle);
+    }
+
+    await refreshScreenStatuses();
+
+    sessions = wts.map(w => {
+      const term = tMap.get(w.worktreeId);
+      const a = w.agents?.[0];
+      const baseStatus = status(w);
+      const screenSt = screenStatusCache.get(w.worktreeId);
+      let finalStatus = baseStatus;
+      if (screenSt) {
+        if (baseStatus === 'running' && screenSt === 'waiting') finalStatus = 'waiting';
+        if (baseStatus === 'done' && screenSt === 'running') finalStatus = 'running';
+        if (baseStatus === 'done' && screenSt === 'waiting') finalStatus = 'waiting';
+      }
+      return {
+        id: w.worktreeId,
+        name: w.displayName || (w.branch || '').replace('refs/heads/', ''),
+        branch: (w.branch || '').replace('refs/heads/', ''),
+        repo: w.repo || '',
+        status: finalStatus,
+        agent: agentType(term?.agentIdentity || a?.agentType),
+        time: w.lastActivityAt,
+        tool: a?.toolName || '',
+        prompt: a?.prompt || '',
+        lastMsg: a?.lastAssistantMessage || '',
+        connected: term?.connected || false,
+      };
+    });
+
+    if (!isFirstFetch) {
+      for (const s of sessions) {
+        const prev = prevStatuses.get(s.id);
+        if (prev === 'running' && s.status === 'done' && !notifiedDone.has(s.id)) {
+          notifiedDone.add(s.id);
+          window.orca.notify('작업 완료', `${s.name} (${s.agent})`);
+          showInAppToast(s.name);
+        }
+        if (prev === 'running' && s.status === 'error' && !notifiedDone.has(s.id)) {
+          notifiedDone.add(s.id);
+          window.orca.notify('오류 발생', `${s.name} (${s.agent})`);
+          showInAppToast(s.name, 'error');
+        }
+        if (prev === 'running' && s.status === 'waiting' && !notifiedWaiting.has(s.id)) {
+          notifiedWaiting.add(s.id);
+          const isQuestion = s.tool === 'AskUserQuestion' || s.tool === 'AskUser';
+          const title = isQuestion ? '질문 대기' : '응답 대기';
+          const body = isQuestion ? `${s.name}: 선택이 필요합니다` : `${s.name}: 입력을 기다리고 있습니다`;
+          window.orca.notify(title, body);
+          showInAppToast(s.name, 'waiting', s.id);
+        }
+        if (s.status === 'running') {
+          notifiedDone.delete(s.id);
+          notifiedWaiting.delete(s.id);
+          clearWaitingToast(s.id);
+        }
+      }
+    }
+    for (const s of sessions) prevStatuses.set(s.id, s.status);
+    isFirstFetch = false;
+
+    const running = sessions.filter(s => s.status === 'running').length;
+    const waiting = sessions.filter(s => s.status === 'waiting').length;
+    const done = sessions.filter(s => s.status === 'done' || s.status === 'error').length;
+
+    $('nRun').textContent = running;
+    $('nWait').textContent = waiting;
+    $('nDone').textContent = done;
+    $('updatedAt').textContent = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    $('badge-all').textContent = sessions.length;
+    $('badge-running').textContent = running + waiting;
+    $('badge-done').textContent = done;
+
+    window.orca.sendSessionCounts({ running, waiting, done });
+    renderRateLimits(rateLimits);
+    renderDashboard();
+  } catch (e) { console.error(e); }
+  finally { $('footer').classList.remove('loading'); }
+}
+
+function renderDashboard() {
+  let items = sessions;
+  if (tab === 'recent') {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    items = items.filter(s => s.time && s.time > cutoff);
+  } else if (tab === 'running') items = items.filter(s => s.status === 'running' || s.status === 'waiting');
+  else if (tab === 'done') items = items.filter(s => s.status === 'done' || s.status === 'error');
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    items = items.filter(s => s.name.toLowerCase().includes(q) || s.branch.toLowerCase().includes(q) || s.repo.toLowerCase().includes(q));
+  }
+  if (!items.length) {
+    const emptyMsg = tab === 'running' ? '실행 중인 세션이 없습니다'
+      : tab === 'done' ? '완료된 세션이 없습니다'
+      : tab === 'recent' ? '최근 24시간 내 세션이 없습니다'
+      : '세션이 없습니다';
+    const emptyIcon = tab === 'running' ? '⏳' : tab === 'done' ? '🎉' : '📭';
+    $('list').innerHTML = `<div class="empty"><span class="empty-icon">${emptyIcon}</span><span class="empty-text">${emptyMsg}</span></div>`;
+    return;
+  }
+
+  items.sort((a, b) => {
+    const pa = pinnedSessions.has(a.id) ? 0 : 1;
+    const pb = pinnedSessions.has(b.id) ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    const ord = { running: 0, waiting: 1, error: 2, done: 3 };
+    const d = ord[a.status] - ord[b.status];
+    return d !== 0 ? d : (b.time || 0) - (a.time || 0);
+  });
+
+  const showGroups = tab === 'all' && !searchQuery;
+  const groups = showGroups ? [
+    { key: 'running', label: '실행 중', items: items.filter(s => s.status === 'running') },
+    { key: 'waiting', label: '대기 중', items: items.filter(s => s.status === 'waiting') },
+    { key: 'error', label: '오류', items: items.filter(s => s.status === 'error') },
+    { key: 'done', label: '완료', items: items.filter(s => s.status === 'done') },
+  ].filter(g => g.items.length > 0) : [{ key: 'flat', label: '', items }];
+
+  let html = '';
+  for (const group of groups) {
+    if (showGroups && group.label) {
+      html += `<div class="group-header"><span>${group.label}</span><span class="gh-count">${group.items.length}</span><span class="gh-line"></span></div>`;
+    }
+    for (const s of group.items) {
+      const h = handles.get(s.id);
+      const hasHandle = h && s.connected;
+      const isPinned = pinnedSessions.has(s.id);
+      const peek = s.prompt || s.lastMsg || '';
+      const prev = prevStatuses.get(s.id);
+      const changed = prev && prev !== s.status;
+      html += `<div class="session${changed ? ' pulse' : ''}" data-id="${esc(s.id)}" data-handle="${esc(h || '')}">
+        <span class="s-icon ${s.status}">${statusIcon(s.status)}</span>
+        <div class="s-info">
+          <div class="s-name">${isPinned ? '📌 ' : ''}${esc(s.name)}</div>
+          <div class="s-meta">
+            <span class="s-agent ${s.agent}">${esc(s.agent)}</span>
+            <span class="s-branch">${esc(s.branch)}</span>
+            <span class="s-time">${timeAgo(s.time)}</span>
+            ${s.status === 'running' && s.time ? `<span class="s-elapsed" data-start="${s.time}"></span>` : ''}
+            ${s.tool ? `<span class="s-tool">${esc(s.tool)}</span>` : ''}
+          </div>
+          ${peek ? `<div class="s-prompt">${esc(trunc(peek, 120))}</div>` : ''}
+        </div>
+        <div class="s-actions">
+          <button class="s-act ${isPinned ? 'pinned' : ''}" data-act="pin" data-id="${esc(s.id)}" title="${isPinned ? '고정 해제' : '고정'}">📌</button>
+          <button class="s-act" data-act="copy-id" data-id="${esc(s.id)}" title="세션 ID 복사">📋</button>
+          ${hasHandle ? `<button class="s-act" data-act="interrupt" data-h="${esc(h)}" title="인터럽트">⏸</button>` : ''}
+          ${hasHandle ? `<button class="s-act danger" data-act="close" data-h="${esc(h)}" title="종료">✕</button>` : ''}
+        </div>
+      </div>`;
+    }
+  }
+  $('list').innerHTML = html;
+}
+
+// ── File drag & drop onto session cards ──
+$('list').addEventListener('dragover', e => {
+  e.preventDefault();
+  const card = e.target.closest('.session[data-handle]');
+  if (card && card.dataset.handle) card.classList.add('drop-over');
+});
+$('list').addEventListener('dragleave', e => {
+  const card = e.target.closest('.session');
+  if (card) card.classList.remove('drop-over');
+});
+$('list').addEventListener('drop', async e => {
+  e.preventDefault();
+  e.stopPropagation();
+  document.querySelectorAll('.session.drop-over').forEach(el => el.classList.remove('drop-over'));
+  const card = e.target.closest('.session[data-handle]');
+  const handle = card?.dataset.handle;
+  if (!handle) return;
+  const files = e.dataTransfer.files;
+  if (!files.length) return;
+  const paths = Array.from(files).map(f => {
+    try { return window.orca.getPathForFile(f); } catch { return f.path || f.name; }
+  }).filter(Boolean);
+  if (!paths.length) return;
+  const text = paths.map(p => p.includes(' ') ? `"${p}"` : p).join(' ');
+  try {
+    await window.orca.terminalSend(handle, text, false);
+    showInAppToast(`${paths.length}개 경로 입력됨`, 'done');
+  } catch (err) {
+    showInAppToast('경로 입력 실패: ' + err.message, 'error');
+  }
+});
+
+$('list').addEventListener('click', async e => {
+  const actBtn = e.target.closest('[data-act]');
+  if (actBtn) {
+    e.stopPropagation();
+    const act = actBtn.dataset.act;
+    if (act === 'pin') {
+      const id = actBtn.dataset.id;
+      if (pinnedSessions.has(id)) pinnedSessions.delete(id);
+      else pinnedSessions.add(id);
+      try { localStorage.setItem('roca-pinned', JSON.stringify([...pinnedSessions])); } catch {}
+      renderDashboard();
+    } else if (act === 'copy-id') {
+      navigator.clipboard.writeText(actBtn.dataset.id).then(() => showInAppToast('ID 복사됨'));
+    } else if (act === 'interrupt') {
+      await api.interrupt(actBtn.dataset.h);
+      showInAppToast('인터럽트 전송');
+    } else if (act === 'close') {
+      await api.close(actBtn.dataset.h);
+      fetchData();
+    }
+    return;
+  }
+  const row = e.target.closest('.session');
+  if (!row) return;
+  const handle = row.dataset.handle;
+  if (!handle) return;
+  openChat(handle);
+});
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelector('.tab.active').classList.remove('active');
+    t.classList.add('active');
+    tab = t.dataset.tab;
+    renderDashboard();
+  });
+});
+
+$('search').addEventListener('input', e => { searchQuery = e.target.value.trim(); renderDashboard(); });
+
+function renderRateLimits(rateLimits) {
+  const claude = rateLimits?.claude;
+  if (!claude) { $('tokenBars').innerHTML = ''; return; }
+  const bars = [];
+  if (claude.session) bars.push({ label: '세션', pct: claude.session.usedPercent, reset: claude.session.resetDescription || '' });
+  if (claude.weekly) bars.push({ label: '주간', pct: claude.weekly.usedPercent, reset: claude.weekly.resetDescription || '' });
+  if (claude.fableWeekly) bars.push({ label: 'Fable', pct: claude.fableWeekly.usedPercent, reset: claude.fableWeekly.resetDescription || '' });
+  if (!bars.length) { $('tokenBars').innerHTML = ''; return; }
+  let html = '';
+  for (const b of bars) {
+    html += `<div class="token-bar"><span class="label">${esc(b.label)}</span><div class="bar-bg"><div class="bar-fill ${barColor(b.pct)}" style="width:${b.pct}%"></div></div><span class="pct">${b.pct}%</span></div>`;
+  }
+  $('tokenBars').innerHTML = html;
+}
+
+// ══════════════════════════════════════════
+// PAGE 2: SESSIONS VIEWER (Claude Code .jsonl)
+// ══════════════════════════════════════════
+let claudeSessions = [];
+let csSearchQuery = '';
+
+async function loadClaudeSessions() {
+  try {
+    claudeSessions = await window.orca.claudeSessions({ search: csSearchQuery || undefined });
+    renderClaudeSessions();
+  } catch (e) { console.error(e); $('cs-list').innerHTML = '<div class="empty"><span class="empty-icon">⚠️</span><span class="empty-text">세션을 불러오지 못했습니다</span></div>'; }
+}
+
+function renderClaudeSessions() {
+  if (!claudeSessions.length) { $('cs-list').innerHTML = '<div class="empty"><span class="empty-icon">📭</span><span class="empty-text">세션이 없습니다</span></div>'; return; }
+  let html = '';
+  for (const s of claudeSessions) {
+    const proj = s.projectWorktree ? s.projectWorktree.split('/').filter(Boolean).pop() : s.projectId.slice(0, 20);
+    html += `<div class="cs-item" data-sid="${esc(s.id)}">
+      <div class="cs-title">${esc(s.title)}</div>
+      <div class="cs-meta">
+        <span class="highlight">${esc(proj)}</span>
+        ${s.agent ? `<span>${esc(s.agent)}</span>` : ''}
+        ${s.modelId ? `<span>${esc(s.modelId.split('/').pop().split('-').slice(0, 2).join('-'))}</span>` : ''}
+        <span>${s.messageCount} msgs</span>
+        <span>${formatTokens(s.tokensInput + s.tokensOutput)} tok</span>
+        ${s.cost > 0 ? `<span class="cost">$${s.cost.toFixed(2)}</span>` : ''}
+        <span>${timeAgo(s.timeUpdated)}</span>
+      </div>
+    </div>`;
+  }
+  $('cs-list').innerHTML = html;
+}
+
+$('cs-search').addEventListener('input', e => {
+  csSearchQuery = e.target.value.trim();
+  loadClaudeSessions();
+});
+
+$('cs-list').addEventListener('click', async e => {
+  const item = e.target.closest('.cs-item');
+  if (!item) return;
+  const sid = item.dataset.sid;
+  await openSessionDetail(sid);
+});
+
+async function openSessionDetail(sessionId) {
+  $('sessions-list-view').hidden = true;
+  $('sessions-detail-view').hidden = false;
+  $('cs-detail-title').textContent = '로딩 중...';
+  $('cs-detail-stats').innerHTML = '';
+  $('cs-messages').innerHTML = '<div class="empty">로딩 중...</div>';
+
+  try {
+    const detail = await window.orca.claudeSessionDetail(sessionId);
+    if (!detail) { $('cs-messages').innerHTML = '<div class="empty">세션을 찾을 수 없습니다</div>'; return; }
+
+    $('cs-detail-title').textContent = detail.title;
+    $('cs-detail-stats').innerHTML = `
+      <span>${detail.messageCount} messages</span>
+      <span>입력: ${formatTokens(detail.tokensInput)}</span>
+      <span>출력: ${formatTokens(detail.tokensOutput)}</span>
+      ${detail.cost > 0 ? `<span style="color:var(--yellow)">$${detail.cost.toFixed(2)}</span>` : ''}
+      ${detail.modelId ? `<span>${esc(detail.modelId)}</span>` : ''}
+    `;
+
+    let msgHtml = '';
+    for (const msg of detail.messages) {
+      msgHtml += `<div class="msg"><div class="msg-role ${msg.role}">${msg.role}</div>`;
+      for (const part of msg.parts) {
+        if (part.type === 'text') {
+          msgHtml += `<div class="msg-text">${esc(part.text)}</div>`;
+        } else if (part.type === 'reasoning') {
+          msgHtml += `<div class="msg-reasoning">${esc(trunc(part.text, 500))}</div>`;
+        } else if (part.type === 'tool') {
+          const st = part.state || {};
+          const statusCls = st.status === 'completed' ? 'completed' : st.status === 'error' ? 'error' : '';
+          msgHtml += `<div class="msg-tool">
+            <span class="tool-name">${esc(part.tool)}</span>
+            <span class="tool-status ${statusCls}">${esc(st.status || 'running')}</span>
+            ${st.output ? `<div class="msg-tool-output">${esc(trunc(st.output, 500))}</div>` : ''}
+          </div>`;
+        }
+      }
+      msgHtml += '</div>';
+    }
+    $('cs-messages').innerHTML = msgHtml || '<div class="empty">메시지 없음</div>';
+  } catch (e) {
+    console.error(e);
+    $('cs-messages').innerHTML = '<div class="empty">로딩 실패</div>';
+  }
+}
+
+$('cs-back').addEventListener('click', () => {
+  $('sessions-detail-view').hidden = true;
+  $('sessions-list-view').hidden = false;
+});
+
+// ══════════════════════════════════════════
+// PAGE 3: ORCHESTRATION BOARD
+// ══════════════════════════════════════════
+const PHASES = [
+  { id: 'analysis', label: '분석', tag: '[분석]', color: '#6ea8fe' },
+  { id: 'design', label: '설계', tag: '[설계]', color: '#d9a441' },
+  { id: 'dev', label: '개발', tag: '[개발]', color: '#4caf7d' },
+  { id: 'test', label: '테스트', tag: '[테스트]', color: '#e0616b' },
+  { id: 'docs', label: '문서화', tag: '[문서화]', color: '#9aa1ac' },
+];
+
+let orchRuns = [];
+let orchTasks = [];
+let orchTerminals = [];
+let selectedRunId = '';
+
+// Phase assignments stored in localStorage
+let phaseAssignments = {};
+try {
+  const saved = localStorage.getItem('orca-phase-assignments');
+  if (saved) phaseAssignments = JSON.parse(saved);
+} catch {}
+
+function savePhaseAssignments() {
+  localStorage.setItem('orca-phase-assignments', JSON.stringify(phaseAssignments));
+}
+
+function assignPhase(handle, phaseId) {
+  if (!phaseAssignments[handle]) phaseAssignments[handle] = { phases: [], label: '' };
+  if (!phaseAssignments[handle].phases.includes(phaseId)) {
+    phaseAssignments[handle].phases.push(phaseId);
+  }
+  savePhaseAssignments();
+}
+
+function unassignPhase(handle, phaseId) {
+  if (!phaseAssignments[handle]) return;
+  phaseAssignments[handle].phases = phaseAssignments[handle].phases.filter(p => p !== phaseId);
+  if (!phaseAssignments[handle].phases.length) delete phaseAssignments[handle];
+  savePhaseAssignments();
+}
+
+function cleanupStaleAssignments(activeHandles) {
+  const active = new Set(activeHandles);
+  let changed = false;
+  for (const h of Object.keys(phaseAssignments)) {
+    if (!active.has(h)) { delete phaseAssignments[h]; changed = true; }
+  }
+  if (changed) savePhaseAssignments();
+}
+
+function lastPathSeg(p) {
+  if (!p) return '';
+  return p.replace(/\/$/, '').split('/').pop() || '';
+}
+
+// Populate new task phase select
+(function initPhaseSelect() {
+  const sel = $('orch-new-task-phase');
+  for (const p of PHASES) {
+    sel.innerHTML += `<option value="${p.id}">${p.label}</option>`;
+  }
+})();
+
+async function loadOrchestration() {
+  try {
+    const [runsRaw, termsRaw] = await Promise.all([
+      window.orca.orchRuns(),
+      window.orca.terminals(),
+    ]);
+    orchRuns = (runsRaw?.result?.runs || []).filter(r => !r.legacy);
+    orchTerminals = termsRaw?.result?.terminals || [];
+    cleanupStaleAssignments(orchTerminals.map(t => t.handle));
+    renderRunSelect();
+    renderTerminalList();
+    renderPhaseColumns();
+    await loadOrchTasks();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function renderRunSelect() {
+  let html = '<option value="">전체 Run</option>';
+  for (const r of orchRuns) {
+    html += `<option value="${esc(r.id)}">${esc(r.objective || r.id.slice(0, 8))}</option>`;
+  }
+  $('orch-run-sel').innerHTML = html;
+}
+
+$('orch-run-sel').addEventListener('change', e => {
+  selectedRunId = e.target.value;
+  loadOrchTasks();
+});
+
+// ── Terminal list (left panel, draggable) ──
+function renderTerminalList() {
+  const el = $('orch-terminals');
+  if (!orchTerminals.length) {
+    el.innerHTML = '<div class="empty" style="height:100%"><span class="empty-icon">🔌</span><span class="empty-text">활성 세션이 없습니다</span></div>';
+    return;
+  }
+  let html = '';
+  for (const t of orchTerminals) {
+    const agent = t.agentIdentity || 'shell';
+    const name = lastPathSeg(t.worktreePath || t.worktree || '') || t.handle;
+    const conn = t.connected;
+    html += `<div class="orch-terminal-card" draggable="true" data-handle="${esc(t.handle)}">`
+      + `<span class="agent-badge">${esc(agent)}</span>`
+      + `<div class="term-info"><span class="term-name">${esc(name)}</span>`
+      + `<span class="term-handle">${esc(t.handle)}</span></div>`
+      + `<span class="conn-dot ${conn ? 'on' : 'off'}"></span>`
+      + `</div>`;
+  }
+  el.innerHTML = html;
+
+  el.querySelectorAll('.orch-terminal-card').forEach(card => {
+    card.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('application/x-orca-terminal-handle', card.dataset.handle);
+      e.dataTransfer.effectAllowed = 'copy';
+      card.classList.add('dragging');
+    });
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+  });
+}
+
+// ── Phase columns (right panel, drop zones) ──
+function renderPhaseColumns() {
+  const el = $('orch-phase-cols');
+  let html = '';
+  for (const p of PHASES) {
+    const assigned = orchTerminals.filter(t =>
+      phaseAssignments[t.handle]?.phases?.includes(p.id)
+    );
+    html += `<div class="phase-column" data-phase="${p.id}" style="border-top-color:${p.color}">`
+      + `<div class="phase-column-head">`
+      + `<span class="phase-dot" style="background:${p.color}"></span>`
+      + `${esc(p.label)}<span class="phase-column-count">${assigned.length}</span></div>`
+      + `<div class="phase-column-body">`;
+    if (!assigned.length) {
+      html += '<div class="phase-empty">드래그해서 추가</div>';
+    }
+    for (const t of assigned) {
+      const name = lastPathSeg(t.worktreePath || t.worktree || '') || t.handle;
+      const agent = t.agentIdentity || 'shell';
+      html += `<div class="phase-session-card">`
+        + `<span class="agent-badge" style="font-size: var(--fs-sm);padding:1px 4px">${esc(agent)}</span>`
+        + `<div class="ps-info"><div class="ps-name">${esc(name)}</div>`
+        + `<div class="ps-handle">${esc(t.handle)}</div></div>`
+        + `<div class="ps-actions">`
+        + `<button class="ps-btn" data-action="send" data-handle="${esc(t.handle)}" title="프롬프트 전송">✎</button>`
+        + `<button class="ps-btn" data-action="switch" data-handle="${esc(t.handle)}" title="터미널 전환">↗</button>`
+        + `<button class="ps-btn rm" data-action="remove" data-handle="${esc(t.handle)}" data-phase="${p.id}" title="제거">×</button>`
+        + `</div></div>`;
+    }
+    html += '</div></div>';
+  }
+  el.innerHTML = html;
+
+  // Drop zone events on each phase column
+  el.querySelectorAll('.phase-column').forEach(col => {
+    col.addEventListener('dragover', e => {
+      if (e.dataTransfer.types.includes('application/x-orca-terminal-handle')) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        col.classList.add('drag-over');
+      }
+    });
+    col.addEventListener('dragleave', e => {
+      if (col.contains(e.relatedTarget)) return;
+      col.classList.remove('drag-over');
+    });
+    col.addEventListener('drop', e => {
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      const handle = e.dataTransfer.getData('application/x-orca-terminal-handle');
+      if (!handle) return;
+      assignPhase(handle, col.dataset.phase);
+      renderPhaseColumns();
+    });
+  });
+
+  // Button events for phase session cards
+  el.querySelectorAll('.ps-btn').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const { action, handle, phase } = btn.dataset;
+      if (action === 'remove') {
+        unassignPhase(handle, phase);
+        renderPhaseColumns();
+      } else if (action === 'switch') {
+        window.orca.terminalSwitch(handle);
+      } else if (action === 'send') {
+        const prompt = window.prompt('프롬프트 입력:');
+        if (prompt && prompt.trim()) {
+          await window.orca.orchSendToTerminal(handle, prompt.trim());
+        }
+      }
+    });
+  });
+}
+
+// ── Task lanes ──
+async function loadOrchTasks() {
+  try {
+    const raw = await window.orca.orchTasks(selectedRunId || undefined);
+    orchTasks = raw?.result?.tasks || [];
+    renderOrchTaskLanes();
+  } catch { orchTasks = []; renderOrchTaskLanes(); }
+}
+
+function detectPhase(spec) {
+  if (!spec) return null;
+  for (const p of PHASES) {
+    if (spec.startsWith(p.tag)) return p.id;
+  }
+  return null;
+}
+
+function stripPhaseTag(spec) {
+  if (!spec) return '';
+  for (const p of PHASES) {
+    if (spec.startsWith(p.tag)) return spec.slice(p.tag.length).trim();
+  }
+  return spec;
+}
+
+function renderOrchTaskLanes() {
+  const el = $('orch-task-lanes');
+  if (!orchTasks.length) {
+    el.innerHTML = '<div class="empty" style="height:60px"><span class="empty-icon" style="font-size:20px">📋</span><span class="empty-text">태스크가 없습니다</span></div>';
+    return;
+  }
+
+  const byPhase = new Map();
+  const untagged = [];
+  for (const p of PHASES) byPhase.set(p.id, []);
+
+  for (const t of orchTasks) {
+    const phase = detectPhase(t.spec || t.task_title);
+    if (phase && byPhase.has(phase)) byPhase.get(phase).push(t);
+    else untagged.push(t);
+  }
+
+  let html = '';
+  for (const p of PHASES) {
+    const tasks = byPhase.get(p.id);
+    html += `<div class="task-lane">`
+      + `<div class="task-lane-header"><span class="phase-dot" style="background:${p.color}"></span>`
+      + `${esc(p.label)} <span style="color:var(--text3);font-weight:400">${tasks.length}</span></div>`
+      + `<div class="task-lane-body">`;
+    for (const t of tasks) {
+      const title = stripPhaseTag(t.spec || t.task_title || t.id);
+      const st = (t.status || 'pending').toLowerCase();
+      html += `<div class="task-card" draggable="true" data-task-id="${esc(t.id)}">`
+        + `<div class="task-title">${esc(trunc(title, 60))}</div>`
+        + `<div class="task-status ${st}">${esc(st)}</div>`
+        + `</div>`;
+    }
+    if (!tasks.length) html += '<div class="orch-empty">비어있음</div>';
+    html += '</div></div>';
+  }
+
+  if (untagged.length) {
+    html += `<div class="task-lane">`
+      + `<div class="task-lane-header"><span class="phase-dot" style="background:var(--text3)"></span>`
+      + `미분류 <span style="color:var(--text3);font-weight:400">${untagged.length}</span></div>`
+      + `<div class="task-lane-body">`;
+    for (const t of untagged) {
+      const title = t.spec || t.task_title || t.id;
+      const st = (t.status || 'pending').toLowerCase();
+      html += `<div class="task-card" draggable="true" data-task-id="${esc(t.id)}">`
+        + `<div class="task-title">${esc(trunc(title, 60))}</div>`
+        + `<div class="task-status ${st}">${esc(st)}</div>`
+        + `</div>`;
+    }
+    html += '</div></div>';
+  }
+
+  // Worker drop zone at the end for task→terminal dispatch
+  html += `<div class="task-lane" style="min-width:160px">`
+    + `<div class="task-lane-header" style="color:var(--accent)">↓ 배정 영역</div>`
+    + `<div class="task-lane-body" id="orch-worker-zones">`;
+  for (const t of orchTerminals) {
+    const name = lastPathSeg(t.worktreePath || t.worktree || '') || t.handle;
+    html += `<div class="worker-drop-zone" data-handle="${esc(t.handle)}">`
+      + `${esc(name)}</div>`;
+  }
+  if (!orchTerminals.length) html += '<div class="orch-empty">터미널 없음</div>';
+  html += '</div></div>';
+
+  el.innerHTML = html;
+
+  // Drag events for task cards
+  el.querySelectorAll('.task-card[draggable]').forEach(card => {
+    card.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('application/x-orca-task-id', card.dataset.taskId);
+      e.dataTransfer.effectAllowed = 'move';
+      card.classList.add('dragging');
+    });
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+  });
+
+  // Drop zones for worker assignment
+  el.querySelectorAll('.worker-drop-zone').forEach(zone => {
+    zone.addEventListener('dragover', e => {
+      if (e.dataTransfer.types.includes('application/x-orca-task-id')) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        zone.classList.add('drag-over');
+      }
+    });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', async e => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      const taskId = e.dataTransfer.getData('application/x-orca-task-id');
+      if (!taskId) return;
+      zone.textContent = '배정 중...';
+      zone.classList.add('dispatching');
+      try {
+        await window.orca.orchDispatch(taskId, zone.dataset.handle);
+        zone.textContent = '배정 완료 ✓';
+        setTimeout(() => loadOrchTasks(), 1500);
+      } catch (err) {
+        zone.textContent = '오류: ' + (err.message || '실패');
+        zone.classList.remove('dispatching');
+        zone.classList.add('err');
+      }
+    });
+  });
+}
+
+// ── New task form ──
+$('orch-new-task-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const phaseId = $('orch-new-task-phase').value;
+  const specInput = $('orch-new-task-spec');
+  const spec = specInput.value.trim();
+  if (!spec) return;
+  const phase = PHASES.find(p => p.id === phaseId);
+  const taggedSpec = phase ? `${phase.tag}${spec}` : spec;
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  btn.textContent = '추가 중...';
+  try {
+    await window.orca.orchTaskCreate(taggedSpec, selectedRunId || undefined);
+    specInput.value = '';
+    await loadOrchTasks();
+  } catch (err) {
+    console.error('Task create failed:', err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '추가';
+  }
+});
+
+// ── Shared: extract terminal tail lines from orca response ──
+function extractTail(res) {
+  const tail = res?.result?.terminal?.tail;
+  if (Array.isArray(tail) && tail.length) return tail;
+  return [];
+}
+
+function extractLastResponse(lines) {
+  let lastPromptIdx = -1;
+  let lastDoneIdx = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const t = lines[i].trim();
+    if (t.includes('✻') && t.includes('done') && lastDoneIdx === -1) {
+      lastDoneIdx = i;
+    }
+    if (t.startsWith('❯') && t.length > 5 && lastDoneIdx > i) {
+      lastPromptIdx = i;
+      break;
+    }
+  }
+  if (lastPromptIdx < 0 || lastDoneIdx <= lastPromptIdx) return '';
+  const block = lines.slice(lastPromptIdx + 1, lastDoneIdx);
+  const responseLines = [];
+  for (const line of block) {
+    const t = line.trim();
+    if (!t) continue;
+    if (t.startsWith('⏺')) {
+      responseLines.push(t.slice(1).trim());
+    } else {
+      responseLines.push(t);
+    }
+  }
+  return responseLines.join('\n').trim();
+}
+
+function detectTerminalStatus(lines) {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const t = lines[i].trim();
+    if (t === '❯' || (t.startsWith('❯') && t.length <= 3)) return 'idle';
+    if (t.startsWith('⏵') || t.includes('bypass permissions') || t.includes('branch:')) continue;
+    if (t.includes('[OMC#') || t.startsWith('────')) continue;
+    if (t.includes('✻') && t.includes('done')) return 'idle';
+    if (t.startsWith('❯') && t.length > 5) return 'busy';
+    if (t.startsWith('⏺') || t.length > 0) return 'busy';
+  }
+  return 'offline';
+}
+
+// ── Debate Room ──
+const debateState = {
+  running: false,
+  groupA: [],
+  groupB: [],
+  master: null,
+  topic: '',
+  mode: 'debate',
+  maxRounds: 3,
+  log: [],
+};
+
+function renderCollabTree() {
+  const el = $('collab-tree');
+  const mode = $('debate-mode').value;
+  const isMW = mode === 'master-worker';
+  const { master, groupA, groupB } = debateState;
+
+  if (!master && !groupA.length && !groupB.length) {
+    el.innerHTML = '<div class="collab-tree-empty">세션을 왼쪽에서 드래그하여 배치하면<br>계층 구조가 표시됩니다</div>';
+    return;
+  }
+
+  const nodeHtml = (handle, cls) => {
+    const name = resolveHandleName(handle);
+    const sid = [...handles.entries()].find(([, v]) => v === handle)?.[0];
+    const s = sessions.find(ss => ss.id === sid);
+    const dotColor = s ? (DEBATE_STATUS_COLORS[s.status] || 'var(--text3)') : 'var(--text3)';
+    return `<div class="collab-node ${cls}"><span class="dot" style="background:${dotColor}"></span>${esc(name)}</div>`;
+  };
+
+  const branchHtml = (handles, cls, label, labelCls) => {
+    let h = '';
+    h += `<div class="ct-branch">`;
+    h += `<div class="ct-vline ct-vline-short"></div>`;
+    h += `<div class="ct-group-label ${labelCls}">${label}</div>`;
+    h += `<div class="ct-node-stack">`;
+    for (const hd of handles) h += nodeHtml(hd, cls);
+    h += `</div></div>`;
+    return h;
+  };
+
+  let html = '<div class="collab-tree-root">';
+
+  if (isMW && master) {
+    html += nodeHtml(master, 'collab-node-master');
+    if (groupA.length || groupB.length) {
+      html += '<div class="ct-vline ct-vline-long"></div>';
+      html += '<div class="ct-hline"></div>';
+      html += '<div class="ct-branches">';
+      if (groupA.length) html += branchHtml(groupA, 'collab-node-worker-a', 'Group A', 'ct-group-label-a');
+      if (groupB.length) html += branchHtml(groupB, 'collab-node-worker-b', 'Group B', 'ct-group-label-b');
+      html += '</div>';
+      html += '<div class="ct-flow-badge"><span class="arrow">↑</span> 워커 간 토론 후 결과를 마스터에게 전달</div>';
+    }
+  } else {
+    if (groupA.length || groupB.length) {
+      html += '<div class="ct-branches" style="align-items:center">';
+      if (groupA.length) {
+        html += `<div class="ct-branch">`;
+        html += `<div class="ct-group-label ct-group-label-a">Group A</div>`;
+        html += `<div class="ct-node-stack">`;
+        for (const h of groupA) html += nodeHtml(h, 'collab-node-worker-a');
+        html += `</div></div>`;
+      }
+      html += '<div class="ct-relay-arrow">⇄</div>';
+      if (groupB.length) {
+        html += `<div class="ct-branch">`;
+        html += `<div class="ct-group-label ct-group-label-b">Group B</div>`;
+        html += `<div class="ct-node-stack">`;
+        for (const h of groupB) html += nodeHtml(h, 'collab-node-worker-b');
+        html += `</div></div>`;
+      }
+      html += '</div>';
+      html += '<div class="ct-flow-badge"><span class="arrow">↔</span> A ↔ B 릴레이 토론</div>';
+    }
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+$('debate-mode').addEventListener('change', () => {
+  const isMW = $('debate-mode').value === 'master-worker';
+  // master section always visible now
+  renderCollabTree();
+});
+
+const masterZoneEl = $('debate-zone-master');
+masterZoneEl.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; masterZoneEl.classList.add('drag-over'); });
+masterZoneEl.addEventListener('dragleave', () => masterZoneEl.classList.remove('drag-over'));
+masterZoneEl.addEventListener('drop', e => {
+  e.preventDefault();
+  masterZoneEl.classList.remove('drag-over');
+  const handle = e.dataTransfer.getData('text/plain');
+  if (!handle || isHandleAssigned(handle)) return;
+  if (debateState.master) {
+    const oldMaster = debateState.master;
+    debateState.master = null;
+    renderMasterZone();
+  }
+  debateState.master = handle;
+  renderMasterZone();
+  renderDebateSessionList();
+  renderCollabTree();
+});
+
+function renderMasterZone() {
+  const el = $('debate-zone-master');
+  if (!debateState.master) {
+    el.innerHTML = '<div class="debate-dropzone-empty">마스터 세션을 드롭</div>';
+    return;
+  }
+  const name = resolveHandleName(debateState.master);
+  const sid = [...handles.entries()].find(([, v]) => v === debateState.master)?.[0];
+  const s = sessions.find(ss => ss.id === sid);
+  const dotColor = s ? (DEBATE_STATUS_COLORS[s.status] || 'var(--text3)') : 'var(--text3)';
+  el.innerHTML = `<div class="debate-tag" data-handle="${esc(debateState.master)}">` +
+    `<span class="dot" style="background:${dotColor}"></span>👑 ${esc(name)}` +
+    `<span class="remove-tag" data-handle="${esc(debateState.master)}" data-zone="master">✕</span></div>`;
+  el.querySelector('.remove-tag')?.addEventListener('click', e => {
+    e.stopPropagation();
+    debateState.master = null;
+    renderMasterZone();
+    renderDebateSessionList();
+    renderCollabTree();
+  });
+}
+
+const DEBATE_STATUS_COLORS = { running: 'var(--accent)', waiting: 'var(--yellow)', done: 'var(--text3)', error: 'var(--red)' };
+
+function getDebateSessions() {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  return sessions.filter(s => {
+    if (!handles.get(s.id)) return false;
+    if (s.status === 'running' || s.status === 'waiting') return true;
+    return s.time && s.time > cutoff;
+  }).sort((a, b) => {
+    const order = { running: 0, waiting: 1, done: 2, error: 3 };
+    const diff = (order[a.status] ?? 9) - (order[b.status] ?? 9);
+    return diff !== 0 ? diff : (b.time || 0) - (a.time || 0);
+  });
+}
+
+function resolveHandleName(handle) {
+  const sid = [...handles.entries()].find(([, v]) => v === handle)?.[0];
+  return sessions.find(s => s.id === sid)?.name || handle.slice(0, 12);
+}
+
+function isHandleAssigned(handle) {
+  return debateState.groupA.includes(handle) || debateState.groupB.includes(handle) || debateState.master === handle;
+}
+
+function renderDebateSessionList() {
+  const el = $('debate-session-list');
+  const list = getDebateSessions();
+  if (!list.length) {
+    el.innerHTML = '<span style="color:var(--text3);font-size:var(--fs-xs)">최근 세션이 없습니다</span>';
+    return;
+  }
+  let html = '';
+  for (const s of list) {
+    const handle = handles.get(s.id);
+    if (!handle || isHandleAssigned(handle)) continue;
+    const dotColor = DEBATE_STATUS_COLORS[s.status] || 'var(--text3)';
+    html += `<div class="debate-tag" draggable="true" data-handle="${esc(handle)}">` +
+      `<span class="dot" style="background:${dotColor}"></span>${esc(s.name)}</div>`;
+  }
+  el.innerHTML = html || '<span style="color:var(--text3);font-size:var(--fs-xs)">모든 세션이 배치되었습니다</span>';
+  el.querySelectorAll('.debate-tag[draggable]').forEach(tag => {
+    tag.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', tag.dataset.handle);
+      e.dataTransfer.effectAllowed = 'move';
+      tag.classList.add('dragging');
+    });
+    tag.addEventListener('dragend', () => tag.classList.remove('dragging'));
+  });
+}
+
+function renderZone(zoneId, group, color) {
+  const el = $(zoneId);
+  if (!group.length) {
+    el.innerHTML = '<div class="debate-dropzone-empty">여기에 드롭</div>';
+    return;
+  }
+  let html = '';
+  for (const handle of group) {
+    const name = resolveHandleName(handle);
+    const sid = [...handles.entries()].find(([, v]) => v === handle)?.[0];
+    const s = sessions.find(ss => ss.id === sid);
+    const dotColor = s ? (DEBATE_STATUS_COLORS[s.status] || 'var(--text3)') : 'var(--text3)';
+    html += `<div class="debate-tag" data-handle="${esc(handle)}">` +
+      `<span class="dot" style="background:${dotColor}"></span>${esc(name)}` +
+      `<span class="remove-tag" data-handle="${esc(handle)}" data-zone="${zoneId}">✕</span></div>`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll('.remove-tag').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const h = btn.dataset.handle;
+      const z = btn.dataset.zone;
+      if (z === 'debate-zone-a') debateState.groupA = debateState.groupA.filter(x => x !== h);
+      else debateState.groupB = debateState.groupB.filter(x => x !== h);
+      renderZone('debate-zone-a', debateState.groupA, 'var(--accent)');
+      renderZone('debate-zone-b', debateState.groupB, 'var(--green)');
+      renderDebateSessionList();
+      renderCollabTree();
+    });
+  });
+}
+
+['debate-zone-a', 'debate-zone-b'].forEach(zoneId => {
+  const el = $(zoneId);
+  el.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; el.classList.add('drag-over'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('drop', e => {
+    e.preventDefault();
+    el.classList.remove('drag-over');
+    const handle = e.dataTransfer.getData('text/plain');
+    if (!handle || isHandleAssigned(handle)) return;
+    if (zoneId === 'debate-zone-a') debateState.groupA.push(handle);
+    else debateState.groupB.push(handle);
+    renderZone('debate-zone-a', debateState.groupA, 'var(--accent)');
+    renderZone('debate-zone-b', debateState.groupB, 'var(--green)');
+    renderDebateSessionList();
+    renderCollabTree();
+  });
+});
+
+function debateLog(sender, text, type = 'msg', group = null) {
+  debateState.log.push({ sender, text, type, group, time: Date.now() });
+  renderDebateLog();
+}
+
+function renderDebateLog() {
+  const el = $('debate-log');
+  let html = '';
+  for (const m of debateState.log) {
+    if (m.type === 'system') {
+      html += `<div class="debate-msg system">${esc(m.text)}</div>`;
+    } else {
+      const name = resolveHandleName(m.sender);
+      const cls = m.group === 'master' ? 'group-master' : m.group === 'a' ? 'group-a' : 'group-b';
+      const color = m.group === 'master' ? 'var(--yellow)' : m.group === 'a' ? 'var(--accent)' : 'var(--green)';
+      html += `<div class="debate-msg ${cls}"><span class="debate-sender" style="color:${color}">${esc(name)}</span>${esc(m.text)}</div>`;
+    }
+  }
+  el.innerHTML = html;
+  el.scrollTop = el.scrollHeight;
+}
+
+function debateStatus(text) {
+  $('debate-status').textContent = text;
+}
+
+function buildRelayPrompt(mode, topic, round, maxRounds, myName, peerNames, lastPeerMsg) {
+  const peersStr = peerNames.join(', ');
+  const modeLabel = mode === 'brainstorm' ? '브레인스톰' : mode === 'review' ? '코드리뷰' : '토론';
+  const header = `[${modeLabel} - 라운드 ${round}/${maxRounds}]\n다른 세션(${peersStr})과 "${topic}" 주제로 대화 중입니다.\n메시지를 중계해 드리겠습니다. 상대에게 전달할 답변만 작성해 주세요.\n\n`;
+
+  if (!lastPeerMsg) {
+    return `${header}첫 번째 발언자입니다. "${topic}"에 대해 현재 작업의 맥락에서 의견을 3~5문장으로 제시해 주세요.`;
+  }
+
+  const relay = `상대 세션(${lastPeerMsg.name})의 메시지:\n\"\"\"${lastPeerMsg.text}\"\"\"\n\n`;
+  if (mode === 'brainstorm') return `${header}${relay}위 의견을 참고하여 아이디어를 발전시키거나 새로운 제안을 3~5문장으로 해 주세요.`;
+  if (mode === 'review') return `${header}${relay}위 의견에 대해 코드리뷰 관점에서 3~5문장으로 답변하세요.`;
+  return `${header}${relay}위 의견에 대해 동의 또는 반론을 3~5문장으로 제시해 주세요.`;
+}
+
+async function sendAndCollect(handle, prompt, group) {
+  const name = resolveHandleName(handle);
+  const singleLinePrompt = prompt.replace(/\n+/g, ' ').trim();
+  console.log(`[debate] sending to ${name} (${handle}), length: ${singleLinePrompt.length}`);
+
+  try {
+    const sendRes = await window.orca.terminalSend(handle, singleLinePrompt, true, 15);
+    const stages = sendRes?.result?.send?.prompt?.stages || [];
+    console.log(`[debate] send stages:`, stages);
+    if (!sendRes?.result?.send?.accepted) {
+      debateLog(null, `${name}: 전송이 거부되었습니다`, 'system');
+      return null;
+    }
+    if (!stages.includes('turn_started')) {
+      debateLog(null, `${name}: 세션이 처리를 시작하지 않았습니다 (입력 대기 상태인지 확인하세요)`, 'system');
+      return null;
+    }
+  } catch (err) {
+    console.error(`[debate] send error:`, err);
+    debateLog(null, `${name}: 전송 실패 (${err.message})`, 'system');
+    return null;
+  }
+
+  debateStatus(`${name} 응답 대기 중...`);
+  try {
+    await window.orca.terminalWait(handle, 'tui-idle', 180000);
+    await new Promise(r => setTimeout(r, 800));
+  } catch (err) {
+    console.warn(`[debate] wait timeout/error:`, err);
+  }
+
+  if (!debateState.running) return null;
+
+  let cleaned = '';
+  try {
+    const screenRes = await window.orca.terminalRead(handle, true);
+    const lines = extractTail(screenRes);
+    console.log(`[debate] screen after: ${lines.length} lines`);
+    cleaned = extractLastResponse(lines);
+    console.log(`[debate] extracted response (${cleaned.length} chars):`, cleaned.slice(0, 300));
+  } catch (err) {
+    console.warn(`[debate] screen read failed:`, err);
+  }
+
+  if (cleaned.length > 1500) cleaned = cleaned.slice(0, 1500) + '...';
+  console.log(`[debate] final response (${cleaned.length} chars):`, cleaned.slice(0, 200));
+  debateLog(handle, cleaned || '(응답 없음)', 'msg', group);
+  return { name, text: cleaned || '(응답 없음)' };
+}
+
+async function runDebate() {
+  const { groupA, groupB, topic, mode, maxRounds } = debateState;
+  debateState.log = [];
+
+  const namesA = groupA.map(h => resolveHandleName(h));
+  const namesB = groupB.map(h => resolveHandleName(h));
+  debateLog(null, `시작: [${namesA.join(', ')}] ↔ [${namesB.join(', ')}] | "${topic}" | ${maxRounds}라운드`, 'system');
+
+  let lastMsgFromA = null;
+  let lastMsgFromB = null;
+
+  for (let round = 1; round <= maxRounds; round++) {
+    if (!debateState.running) break;
+    debateLog(null, `── 라운드 ${round}/${maxRounds} ──`, 'system');
+
+    for (const handle of groupA) {
+      if (!debateState.running) break;
+      const myName = resolveHandleName(handle);
+      debateStatus(`A: ${myName}에게 전달 중...`);
+      const prompt = buildRelayPrompt(mode, topic, round, maxRounds, myName, namesB, lastMsgFromB);
+      lastMsgFromA = await sendAndCollect(handle, prompt, 'a');
+    }
+    if (!debateState.running) break;
+
+    for (const handle of groupB) {
+      if (!debateState.running) break;
+      const myName = resolveHandleName(handle);
+      debateStatus(`B: ${myName}에게 전달 중...`);
+      const prompt = buildRelayPrompt(mode, topic, round, maxRounds, myName, namesA, lastMsgFromA);
+      lastMsgFromB = await sendAndCollect(handle, prompt, 'b');
+    }
+  }
+
+  debateLog(null, debateState.running ? '토론이 완료되었습니다.' : '토론이 중단되었습니다.', 'system');
+  debateStatus('');
+  debateState.running = false;
+  $('debate-start-btn').disabled = false;
+  $('debate-stop-btn').disabled = true;
+}
+
+async function runMasterWorker() {
+  const { groupA, groupB, master, topic, maxRounds } = debateState;
+  debateState.log = [];
+
+  const workers = [...groupA, ...groupB];
+  const workerNames = workers.map(h => resolveHandleName(h));
+  const masterName = resolveHandleName(master);
+  debateLog(null, `마스터-워커 시작: 마스터(${masterName}) | 워커(${workerNames.join(', ')}) | "${topic}" | ${maxRounds}라운드`, 'system');
+
+  const workerGroupA = groupA;
+  const workerGroupB = groupB;
+  const namesA = workerGroupA.map(h => resolveHandleName(h));
+  const namesB = workerGroupB.map(h => resolveHandleName(h));
+
+  let lastMsgFromA = null;
+  let lastMsgFromB = null;
+
+  for (let round = 1; round <= maxRounds; round++) {
+    if (!debateState.running) break;
+    debateLog(null, `── 워커 토론 라운드 ${round}/${maxRounds} ──`, 'system');
+
+    for (const handle of workerGroupA) {
+      if (!debateState.running) break;
+      const myName = resolveHandleName(handle);
+      debateStatus(`워커 A: ${myName}에게 전달 중...`);
+      const prompt = buildRelayPrompt('debate', topic, round, maxRounds, myName, namesB, lastMsgFromB);
+      lastMsgFromA = await sendAndCollect(handle, prompt, 'a');
+    }
+    if (!debateState.running) break;
+
+    for (const handle of workerGroupB) {
+      if (!debateState.running) break;
+      const myName = resolveHandleName(handle);
+      debateStatus(`워커 B: ${myName}에게 전달 중...`);
+      const prompt = buildRelayPrompt('debate', topic, round, maxRounds, myName, namesA, lastMsgFromA);
+      lastMsgFromB = await sendAndCollect(handle, prompt, 'b');
+    }
+  }
+
+  if (!debateState.running) {
+    debateLog(null, '중단되었습니다.', 'system');
+    debateStatus('');
+    debateState.running = false;
+    $('debate-start-btn').disabled = false;
+    $('debate-stop-btn').disabled = true;
+    return;
+  }
+
+  debateLog(null, `── 워커 토론 완료, 마스터에게 결과 전달 ──`, 'system');
+  debateStatus(`마스터(${masterName})에게 최종 결과 전달 중...`);
+
+  const allMessages = debateState.log
+    .filter(m => m.type === 'msg')
+    .map(m => `[${m.group === 'a' ? 'A' : 'B'}] ${resolveHandleName(m.sender)}: ${m.text}`);
+
+  let condensed = allMessages.join(' | ');
+  if (condensed.length > 3000) {
+    const lastA = allMessages.filter(m => m.startsWith('[A]')).slice(-1)[0] || '';
+    const lastB = allMessages.filter(m => m.startsWith('[B]')).slice(-1)[0] || '';
+    condensed = `[최종 A 의견] ${lastA.slice(4)} | [최종 B 의견] ${lastB.slice(4)}`;
+  }
+
+  const summaryPrompt = `워커들이 "${topic}" 주제로 ${maxRounds}라운드 토론했습니다. 참여: ${workerNames.join(', ')}. 토론 요약: ${condensed} --- 위 내용을 분석하여 1)핵심 합의 2)쟁점 3)최종 결론을 정리해 주세요.`;
+
+  console.log(`[debate] master prompt length: ${summaryPrompt.length}`);
+  debateLog(null, `마스터에게 전달 중 (프롬프트 ${summaryPrompt.length}자)...`, 'system');
+
+  const masterResult = await sendAndCollect(master, summaryPrompt, 'master');
+  if (masterResult) {
+    debateLog(null, `마스터(${masterName})의 최종 정리가 완료되었습니다.`, 'system');
+  } else {
+    debateLog(null, `마스터(${masterName})에게 전달하지 못했습니다. 마스터 세션이 입력 대기 상태(❯)인지 확인하세요.`, 'system');
+  }
+
+  debateLog(null, '마스터-워커 흐름이 완료되었습니다.', 'system');
+  debateStatus('');
+  debateState.running = false;
+  $('debate-start-btn').disabled = false;
+  $('debate-stop-btn').disabled = true;
+}
+
+$('debate-start-btn').addEventListener('click', () => {
+  const topic = $('debate-topic').value.trim();
+  if (!topic) { showInAppToast('주제를 입력하세요', 'error'); return; }
+  const mode = $('debate-mode').value;
+  if (mode === 'master-worker') {
+    if (!debateState.master) { showInAppToast('마스터 세션을 배치하세요', 'error'); return; }
+    const workers = [...debateState.groupA, ...debateState.groupB];
+    if (workers.length < 2) { showInAppToast('워커 세션을 2개 이상 배치하세요 (A, B 그룹에 나눠서)', 'error'); return; }
+  } else {
+    if (!debateState.groupA.length || !debateState.groupB.length) {
+      showInAppToast('A 그룹과 B 그룹에 각각 세션을 배치하세요', 'error');
+      return;
+    }
+  }
+  debateState.topic = topic;
+  debateState.mode = mode;
+  debateState.maxRounds = parseInt($('debate-rounds').value, 10);
+  debateState.running = true;
+  $('debate-start-btn').disabled = true;
+  $('debate-stop-btn').disabled = false;
+  if (mode === 'master-worker') runMasterWorker();
+  else runDebate();
+});
+
+$('debate-stop-btn').addEventListener('click', () => {
+  debateState.running = false;
+  debateStatus('중단 중...');
+  $('debate-stop-btn').disabled = true;
+});
+
+// ══════════════════════════════════════════
+// CHAT PANEL (Dashboard)
+// ══════════════════════════════════════════
+let chatHandle = null;
+let chatSending = false;
+
+function openChat(handle) {
+  chatHandle = handle;
+  const panel = $('chat-panel');
+  panel.classList.add('open');
+
+  const sid = [...handles.entries()].find(([, v]) => v === handle)?.[0];
+  const s = sessions.find(ss => ss.id === sid);
+  $('chat-name').textContent = s?.name || handle.slice(0, 16);
+
+  $('chat-screen').innerHTML = '<div class="chat-line-status">화면을 불러오는 중...</div>';
+  $('chat-input').value = '';
+  $('chat-input').disabled = false;
+  $('chat-send').disabled = false;
+  $('chat-input').focus();
+
+  refreshChatScreen(handle);
+}
+
+async function refreshChatScreen(handle) {
+  try {
+    const res = await window.orca.terminalRead(handle, true);
+    const lines = extractTail(res);
+    renderChatScreen(lines);
+    const status = detectTerminalStatus(lines);
+    updateChatStatus(status);
+  } catch (err) {
+    $('chat-screen').innerHTML = `<div class="chat-line-status">화면 읽기 실패: ${esc(err.message)}</div>`;
+    updateChatStatus('offline');
+  }
+}
+
+function renderChatScreen(lines) {
+  const el = $('chat-screen');
+  let html = '';
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) { html += '\n'; continue; }
+    if (t.startsWith('❯')) {
+      html += `<div class="chat-line-prompt">${esc(line)}</div>`;
+    } else if (t.startsWith('⏺')) {
+      html += `<div class="chat-line-response">${esc(line)}</div>`;
+    } else if (t.includes('✻') && t.includes('done')) {
+      html += `<div class="chat-line-done">${esc(line)}</div>`;
+    } else if (t.startsWith('────') || t.includes('[OMC#') || t.includes('bypass permissions') || t.startsWith('branch:')) {
+      html += `<div class="chat-line-status">${esc(line)}</div>`;
+    } else {
+      html += `<div class="chat-line-response">${esc(line)}</div>`;
+    }
+  }
+  el.innerHTML = html;
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateChatStatus(status) {
+  const el = $('chat-status');
+  el.className = 'chat-header-status ' + status;
+  if (status === 'idle') el.textContent = '대기 중';
+  else if (status === 'busy') el.textContent = '작업 중';
+  else el.textContent = '오프라인';
+}
+
+async function sendChatMessage() {
+  if (chatSending || !chatHandle) return;
+  const input = $('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  chatSending = true;
+  input.disabled = true;
+  $('chat-send').disabled = true;
+  updateChatStatus('busy');
+
+  const el = $('chat-screen');
+  el.innerHTML += `<div class="chat-line-prompt">❯ ${esc(text)}</div>`;
+  el.innerHTML += `<div class="chat-line-status">전송 중...</div>`;
+  el.scrollTop = el.scrollHeight;
+  input.value = '';
+
+  try {
+    const sendRes = await window.orca.terminalSend(chatHandle, text, true, 15);
+    const stages = sendRes?.result?.send?.prompt?.stages || [];
+    if (!sendRes?.result?.send?.accepted) {
+      el.innerHTML += `<div class="chat-line-status" style="color:var(--red)">전송이 거부되었습니다</div>`;
+      chatSending = false;
+      input.disabled = false;
+      $('chat-send').disabled = false;
+      return;
+    }
+    if (!stages.includes('turn_started')) {
+      el.innerHTML += `<div class="chat-line-status" style="color:var(--yellow)">세션이 입력 대기 상태가 아닙니다</div>`;
+      chatSending = false;
+      input.disabled = false;
+      $('chat-send').disabled = false;
+      return;
+    }
+
+    el.innerHTML += `<div class="chat-line-status">응답 대기 중...</div>`;
+    el.scrollTop = el.scrollHeight;
+
+    await window.orca.terminalWait(chatHandle, 'tui-idle', 180000);
+    await new Promise(r => setTimeout(r, 800));
+
+    await refreshChatScreen(chatHandle);
+  } catch (err) {
+    el.innerHTML += `<div class="chat-line-status" style="color:var(--red)">오류: ${esc(err.message)}</div>`;
+    el.scrollTop = el.scrollHeight;
+  } finally {
+    chatSending = false;
+    input.disabled = false;
+    $('chat-send').disabled = false;
+    input.focus();
+  }
+}
+
+$('chat-send').addEventListener('click', sendChatMessage);
+$('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+});
+$('chat-close').addEventListener('click', () => {
+  $('chat-panel').classList.remove('open');
+  chatHandle = null;
+});
+$('chat-refresh').addEventListener('click', () => {
+  if (chatHandle) refreshChatScreen(chatHandle);
+});
+$('chat-orca').addEventListener('click', () => {
+  if (chatHandle) api.switchTo(chatHandle);
+});
+
+// ══════════════════════════════════════════
+// PAGE 4: CLIPBOARD HISTORY
+// ══════════════════════════════════════════
+let clipHistory = [];
+try { const saved = localStorage.getItem('orca-clip-history'); if (saved) clipHistory = JSON.parse(saved); } catch {}
+
+function saveClipHistory() {
+  try { localStorage.setItem('orca-clip-history', JSON.stringify(clipHistory.slice(0, 20))); } catch {}
+}
+
+async function loadClipboardHistory() {
+  try {
+    const current = await window.orca.clipboardRead();
+    if (current && (!clipHistory.length || clipHistory[0].text !== current)) {
+      clipHistory.unshift({ text: current, time: Date.now() });
+      if (clipHistory.length > 20) clipHistory.pop();
+      saveClipHistory();
+    }
+  } catch {}
+  renderClipboard();
+}
+
+function renderClipboard() {
+  const el = $('clip-list');
+  if (!clipHistory.length) {
+    el.innerHTML = '<div class="empty"><span class="empty-icon">📋</span><span class="empty-text">클립보드 히스토리가 비어 있습니다</span></div>';
+    return;
+  }
+  let html = '';
+  for (const c of clipHistory) {
+    html += `<div class="clip-item" data-clip="${esc(c.text)}">
+      <div class="clip-text">${esc(trunc(c.text, 200))}</div>
+      <span class="clip-time">${timeAgo(c.time)}</span>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+$('clip-list').addEventListener('click', e => {
+  const item = e.target.closest('.clip-item');
+  if (!item) return;
+  const text = item.dataset.clip;
+  window.orca.clipboardWrite(text);
+  item.classList.add('active');
+  setTimeout(() => item.classList.remove('active'), 300);
+  showInAppToast('복사됨');
+});
+
+$('clip-clear-btn').addEventListener('click', () => {
+  clipHistory = [];
+  saveClipHistory();
+  renderClipboard();
+});
+
+setInterval(async () => {
+  if (currentPage !== 'clipboard') return;
+  try {
+    const current = await window.orca.clipboardRead();
+    if (current && (!clipHistory.length || clipHistory[0].text !== current)) {
+      clipHistory.unshift({ text: current, time: Date.now() });
+      if (clipHistory.length > 20) clipHistory.pop();
+      saveClipHistory();
+      renderClipboard();
+    }
+  } catch {}
+}, 1000);
+
+// ══════════════════════════════════════════
+// PAGE 5: PORT MONITOR
+// ══════════════════════════════════════════
+let portData = [];
+
+async function loadPorts() {
+  $('port-list').innerHTML = '<div class="empty"><span class="empty-icon">🔌</span><span class="empty-text">스캔 중...</span></div>';
+  try {
+    portData = await window.orca.scanPorts();
+    renderPorts();
+  } catch {
+    $('port-list').innerHTML = '<div class="empty"><span class="empty-icon">⚠️</span><span class="empty-text">포트 스캔에 실패했습니다</span></div>';
+  }
+}
+
+function renderPorts() {
+  const el = $('port-list');
+  if (!portData.length) {
+    el.innerHTML = '<div class="empty"><span class="empty-icon">✨</span><span class="empty-text">리스닝 중인 포트가 없습니다</span></div>';
+    return;
+  }
+  let html = '';
+  for (const p of portData) {
+    html += `<div class="port-item">
+      <span class="port-num">:${esc(String(p.port))}</span>
+      <div class="port-info">
+        <div class="port-name">${esc(p.name || 'unknown')}</div>
+        <div class="port-pid">PID ${esc(String(p.pid))}${p.user ? ' · ' + esc(p.user) : ''}</div>
+      </div>
+      <button class="port-kill" data-pid="${p.pid}" title="프로세스 종료">종료</button>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+$('port-refresh-btn').addEventListener('click', loadPorts);
+
+$('port-list').addEventListener('click', async e => {
+  const btn = e.target.closest('.port-kill');
+  if (!btn) return;
+  const pid = btn.dataset.pid;
+  if (confirm(`PID ${pid} 프로세스를 종료하시겠습니까?`)) {
+    try {
+      await window.orca.killProcess(Number(pid));
+      showInAppToast(`PID ${pid} 종료됨`);
+      setTimeout(loadPorts, 500);
+    } catch { showInAppToast(`PID ${pid} 종료 실패`, 'error'); }
+  }
+});
+
+// ══════════════════════════════════════════
+// PAGE 6: MEMO
+// ══════════════════════════════════════════
+const memoEditor = $('memo-editor');
+const memoStatus = $('memo-status');
+const memoCharCount = $('memo-char-count');
+let memoSaveTimer = null;
+
+try {
+  const saved = localStorage.getItem('orca-memo');
+  if (saved) memoEditor.value = saved;
+  memoCharCount.textContent = memoEditor.value.length + '자';
+} catch {}
+
+memoEditor.addEventListener('input', () => {
+  memoCharCount.textContent = memoEditor.value.length + '자';
+  memoStatus.textContent = '저장 중...';
+  memoStatus.classList.remove('saved');
+  clearTimeout(memoSaveTimer);
+  memoSaveTimer = setTimeout(() => {
+    try { localStorage.setItem('orca-memo', memoEditor.value); } catch {}
+    memoStatus.textContent = '저장됨';
+    memoStatus.classList.add('saved');
+    setTimeout(() => { memoStatus.textContent = ''; memoStatus.classList.remove('saved'); }, 1500);
+  }, 500);
+});
+
+// ══════════════════════════════════════════
+// PAGE 7: POMODORO TIMER
+// ══════════════════════════════════════════
+const POMO_DURATIONS = { work: 25 * 60, short: 5 * 60, long: 15 * 60 };
+let pomoMode = 'work';
+let pomoRemaining = POMO_DURATIONS.work;
+let pomoTotal = POMO_DURATIONS.work;
+let pomoInterval = null;
+let pomoRunning = false;
+let pomoCompletedCount = 0;
+try { const c = localStorage.getItem('orca-pomo-count'); if (c) pomoCompletedCount = Number(c); } catch {}
+$('pomo-count').textContent = `완료: ${pomoCompletedCount}회`;
+
+function formatPomo(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function updatePomoDisplay() {
+  $('pomo-display').textContent = formatPomo(pomoRemaining);
+  const pct = pomoTotal > 0 ? ((pomoTotal - pomoRemaining) / pomoTotal) * 100 : 0;
+  $('pomo-progress').style.width = pct + '%';
+}
+
+function pomoTick() {
+  if (pomoRemaining <= 0) {
+    clearInterval(pomoInterval);
+    pomoInterval = null;
+    pomoRunning = false;
+    $('pomo-start').textContent = '시작';
+    if (pomoMode === 'work') {
+      pomoCompletedCount++;
+      try { localStorage.setItem('orca-pomo-count', String(pomoCompletedCount)); } catch {}
+      $('pomo-count').textContent = `완료: ${pomoCompletedCount}회`;
+      window.orca.notify('뽀모도로', '집중 시간이 끝났습니다! 휴식하세요 ☕');
+    } else {
+      window.orca.notify('뽀모도로', '휴식이 끝났습니다! 다시 집중하세요 🔥');
+    }
+    updatePomoDisplay();
+    return;
+  }
+  pomoRemaining--;
+  updatePomoDisplay();
+}
+
+$('pomo-start').addEventListener('click', () => {
+  if (pomoRunning) {
+    clearInterval(pomoInterval);
+    pomoInterval = null;
+    pomoRunning = false;
+    $('pomo-start').textContent = '계속';
+  } else {
+    if (pomoRemaining <= 0) {
+      pomoRemaining = pomoTotal;
+    }
+    pomoRunning = true;
+    pomoInterval = setInterval(pomoTick, 1000);
+    $('pomo-start').textContent = '일시정지';
+  }
+});
+
+$('pomo-reset').addEventListener('click', () => {
+  clearInterval(pomoInterval);
+  pomoInterval = null;
+  pomoRunning = false;
+  pomoRemaining = pomoTotal;
+  $('pomo-start').textContent = '시작';
+  updatePomoDisplay();
+});
+
+document.querySelectorAll('.pomo-mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelector('.pomo-mode-btn.active').classList.remove('active');
+    btn.classList.add('active');
+    pomoMode = btn.dataset.pomo;
+    pomoTotal = POMO_DURATIONS[pomoMode];
+    clearInterval(pomoInterval);
+    pomoInterval = null;
+    pomoRunning = false;
+    pomoRemaining = pomoTotal;
+    $('pomo-start').textContent = '시작';
+    updatePomoDisplay();
+  });
+});
+
+updatePomoDisplay();
+
+// ── Elapsed timer for running sessions (updates every 1s) ──
+function formatElapsed(ms) {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+setInterval(() => {
+  document.querySelectorAll('.s-elapsed[data-start]').forEach(el => {
+    const start = Number(el.dataset.start);
+    if (start) el.textContent = '▶ ' + formatElapsed(Date.now() - start);
+  });
+}, 1000);
+
+// ── Start polling ──
+fetchData();
+setInterval(fetchData, POLL);
+</script>
