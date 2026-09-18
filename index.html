@@ -1,0 +1,1095 @@
+<title>Roca</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta charset="utf-8">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap">
+
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-surface: #161b22;
+    --bg-surface-hover: #1c2129;
+    --bg-surface-active: #21262d;
+    --border: #30363d;
+    --border-subtle: #21262d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-tertiary: #6e7681;
+    --accent: #58a6ff;
+    --accent-muted: rgba(88, 166, 255, 0.15);
+    --green: #3fb950;
+    --green-muted: rgba(63, 185, 80, 0.15);
+    --yellow: #d29922;
+    --yellow-muted: rgba(210, 153, 34, 0.15);
+    --red: #f85149;
+    --red-muted: rgba(248, 81, 73, 0.15);
+    --purple: #bc8cff;
+    --purple-muted: rgba(188, 140, 255, 0.15);
+    --orange: #f0883e;
+    --mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --radius: 8px;
+    --radius-sm: 5px;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f6f8fa;
+      --bg-surface: #ffffff;
+      --bg-surface-hover: #f3f4f6;
+      --bg-surface-active: #ebedf0;
+      --border: #d0d7de;
+      --border-subtle: #e8ebef;
+      --text-primary: #1f2328;
+      --text-secondary: #636c76;
+      --text-tertiary: #8c959f;
+      --accent: #0969da;
+      --accent-muted: rgba(9, 105, 218, 0.1);
+      --green: #1a7f37;
+      --green-muted: rgba(26, 127, 55, 0.1);
+      --yellow: #9a6700;
+      --yellow-muted: rgba(154, 103, 0, 0.1);
+      --red: #cf222e;
+      --red-muted: rgba(207, 34, 46, 0.1);
+      --purple: #8250df;
+      --purple-muted: rgba(130, 80, 223, 0.1);
+      --orange: #bc4c00;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f8fa;
+    --bg-surface: #ffffff;
+    --bg-surface-hover: #f3f4f6;
+    --bg-surface-active: #ebedf0;
+    --border: #d0d7de;
+    --border-subtle: #e8ebef;
+    --text-primary: #1f2328;
+    --text-secondary: #636c76;
+    --text-tertiary: #8c959f;
+    --accent: #0969da;
+    --accent-muted: rgba(9, 105, 218, 0.1);
+    --green: #1a7f37;
+    --green-muted: rgba(26, 127, 55, 0.1);
+    --yellow: #9a6700;
+    --yellow-muted: rgba(154, 103, 0, 0.1);
+    --red: #cf222e;
+    --red-muted: rgba(207, 34, 46, 0.1);
+    --purple: #8250df;
+    --purple-muted: rgba(130, 80, 223, 0.1);
+    --orange: #bc4c00;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    height: 100vh;
+  }
+
+  /* ── Top bar (draggable for Electron) ── */
+  .topbar {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    padding-left: 80px;
+    height: 48px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    -webkit-app-region: drag;
+  }
+  .topbar * { -webkit-app-region: no-drag; }
+  .topbar-logo {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    -webkit-app-region: drag;
+  }
+  .topbar-logo span { color: var(--accent); }
+  .topbar-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+  }
+  .topbar-stats {
+    display: flex;
+    gap: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .topbar-stat { display: flex; align-items: center; gap: 5px; }
+  .topbar-stat .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .topbar-stat .dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .topbar-stat .dot.idle { background: var(--yellow); }
+  .topbar-stat .dot.done { background: var(--text-tertiary); }
+
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .topbar-refresh {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .topbar-refresh .spinner {
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: none;
+  }
+  .topbar-refresh.loading .spinner { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .btn-icon {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  .btn-icon:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+  }
+  .btn-icon:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .btn-icon.active {
+    background: var(--accent-muted);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ── Filters ── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-wrap: wrap;
+  }
+  .filter-chip {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .filter-chip:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .filter-chip.active {
+    background: var(--accent-muted);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .filter-chip:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .filter-chip .count {
+    display: inline-block;
+    margin-left: 4px;
+    opacity: 0.7;
+  }
+  .search-input {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    width: 200px;
+    margin-left: auto;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .search-input::placeholder { color: var(--text-tertiary); }
+  .search-input:focus { border-color: var(--accent); }
+
+  /* ── Main content ── */
+  .main {
+    padding: 0 20px 16px;
+    overflow-y: auto;
+  }
+
+  /* ── Session table ── */
+  .session-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .session-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+  }
+  .session-table thead th:hover { color: var(--text-secondary); }
+  .session-table thead th.sorted { color: var(--accent); }
+  .session-table thead th .sort-arrow { font-size: 9px; margin-left: 3px; }
+
+  .session-table tbody tr {
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+  .session-table tbody tr:hover { background: var(--bg-surface-hover); }
+  .session-table tbody tr.expanded { background: var(--bg-surface); }
+
+  .session-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .td-status {
+    width: 36px;
+    text-align: center;
+  }
+  .status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .status-indicator.running {
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .status-indicator.waiting {
+    background: var(--yellow);
+    animation: pulse 3s ease-in-out infinite;
+  }
+  .status-indicator.done { background: var(--text-tertiary); }
+  .status-indicator.error { background: var(--red); }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .td-name {
+    font-weight: 600;
+    font-size: 13px;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .td-repo {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .td-branch { font-family: var(--mono); font-size: 11px; }
+  .branch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: var(--accent-muted);
+    color: var(--accent);
+    border-radius: 12px;
+    font-size: 11px;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .branch-badge svg { flex-shrink: 0; }
+
+  .td-agent { font-family: var(--mono); font-size: 11px; }
+  .agent-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .agent-badge.claude { background: var(--purple-muted); color: var(--purple); }
+  .agent-badge.opencode { background: var(--green-muted); color: var(--green); }
+  .agent-badge.gemini { background: var(--accent-muted); color: var(--accent); }
+  .agent-badge.shell { background: var(--yellow-muted); color: var(--yellow); }
+
+  .td-activity {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .td-preview {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  /* ── Expanded detail panel ── */
+  .detail-row td {
+    padding: 0 !important;
+    border-bottom: 1px solid var(--border);
+  }
+  .detail-panel {
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-subtle);
+    padding: 16px 20px;
+  }
+
+  .detail-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .action-btn {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .action-btn:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .action-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .action-btn.primary {
+    background: var(--accent-muted);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .action-btn.primary:hover { background: var(--accent); color: var(--bg); }
+  .action-btn.danger { border-color: var(--red); color: var(--red); }
+  .action-btn.danger:hover { background: var(--red-muted); }
+  .action-btn svg { flex-shrink: 0; }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .detail-section h4 {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+  .detail-kv {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    font-size: 12px;
+  }
+  .detail-kv dt {
+    color: var(--text-tertiary);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .detail-kv dd { color: var(--text-primary); word-break: break-all; }
+
+  .detail-prompt,
+  .detail-message {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    line-height: 1.6;
+    max-height: 160px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .detail-prompt { color: var(--text-secondary); }
+  .detail-message { color: var(--text-primary); }
+
+  /* ── Terminal viewer ── */
+  .terminal-viewer {
+    margin-top: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .terminal-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-surface-active);
+    border-bottom: 1px solid var(--border-subtle);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .terminal-header .refresh-term {
+    margin-left: auto;
+    cursor: pointer;
+    color: var(--text-tertiary);
+    transition: color 0.15s;
+  }
+  .terminal-header .refresh-term:hover { color: var(--accent); }
+  .terminal-screen {
+    background: #010409;
+    color: #c9d1d9;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 12px;
+    min-height: 120px;
+    max-height: 300px;
+    overflow: auto;
+    white-space: pre;
+    tab-size: 8;
+  }
+  .terminal-input-bar {
+    display: flex;
+    gap: 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .terminal-input {
+    flex: 1;
+    appearance: none;
+    border: none;
+    background: var(--bg-surface-active);
+    color: var(--text-primary);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 12px;
+    outline: none;
+  }
+  .terminal-input::placeholder { color: var(--text-tertiary); }
+  .terminal-send-btn {
+    appearance: none;
+    border: none;
+    background: var(--accent);
+    color: var(--bg);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .terminal-send-btn:hover { opacity: 0.85; }
+
+  /* ── Toast ── */
+  .toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .toast {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    animation: toastIn 0.2s ease-out;
+    max-width: 320px;
+  }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error { border-color: var(--red); color: var(--red); }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Empty state ── */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-tertiary);
+  }
+  .empty-state p { font-size: 13px; }
+
+  /* ── Responsive ── */
+  @media (max-width: 860px) {
+    .td-preview, .td-repo { display: none; }
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 600px) {
+    .topbar { padding-left: 80px; padding-right: 12px; }
+    .filter-bar { padding: 10px 12px; }
+    .main { padding: 0 12px 12px; }
+    .search-input { width: 140px; }
+    .td-agent { display: none; }
+  }
+
+  [hidden] { display: none !important; }
+</style>
+
+<div class="shell">
+  <header class="topbar">
+    <div class="topbar-logo"><span>▸</span> roca</div>
+    <div class="topbar-divider"></div>
+    <div class="topbar-stats" id="stats"></div>
+    <div class="topbar-right">
+      <div class="topbar-refresh" id="refreshIndicator">
+        <div class="spinner"></div>
+        <span id="lastUpdated">--</span>
+      </div>
+      <button class="btn-icon" id="btnRefresh" title="새로고침 (r)" aria-label="새로고침">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M1.5 8a6.5 6.5 0 0 1 11.25-4.5M14.5 8a6.5 6.5 0 0 1-11.25 4.5"/>
+          <path d="M13 1v3.5h-3.5M3 15v-3.5h3.5"/>
+        </svg>
+      </button>
+      <button class="btn-icon" id="btnToggleAuto" title="자동 새로고침" aria-label="자동 새로고침 토글">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" id="autoIcon">
+          <circle cx="8" cy="8" r="6.5"/>
+          <path d="M8 4v4l2.5 2.5"/>
+        </svg>
+      </button>
+      <button class="btn-icon" id="btnPin" title="항상 위에 표시 토글" aria-label="항상 위에 표시">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" id="pinIcon">
+          <path d="M9.5 2.5L13.5 6.5L10 10L8.5 14L2 7.5L6 6Z"/>
+          <path d="M6 10L2.5 13.5"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="filter-bar">
+    <button class="filter-chip active" data-filter="all">전체<span class="count" id="countAll"></span></button>
+    <button class="filter-chip" data-filter="running">실행 중<span class="count" id="countRunning"></span></button>
+    <button class="filter-chip" data-filter="waiting">대기 중<span class="count" id="countWaiting"></span></button>
+    <button class="filter-chip" data-filter="done">완료<span class="count" id="countDone"></span></button>
+    <input class="search-input" type="text" id="searchInput" placeholder="검색… (/ 단축키)" aria-label="검색">
+  </div>
+
+  <div class="main">
+    <table class="session-table">
+      <thead>
+        <tr>
+          <th class="td-status"></th>
+          <th data-sort="name">이름 <span class="sort-arrow"></span></th>
+          <th data-sort="repo">저장소 <span class="sort-arrow"></span></th>
+          <th data-sort="branch">브랜치 <span class="sort-arrow"></span></th>
+          <th data-sort="agent">에이전트 <span class="sort-arrow"></span></th>
+          <th data-sort="activity">최근 활동 <span class="sort-arrow"></span></th>
+          <th>미리보기</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div class="empty-state" id="emptyState" hidden>
+      <p>조건에 해당하는 세션이 없습니다</p>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const POLL_INTERVAL = 5000;
+const isElectron = !!window.orca;
+
+let autoRefresh = true;
+let pinned = true;
+let pollTimer = null;
+let sessions = [];
+let terminalHandles = new Map();
+let expandedId = null;
+let activeFilter = 'all';
+let searchQuery = '';
+let sortKey = 'activity';
+let sortDir = 'desc';
+
+const $ = id => document.getElementById(id);
+const $body = $('tableBody');
+const $stats = $('stats');
+const $lastUpdated = $('lastUpdated');
+const $refreshIndicator = $('refreshIndicator');
+const $emptyState = $('emptyState');
+const $searchInput = $('searchInput');
+
+// ── API layer: Electron IPC or fetch fallback ──
+const api = {
+  ps: () => isElectron ? window.orca.ps() : fetch('/api/ps').then(r => r.json()),
+  terminals: () => isElectron ? window.orca.terminals() : fetch('/api/terminals').then(r => r.json()),
+  terminalRead: (h, screen) => isElectron ? window.orca.terminalRead(h, screen) : null,
+  terminalSend: (h, text, enter) => isElectron ? window.orca.terminalSend(h, text, enter) : null,
+  terminalInterrupt: (h) => isElectron ? window.orca.terminalInterrupt(h) : null,
+  terminalClose: (h) => isElectron ? window.orca.terminalClose(h) : null,
+  terminalSwitch: (h) => isElectron ? window.orca.terminalSwitch(h) : null,
+  openPath: (p) => isElectron ? window.orca.openPath(p) : null,
+  togglePin: () => isElectron ? window.orca.toggleAlwaysOnTop() : null,
+};
+
+function toast(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  $('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function agentType(t) {
+  if (!t) return 'shell';
+  if (t.includes('claude')) return 'claude';
+  if (t.includes('opencode')) return 'opencode';
+  if (t.includes('gemini')) return 'gemini';
+  return t;
+}
+
+function sessionStatus(wt) {
+  if (!wt.agents || wt.agents.length === 0) {
+    return wt.liveTerminalCount > 0 ? 'waiting' : 'done';
+  }
+  const a = wt.agents[0];
+  if (a.state === 'working' || a.state === 'tool_use') return 'running';
+  if (a.state === 'waiting' || a.state === 'pending') return 'waiting';
+  if (a.state === 'error') return 'error';
+  return 'done';
+}
+
+function timeAgo(ts) {
+  if (!ts) return '—';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return `${s}초 전`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}분 전`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}시간 전`;
+  return `${Math.floor(h / 24)}일 전`;
+}
+
+function shortBranch(ref) { return ref ? ref.replace('refs/heads/', '') : ''; }
+
+function esc(str) {
+  if (!str) return '';
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function truncate(str, len) {
+  return !str ? '' : str.length > len ? str.slice(0, len) + '…' : str;
+}
+
+// ── Data fetch ──
+async function fetchData() {
+  $refreshIndicator.classList.add('loading');
+  try {
+    const [psRes, termRes] = await Promise.all([api.ps(), api.terminals()]);
+
+    const worktrees = psRes?.result?.worktrees || [];
+    const terminals = termRes?.result?.terminals || [];
+
+    const termMap = new Map();
+    terminalHandles.clear();
+    for (const t of terminals) {
+      if (!termMap.has(t.worktreeId)) termMap.set(t.worktreeId, []);
+      termMap.get(t.worktreeId).push(t);
+      terminalHandles.set(t.worktreeId, t.handle);
+    }
+
+    sessions = worktrees.map(wt => {
+      const terms = termMap.get(wt.worktreeId) || [];
+      const agent = wt.agents?.[0];
+      const primaryTerm = terms[0];
+      return {
+        id: wt.worktreeId,
+        name: wt.displayName || shortBranch(wt.branch),
+        repo: wt.repo || '',
+        branch: shortBranch(wt.branch),
+        path: wt.path,
+        status: sessionStatus(wt),
+        agentType: agentType(primaryTerm?.agentIdentity || agent?.agentType),
+        lastActivity: wt.lastActivityAt,
+        liveTerminals: wt.liveTerminalCount || terms.filter(t => t.connected).length,
+        hasTerminal: terms.length > 0,
+        terminalConnected: primaryTerm?.connected || false,
+        preview: primaryTerm?.title || wt.preview || '',
+        prompt: agent?.prompt || '',
+        lastMessage: agent?.lastAssistantMessage || '',
+        agentState: agent?.state || '',
+        toolName: agent?.toolName || '',
+        workspaceStatus: wt.workspaceStatus,
+        parentId: wt.parentWorktreeId,
+      };
+    });
+
+    $lastUpdated.textContent = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const running = sessions.filter(s => s.status === 'running').length;
+    const waiting = sessions.filter(s => s.status === 'waiting').length;
+    const done = sessions.filter(s => s.status === 'done' || s.status === 'error').length;
+
+    if (isElectron) window.orca.sendSessionCounts({ running, waiting, done });
+
+    $('countAll').textContent = ` ${sessions.length}`;
+    $('countRunning').textContent = ` ${running}`;
+    $('countWaiting').textContent = ` ${waiting}`;
+    $('countDone').textContent = ` ${done}`;
+
+    $stats.innerHTML = `
+      <div class="topbar-stat"><span class="dot live"></span>${running} 실행</div>
+      <div class="topbar-stat"><span class="dot idle"></span>${waiting} 대기</div>
+      <div class="topbar-stat"><span class="dot done"></span>${done} 완료</div>
+    `;
+
+    renderTable();
+  } catch (err) {
+    console.error('fetch error:', err);
+  } finally {
+    $refreshIndicator.classList.remove('loading');
+  }
+}
+
+// ── Render ──
+function filterSessions() {
+  let filtered = sessions;
+  if (activeFilter === 'running') filtered = filtered.filter(s => s.status === 'running');
+  else if (activeFilter === 'waiting') filtered = filtered.filter(s => s.status === 'waiting');
+  else if (activeFilter === 'done') filtered = filtered.filter(s => s.status === 'done' || s.status === 'error');
+
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    filtered = filtered.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      s.branch.toLowerCase().includes(q) ||
+      s.repo.toLowerCase().includes(q) ||
+      s.agentType.toLowerCase().includes(q) ||
+      s.preview.toLowerCase().includes(q)
+    );
+  }
+
+  filtered.sort((a, b) => {
+    let va, vb;
+    switch (sortKey) {
+      case 'name': va = a.name; vb = b.name; break;
+      case 'repo': va = a.repo; vb = b.repo; break;
+      case 'branch': va = a.branch; vb = b.branch; break;
+      case 'agent': va = a.agentType; vb = b.agentType; break;
+      default: va = a.lastActivity || 0; vb = b.lastActivity || 0;
+    }
+    if (typeof va === 'string') {
+      const cmp = va.localeCompare(vb);
+      return sortDir === 'asc' ? cmp : -cmp;
+    }
+    return sortDir === 'asc' ? va - vb : vb - va;
+  });
+  return filtered;
+}
+
+function renderTable() {
+  const filtered = filterSessions();
+  $emptyState.hidden = filtered.length > 0;
+
+  const rows = [];
+  for (const s of filtered) {
+    const expanded = expandedId === s.id;
+    rows.push(`<tr class="${expanded ? 'expanded' : ''}" data-id="${esc(s.id)}">
+      <td class="td-status"><span class="status-indicator ${s.status}"></span></td>
+      <td class="td-name">${esc(s.name)}</td>
+      <td class="td-repo">${esc(s.repo)}</td>
+      <td class="td-branch"><span class="branch-badge"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm0 9.5a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm6.75-8.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25v9.5M11.75 3.25v3.5a2 2 0 0 1-2 2h-5"/></svg>${esc(truncate(s.branch, 28))}</span></td>
+      <td class="td-agent"><span class="agent-badge ${s.agentType}">${esc(s.agentType)}</span></td>
+      <td class="td-activity">${timeAgo(s.lastActivity)}</td>
+      <td class="td-preview">${esc(truncate(s.preview, 50))}</td>
+    </tr>`);
+
+    if (expanded) {
+      const handle = terminalHandles.get(s.id);
+      const canInteract = isElectron && handle && s.terminalConnected;
+
+      rows.push(`<tr class="detail-row"><td colspan="7">
+        <div class="detail-panel">
+          <div class="detail-actions">
+            ${canInteract ? `
+              <button class="action-btn primary" data-action="switch" data-handle="${esc(handle)}">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h12"/></svg>
+                Orca에서 열기
+              </button>
+              <button class="action-btn" data-action="read-screen" data-handle="${esc(handle)}" data-wt="${esc(s.id)}">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M1.5 5.5h13"/></svg>
+                터미널 보기
+              </button>
+              <button class="action-btn" data-action="interrupt" data-handle="${esc(handle)}">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+                인터럽트
+              </button>
+              <button class="action-btn danger" data-action="close" data-handle="${esc(handle)}">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+                터미널 종료
+              </button>
+            ` : `
+              ${!isElectron ? '<span style="font-family:var(--mono);font-size:11px;color:var(--text-tertiary)">Electron 앱에서 상호작용 기능을 사용할 수 있습니다</span>' : ''}
+              ${isElectron && !handle ? '<span style="font-family:var(--mono);font-size:11px;color:var(--text-tertiary)">라이브 터미널 없음</span>' : ''}
+            `}
+          </div>
+
+          <div class="detail-grid">
+            <div class="detail-section">
+              <h4>세션 정보</h4>
+              <dl class="detail-kv">
+                <dt>경로</dt><dd>${esc(s.path)}</dd>
+                <dt>상태</dt><dd>${esc(s.agentState || s.workspaceStatus || '—')}</dd>
+                <dt>에이전트</dt><dd>${esc(s.agentType)}</dd>
+                <dt>터미널</dt><dd>${s.liveTerminals}개 활성</dd>
+                ${s.toolName ? `<dt>현재 도구</dt><dd style="font-family:var(--mono);font-size:11px">${esc(s.toolName)}</dd>` : ''}
+                ${s.parentId ? `<dt>상위</dt><dd style="font-size:11px">${esc(s.parentId.split('::').pop())}</dd>` : ''}
+              </dl>
+            </div>
+            <div class="detail-section">
+              <h4>프롬프트</h4>
+              <div class="detail-prompt">${esc(s.prompt) || '—'}</div>
+            </div>
+          </div>
+          ${s.lastMessage ? `
+          <div class="detail-section" style="margin-top:16px">
+            <h4>마지막 응답</h4>
+            <div class="detail-message">${esc(truncate(s.lastMessage, 1200))}</div>
+          </div>` : ''}
+
+          <div id="termview-${esc(s.id).replace(/[^a-zA-Z0-9-]/g, '_')}"></div>
+        </div>
+      </td></tr>`);
+    }
+  }
+
+  $body.innerHTML = rows.join('');
+}
+
+// ── Terminal screen viewer ──
+async function loadTerminalScreen(handle, wtId) {
+  const containerId = 'termview-' + wtId.replace(/[^a-zA-Z0-9-]/g, '_');
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const res = await api.terminalRead(handle, true);
+  const lines = res?.result?.lines || res?.result?.screen || [];
+  const text = typeof lines === 'string' ? lines : lines.map(l => typeof l === 'string' ? l : l.text || '').join('\n');
+
+  container.innerHTML = `
+    <div class="terminal-viewer">
+      <div class="terminal-header">
+        <span>터미널 출력</span>
+        <span class="refresh-term" data-action="read-screen" data-handle="${esc(handle)}" data-wt="${esc(wtId)}">↻ 새로고침</span>
+      </div>
+      <div class="terminal-screen">${esc(text) || '(비어 있음)'}</div>
+      <div class="terminal-input-bar">
+        <input class="terminal-input" type="text" placeholder="명령 또는 프롬프트 입력…" data-handle="${esc(handle)}" id="termin-${esc(handle)}">
+        <button class="terminal-send-btn" data-action="send" data-handle="${esc(handle)}">전송</button>
+      </div>
+    </div>
+  `;
+
+  const input = document.getElementById('termin-' + handle);
+  if (input) {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') sendToTerminal(handle, input);
+    });
+  }
+}
+
+async function sendToTerminal(handle, inputEl) {
+  const text = inputEl.value.trim();
+  if (!text) return;
+  try {
+    await api.terminalSend(handle, text, true);
+    inputEl.value = '';
+    toast('전송 완료', 'success');
+    setTimeout(() => {
+      const wtId = [...terminalHandles.entries()].find(([,h]) => h === handle)?.[0];
+      if (wtId) loadTerminalScreen(handle, wtId);
+    }, 1000);
+  } catch (err) {
+    toast('전송 실패: ' + err.message, 'error');
+  }
+}
+
+// ── Event delegation ──
+$body.addEventListener('click', async e => {
+  const actionEl = e.target.closest('[data-action]');
+  if (actionEl) {
+    e.stopPropagation();
+    const action = actionEl.dataset.action;
+    const handle = actionEl.dataset.handle;
+
+    if (action === 'switch') {
+      await api.terminalSwitch(handle);
+      toast('Orca에서 해당 탭으로 전환했습니다', 'success');
+    } else if (action === 'read-screen') {
+      await loadTerminalScreen(handle, actionEl.dataset.wt);
+    } else if (action === 'interrupt') {
+      await api.terminalInterrupt(handle);
+      toast('인터럽트를 전송했습니다', 'success');
+    } else if (action === 'close') {
+      if (confirm('이 터미널을 종료하시겠습니까?')) {
+        await api.terminalClose(handle);
+        toast('터미널을 종료했습니다', 'success');
+        fetchData();
+      }
+    } else if (action === 'send') {
+      const input = document.getElementById('termin-' + handle);
+      if (input) sendToTerminal(handle, input);
+    }
+    return;
+  }
+
+  const row = e.target.closest('tr[data-id]');
+  if (!row) return;
+  const id = row.dataset.id;
+  expandedId = expandedId === id ? null : id;
+  renderTable();
+});
+
+document.querySelectorAll('.filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelector('.filter-chip.active').classList.remove('active');
+    chip.classList.add('active');
+    activeFilter = chip.dataset.filter;
+    renderTable();
+  });
+});
+
+$searchInput.addEventListener('input', e => {
+  searchQuery = e.target.value;
+  renderTable();
+});
+
+document.querySelectorAll('th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    if (sortKey === key) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortKey = key;
+      sortDir = key === 'activity' ? 'desc' : 'asc';
+    }
+    document.querySelectorAll('th[data-sort]').forEach(t => {
+      t.classList.remove('sorted');
+      t.querySelector('.sort-arrow').textContent = '';
+    });
+    th.classList.add('sorted');
+    th.querySelector('.sort-arrow').textContent = sortDir === 'asc' ? '↑' : '↓';
+    renderTable();
+  });
+});
+
+$('btnRefresh').addEventListener('click', fetchData);
+
+$('btnToggleAuto').addEventListener('click', () => {
+  autoRefresh = !autoRefresh;
+  $('autoIcon').style.opacity = autoRefresh ? '1' : '0.3';
+  $('btnToggleAuto').classList.toggle('active', autoRefresh);
+  if (autoRefresh) startPolling();
+  else stopPolling();
+});
+
+$('btnPin').addEventListener('click', async () => {
+  if (!isElectron) { toast('Electron 앱에서만 사용 가능합니다'); return; }
+  pinned = await api.togglePin();
+  $('btnPin').classList.toggle('active', pinned);
+  toast(pinned ? '항상 위에 표시' : '항상 위에 표시 해제', 'success');
+});
+
+if (isElectron) $('btnPin').classList.add('active');
+if (!isElectron) $('btnPin').hidden = true;
+
+function startPolling() { stopPolling(); pollTimer = setInterval(fetchData, POLL_INTERVAL); }
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'r' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') fetchData();
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); $searchInput.focus(); }
+  if (e.key === 'Escape') {
+    if (document.activeElement === $searchInput) {
+      $searchInput.blur(); $searchInput.value = ''; searchQuery = ''; renderTable();
+    } else if (expandedId) {
+      expandedId = null; renderTable();
+    }
+  }
+});
+
+// ── Init ──
+$('btnToggleAuto').classList.add('active');
+fetchData();
+startPolling();
+</script>

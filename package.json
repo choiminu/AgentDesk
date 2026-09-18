@@ -1,0 +1,39 @@
+{
+  "name": "roca",
+  "version": "0.1.0",
+  "description": "Orca session dashboard",
+  "main": "main.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "dev": "NODE_ENV=development electron .",
+    "dist": "electron-builder --mac"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^36.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.roca.app",
+    "productName": "Orca Dashboard",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": "dmg",
+      "icon": null
+    },
+    "dmg": {
+      "title": "Roca",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "files": [
+      "main.mjs",
+      "widget.html",
+      "preload.cjs",
+      "package.json"
+    ]
+  }
+}
