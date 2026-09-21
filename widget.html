@@ -4715,13 +4715,7 @@ function officeFrame(now) {
       const st = sess ? sess.status : 'empty';
       const sitting = ch && ch.state === 'sit';
 
-      if (im.carpet) {
-        ctx.drawImage(im.carpet, sx + 8, sy + 12, 64, 64);
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.fillStyle = st === 'running' ? (sess && sess.isSub ? '#8fb3e8' : '#6f8fd8') : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : st === 'empty' ? '#d8d6de' : '#bdbac4';
-        ctx.fillRect(sx + 8, sy + 12, 64, 64);
-        ctx.globalCompositeOperation = 'source-over';
-      }
+      officeDrawRug(ctx, sx + 8, sy + 12, 64, 64, st === 'running' ? (sess && sess.isSub ? '#8fb3e8' : '#6f8fd8') : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : st === 'empty' ? '#b9b6c2' : '#bdbac4', st === 'empty');
       if (st === 'running' && sitting) {
         ctx.strokeStyle = `rgba(120,170,255,${0.35 + 0.55 * pulse})`; ctx.lineWidth = 1;
         ctx.strokeRect(sx + 7.5, sy + 11.5, 65, 65);
@@ -4990,6 +4984,20 @@ function officeDrawBoard(ctx, shown, worldW, floorTop) {
   return { x, w: Math.round(w) };
 }
 // decor row along the top of the wall (the whiteboard sits below it); spread evenly across the width
+// solid rug under a desk: status-coloured fill, darker border, faint stitch pattern
+function officeDrawRug(ctx, x, y, w, h, color, dim) {
+  ctx.save();
+  ctx.globalAlpha = dim ? 0.45 : 0.85;
+  ctx.fillStyle = color; ctx.fillRect(x, y, w, h);
+  ctx.globalAlpha = dim ? 0.35 : 0.6;
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(x, y, w, 1); ctx.fillRect(x, y + h - 1, w, 1); ctx.fillRect(x, y, 1, h); ctx.fillRect(x + w - 1, y, 1, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(x + 2, y + 2, w - 4, 1); ctx.fillRect(x + 2, y + 2, 1, h - 4);
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  for (let yy = y + 6; yy < y + h - 4; yy += 8) for (let xx = x + 6 + ((yy - y) % 16 === 6 ? 0 : 4); xx < x + w - 4; xx += 8) ctx.fillRect(xx, yy, 2, 2);
+  ctx.restore();
+}
 function officeShadow(ctx, cx, cy, rx, ry, alpha = 1) {
   ctx.save(); ctx.globalAlpha = 0.28 * alpha; ctx.fillStyle = '#000';
   ctx.beginPath(); ctx.ellipse(Math.round(cx), Math.round(cy), rx, ry, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
