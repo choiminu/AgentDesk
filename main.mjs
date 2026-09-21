@@ -3,7 +3,7 @@ import { execFile, exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync } from "node:fs";
 import { homedir } from "node:os";
 
 const exec = promisify(execFile);
@@ -124,9 +124,19 @@ function createTray() {
 app.on("before-quit", () => { app.isQuitting = true; });
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { app.isQuitting = true; app.quit(); });
 
-const ORCA_BIN = ["/usr/local/bin/orca", "/opt/homebrew/bin/orca", "orca"];
+// Finder-launched apps only see /usr/bin:/bin:/usr/sbin:/sbin, so look in the usual symlink
+// locations and inside the Orca app bundle itself (DMG installs without the brew symlink).
+const ORCA_BIN = [
+  "/usr/local/bin/orca",
+  "/opt/homebrew/bin/orca",
+  "/Applications/Orca.app/Contents/Resources/bin/orca",
+  join(homedir(), "Applications", "Orca.app", "Contents", "Resources", "bin", "orca"),
+  "orca",
+];
+const EXEC_PATH = `${process.env.PATH || ""}:/usr/local/bin:/opt/homebrew/bin:/Applications/Orca.app/Contents/Resources/bin`;
 
 async function findOrca() {
+  if (process.env.ROCA_ORCA_BIN) return process.env.ROCA_ORCA_BIN;
   for (const bin of ORCA_BIN) {
     try {
       await exec("test", ["-x", bin]);
@@ -137,17 +147,26 @@ async function findOrca() {
 }
 
 let orcaBin = "orca";
-findOrca().then(b => { orcaBin = b; });
+let orcaBinFound = null;
+const orcaReady = findOrca().then(b => { orcaBin = b; orcaBinFound = b !== "orca"; });
 
 async function orca(...args) {
+  await orcaReady;
   try {
     const { stdout } = await exec(orcaBin, [...args, "--json"], {
       timeout: 15000,
-      env: { ...process.env, PATH: `${process.env.PATH || ""}:/usr/local/bin:/opt/homebrew/bin` },
+      env: { ...process.env, PATH: EXEC_PATH },
     });
     return JSON.parse(stdout);
   } catch (err) {
-    return { ok: false, error: err.message };
+    const notFound = err.code === "ENOENT" || /ENOENT|not found/i.test(err.message || "");
+    return {
+      ok: false,
+      error: notFound
+        ? `Orca CLI를 찾을 수 없습니다 (${orcaBin}). Orca 앱이 /Applications에 설치되어 있는지 확인하세요.`
+        : (err.stderr && String(err.stderr).trim()) || err.message,
+      bin: orcaBin,
+    };
   }
 }
 
@@ -356,7 +375,7 @@ ipcMain.handle("orca:terminal-send", (_e, handle, text, enter, waitSubmit) => {
   const timeoutMs = waitSubmit ? (waitSubmit * 1000 + 10000) : 15000;
   return exec(orcaBin, [...args, "--json"], {
     timeout: timeoutMs,
-    env: { ...process.env, PATH: `${process.env.PATH || ""}:/usr/local/bin:/opt/homebrew/bin` },
+    env: { ...process.env, PATH: EXEC_PATH },
   }).then(({ stdout }) => JSON.parse(stdout)).catch(err => ({ ok: false, error: err.message }));
 });
 
@@ -365,7 +384,7 @@ ipcMain.handle("orca:terminal-wait", (_e, handle, condition, timeoutMs) => {
   if (timeoutMs) args.push("--timeout-ms", String(timeoutMs));
   return exec(orcaBin, [...args, "--json"], {
     timeout: (timeoutMs || 180000) + 5000,
-    env: { ...process.env, PATH: `${process.env.PATH || ""}:/usr/local/bin:/opt/homebrew/bin` },
+    env: { ...process.env, PATH: EXEC_PATH },
   }).then(({ stdout }) => JSON.parse(stdout)).catch(err => ({ ok: false, error: err.message }));
 });
 
@@ -494,8 +513,118 @@ ipcMain.on("orca:set-opacity", (_e, val) => {
   mainWindow.setOpacity(val);
 });
 
+// ── Claude Code hooks → ~/.roca/events.jsonl → renderer (exact working/waiting/needs-input) ──
+const ROCA_DIR = join(homedir(), ".roca");
+const HOOK_SCRIPT = join(ROCA_DIR, "hook.sh");
+const EVENTS_FILE = join(ROCA_DIR, "events.jsonl");
+const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
+const HOOK_EVENTS = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification", "PermissionRequest", "SubagentStart", "SubagentStop", "SessionEnd", "PostCompact"];
+const HOOK_SH = `#!/bin/bash
+# Orca Widget hook: append the Claude Code hook payload to ~/.roca/events.jsonl and exit immediately.
+f="$HOME/.roca/events.jsonl"
+payload=$(cat | tr -d '\n')
+[ -z "$payload" ] && exit 0
+printf '{"ts":%s,"ev":%s}\n' "$(date +%s)" "$payload" >> "$f" 2>/dev/null
+# keep the log bounded (~5000 lines)
+if [ $(( $(date +%s) % 50 )) -eq 0 ] && [ -f "$f" ] && [ "$(wc -l < "$f")" -gt 6000 ]; then
+  tail -n 4000 "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+fi
+exit 0
+`;
+
+function readSettings() {
+  try { return JSON.parse(readFileSync(CLAUDE_SETTINGS, "utf-8")); } catch { return {}; }
+}
+function isOurHook(entry) {
+  return Array.isArray(entry?.hooks) && entry.hooks.some(h => typeof h?.command === "string" && h.command.includes("/.roca/hook.sh"));
+}
+function hooksInstalled() {
+  const s = readSettings();
+  const h = s.hooks || {};
+  return HOOK_EVENTS.every(ev => Array.isArray(h[ev]) && h[ev].some(isOurHook)) && existsSync(HOOK_SCRIPT);
+}
+function installHooks() {
+  mkdirSync(ROCA_DIR, { recursive: true });
+  writeFileSync(HOOK_SCRIPT, HOOK_SH);
+  chmodSync(HOOK_SCRIPT, 0o755);
+  if (!existsSync(EVENTS_FILE)) writeFileSync(EVENTS_FILE, "");
+  const s = readSettings();
+  if (existsSync(CLAUDE_SETTINGS)) copyFileSync(CLAUDE_SETTINGS, join(ROCA_DIR, `settings.backup-${Date.now()}.json`));
+  s.hooks = s.hooks || {};
+  for (const ev of HOOK_EVENTS) {
+    const arr = Array.isArray(s.hooks[ev]) ? s.hooks[ev].filter(e => !isOurHook(e)) : [];
+    arr.push({ hooks: [{ type: "command", command: HOOK_SCRIPT, timeout: 5, async: true }] });
+    s.hooks[ev] = arr;
+  }
+  mkdirSync(dirname(CLAUDE_SETTINGS), { recursive: true });
+  writeFileSync(CLAUDE_SETTINGS, JSON.stringify(s, null, 2) + "\n");
+  startEventsWatch();
+  return { ok: true };
+}
+function uninstallHooks() {
+  const s = readSettings();
+  if (s.hooks) {
+    for (const ev of Object.keys(s.hooks)) {
+      if (!Array.isArray(s.hooks[ev])) continue;
+      s.hooks[ev] = s.hooks[ev].filter(e => !isOurHook(e));
+      if (!s.hooks[ev].length) delete s.hooks[ev];
+    }
+    writeFileSync(CLAUDE_SETTINGS, JSON.stringify(s, null, 2) + "\n");
+  }
+  return { ok: true };
+}
+
+let eventsOffset = 0;
+let eventsWatcher = null;
+let eventsPollTimer = null;
+function readNewEvents() {
+  try {
+    if (!existsSync(EVENTS_FILE)) return [];
+    const size = statSync(EVENTS_FILE).size;
+    if (size < eventsOffset) eventsOffset = 0;            // truncated/rotated
+    if (size === eventsOffset) return [];
+    const fd = openSync(EVENTS_FILE, "r");
+    const buf = Buffer.alloc(size - eventsOffset);
+    readSync(fd, buf, 0, buf.length, eventsOffset);
+    closeSync(fd);
+    eventsOffset = size;
+    const out = [];
+    for (const line of buf.toString("utf-8").split("\n")) {
+      if (!line.trim()) continue;
+      try { out.push(JSON.parse(line)); } catch {}
+    }
+    return out;
+  } catch { return []; }
+}
+function pushEvents(evts) {
+  if (evts.length && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:hook-events", evts);
+}
+function startEventsWatch() {
+  if (eventsWatcher || eventsPollTimer) return;
+  if (!existsSync(EVENTS_FILE)) return;
+  try { eventsWatcher = fsWatch(EVENTS_FILE, () => pushEvents(readNewEvents())); } catch {}
+  eventsPollTimer = setInterval(() => pushEvents(readNewEvents()), 1500);   // fs.watch can miss appends on macOS
+}
+ipcMain.handle("orca:hooks-status", () => ({ installed: hooksInstalled(), script: HOOK_SCRIPT, events: EVENTS_FILE }));
+ipcMain.handle("orca:hooks-install", () => { try { return installHooks(); } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("orca:hooks-uninstall", () => { try { return uninstallHooks(); } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("orca:hooks-recent", () => {
+  // replay the last ~30 minutes so state is right immediately after launch
+  try {
+    if (!existsSync(EVENTS_FILE)) return [];
+    const lines = readFileSync(EVENTS_FILE, "utf-8").split("\n").filter(Boolean).slice(-2000);
+    eventsOffset = statSync(EVENTS_FILE).size;
+    const cutoff = Math.floor(Date.now() / 1000) - 1800;
+    const out = [];
+    for (const l of lines) { try { const o = JSON.parse(l); if (o.ts >= cutoff) out.push(o); } catch {} }
+    return out;
+  } catch { return []; }
+});
+
 app.on("ready", () => {
   createWindow();
+  if (process.env.ROCA_HOOKS_INSTALL) { try { installHooks(); console.log("[hooks] installed"); } catch (e) { console.log("[hooks] install failed", e.message); } }
+  startEventsWatch();
   createTray();
 });
 

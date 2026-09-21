@@ -257,6 +257,11 @@
   .ctx-chip.warn { color: var(--yellow) !important; }
   .ctx-chip.crit { color: var(--red) !important; font-weight: 700; }
 
+  .orca-error { margin: 6px 10px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--red) 50%, transparent); background: var(--red-dim); border-radius: var(--radius-md); font-size: var(--fs-xs); color: var(--text); display: flex; flex-direction: column; gap: 3px; }
+  .orca-error b { color: var(--red); }
+  .orca-error span { color: var(--text2); word-break: break-all; }
+  .orca-error code { font-family: var(--mono); background: var(--surface); padding: 0 4px; border-radius: 3px; }
+
   /* ── Context menu ── */
   .ctx-menu {
     position: fixed; z-index: 200; min-width: 150px;
@@ -289,6 +294,7 @@
   .office-hint { margin-left: auto; color: var(--text3); }
   .office-sound-btn { background: none; border: 1px solid var(--border-subtle); border-radius: 6px; cursor: pointer; font-size: 11px; padding: 0 5px; line-height: 16px; color: var(--text3); }
   .office-sound-btn.on { border-color: var(--yellow); color: var(--yellow); }
+  #hooks-toggle.on { border-color: var(--green); color: var(--green); }
   .office-wrap {
     flex: 1;
     overflow: auto;
@@ -2154,6 +2160,7 @@
       <span class="office-legend"><span class="office-legend-key" style="background:var(--text3)"></span>완료(휴게실)</span><span class="office-legend"><span class="office-legend-key" style="background:#c9b3e0"></span>회의 중</span>
       <span class="office-legend"><span class="office-legend-key" style="background:var(--red)"></span>오류</span>
       <select class="office-zoom" id="office-zoom" title="확대 배율"><option value="auto">자동</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
+      <button class="office-sound-btn" id="hooks-toggle" title="Claude Code hooks로 작업 중/대기/선택 필요를 이벤트 기반으로 정확히 감지합니다 (~/.claude/settings.json에 훅 등록)">정확 감지 꺼짐</button>
       <button class="office-sound-btn" id="office-sound" title="입력 대기 전환 시 알림음">🔕</button>
       <span class="office-hint">클릭: 채팅 · 더블클릭: Orca 터미널 · 쉬는 중은 휴게실</span>
     </div>
@@ -2572,7 +2579,9 @@ function statusFromScreen(lines) {
     if (SPINNER_RE.test(t) || /esc to interrupt/i.test(t)) return 'running';
     if (/^✻/.test(t) && /\bdone\b/i.test(t)) return doneLineStatus(t);
     if (/^(Do you want|Allow|Would you like)/i.test(t)) return 'waiting';
-    if (/^⏺/.test(t)) return 'running';                       // response still streaming (no ✻ done yet)
+    // a ⏺ block with no spinner below it means the turn already finished (Claude Code does not
+    // always print a "✻ … done" line); freshness is decided by the caller from screen changes
+    if (/^⏺/.test(t)) return 'waiting-untimed';
     return null;
   }
   return null;
@@ -2636,6 +2645,20 @@ function parseCtxPct(lines) {
 const screenCtxCache = new Map();
 const screenAgentsCache = new Map();
 const screenChoiceCache = new Map();
+// For turns that end without a timestamped "done" line: the transcript above the prompt is
+// fingerprinted; unchanged for 10 min → done. First sight (widget just started) defers to orca.
+const screenFinger = new Map();
+function untimedWaitingStatus(id, tail) {
+  let p = -1;
+  for (let i = tail.length - 1; i >= 0; i--) if (/^❯/.test(tail[i].trim())) { p = i; break; }
+  const fp = tail.slice(Math.max(0, p - 12), p).join('\n');
+  const prev = screenFinger.get(id);
+  const now = Date.now();
+  if (!prev) { screenFinger.set(id, { fp, since: now, first: true }); return null; }
+  if (prev.fp !== fp) { screenFinger.set(id, { fp, since: now, first: false }); return 'waiting'; }
+  if (prev.first) return null;                       // unchanged since startup: trust orca's state
+  return now - prev.since > DONE_FRESH_MS ? 'done' : 'waiting';
+}
 const screenStatusCache = new Map();
 
 async function refreshScreenStatuses() {
@@ -2647,7 +2670,9 @@ async function refreshScreenStatuses() {
         screenChoiceCache.set(id, screenHasChoice(tail));
         screenAgentsCache.set(id, parseAgentPanel(tail));
         const ctx = parseCtxPct(tail); if (ctx != null) screenCtxCache.set(id, ctx);
-        const screenSt = statusFromScreen(tail);
+        let screenSt = statusFromScreen(tail);
+        if (screenSt === 'waiting-untimed') screenSt = untimedWaitingStatus(id, tail);
+        else screenFinger.delete(id);
         // null = no verdict this tick (e.g. between tool calls); keep the last verdict instead of flapping back to orca's stale state
         if (screenSt) screenStatusCache.set(id, screenSt);
         else if (!tail.length) screenStatusCache.delete(id);
@@ -2693,6 +2718,7 @@ async function fetchData() {
   $('footer').classList.add('loading');
   try {
     const [ps, terms, rl] = await Promise.all([api.ps(), api.terminals(), window.orca.rateLimits()]);
+    showOrcaError(ps && ps.ok === false ? ps.error : null);
     const wts = ps?.result?.worktrees || [];
     const ts = terms?.result?.terminals || [];
     const rateLimits = rl?.result?.rateLimits || {};
@@ -2711,7 +2737,8 @@ async function fetchData() {
       const a = w.agents?.[0];
       const baseStatus = status(w);
       const screenSt = screenStatusCache.get(w.worktreeId);
-      const finalStatus = resolveStatus(baseStatus, screenSt);
+      const hk = hookStateFor(w.worktreeId);
+      const finalStatus = resolveStatus(baseStatus, screenSt, hk);
       return {
         id: w.worktreeId,
         name: w.displayName || (w.branch || '').replace('refs/heads/', ''),
@@ -2719,13 +2746,14 @@ async function fetchData() {
         repo: w.repo || '',
         status: finalStatus,
         baseStatus,
-        needsInput: needsInputFor(w.worktreeId, a?.toolName, finalStatus),
-        subagents: screenAgentsCache.get(w.worktreeId) || [],
+        needsInput: hk ? (hk.needsInput && finalStatus !== 'done') : needsInputFor(w.worktreeId, a?.toolName, finalStatus),
+        subagents: hk ? (hookSubagentsFor(hk).length ? hookSubagentsFor(hk) : (screenAgentsCache.get(w.worktreeId) || [])) : (screenAgentsCache.get(w.worktreeId) || []),
         ctxPct: screenCtxCache.get(w.worktreeId) ?? null,
         agent: agentType(term?.agentIdentity || a?.agentType),
         time: w.lastActivityAt,
-        tool: a?.toolName || '',
-        toolInput: typeof a?.toolInput === 'string' ? a.toolInput : (a?.toolInput ? JSON.stringify(a.toolInput) : ''),
+        tool: hk && hk.tool ? hk.tool : (a?.toolName || ''),
+        toolInput: hk && hk.tool ? hk.toolInput : (typeof a?.toolInput === 'string' ? a.toolInput : (a?.toolInput ? JSON.stringify(a.toolInput) : '')),
+        viaHooks: !!hk,
         prompt: a?.prompt || '',
         lastMsg: a?.lastAssistantMessage || '',
         connected: term?.connected || false,
@@ -2741,13 +2769,115 @@ async function fetchData() {
 }
 
 // orca's agent state lags; what the terminal screen shows right now is the truth for running/waiting.
+// ══════════════════════════════════════════
+// CLAUDE CODE HOOK EVENTS (exact state; screen parsing is the fallback)
+// ══════════════════════════════════════════
+const hookSessions = new Map();   // claude session_id → state
+let hooksEnabled = false;
+const HOOK_STALE_MS = 2 * 60 * 60 * 1000;
+
+function hookToolInput(tool, input) {
+  if (!input || typeof input !== 'object') return '';
+  return input.file_path || input.path || input.notebook_path || input.command || input.pattern || input.url || input.description || input.prompt || '';
+}
+function applyHookEvent(rec) {
+  const ev = rec.ev || {}; const ts = (rec.ts || 0) * 1000;
+  const sid = ev.session_id; if (!sid) return;
+  let st = hookSessions.get(sid);
+  if (!st) { st = { sid, cwd: ev.cwd, status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false }; hookSessions.set(sid, st); }
+  if (ev.cwd) st.cwd = ev.cwd;
+  st.last = Math.max(st.last, ts);
+  const setStatus = (v) => { if (st.status !== v) { st.status = v; st.since = ts; } };
+  const sub = ev.agent_id ? st.subagents.get(ev.agent_id) : null;
+  switch (ev.hook_event_name) {
+    case 'UserPromptSubmit': setStatus('running'); st.tool = ''; st.toolInput = ''; st.needsInput = false; st.ended = false; break;
+    case 'PreToolUse':
+      if (sub) { sub.tool = ev.tool_name || ''; sub.toolInput = hookToolInput(ev.tool_name, ev.tool_input); sub.last = ts; }
+      else { setStatus('running'); st.tool = ev.tool_name || ''; st.toolInput = hookToolInput(ev.tool_name, ev.tool_input); st.needsInput = ev.tool_name === 'AskUserQuestion'; }
+      break;
+    case 'PostToolUse':
+      if (sub) { sub.tool = ''; sub.last = ts; }
+      else { setStatus('running'); st.needsInput = false; }
+      break;
+    case 'PermissionRequest': setStatus('waiting'); st.needsInput = true; break;
+    case 'Notification': {
+      const nt = ev.notification_type || '';
+      if (/permission_prompt|agent_needs_input|elicitation_dialog|elicitation_url_dialog/.test(nt)) { setStatus('waiting'); st.needsInput = true; }
+      else if (nt === 'idle_prompt') setStatus('waiting');
+      break;
+    }
+    case 'Stop': setStatus('waiting'); st.tool = ''; st.toolInput = ''; st.needsInput = false; break;
+    case 'SubagentStart': if (ev.agent_id) st.subagents.set(ev.agent_id, { id: ev.agent_id, type: ev.agent_type || 'agent', since: ts, last: ts, tool: '', toolInput: '' }); break;
+    case 'SubagentStop': if (ev.agent_id) st.subagents.delete(ev.agent_id); break;
+    case 'SessionEnd': st.ended = true; st.status = 'done'; st.since = ts; st.subagents.clear(); break;
+    case 'PostCompact': break;
+  }
+}
+// worktreeId looks like "<uuid>::/abs/path"; pick the freshest hook session whose cwd is inside that path
+function hookStateFor(worktreeId) {
+  if (!hooksEnabled) return null;
+  const path = String(worktreeId || '').split('::').pop();
+  if (!path) return null;
+  let best = null;
+  for (const st of hookSessions.values()) {
+    if (st.ended || !st.cwd) continue;
+    if (st.cwd === path || st.cwd.startsWith(path.replace(/\/$/, '') + '/')) {
+      if (!best || st.last > best.last) best = st;
+    }
+  }
+  if (!best || Date.now() - best.last > HOOK_STALE_MS) return null;
+  return best;
+}
+function hookStatusFor(st) {
+  if (!st) return null;
+  if (st.status === 'waiting' && Date.now() - st.since > DONE_FRESH_MS) return 'done';
+  return st.status;
+}
+function hookSubagentsFor(st) {
+  if (!st) return null;
+  return [...st.subagents.values()].map(a => ({ name: a.type, desc: a.toolInput || '', state: 'running', elapsed: officeFmtSince(a.since), tokens: '', tool: a.tool }));
+}
+async function refreshHooksStatus() {
+  try {
+    const r = await window.orca.hooksStatus();
+    hooksEnabled = !!r.installed;
+    const btn = $('hooks-toggle');
+    btn.classList.toggle('on', hooksEnabled);
+    btn.textContent = hooksEnabled ? '정확 감지 켜짐' : '정확 감지 꺼짐';
+  } catch {}
+}
+$('hooks-toggle').addEventListener('click', async () => {
+  if (hooksEnabled) {
+    if (!confirm('정확 감지를 끌까요? ~/.claude/settings.json에서 위젯 훅만 제거합니다.')) return;
+    await window.orca.hooksUninstall();
+  } else {
+    if (!confirm('Claude Code 훅을 ~/.claude/settings.json에 등록합니다 (기존 설정은 보존, ~/.roca/에 백업). 이후 새로 시작하는 Claude 세션부터 이벤트 기반으로 정확히 감지됩니다. 진행할까요?')) return;
+    const r = await window.orca.hooksInstall();
+    if (r.ok === false) { showInAppToast(`훅 설치 실패: ${r.error}`, 'error'); return; }
+    hookSessions.clear();
+    for (const rec of await window.orca.hooksRecent()) applyHookEvent(rec);
+  }
+  await refreshHooksStatus();
+  fetchData();
+});
+window.orca.onHookEvents(evts => {
+  for (const rec of evts) applyHookEvent(rec);
+  if (hooksEnabled) screenTick();
+});
+refreshHooksStatus().then(async () => {
+  if (!hooksEnabled) return;
+  for (const rec of await window.orca.hooksRecent()) applyHookEvent(rec);
+});
+
 function needsInputFor(id, toolName, status) {
   if (status !== 'waiting' && status !== 'running') return false;
   if (screenChoiceCache.get(id)) return true;
   return toolName === 'AskUserQuestion' || toolName === 'AskUser';
 }
-function resolveStatus(baseStatus, screenSt) {
+function resolveStatus(baseStatus, screenSt, hk) {
   if (baseStatus === 'error') return 'error';
+  const hs = hookStatusFor(hk);
+  if (hs) return hs;                                  // hook events are exact
   if (screenSt === 'running' || screenSt === 'waiting' || screenSt === 'done') return screenSt;
   return baseStatus;
 }
@@ -2822,13 +2952,20 @@ async function screenTick() {
     let changed = false;
     for (const s of sessions) {
       const screenSt = screenStatusCache.get(s.id);
-      const next = resolveStatus(s.baseStatus || s.status, screenSt);
+      const hk = hookStateFor(s.id);
+      const next = resolveStatus(s.baseStatus || s.status, screenSt, hk);
       if (next !== s.status) { s.status = next; changed = true; }
-      const ni = needsInputFor(s.id, s.tool, s.status);
+      if (hk) {
+        const tool = hk.tool || '';
+        if (tool !== s.tool) { s.tool = tool; s.toolInput = hk.toolInput || ''; changed = true; }
+        s.viaHooks = true;
+      }
+      const ni = hk ? (hk.needsInput && s.status !== 'done') : needsInputFor(s.id, s.tool, s.status);
       if (ni !== !!s.needsInput) { s.needsInput = ni; changed = true; }
       const ctx = screenCtxCache.get(s.id) ?? null;
       if (ctx !== s.ctxPct) { s.ctxPct = ctx; changed = true; }
-      const subs = screenAgentsCache.get(s.id) || [];
+      const hkSubs = hk ? hookSubagentsFor(hk) : [];
+      const subs = hkSubs.length ? hkSubs : (screenAgentsCache.get(s.id) || []);
       if (JSON.stringify(subs) !== JSON.stringify(s.subagents || [])) { s.subagents = subs; changed = true; }
     }
     if (changed) { applyStatusTransitions(); updateCounters(); renderDashboard(); }
@@ -2842,6 +2979,17 @@ setInterval(screenTick, 2000);
 function isRecentSession(s) {
   if (s.status === 'running' || s.status === 'waiting' || s.status === 'error') return true;
   return !!s.time && s.time > Date.now() - 24 * 60 * 60 * 1000;
+}
+function showOrcaError(msg) {
+  let el = $('orca-error');
+  if (!msg) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'orca-error';
+    el.className = 'orca-error';
+    $('page-dashboard').insertBefore(el, $('list'));
+  }
+  el.innerHTML = `<b>Orca CLI 호출 실패</b><span>${esc(String(msg))}</span><span>Orca 앱이 실행 중인지, 터미널에서 <code>orca --version</code>이 동작하는지 확인하세요.</span>`;
 }
 function renderDashboard() {
   let items = sessions;
@@ -2893,7 +3041,7 @@ function renderDashboard() {
       const prev = prevStatuses.get(s.id);
       const changed = prev && prev !== s.status;
       html += `<div class="session${changed ? ' pulse' : ''}" data-id="${esc(s.id)}" data-handle="${esc(h || '')}">
-        <span class="s-icon ${s.status}" title="${s.needsInput ? '선택 필요' : ''}">${s.needsInput ? '<span class="ic-bounce">❓</span>' : statusIcon(s.status)}</span>
+        <span class="s-icon ${s.status}" title="${s.needsInput ? '선택 필요' : ''}${s.viaHooks ? ' (hooks)' : ''}">${s.needsInput ? '<span class="ic-bounce">❓</span>' : statusIcon(s.status)}</span>
         <div class="s-info">
           <div class="s-name">${isPinned ? '📌 ' : ''}${esc(s.name)}</div>
           <div class="s-meta">
@@ -4273,7 +4421,7 @@ function officeSessions() {
       const last = officeSubSeen.get(key);
       if (!last || now - last > 8000) continue;
       out.push({ id: key, parentId: s.id, isSub: true, name: '↳ ' + a.name, branch: s.name, repo: s.repo,
-        status: a.state === 'running' ? 'running' : 'done', tool: 'Agent', toolInput: a.desc, lastMsg: a.desc,
+        status: a.state === 'running' ? 'running' : 'done', tool: a.tool || 'Agent', toolInput: a.desc, lastMsg: a.desc,
         time: now, agent: s.agent, subElapsed: a.elapsed, subTokens: a.tokens });
     }
   }
@@ -4353,8 +4501,13 @@ function officeFrame(now) {
       const parent = officeChars.get(sess.parentId);
       ch.station = (parent && parent.station) || ch.station || 'dev';
     } else {
+      // a new station has to win the vote for 15s before the agent moves desks (tools flip every few seconds)
       const vote = officeVoteStation(ch.toolHist);
-      if (vote) ch.station = vote; else if (!ch.station) ch.station = 'dev';
+      if (!ch.station) ch.station = vote || 'dev';
+      else if (vote && vote !== ch.station) {
+        if (ch.pendingStation !== vote) { ch.pendingStation = vote; ch.pendingSince = Date.now(); }
+        else if (Date.now() - ch.pendingSince > 15000) { ch.station = vote; ch.pendingStation = null; }
+      } else ch.pendingStation = null;
     }
   }
   for (const [sid, ch] of officeChars) {
@@ -4547,7 +4700,8 @@ function officeFrame(now) {
         if (ch.reactT > 0) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'dots');
         else if (st === 'running') {
           if (sess.isSub) {
-            officeDrawTag(ctx, seat.chairX, headY - 16, `⇶ ${(sess.subElapsed || '').replace(/\s+/g, '')}`.trim(), '#9cc4ff', now);
+            const subTool = sess.tool && sess.tool !== 'Agent' ? officeToolLabel(sess.tool) : null;
+            officeDrawTag(ctx, seat.chairX, headY - 16, subTool ? subTool.label : `⇶ ${(sess.subElapsed || '').replace(/\s+/g, '')}`.trim(), subTool ? subTool.color : '#9cc4ff', now);
           } else {
             const tool = officeToolLabel(sess.tool);
             officeDrawTag(ctx, seat.chairX, headY - 16, tool.label, tool.color, now);

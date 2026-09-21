@@ -17,6 +17,7 @@ A lightweight Electron desktop widget for monitoring [Orca](https://github.com/s
 
 - **Session Dashboard / 세션 대시보드** — Real-time monitoring of all Orca worktree sessions. Status is read from the live terminal screen every 2 seconds (spinner → running, `✻ … done` → waiting, permission/question prompt → needs input), so it stays correct even when Orca's own agent state lags. Orca 워크트리 세션을 실시간으로 모니터링합니다. 상태는 2초마다 터미널 화면을 읽어 판정하므로(스피너 → 작업 중, `✻ … done` → 대기, 선택지 → 선택 필요) Orca 상태가 지연되어도 정확합니다.
 - **Pixel Office / 픽셀 오피스** — Every recent session becomes a pixel-art agent. Working agents sit at station desks (dev / research / exec / docs, chosen from the tools they use) and type or read with a live tool tag and a context-window gauge; subagents spawned by a session appear as `↳ name` characters at the next desk; idle agents rest on the lounge sofa; agents in a collaboration debate gather around a meeting table. A wall whiteboard summarizes the room. Click a character to chat, double-click to jump to its Orca terminal, right-click for actions. 최근 세션이 픽셀 캐릭터로 표시됩니다. 작업 중이면 도구에 따라 배정된 스테이션 책상에서 타이핑·읽기(도구 태그·컨텍스트 게이지 표시), 서브에이전트는 옆 책상에 `↳ 이름` 캐릭터로 등장, 쉬면 휴게실 소파, 협력 토론 중이면 회의 테이블에 모입니다. 클릭하면 채팅, 더블클릭하면 Orca 터미널, 우클릭하면 액션 메뉴입니다.
+- **Exact Detection via Hooks / 훅 기반 정확 감지 (opt-in)** — One click registers Claude Code hooks (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `PermissionRequest`, `SubagentStart/Stop`, `SessionEnd`) that append events to `~/.roca/events.jsonl`; the widget tails it and gets working / waiting / needs-input, the current tool, and subagents as facts with zero delay. Existing hooks are preserved and the previous settings are backed up. 버튼 한 번으로 Claude Code 훅을 등록해 작업 중·대기·선택 필요·현재 도구·서브에이전트를 이벤트로 즉시 받습니다. 기존 훅은 보존되고 이전 설정은 `~/.roca/`에 백업됩니다.
 - **Needs-input Alerts / 선택 필요 알림** — System notification, in-app toast, tray badge and an optional chime fire only when an agent is actually waiting for a choice (permission prompt or `AskUserQuestion`), not on every finished turn. 에이전트가 권한 승인·질문 선택을 기다릴 때만 알림(시스템 알림·토스트·트레이·선택형 알림음)이 뜹니다.
 - **Collaboration / 협력 토론** — Relay a debate between two groups of sessions (A ↔ B) or run master-worker mode where workers discuss and the master summarizes. 두 그룹 간 릴레이 토론과 마스터-워커 모드를 지원합니다.
 - **Orchestration / 오케스트레이션** — Manage orchestration runs, tasks, workers, and phase assignments. 오케스트레이션 실행, 태스크, 워커, 페이즈를 관리합니다.
@@ -109,6 +110,8 @@ npm run dist
 
 빌드가 완료되면 `dist/Orca Dashboard-0.1.0-arm64.dmg` 파일이 생성됩니다.
 
+> **세션 목록이 비어 있다면**: 위젯은 `orca` CLI를 `/usr/local/bin`, `/opt/homebrew/bin`, `/Applications/Orca.app/Contents/Resources/bin` 순으로 찾습니다. 호출에 실패하면 대시보드 상단에 빨간 배너로 원인이 표시됩니다. 터미널에서 `orca --version`이 되는지, Orca 앱이 실행 중인지 확인하세요. 필요하면 `sudo ln -s /Applications/Orca.app/Contents/Resources/bin/orca /usr/local/bin/orca`로 링크를 만들 수 있습니다.
+
 > **참고**: 코드 서명이 되어 있지 않으므로, DMG를 설치한 후 첫 실행 시 macOS에서 "확인되지 않은 개발자" 경고가 표시될 수 있습니다. **시스템 설정 > 개인정보 보호 및 보안**에서 "확인 없이 열기"를 클릭하세요.
 
 ---
@@ -141,7 +144,7 @@ npm run dist
 | 회의실 | 협력 토론 진행 중인 A·B 그룹과 마스터가 모여 앉음. 발언자에게 말풍선 |
 | 이름표 아래 게이지 | 컨텍스트 사용량. 75% 노랑, 90% 이상 빨강 깜빡임 |
 | 화이트보드 | 작업/대기/오류/휴식 인원과 가장 오래 기다린 세션 |
-| 상단 바 | 배율(자동/2×/3×/4×), 알림음 토글 |
+| 상단 바 | 배율(자동/2×/3×/4×), **정확 감지** 토글(훅 등록/해제), 알림음 토글 |
 
 ### 세션 카드 액션
 
@@ -170,14 +173,28 @@ npm run dist
 
 위젯은 Orca CLI(`orca worktree ps`, `orca terminal list`)로 세션 목록을 5초마다 가져오고, 열려 있는 터미널은 `orca terminal read --screen`으로 2초마다 화면을 읽어 실제 상태를 판정합니다. `~/.claude/projects/`의 Claude Code `.jsonl` 세션 파일은 세션 기록 보기에 사용합니다.
 
-### Status Detection / 상태 판별
+### Exact Detection (hooks) / 훅 기반 정확 감지
+
+오피스 탭의 **정확 감지** 버튼을 켜면 `~/.claude/settings.json`에 위젯 훅이 등록됩니다(기존 항목 보존, `~/.roca/settings.backup-*.json`에 백업). 훅 스크립트 `~/.roca/hook.sh`는 이벤트 JSON을 `~/.roca/events.jsonl`에 한 줄씩 덧붙이기만 하고 즉시 종료하며(비동기, 5초 제한), 위젯이 이 파일을 감시합니다. Claude Code는 훅 설정을 즉시 다시 읽으므로 이미 실행 중인 세션에도 바로 적용됩니다.
+
+| 이벤트 | 위젯 상태 |
+|---|---|
+| `UserPromptSubmit`, `PreToolUse`(도구명·대상 기록), `PostToolUse` | Running |
+| `Stop` | Waiting (10분 후 Done) |
+| `PermissionRequest`, `Notification`(`permission_prompt`, `agent_needs_input`, `elicitation_*`), `PreToolUse(AskUserQuestion)` | Waiting + **Needs input** |
+| `SubagentStart` / `SubagentStop`, 서브에이전트 안의 `PreToolUse` | 서브에이전트 등장·도구 표시·퇴장 |
+| `SessionEnd` | Done |
+
+훅 이벤트는 워크트리 경로와 이벤트의 `cwd`로 세션에 매칭되며, 훅 데이터가 있는 세션은 아래 화면 판독보다 우선합니다. 훅이 없는 세션(다른 에이전트, 훅 미설치)은 화면 판독으로 동작합니다. 끄면 위젯 훅만 제거됩니다.
+
+### Status Detection (screen) / 화면 판별
 
 터미널 화면의 마지막 `❯` 프롬프트 줄을 기준으로, 그 위의 첫 의미 있는 줄을 봅니다(들여쓰기된 안내줄과 상태 표시줄은 건너뜀). 화면 판정이 있으면 Orca의 `agents[0].state`보다 우선합니다.
 
 | 화면 | 판별 결과 |
 |---|---|
 | 스피너 줄 `· Scurrying… (1m 14s · ↓ 3.8k tokens)` / `esc to interrupt` | Running |
-| `⏺` 응답이 아직 출력 중 | Running |
+| 스피너 없이 `⏺` 응답만 남음 (턴 종료, done 줄 없음) | Waiting → 화면이 10분간 그대로면 Done |
 | `✻ Worked for 22s · done 2:34 PM` (10분 이내) | Waiting |
 | `✻ … done` 10분 경과, 또는 `done Thursday 10:28 AM`처럼 다른 날 | Done |
 | `❯ 1. Yes` 선택지 / `Do you want …` | Waiting + Needs input |
@@ -192,6 +209,8 @@ npm run dist
 | `ROCA_START_PAGE=office` | 지정 탭으로 시작. `office-demo`는 가짜 세션 8개(서브에이전트·선택 필요·회의 포함)로 오피스를 재현 |
 | `ROCA_SHOT=/path/shot.png` | 6·14·22초 시점에 창을 `shot-1.png`… 로 저장 |
 | `ROCA_DEBUG=1` | 터미널 읽기 로그 출력 |
+| `ROCA_HOOKS_INSTALL=1` | 시작 시 훅을 바로 등록 |
+| `ROCA_ORCA_BIN=/path/orca` | Orca CLI 경로 강제 지정 (오류 배너 테스트 등) |
 
 ---
 
