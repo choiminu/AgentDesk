@@ -4581,7 +4581,7 @@ function officeFrame(now) {
     const sofaX = originX + 4 + c * SOFA_STEP, sofaY = rowY + 22;
     const sofa = { x: sofaX, y: sofaY, seats: [] };
     const ch = idle[i] || null;
-    const seat = { kind: 'sofa', chairX: sofaX + 16, chairY: rowY + 36, aisleY: rowY + LOUNGE_ROW_H - 8, ch };
+    const seat = { kind: 'sofa', chairX: sofaX + 16, chairY: rowY + 32, aisleY: rowY + LOUNGE_ROW_H - 8, ch };
     if (ch) ch.seat = seat;
     sofa.seats.push(seat);
     lounge.sofas.push(sofa);
@@ -4797,13 +4797,13 @@ function officeFrame(now) {
         const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
         if (sheet) officeDrawChar(ctx, sheet, 0, 0, seat.chairX, seat.chairY, ch.alpha);
       }
-      // sofa seat front overlaps the legs so the character reads as sitting in it
-      if (im.sofa_front && seated.length) ctx.drawImage(im.sofa_front, 0, 9, 32, 7, sofa.x, sofa.y + 9, 32, 7);
+      // only the sofa's front rail (sprite rows 12-15) overlaps the shins, so the body sits on the cushion
+      if (im.sofa_front && seated.length) ctx.drawImage(im.sofa_front, 0, 12, 32, 4, sofa.x, sofa.y + 12, 32, 4);
       seated.forEach((seat, k) => {
         const ch = seat.ch;
         if (ch.reactT > 0) drawBubble(ctx, seat.chairX + 2, seat.chairY - 44, 1, 'dots');
         else if (Math.floor(now / 2200 + officeHash(ch.sid) % 5) % 3 === 0) drawBubble(ctx, seat.chairX + 2, seat.chairY - 44 - bob, 1, 'zz');
-        officeDrawName(ctx, ch.sess, seat.chairX, seat.chairY + 4, ch.alpha, { maxLen: 9, gauge: false });
+        officeDrawName(ctx, ch.sess, seat.chairX, seat.chairY + 9, ch.alpha, { maxLen: 9, gauge: false });
         officeSeats.push({ x: seat.chairX - 8, y: seat.chairY - 24, w: 16, h: 32, ch });
       });
     }
