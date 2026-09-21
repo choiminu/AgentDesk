@@ -16,11 +16,9 @@ A lightweight Electron desktop widget for monitoring [Orca](https://github.com/s
 ## Features / 기능
 
 - **Session Dashboard / 세션 대시보드** — Real-time monitoring of all Orca worktree sessions. Status is read from the live terminal screen every 2 seconds (spinner → running, `✻ … done` → waiting, permission/question prompt → needs input), so it stays correct even when Orca's own agent state lags. Orca 워크트리 세션을 실시간으로 모니터링합니다. 상태는 2초마다 터미널 화면을 읽어 판정하므로(스피너 → 작업 중, `✻ … done` → 대기, 선택지 → 선택 필요) Orca 상태가 지연되어도 정확합니다.
-- **Pixel Office / 픽셀 오피스** — Every recent session becomes a pixel-art agent. Working agents sit at station desks (dev / research / exec / docs, chosen from the tools they use) and type or read with a live tool tag and a context-window gauge; subagents spawned by a session appear as `↳ name` characters at the next desk; idle agents rest on the lounge sofa; agents in a collaboration debate gather around a meeting table. A wall whiteboard summarizes the room. Click a character to chat, double-click to jump to its Orca terminal, right-click for actions. 최근 세션이 픽셀 캐릭터로 표시됩니다. 작업 중이면 도구에 따라 배정된 스테이션 책상에서 타이핑·읽기(도구 태그·컨텍스트 게이지 표시), 서브에이전트는 옆 책상에 `↳ 이름` 캐릭터로 등장, 쉬면 휴게실 소파, 협력 토론 중이면 회의 테이블에 모입니다. 클릭하면 채팅, 더블클릭하면 Orca 터미널, 우클릭하면 액션 메뉴입니다.
+- **Pixel Office / 픽셀 오피스** — Every recent session becomes a pixel-art agent. Working agents sit at station desks (dev / research / exec / docs, chosen from the tools they use) and type or read with a live tool tag and a context-window gauge; subagents spawned by a session appear as `↳ name` characters at the next desk; idle agents rest on the lounge sofa. A wall whiteboard summarizes the room. Click a character to chat, double-click to jump to its Orca terminal, right-click for actions. 최근 세션이 픽셀 캐릭터로 표시됩니다. 작업 중이면 도구에 따라 배정된 스테이션 책상에서 타이핑·읽기(도구 태그·컨텍스트 게이지 표시), 서브에이전트는 옆 책상에 `↳ 이름` 캐릭터로 등장, 쉬면 휴게실 소파. 클릭하면 채팅, 더블클릭하면 Orca 터미널, 우클릭하면 액션 메뉴입니다.
 - **Exact Detection via Hooks / 훅 기반 정확 감지 (opt-in)** — One click registers Claude Code hooks (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `PermissionRequest`, `SubagentStart/Stop`, `SessionEnd`) that append events to `~/.roca/events.jsonl`; the widget tails it and gets working / waiting / needs-input, the current tool, and subagents as facts with zero delay. Existing hooks are preserved and the previous settings are backed up. 버튼 한 번으로 Claude Code 훅을 등록해 작업 중·대기·선택 필요·현재 도구·서브에이전트를 이벤트로 즉시 받습니다. 기존 훅은 보존되고 이전 설정은 `~/.roca/`에 백업됩니다.
 - **Needs-input Alerts / 선택 필요 알림** — System notification, in-app toast, tray badge and an optional chime fire only when an agent is actually waiting for a choice (permission prompt or `AskUserQuestion`), not on every finished turn. 에이전트가 권한 승인·질문 선택을 기다릴 때만 알림(시스템 알림·토스트·트레이·선택형 알림음)이 뜹니다.
-- **Collaboration / 협력 토론** — Relay a debate between two groups of sessions (A ↔ B) or run master-worker mode where workers discuss and the master summarizes. 두 그룹 간 릴레이 토론과 마스터-워커 모드를 지원합니다.
-- **Orchestration / 오케스트레이션** — Manage orchestration runs, tasks, workers, and phase assignments. 오케스트레이션 실행, 태스크, 워커, 페이즈를 관리합니다.
 - **Clipboard History / 클립보드 히스토리** — Tracks clipboard changes with one-click copy and search. 클립보드 변경 기록을 추적하며 원클릭 복사 및 검색을 지원합니다.
 - **Port Monitor / 포트 모니터** — Lists all listening TCP ports with process info and kill option. 리슨 중인 TCP 포트 목록과 프로세스 정보를 표시하며 프로세스 종료가 가능합니다.
 - **Quick Memo / 메모** — Persistent scratchpad with auto-save. 자동 저장되는 메모장입니다.
@@ -127,7 +125,7 @@ npm run dist
 | 헤더 드래그 | 위젯 위치 이동 |
 | ▾ 버튼 | 최소화 (헤더만 표시) |
 | ▴ 버튼 | 복원 |
-| 탭 전환 | 대시보드 / 오피스 / 오케스트레이션 / 협력 / 클립보드 / 포트 / 메모 / 타이머 |
+| 탭 전환 | 대시보드 / 오피스 / 클립보드 / 포트 / 메모 / 타이머 |
 | 파일 드래그앤드롭 | 세션 카드에 파일을 드롭하면 경로가 터미널에 입력됨 (전송하지 않음) |
 | 우클릭 (카드 / 오피스 캐릭터) | 채팅 열기 · Orca 터미널 보기 · 세션 ID 복사 · 인터럽트 · 세션 종료 |
 | Esc | 채팅 패널 / 메뉴 닫기 |
@@ -143,7 +141,6 @@ npm run dist
 | 빨간 카펫 + ! | 오류 |
 | `↳ 이름` 캐릭터 (옅은 파랑) | 부모 세션이 띄운 서브에이전트. 끝나면 사라짐 |
 | 휴게실 소파 | 쉬는(완료) 세션. 최근 24시간 목록에서 빠지면 캐릭터도 사라짐 |
-| 회의실 | 협력 토론 진행 중인 A·B 그룹과 마스터가 모여 앉음. 발언자에게 말풍선 |
 | 이름표 아래 게이지 | 컨텍스트 사용량. 75% 노랑, 90% 이상 빨강 깜빡임 |
 | 화이트보드 | 작업/대기/오류/휴식 인원과 가장 오래 기다린 세션 |
 | 상단 바 | 배율(자동/2×/3×/4×), **정확 감지** 토글(훅 등록/해제), 알림음 토글 |
