@@ -33,7 +33,8 @@
       "main.mjs",
       "widget.html",
       "preload.cjs",
-      "package.json"
+      "package.json",
+      "assets/**/*"
     ]
   }
 }
