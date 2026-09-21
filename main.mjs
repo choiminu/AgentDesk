@@ -67,7 +67,22 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile("widget.html");
+  mainWindow.loadFile("widget.html", process.env.ROCA_START_PAGE ? { hash: process.env.ROCA_START_PAGE } : undefined);
+  if (process.env.ROCA_SHOT) {
+    for (const [i, delay] of [[1, 8000], [2, 13500], [3, 24000]]) {
+      setTimeout(async () => {
+        const img = await mainWindow.webContents.capturePage();
+        const out = process.env.ROCA_SHOT.replace(/\.png$/, `-${i}.png`);
+        (await import("node:fs")).writeFileSync(out, img.toPNG());
+        console.log(`[shot] saved ${out}`);
+      }, delay);
+    }
+  }
+  mainWindow.webContents.on("did-finish-load", () => console.log(`[win] did-finish-load url=${mainWindow.webContents.getURL()}`));
+  mainWindow.webContents.on("render-process-gone", (_e, d) => console.log(`[win] render-process-gone reason=${d.reason} code=${d.exitCode}`));
+  mainWindow.webContents.on("console-message", (_e, level, msg) => {
+    if (level >= 2) console.log(`[renderer] ${msg}`);
+  });
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   const debounceSave = () => {
@@ -105,6 +120,9 @@ function createTray() {
     else mainWindow.show();
   });
 }
+
+app.on("before-quit", () => { app.isQuitting = true; });
+for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { app.isQuitting = true; app.quit(); });
 
 const ORCA_BIN = ["/usr/local/bin/orca", "/opt/homebrew/bin/orca", "orca"];
 
@@ -367,8 +385,13 @@ ipcMain.handle("orca:terminal-close", (_e, handle) =>
 );
 
 ipcMain.on("orca:session-counts", (_e, counts) => {
-  const { running } = counts;
-  if (tray) tray.setTitle(running > 0 ? ` ${running}` : "");
+  const { running, waiting } = counts;
+  if (tray) {
+    const parts = [];
+    if (running > 0) parts.push(`▶${running}`);
+    if (waiting > 0) parts.push(`?${waiting}`);
+    tray.setTitle(parts.length ? ` ${parts.join(" ")}` : "");
+  }
   if (running > prevRunningCount && prevRunningCount >= 0) {
     new Notification({
       title: "Orca Dashboard",
