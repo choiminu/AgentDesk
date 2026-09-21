@@ -2591,15 +2591,19 @@ function statusFromScreen(lines) {
 // "✻ … done Thursday 10:28 AM" (a weekday means another day) or finished > 10 min ago → idle/done.
 const DONE_FRESH_MS = 10 * 60 * 1000;
 function doneLineStatus(t) {
-  const m = t.match(/\bdone\b\s*(?:(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\s+|(\d{1,2})\/(\d{1,2})\s+)?(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
-  if (!m) return 'waiting';
-  if (m[1] || m[2]) return 'done';
-  let h = parseInt(m[4], 10); const min = parseInt(m[5], 10);
-  if (m[6]) { const pm = m[6].toUpperCase() === 'PM'; if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
+  const after = t.replace(/^.*?\bdone\b/i, '').trim();
+  const tm = after.match(/(오전|오후|AM|PM)?\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*(오전|오후|AM|PM)?/i);
+  if (!tm) return 'waiting';
+  // anything besides the time itself (weekday/date in any language) means it finished on another day
+  const rest = after.replace(tm[0], '').replace(/[·\s]/g, '');
+  if (rest.length) return 'done';
+  let h = parseInt(tm[2], 10); const min = parseInt(tm[3], 10);
+  const ap = (tm[1] || tm[4] || '').toUpperCase();
+  if (ap) { const pm = ap === 'PM' || ap === '오후'; if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
   const now = new Date();
   const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, min, 0, 0).getTime();
   const age = now.getTime() - at;
-  if (age < -60 * 1000) return 'done';            // time is "later than now" → it was yesterday or earlier
+  if (age < -60 * 1000) return 'done';
   return age > DONE_FRESH_MS ? 'done' : 'waiting';
 }
 
@@ -2718,7 +2722,7 @@ async function fetchData() {
   $('footer').classList.add('loading');
   try {
     const [ps, terms, rl] = await Promise.all([api.ps(), api.terminals(), window.orca.rateLimits()]);
-    showOrcaError(ps && ps.ok === false ? ps.error : null);
+    showOrcaError(ps && ps.ok === false ? ps.error : (orcaVersionWarning || null));
     const wts = ps?.result?.worktrees || [];
     const ts = terms?.result?.terminals || [];
     const rateLimits = rl?.result?.rateLimits || {};
@@ -2980,6 +2984,15 @@ function isRecentSession(s) {
   if (s.status === 'running' || s.status === 'waiting' || s.status === 'error') return true;
   return !!s.time && s.time > Date.now() - 24 * 60 * 60 * 1000;
 }
+let orcaVersionWarning = null;
+(async () => {
+  try {
+    const v = await window.orca.version();
+    const m = String(v || '').match(/(\d+)\.(\d+)\.(\d+)/);
+    if (m && (parseInt(m[1], 10) < 1 || (parseInt(m[1], 10) === 1 && parseInt(m[2], 10) < 4)))
+      orcaVersionWarning = `Orca ${m[0]}은(는) 지원 범위 밖입니다. 1.4 이상으로 업데이트하면 화면 기반 상태 판독과 채팅이 동작합니다.`;
+  } catch {}
+})();
 function showOrcaError(msg) {
   let el = $('orca-error');
   if (!msg) { if (el) el.remove(); return; }
