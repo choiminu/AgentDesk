@@ -225,6 +225,8 @@
   ::-webkit-scrollbar-thumb:active { background: var(--accent); background-clip: padding-box; }
   ::-webkit-scrollbar-corner { background: transparent; }
   .office-wrap { scroll-behavior: smooth; }
+  .nav-badge[hidden] { display: none; }
+  .nav-badge { display: inline-block; margin-left: 5px; padding: 0 5px; min-width: 14px; border-radius: 8px; background: var(--yellow); color: #1a1408; font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; vertical-align: 1px; }
   .page-nav-btn {
     flex: 0 0 auto;
     appearance: none;
@@ -251,6 +253,21 @@
   /* ── Pages ── */
   .page { display: none; flex-direction: column; flex: 1; overflow: hidden; position: relative; }
   .page.active { display: flex; }
+
+  .ctx-chip.warn { color: var(--yellow) !important; }
+  .ctx-chip.crit { color: var(--red) !important; font-weight: 700; }
+
+  /* ── Context menu ── */
+  .ctx-menu {
+    position: fixed; z-index: 200; min-width: 150px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.35); padding: 4px; font-size: var(--fs-sm);
+  }
+  .ctx-menu .ctx-title { padding: 4px 8px 6px; font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); border-bottom: 1px solid var(--border-subtle); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+  .ctx-menu button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none; color: var(--text); padding: 5px 8px; border-radius: 6px; cursor: pointer; font: inherit; }
+  .ctx-menu button:hover { background: var(--surface-hover, rgba(255,255,255,0.06)); }
+  .ctx-menu button.danger { color: var(--red); }
+  .ctx-menu button .k { margin-left: auto; color: var(--text3); font-size: var(--fs-xs); }
 
   /* ── Pixel office ── */
   @font-face { font-family: 'Galmuri9'; src: url('assets/fonts/Galmuri9.woff2') format('woff2'); font-display: swap; }
@@ -508,13 +525,6 @@
   .s-agent.shell { background: var(--yellow-dim); color: var(--yellow); }
 
   .s-time { font-variant-numeric: tabular-nums; }
-  .s-elapsed {
-    font-variant-numeric: tabular-nums;
-    color: var(--accent);
-    font-weight: 500;
-    font-size: var(--fs-xs);
-    opacity: 0.85;
-  }
   .s-tool {
     color: var(--text3);
     font-size: var(--fs-xs);
@@ -2099,7 +2109,7 @@
   <!-- Page navigation -->
   <div class="page-nav">
     <button class="page-nav-btn active" data-page="dashboard">대시보드</button>
-    <button class="page-nav-btn" data-page="office">오피스</button>
+    <button class="page-nav-btn" data-page="office">오피스<span class="nav-badge" id="badge-office" hidden>0</span></button>
     <button class="page-nav-btn" data-page="orchestration">오케스트레이션</button>
     <button class="page-nav-btn" data-page="collab">협력</button>
     <button class="page-nav-btn" data-page="clipboard">클립보드</button>
@@ -2140,7 +2150,7 @@
   <div class="page" id="page-office">
     <div class="office-bar">
       <span class="office-legend"><span class="office-legend-key" style="background:var(--accent)"></span>작업 중</span>
-      <span class="office-legend"><span class="office-legend-key" style="background:var(--yellow)"></span>입력 대기</span>
+      <span class="office-legend"><span class="office-legend-key" style="background:var(--yellow)"></span>대기 (❓=선택 필요)</span>
       <span class="office-legend"><span class="office-legend-key" style="background:var(--text3)"></span>완료(휴게실)</span><span class="office-legend"><span class="office-legend-key" style="background:#c9b3e0"></span>회의 중</span>
       <span class="office-legend"><span class="office-legend-key" style="background:var(--red)"></span>오류</span>
       <select class="office-zoom" id="office-zoom" title="확대 배율"><option value="auto">자동</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
@@ -2543,20 +2553,89 @@ function status(wt) {
   return 'done';
 }
 
+// Claude Code TUI: [transcript…] [spinner | ✻ done] ─── ❯ ─── [status bar]. Anchor on the last prompt line.
+const SPINNER_RE = /^[·•✢✳✶✻✽✦✧*⠁-⣿]\s*\S[^(]*…\s*(\(|$)/;
 function statusFromScreen(lines) {
   if (!lines || !lines.length) return null;
+  let p = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
-    const t = lines[i].trim();
-    if (!t || t.startsWith('────') || t.startsWith('branch:') || t.includes('[OMC#') || t.includes('bypass permissions')) continue;
-    if (t === '❯' || t === '$') return 'waiting';
-    if (t.includes('✻') && t.includes('done')) return 'waiting';
-    if (t.startsWith('❯') && t.length > 2) return 'running';
-    if (t.startsWith('⏺') || t.startsWith('⠋') || t.startsWith('⠙') || t.startsWith('⠹')) return 'running';
-    break;
+    if (/^❯/.test(lines[i].trim())) { p = i; break; }
+  }
+  if (p < 0) return null;
+  const promptText = lines[p].trim().slice(1).trim();
+  if (/^\d+\.\s/.test(promptText)) return 'waiting';          // numbered choice (permission / question)
+  for (let i = p - 1; i >= 0; i--) {
+    const raw = lines[i];
+    const t = raw.trim();
+    if (!t || /^─+/.test(t)) continue;
+    if (/^\s/.test(raw) || /^[⎿※]/.test(t)) continue;         // continuation / tip / recap lines
+    if (SPINNER_RE.test(t) || /esc to interrupt/i.test(t)) return 'running';
+    if (/^✻/.test(t) && /\bdone\b/i.test(t)) return doneLineStatus(t);
+    if (/^(Do you want|Allow|Would you like)/i.test(t)) return 'waiting';
+    if (/^⏺/.test(t)) return 'running';                       // response still streaming (no ✻ done yet)
+    return null;
   }
   return null;
 }
 
+// "✻ Worked for 22s · done 2:34 PM" → just finished → waiting for input.
+// "✻ … done Thursday 10:28 AM" (a weekday means another day) or finished > 10 min ago → idle/done.
+const DONE_FRESH_MS = 10 * 60 * 1000;
+function doneLineStatus(t) {
+  const m = t.match(/\bdone\b\s*(?:(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\s+|(\d{1,2})\/(\d{1,2})\s+)?(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!m) return 'waiting';
+  if (m[1] || m[2]) return 'done';
+  let h = parseInt(m[4], 10); const min = parseInt(m[5], 10);
+  if (m[6]) { const pm = m[6].toUpperCase() === 'PM'; if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
+  const now = new Date();
+  const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, min, 0, 0).getTime();
+  const age = now.getTime() - at;
+  if (age < -60 * 1000) return 'done';            // time is "later than now" → it was yesterday or earlier
+  return age > DONE_FRESH_MS ? 'done' : 'waiting';
+}
+
+// A choice prompt renders numbered options with a ❯ marker on the selected one ("  ❯ 1. Yes").
+// Plain numbered lists in the transcript never carry the marker.
+function screenHasChoice(lines) {
+  if (!lines) return false;
+  for (let i = lines.length - 1; i >= Math.max(0, lines.length - 40); i--) {
+    if (/^\s*❯\s*\d+\.\s+\S/.test(lines[i])) return true;
+  }
+  return false;
+}
+// Agents panel under the status bar: "  ⏺ main" then one line per subagent:
+//   "  ◯ name  description…      17s · ↓ 30.5k tokens"   (running)
+//   "  ◯ name  description…      idle"                    (finished)
+function parseAgentPanel(lines) {
+  if (!lines) return [];
+  let start = -1;
+  for (let i = lines.length - 1; i >= 0; i--) if (/^\s*⏺\s+main\s*$/.test(lines[i])) { start = i; break; }
+  if (start < 0) return [];
+  const out = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    const m = lines[i].match(/^\s*([◯●◉○◐◑◔◕])\s+(\S+)\s{2,}(.*?)\s*$/);
+    if (!m) { if (out.length) break; else continue; }
+    let rest = m[3];
+    let state = 'running', elapsed = '', tokens = '';
+    if (/\bidle\s*$/.test(rest)) { state = 'idle'; rest = rest.replace(/\s*idle\s*$/, ''); }
+    const tm = rest.match(/\s{2,}((?:\d+m\s*)?\d+s|\d+m)\s*(?:·\s*↓\s*([\d.]+k?)\s*tokens)?\s*$/);
+    if (tm) { elapsed = tm[1]; tokens = tm[2] || ''; rest = rest.slice(0, tm.index); }
+    out.push({ name: m[2], desc: rest.trim().replace(/\.\.\.$|…$/, ''), state, elapsed, tokens });
+  }
+  return out;
+}
+// OMC status line carries "ctx:[#####-----]46%" (context window usage)
+function parseCtxPct(lines) {
+  if (!lines) return null;
+  for (let i = lines.length - 1; i >= Math.max(0, lines.length - 8); i--) {
+    const m = lines[i].match(/ctx:\s*\[[#\-\s]*\]\s*(\d{1,3})%/);
+    if (m) return Math.min(100, parseInt(m[1], 10));
+  }
+  return null;
+}
+const screenCtxCache = new Map();
+const screenAgentsCache = new Map();
+const screenChoiceCache = new Map();
 const screenStatusCache = new Map();
 
 async function refreshScreenStatuses() {
@@ -2565,9 +2644,13 @@ async function refreshScreenStatuses() {
     entries.map(([id, h]) =>
       window.orca.terminalRead(h, true).then(res => {
         const tail = extractTail(res);
+        screenChoiceCache.set(id, screenHasChoice(tail));
+        screenAgentsCache.set(id, parseAgentPanel(tail));
+        const ctx = parseCtxPct(tail); if (ctx != null) screenCtxCache.set(id, ctx);
         const screenSt = statusFromScreen(tail);
+        // null = no verdict this tick (e.g. between tool calls); keep the last verdict instead of flapping back to orca's stale state
         if (screenSt) screenStatusCache.set(id, screenSt);
-        else screenStatusCache.delete(id);
+        else if (!tail.length) screenStatusCache.delete(id);
       })
     )
   );
@@ -2588,7 +2671,7 @@ const persistentToasts = new Map();
 function showInAppToast(name, type, sessionId) {
   const el = document.createElement('div');
   if (type === 'error') { el.className = 'toast err'; el.textContent = `⚠ ${name} 오류 발생`; }
-  else if (type === 'waiting') { el.className = 'toast waiting'; el.textContent = `💬 ${name} 응답 대기 중`; }
+  else if (type === 'waiting') { el.className = 'toast waiting'; el.textContent = `❓ ${name} 선택이 필요합니다`; }
   else { el.className = 'toast'; el.textContent = `✓ ${name} 완료`; }
   $('toasts').appendChild(el);
 
@@ -2628,18 +2711,17 @@ async function fetchData() {
       const a = w.agents?.[0];
       const baseStatus = status(w);
       const screenSt = screenStatusCache.get(w.worktreeId);
-      let finalStatus = baseStatus;
-      if (screenSt) {
-        if (baseStatus === 'running' && screenSt === 'waiting') finalStatus = 'waiting';
-        if (baseStatus === 'done' && screenSt === 'running') finalStatus = 'running';
-        if (baseStatus === 'done' && screenSt === 'waiting') finalStatus = 'waiting';
-      }
+      const finalStatus = resolveStatus(baseStatus, screenSt);
       return {
         id: w.worktreeId,
         name: w.displayName || (w.branch || '').replace('refs/heads/', ''),
         branch: (w.branch || '').replace('refs/heads/', ''),
         repo: w.repo || '',
         status: finalStatus,
+        baseStatus,
+        needsInput: needsInputFor(w.worktreeId, a?.toolName, finalStatus),
+        subagents: screenAgentsCache.get(w.worktreeId) || [],
+        ctxPct: screenCtxCache.get(w.worktreeId) ?? null,
         agent: agentType(term?.agentIdentity || a?.agentType),
         time: w.lastActivityAt,
         tool: a?.toolName || '',
@@ -2650,6 +2732,37 @@ async function fetchData() {
       };
     });
 
+    applyStatusTransitions();
+    updateCounters();
+    renderRateLimits(rateLimits);
+    renderDashboard();
+  } catch (e) { console.error(e); }
+  finally { $('footer').classList.remove('loading'); }
+}
+
+// orca's agent state lags; what the terminal screen shows right now is the truth for running/waiting.
+function needsInputFor(id, toolName, status) {
+  if (status !== 'waiting' && status !== 'running') return false;
+  if (screenChoiceCache.get(id)) return true;
+  return toolName === 'AskUserQuestion' || toolName === 'AskUser';
+}
+function resolveStatus(baseStatus, screenSt) {
+  if (baseStatus === 'error') return 'error';
+  if (screenSt === 'running' || screenSt === 'waiting' || screenSt === 'done') return screenSt;
+  return baseStatus;
+}
+
+const statusSince = new Map();
+function sessionTimeLabel(s) {
+  const since = statusSince.get(s.id);
+  if (s.status === 'running' && since) return `작업 ${timeAgo(since)}`;
+  if (s.status === 'waiting' && since) return `대기 ${timeAgo(since)}`;
+  return timeAgo(s.time);
+}
+function applyStatusTransitions() {
+    for (const s of sessions) {
+      if (prevStatuses.get(s.id) !== s.status || !statusSince.has(s.id)) statusSince.set(s.id, Date.now());
+    }
     if (!isFirstFetch) {
       for (const s of sessions) {
         const prev = prevStatuses.get(s.id);
@@ -2663,24 +2776,23 @@ async function fetchData() {
           window.orca.notify('오류 발생', `${s.name} (${s.agent})`);
           showInAppToast(s.name, 'error');
         }
-        if (prev === 'running' && s.status === 'waiting' && !notifiedWaiting.has(s.id)) {
+        if (s.needsInput && !notifiedWaiting.has(s.id)) {
           notifiedWaiting.add(s.id);
-          const isQuestion = s.tool === 'AskUserQuestion' || s.tool === 'AskUser';
-          const title = isQuestion ? '질문 대기' : '응답 대기';
-          const body = isQuestion ? `${s.name}: 선택이 필요합니다` : `${s.name}: 입력을 기다리고 있습니다`;
-          window.orca.notify(title, body);
+          window.orca.notify('선택 필요', `${s.name}: 질문 또는 권한 승인이 기다리고 있습니다`);
           showInAppToast(s.name, 'waiting', s.id);
         }
-        if (s.status === 'running') {
-          notifiedDone.delete(s.id);
+        if (!s.needsInput && notifiedWaiting.has(s.id)) {
           notifiedWaiting.delete(s.id);
           clearWaitingToast(s.id);
         }
+        if (s.status === 'running') notifiedDone.delete(s.id);
       }
     }
     for (const s of sessions) prevStatuses.set(s.id, s.status);
     isFirstFetch = false;
+}
 
+function updateCounters() {
     const running = sessions.filter(s => s.status === 'running').length;
     const waiting = sessions.filter(s => s.status === 'waiting').length;
     const done = sessions.filter(s => s.status === 'done' || s.status === 'error').length;
@@ -2690,22 +2802,51 @@ async function fetchData() {
     $('nDone').textContent = done;
     $('updatedAt').textContent = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+    const officeBadge = $('badge-office');
+    const asks = sessions.filter(s => s.needsInput).length;
+    officeBadge.textContent = asks; officeBadge.hidden = asks === 0;
     $('badge-all').textContent = sessions.length;
     $('badge-running').textContent = running + waiting;
     $('badge-done').textContent = done;
 
-    window.orca.sendSessionCounts({ running, waiting, done });
-    renderRateLimits(rateLimits);
-    renderDashboard();
-  } catch (e) { console.error(e); }
-  finally { $('footer').classList.remove('loading'); }
+    window.orca.sendSessionCounts({ running, waiting, done, asks });
 }
 
+// fast path: re-read terminal screens only and patch statuses in place
+let screenTickBusy = false;
+async function screenTick() {
+  if (screenTickBusy || !sessions.length) return;
+  screenTickBusy = true;
+  try {
+    await refreshScreenStatuses();
+    let changed = false;
+    for (const s of sessions) {
+      const screenSt = screenStatusCache.get(s.id);
+      const next = resolveStatus(s.baseStatus || s.status, screenSt);
+      if (next !== s.status) { s.status = next; changed = true; }
+      const ni = needsInputFor(s.id, s.tool, s.status);
+      if (ni !== !!s.needsInput) { s.needsInput = ni; changed = true; }
+      const ctx = screenCtxCache.get(s.id) ?? null;
+      if (ctx !== s.ctxPct) { s.ctxPct = ctx; changed = true; }
+      const subs = screenAgentsCache.get(s.id) || [];
+      if (JSON.stringify(subs) !== JSON.stringify(s.subagents || [])) { s.subagents = subs; changed = true; }
+    }
+    if (changed) { applyStatusTransitions(); updateCounters(); renderDashboard(); }
+  } catch (e) { console.warn('[screenTick]', e); }
+  finally { screenTickBusy = false; }
+}
+setInterval(screenTick, 2000);
+
+// "recent" = currently active (running / waiting / error), or any activity within the last 24h.
+// orca's lastActivityAt can lag for long-running sessions, so status wins over the timestamp.
+function isRecentSession(s) {
+  if (s.status === 'running' || s.status === 'waiting' || s.status === 'error') return true;
+  return !!s.time && s.time > Date.now() - 24 * 60 * 60 * 1000;
+}
 function renderDashboard() {
   let items = sessions;
   if (tab === 'recent') {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    items = items.filter(s => s.time && s.time > cutoff);
+    items = items.filter(isRecentSession);
   } else if (tab === 'running') items = items.filter(s => s.status === 'running' || s.status === 'waiting');
   else if (tab === 'done') items = items.filter(s => s.status === 'done' || s.status === 'error');
   if (searchQuery) {
@@ -2752,15 +2893,16 @@ function renderDashboard() {
       const prev = prevStatuses.get(s.id);
       const changed = prev && prev !== s.status;
       html += `<div class="session${changed ? ' pulse' : ''}" data-id="${esc(s.id)}" data-handle="${esc(h || '')}">
-        <span class="s-icon ${s.status}">${statusIcon(s.status)}</span>
+        <span class="s-icon ${s.status}" title="${s.needsInput ? '선택 필요' : ''}">${s.needsInput ? '<span class="ic-bounce">❓</span>' : statusIcon(s.status)}</span>
         <div class="s-info">
           <div class="s-name">${isPinned ? '📌 ' : ''}${esc(s.name)}</div>
           <div class="s-meta">
             <span class="s-agent ${s.agent}">${esc(s.agent)}</span>
             <span class="s-branch">${esc(s.branch)}</span>
-            <span class="s-time">${timeAgo(s.time)}</span>
-            ${s.status === 'running' && s.time ? `<span class="s-elapsed" data-start="${s.time}"></span>` : ''}
+            <span class="s-time" title="${s.status === 'running' ? '작업 시작 후 경과' : s.status === 'waiting' ? '응답 완료 후 대기' : '마지막 활동'}">${sessionTimeLabel(s)}</span>
             ${s.tool ? `<span class="s-tool">${esc(s.tool)}</span>` : ''}
+            ${s.ctxPct != null ? `<span class="s-tool ctx-chip ${s.ctxPct >= 90 ? 'crit' : s.ctxPct >= 75 ? 'warn' : ''}" title="컨텍스트 사용량">ctx ${s.ctxPct}%</span>` : ''}
+            ${(s.subagents || []).filter(a => a.state === 'running').length ? `<span class="s-tool" title="${esc((s.subagents || []).filter(a => a.state === 'running').map(a => a.name).join(', '))}">🤖${(s.subagents || []).filter(a => a.state === 'running').length}</span>` : ''}
           </div>
           ${peek ? `<div class="s-prompt">${esc(trunc(peek, 120))}</div>` : ''}
         </div>
@@ -3984,6 +4126,44 @@ $('chat-orca').addEventListener('click', () => {
 });
 
 // ══════════════════════════════════════════
+// CONTEXT MENU (session actions)
+// ══════════════════════════════════════════
+let ctxMenuEl = null;
+function closeCtxMenu() { if (ctxMenuEl) { ctxMenuEl.remove(); ctxMenuEl = null; } }
+function openSessionMenu(x, y, sess) {
+  closeCtxMenu();
+  const handle = handles.get(sess.id);
+  const items = [];
+  if (handle) items.push(['💬', '채팅 열기', () => openChat(handle)]);
+  if (handle) items.push(['🖥', 'Orca 터미널 보기', () => api.switchTo(handle)]);
+  items.push(['📋', '세션 ID 복사', () => { window.orca.clipboardWrite(sess.id); showInAppToast('세션 ID 복사됨'); }]);
+  if (handle && (sess.status === 'running' || sess.status === 'waiting')) items.push(['⏸', '인터럽트 (Esc)', () => api.interrupt(handle)]);
+  if (handle) items.push(['✕', '세션 종료', async () => { if (confirm(`${sess.name} 세션을 종료할까요?`)) { await api.close(handle); fetchData(); } }, 'danger']);
+  const el = document.createElement('div');
+  el.className = 'ctx-menu';
+  el.innerHTML = `<div class="ctx-title">${esc(sess.name)}</div>` + items.map((it, i) => `<button data-i="${i}" class="${it[3] || ''}"><span>${it[0]}</span>${esc(it[1])}</button>`).join('');
+  el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; closeCtxMenu(); items[+b.dataset.i][2](); });
+  document.body.appendChild(el);
+  const r = el.getBoundingClientRect();
+  el.style.left = Math.min(x, window.innerWidth - r.width - 6) + 'px';
+  el.style.top = Math.min(y, window.innerHeight - r.height - 6) + 'px';
+  ctxMenuEl = el;
+}
+document.addEventListener('mousedown', e => { if (ctxMenuEl && !ctxMenuEl.contains(e.target)) closeCtxMenu(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (ctxMenuEl) { closeCtxMenu(); return; }
+    const panel = $('chat-panel');
+    if (panel.classList.contains('open')) { panel.classList.remove('open'); chatHandle = null; }
+  }
+});
+$('list').addEventListener('contextmenu', e => {
+  const row = e.target.closest('.session'); if (!row) return;
+  const sess = sessions.find(ss => ss.id === row.dataset.id); if (!sess) return;
+  e.preventDefault(); openSessionMenu(e.clientX, e.clientY, sess);
+});
+
+// ══════════════════════════════════════════
 // PIXEL OFFICE (assets/pixel, see CREDITS.md)
 // ══════════════════════════════════════════
 const OFFICE = {
@@ -4061,14 +4241,15 @@ function officeHash(str) {
 }
 
 const OFFICE_DEMO = location.hash === '#office-demo' ? [
-  { id: 'demo-1', name: 'auth-refactor', branch: 'feat/auth', status: 'running', tool: 'Edit' },
+  { id: 'demo-1', name: 'auth-refactor', branch: 'feat/auth', status: 'running', tool: 'Edit', ctxPct: 82 },
   { id: 'demo-8', name: 'readme-writer', branch: 'docs/readme', status: 'running', tool: 'Edit', toolInput: '/repo/docs/README.md' },
-  { id: 'demo-2', name: 'grep-scan', branch: 'chore/scan', status: 'running', tool: 'Grep' },
-  { id: 'demo-3', name: 'ci-fix', branch: 'fix/ci', status: 'running', tool: 'Bash' },
-  { id: 'demo-4', name: 'review', branch: 'review/pr-12', status: 'waiting', tool: '' },
+  { id: 'demo-2', name: 'grep-scan', branch: 'chore/scan', status: 'running', tool: 'Grep', ctxPct: 34 },
+  { id: 'demo-3', name: 'ci-fix', branch: 'fix/ci', status: 'running', tool: 'Bash', ctxPct: 93 },
+  { id: 'demo-4', name: 'review', branch: 'review/pr-12', status: 'waiting', tool: '', needsInput: true },
   { id: 'demo-5', name: 'deploy', branch: 'ops/deploy', status: 'error', tool: '' },
   { id: 'demo-6', name: 'docs', branch: 'docs/readme', status: 'done', tool: '' },
   { id: 'demo-7', name: 'idle-bot', branch: 'main', status: 'done', tool: '' },
+  { id: 'demo-1::explorer', parentId: 'demo-1', isSub: true, name: '↳ explorer', branch: 'auth-refactor', status: 'running', tool: 'Agent', toolInput: '코드베이스 탐색', subElapsed: '42s', subTokens: '12.3k' },
 ] : null;
 if (OFFICE_DEMO) {
   setTimeout(() => { document.querySelector('.page-nav').style.pointerEvents = 'none'; const mb = $('minimize-btn'); if (mb) mb.style.pointerEvents = 'none'; }, 2000);
@@ -4078,12 +4259,28 @@ if (OFFICE_DEMO) {
     setTimeout(() => { const w = $('office-wrap'); w.scrollTop = w.scrollHeight; }, 5000);
   }, 16000);
 }
-// same rule as the dashboard "최근" tab: active within the last 24h
+// same rule as the dashboard "최근" tab, plus one synthetic session per running subagent
+const officeSubSeen = new Map();   // key → last time seen running (grace so a finished sub fades instead of popping)
 function officeSessions() {
   if (OFFICE_DEMO) return OFFICE_DEMO;
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  return sessions.filter(s => s.time && s.time > cutoff);
+  const base = sessions.filter(isRecentSession);
+  const out = [...base];
+  const now = Date.now();
+  for (const s of base) {
+    for (const a of (s.subagents || [])) {
+      const key = `${s.id}::${a.name}`;
+      if (a.state === 'running') officeSubSeen.set(key, now);
+      const last = officeSubSeen.get(key);
+      if (!last || now - last > 8000) continue;
+      out.push({ id: key, parentId: s.id, isSub: true, name: '↳ ' + a.name, branch: s.name, repo: s.repo,
+        status: a.state === 'running' ? 'running' : 'done', tool: 'Agent', toolInput: a.desc, lastMsg: a.desc,
+        time: now, agent: s.agent, subElapsed: a.elapsed, subTokens: a.tokens });
+    }
+  }
+  for (const [k, t] of officeSubSeen) if (now - t > 60000) officeSubSeen.delete(k);
+  return out;
 }
+function officeHandleFor(ch) { return handles.get(ch.sess?.parentId || ch.sid); }
 
 let officeZoom = 'auto';
 try { officeZoom = localStorage.getItem('roca-office-zoom') || 'auto'; } catch {}
@@ -4140,9 +4337,10 @@ function officeFrame(now) {
       officeChars.set(sess.id, ch);
     }
     ch.sess = sess; ch.fading = false;
-    if (ch.lastStatus !== sess.status) {
-      if (ch.lastStatus && sess.status === 'waiting') { ch.alertT = 4; officeBeep(); }
-      ch.lastStatus = sess.status; ch.statusSince = Date.now();
+    if (ch.lastStatus !== sess.status) { ch.lastStatus = sess.status; ch.statusSince = Date.now(); }
+    if (!!sess.needsInput !== !!ch.lastNeedsInput) {
+      if (sess.needsInput && ch.lastNeedsInput !== undefined) { ch.alertT = 4; officeBeep(); }
+      ch.lastNeedsInput = !!sess.needsInput;
     }
     // tool history: remember the last few distinct tools for the trail and for a stable station vote
     const base = sess.tool ? String(sess.tool).split(/[\s:(]/)[0] : '';
@@ -4151,8 +4349,13 @@ function officeFrame(now) {
       ch.toolHist.push({ base, input: sess.toolInput || '', station: officeClassify(sess), t: Date.now() });
       if (ch.toolHist.length > 6) ch.toolHist.shift();
     }
-    const vote = officeVoteStation(ch.toolHist);
-    if (vote) ch.station = vote; else if (!ch.station) ch.station = 'dev';
+    if (sess.isSub) {
+      const parent = officeChars.get(sess.parentId);
+      ch.station = (parent && parent.station) || ch.station || 'dev';
+    } else {
+      const vote = officeVoteStation(ch.toolHist);
+      if (vote) ch.station = vote; else if (!ch.station) ch.station = 'dev';
+    }
   }
   for (const [sid, ch] of officeChars) {
     if (!shownIds.has(sid)) { ch.fading = true; ch.alpha -= dt * 2; if (ch.alpha <= 0) officeChars.delete(sid); }
@@ -4191,7 +4394,8 @@ function officeFrame(now) {
   const meeting = officeBuildMeeting(y, originX, usableW0(cols, SEAT_PX), aisleY);
   if (meeting) y += meeting.h;
 
-  // lounge: idle agents rest on sofas
+  // lounge: idle agents rest on sofas (finished subagents just fade out)
+  for (const c of officeChars.values()) if (c.sess && c.sess.isSub && c.sess.status === 'done') { c.fading = true; c.alpha = Math.min(c.alpha, 0.99); }
   const idle = [...officeChars.values()]
     .filter(c => !c.fading && !c.meeting && c.sess.status === 'done')
     .sort((a, b) => a.sid < b.sid ? -1 : 1);
@@ -4311,7 +4515,7 @@ function officeFrame(now) {
       if (im.carpet) {
         ctx.drawImage(im.carpet, sx + 8, sy + 12, 64, 64);
         ctx.globalCompositeOperation = 'multiply';
-        ctx.fillStyle = st === 'running' ? '#6f8fd8' : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : '#bdbac4';
+        ctx.fillStyle = st === 'running' ? (sess && sess.isSub ? '#8fb3e8' : '#6f8fd8') : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : '#bdbac4';
         ctx.fillRect(sx + 8, sy + 12, 64, 64);
         ctx.globalCompositeOperation = 'source-over';
       }
@@ -4321,10 +4525,10 @@ function officeFrame(now) {
       }
       if (im.desk) ctx.drawImage(im.desk, deskX, deskY);
       const pcImg = sitting && st === 'running' ? im[`pc_on_${pcFrame + 1}`] : sitting && (st === 'waiting' || st === 'error') ? im.pc_on_1 : im.pc_off;
-      if (pcImg) ctx.drawImage(pcImg, deskX + 16, deskY - 16);
-      if (sess && im.coffee && (officeHash(sess.id) % 2 === 0)) ctx.drawImage(im.coffee, deskX + 32, deskY - 2);
+      if (pcImg) ctx.drawImage(pcImg, deskX + 16, deskY - 5);
+      if (sess && im.coffee && (officeHash(sess.id) % 2 === 0)) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
       if (sitting && st === 'running') {
-        ctx.fillStyle = `rgba(140,200,255,${0.10 + 0.12 * pulse})`; ctx.fillRect(deskX + 12, deskY - 12, 24, 22);
+        ctx.fillStyle = `rgba(140,200,255,${0.10 + 0.12 * pulse})`; ctx.fillRect(deskX + 12, deskY - 2, 24, 22);
       }
       if (im.chair_back) ctx.drawImage(im.chair_back, seat.chairX - 8, seat.chairY - 12);
 
@@ -4335,20 +4539,25 @@ function officeFrame(now) {
           const reading = officeIsReadingTool(sess.tool);
           frameCol = (reading ? 5 : 3) + (Math.floor(ch.animT / (reading ? 0.45 : 0.22)) % 2);
         } else if (st === 'waiting') {
-          // turned around, waving for input
-          dir = 0; frameCol = 3 + (Math.floor(ch.animT / 0.5) % 2);
+          dir = 0;
+          frameCol = sess.needsInput ? 3 + (Math.floor(ch.animT / 0.5) % 2) : 0;   // wave only when a choice is pending
         } else if (st === 'error') { dir = 0; frameCol = 0; }
         if (sheet) officeDrawChar(ctx, sheet, frameCol, dir, seat.chairX, seat.chairY, ch.alpha);
         const headY = seat.chairY - 24;
         if (ch.reactT > 0) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'dots');
         else if (st === 'running') {
-          const tool = officeToolLabel(sess.tool);
-          officeDrawTag(ctx, seat.chairX, headY - 16, tool.label, tool.color, now);
-          officeDrawTrail(ctx, ch, seat.chairX, headY - 3);
-          if (/^(Task|Agent)\b/.test(String(sess.tool || ''))) officeDrawHelper(ctx, im, ch, seat, now);
+          if (sess.isSub) {
+            officeDrawTag(ctx, seat.chairX, headY - 16, `⇶ ${(sess.subElapsed || '').replace(/\s+/g, '')}`.trim(), '#9cc4ff', now);
+          } else {
+            const tool = officeToolLabel(sess.tool);
+            officeDrawTag(ctx, seat.chairX, headY - 16, tool.label, tool.color, now);
+            officeDrawTrail(ctx, ch, seat.chairX, headY - 3);
+            const runningSubs = (sess.subagents || []).filter(a => a.state === 'running').length;
+            if (!runningSubs && /^(Task|Agent)\b/.test(String(sess.tool || ''))) officeDrawHelper(ctx, im, ch, seat, now);
+          }
         } else if (st === 'waiting') {
-          drawBubble(ctx, seat.chairX + 2, headY - 16 - bob, 1, 'ask');
-          officeDrawSince(ctx, seat.chairX + 15, headY - 14 - bob, ch.statusSince, '#F2C037');
+          drawBubble(ctx, seat.chairX + 2, headY - 16 - (sess.needsInput ? bob : 0), 1, sess.needsInput ? 'ask' : 'check');
+          officeDrawSince(ctx, seat.chairX + 15, headY - 14 - (sess.needsInput ? bob : 0), ch.statusSince, sess.needsInput ? '#F2C037' : '#9fd8b8');
         } else if (st === 'error') {
           if (Math.floor(now / 400) % 2) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'bang');
           officeDrawSince(ctx, seat.chairX + 15, headY - 14, ch.statusSince, '#ff9a95');
@@ -4455,10 +4664,20 @@ function officeDrawName(ctx, sess, cx, y, alpha = 1) {
   ctx.globalAlpha = alpha;
   ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   const tw = Math.round(ctx.measureText(label).width + 6);
+  const x0 = Math.round(cx - tw / 2), y0 = Math.round(y);
   ctx.fillStyle = 'rgba(0,0,0,0.62)';
-  ctx.fillRect(Math.round(cx - tw / 2), Math.round(y), tw, 10);
+  ctx.fillRect(x0, y0, tw, 10);
   ctx.fillStyle = st === 'running' ? '#9cc4ff' : st === 'waiting' ? '#f2d27a' : st === 'error' ? '#ff9a95' : '#d8dce6';
-  ctx.fillText(label, Math.round(cx), Math.round(y));
+  ctx.fillText(label, Math.round(cx), y0);
+  // context-window gauge: fills up as the session approaches auto-compact
+  if (sess.ctxPct != null && !sess.isSub) {
+    const pct = sess.ctxPct;
+    const gw = tw, gx = x0, gy = y0 + 10;
+    ctx.fillStyle = 'rgba(0,0,0,0.62)'; ctx.fillRect(gx, gy, gw, 3);
+    const blink = pct >= 90 && Math.floor(performance.now() / 500) % 2 === 0;
+    ctx.fillStyle = pct >= 90 ? (blink ? '#ff8f89' : '#c23c36') : pct >= 75 ? '#f2c037' : '#5fd39a';
+    ctx.fillRect(gx + 1, gy + 1, Math.max(1, Math.round((gw - 2) * pct / 100)), 1);
+  }
   ctx.restore();
 }
 let officeMovers = [];
@@ -4519,15 +4738,31 @@ function officeDrawBoard(ctx, shown, worldW, floorTop) {
     if (c.fading || !c.sess || c.sess.status !== 'waiting') continue;
     if (!longest || c.statusSince < longest.statusSince) longest = c;
   }
-  const line1 = `작업 ${run} · 대기 ${wait}${err ? ' · 오류 ' + err : ''} · 휴식 ${done}`;
-  const line2 = longest ? `가장 오래 대기: ${(longest.sess.name || '').slice(0, 12)} ${officeFmtSince(longest.statusSince)}` : (run ? '모두 응답 중입니다' : '대기 중인 요청이 없습니다');
+  const ask = shown.filter(s => s.needsInput).length;
+  const subs = shown.filter(s => s.isSub && s.status === 'running').length;
+  const line1 = `작업 ${run - subs}${subs ? ' +서브 ' + subs : ''} · 대기 ${wait}${ask ? ' (선택 필요 ' + ask + ')' : ''}${err ? ' · 오류 ' + err : ''} · 휴식 ${done}`;
+  const hot = shown.filter(s => s.ctxPct != null && !s.isSub).sort((a, b) => b.ctxPct - a.ctxPct)[0];
+  const line2 = longest ? `가장 오래 대기: ${(longest.sess.name || '').slice(0, 12)} ${officeFmtSince(longest.statusSince)}`
+    : (hot && hot.ctxPct >= 75) ? `컨텍스트 주의: ${(hot.name || '').slice(0, 12)} ${hot.ctxPct}%`
+    : (run ? '모두 응답 중입니다' : '대기 중인 요청이 없습니다');
   ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  const w = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width) + 12;
-  const h = 24, x = Math.round((worldW - w) / 2), y = floorTop - h - 5;
+  // shrink the copy until the board fits the room
+  const maxW = worldW - 16;
+  const variants1 = [line1,
+    `작업 ${run}${subs ? '+' + subs : ''} · 대기 ${wait}${ask ? '(❓' + ask + ')' : ''}${err ? ' · 오류 ' + err : ''} · 휴식 ${done}`,
+    `▶${run} ⏸${wait}${ask ? ' ❓' + ask : ''}${err ? ' ✕' + err : ''} zZ${done}`];
+  const variants2 = [line2, longest ? `대기: ${(longest.sess.name || '').slice(0, 8)} ${officeFmtSince(longest.statusSince)}` : (hot && hot.ctxPct >= 75 ? `ctx ${hot.ctxPct}% ${(hot.name || '').slice(0, 8)}` : ''), ''];
+  let l1 = line1, l2 = line2, w = 0;
+  for (let i = 0; i < 3; i++) {
+    l1 = variants1[i]; l2 = variants2[i];
+    w = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width) + 12;
+    if (w <= maxW) break;
+  }
+  const h = 24, x = Math.max(4, Math.round((worldW - w) / 2)), y = floorTop - h - 5;
   ctx.fillStyle = '#6b5a48'; ctx.fillRect(x - 2, y - 2, Math.round(w) + 4, h + 4);
   ctx.fillStyle = '#f2f3f6'; ctx.fillRect(x, y, Math.round(w), h);
-  ctx.fillStyle = '#2b2f3a'; ctx.fillText(line1, x + 6, y + 2);
-  ctx.fillStyle = longest ? '#b8860b' : '#5b6675'; ctx.fillText(line2, x + 6, y + 12);
+  ctx.fillStyle = '#2b2f3a'; ctx.fillText(l1, x + 6, y + 2);
+  ctx.fillStyle = longest ? '#b8860b' : '#5b6675'; ctx.fillText(l2, x + 6, y + 12);
 }
 let officeAudio = null;
 function officeBeep() {
@@ -4803,8 +5038,9 @@ $('office-canvas').addEventListener('mousemove', e => {
   const station = OFFICE_STATIONS.find(st => st.id === ch.station);
   const target = s.toolInput ? String(s.toolInput).split('/').pop().slice(0, 40) : '';
   const since = ch.statusSince ? ` (${officeFmtSince(ch.statusSince)})` : '';
+  const ctxTxt = s.ctxPct != null ? ` · ctx ${s.ctxPct}%` : '';
   const msg = s.lastMsg ? `<span style="display:block;max-width:220px;white-space:normal;color:var(--text2);margin-top:2px">${esc(String(s.lastMsg).replace(/\s+/g, ' ').slice(0, 90))}</span>` : '';
-  tip.innerHTML = `<b>${esc(s.name)}</b><span>${esc(s.branch || '')} · ${stLabel}${since}${s.tool ? ' · ' + esc(s.tool) : ''}${target ? ' ' + esc(target) : ''}${station && s.status !== 'done' ? ' · ' + station.label : ''}</span>${msg}`;
+  tip.innerHTML = `<b>${esc(s.name)}</b><span>${esc(s.branch || '')} · ${stLabel}${since}${s.tool ? ' · ' + esc(s.tool) : ''}${target ? ' ' + esc(target) : ''}${station && s.status !== 'done' ? ' · ' + station.label : ''}${ctxTxt}</span>${msg}`;
   const wrap = $('office-wrap');
   const wr = wrap.getBoundingClientRect();
   tip.style.left = (e.clientX - wr.left + 12) + 'px';
@@ -4820,16 +5056,22 @@ $('office-canvas').addEventListener('click', e => {
   if (officeClickTimer) return;           // second click of a double-click is handled below
   officeClickTimer = setTimeout(() => {
     officeClickTimer = null;
-    const handle = handles.get(ch.sid);
+    const handle = officeHandleFor(ch);
     if (handle) openChat(handle);
     else if (!String(ch.sid).startsWith('demo-')) showInAppToast('터미널 핸들을 찾을 수 없습니다', 'error');
   }, 220);
+});
+$('office-canvas').addEventListener('contextmenu', e => {
+  const ch = officeCharAt(e);
+  if (!ch || !ch.sess) return;
+  e.preventDefault(); ch.reactT = 1.2;
+  openSessionMenu(e.clientX, e.clientY, ch.sess.isSub ? (sessions.find(x => x.id === ch.sess.parentId) || ch.sess) : ch.sess);
 });
 $('office-canvas').addEventListener('dblclick', e => {
   clearTimeout(officeClickTimer); officeClickTimer = null;
   const ch = officeCharAt(e);
   if (!ch) return;
-  const handle = handles.get(ch.sid);
+  const handle = officeHandleFor(ch);
   if (handle) api.switchTo(handle);
 });
 window.addEventListener('resize', () => { if (currentPage === 'office' && officeReady) officeFrame(performance.now()); });
@@ -5075,13 +5317,6 @@ function formatElapsed(ms) {
   if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
   return `${m}:${String(sec).padStart(2,'0')}`;
 }
-
-setInterval(() => {
-  document.querySelectorAll('.s-elapsed[data-start]').forEach(el => {
-    const start = Number(el.dataset.start);
-    if (start) el.textContent = '▶ ' + formatElapsed(Date.now() - start);
-  });
-}, 1000);
 
 // ── Start polling ──
 fetchData();

@@ -376,7 +376,7 @@ ipcMain.handle("orca:terminal-read", async (_e, handle, screen, cursor, limit) =
   if (limit != null) args.push("--limit", String(limit));
   const res = await orca(...args);
   const tail = res?.result?.terminal?.tail;
-  console.log(`[terminal-read] screen=${!!screen} tail=${Array.isArray(tail) ? tail.length : 'none'} keys=${JSON.stringify(Object.keys(res?.result || {}))}`);
+  if (process.env.ROCA_DEBUG) console.log(`[terminal-read] screen=${!!screen} tail=${Array.isArray(tail) ? tail.length : 'none'}`);
   return res;
 });
 
@@ -385,11 +385,11 @@ ipcMain.handle("orca:terminal-close", (_e, handle) =>
 );
 
 ipcMain.on("orca:session-counts", (_e, counts) => {
-  const { running, waiting } = counts;
+  const { running, asks } = counts;
   if (tray) {
     const parts = [];
     if (running > 0) parts.push(`▶${running}`);
-    if (waiting > 0) parts.push(`?${waiting}`);
+    if (asks > 0) parts.push(`?${asks}`);
     tray.setTitle(parts.length ? ` ${parts.join(" ")}` : "");
   }
   if (running > prevRunningCount && prevRunningCount >= 0) {
