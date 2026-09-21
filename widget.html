@@ -4653,12 +4653,32 @@ function officeFrame(now) {
   // low partition walls along the top of every room, with doorways where the vertical aisles pass
   const partitionTops = [...blocks.map(b => b.y), lounge.y].concat(meeting ? [meeting.y] : []);
   for (const py of partitionTops) officeDrawPartition(ctx, py, worldW, graph.xs);
-  // outer walls
+  // runner carpets along the vertical aisles (where characters walk)
+  for (const ax of graph.xs) {
+    if (ax < 8 || ax > worldW - 8) continue;
+    // translucent walkway strip: the floor pattern stays visible underneath
+    const rx = ax - 5;
+    ctx.fillStyle = 'rgba(60,45,40,0.22)'; ctx.fillRect(rx, floorTop + 4, 10, worldH - floorTop - 8);
+    ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(rx, floorTop + 4, 1, worldH - floorTop - 8); ctx.fillRect(rx + 9, floorTop + 4, 1, worldH - floorTop - 8);
+    ctx.fillStyle = 'rgba(255,235,200,0.18)';
+    for (let yy = floorTop + 12; yy < worldH - 10; yy += 16) ctx.fillRect(rx + 4, yy, 2, 3);
+  }
+  // station ambient light: soft wash in the station colour, brighter in the middle of the room
+  for (const block of blocks) {
+    const bh = block.rowsN * SEAT_PY, by = block.y - 12;
+    const g = ctx.createRadialGradient(worldW / 2, by + bh / 2, 8, worldW / 2, by + bh / 2, Math.max(worldW, bh) * 0.7);
+    g.addColorStop(0, officeRgba(block.st.color, 0.16)); g.addColorStop(1, officeRgba(block.st.color, 0));
+    ctx.fillStyle = g; ctx.fillRect(4, by, worldW - 8, bh);
+  }
+  officeDrawWindowLight(ctx, worldW, floorTop);
+  // outer walls with a lit top face
   ctx.fillStyle = '#3a3646'; ctx.fillRect(0, floorTop, 4, worldH - floorTop); ctx.fillRect(worldW - 4, floorTop, 4, worldH - floorTop);
-  ctx.fillStyle = '#5a5570'; ctx.fillRect(1, floorTop, 1, worldH - floorTop); ctx.fillRect(worldW - 2, floorTop, 1, worldH - floorTop);
+  ctx.fillStyle = '#6a6484'; ctx.fillRect(0, floorTop, 2, worldH - floorTop); ctx.fillRect(worldW - 2, floorTop, 2, worldH - floorTop);
   // wall: paneled band with baseboard, then wall decor
   ctx.fillStyle = '#2b2a36'; ctx.fillRect(0, 0, worldW, floorTop);
   ctx.fillStyle = '#34334a'; for (let x = 0; x < worldW; x += 32) ctx.fillRect(x, 0, 16, floorTop - 8);
+  ctx.fillStyle = '#5c5878'; ctx.fillRect(0, 0, worldW, 3);           // wall top face
+  ctx.fillStyle = '#8a86a6'; ctx.fillRect(0, 0, worldW, 1);
   ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(0, floorTop - 32, worldW, 26);   // shelf shadow behind the board
   ctx.fillStyle = '#4a4860'; ctx.fillRect(0, floorTop - 6, worldW, 4);
   ctx.fillStyle = '#1c1b26'; ctx.fillRect(0, floorTop - 2, worldW, 2);
@@ -4985,7 +5005,9 @@ function officeDrawPartition(ctx, y, worldW, aisleXs) {
   for (const [a, b] of segs) {
     if (b - a < 6) continue;
     ctx.fillStyle = '#4b4760'; ctx.fillRect(a, top, b - a, h);
-    ctx.fillStyle = '#6a6484'; ctx.fillRect(a, top, b - a, 2);
+    ctx.fillStyle = '#7c779a'; ctx.fillRect(a, top, b - a, 3);         // top face
+    ctx.fillStyle = '#9d98bb'; ctx.fillRect(a, top, b - a, 1);
+    ctx.fillStyle = '#3b384c'; ctx.fillRect(a, top + 3, b - a, 1);
     ctx.fillStyle = '#2a2836'; ctx.fillRect(a, top + h - 2, b - a, 2);
     ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(a, top + h, b - a, 3);   // floor shadow
   }
@@ -4995,13 +5017,34 @@ function officeDrawPartition(ctx, y, worldW, aisleXs) {
     ctx.fillStyle = '#8a7a63'; ctx.fillRect(g0 - 2, top - 1, 2, h + 1); ctx.fillRect(g1, top - 1, 2, h + 1);
   }
 }
+function officeWindowXs(worldW) {
+  const n = Math.max(2, Math.floor((worldW - 60) / 110));
+  const xs = []; for (let i = 0; i < n; i++) xs.push(Math.round(30 + i * ((worldW - 60 - 36) / Math.max(1, n - 1))));
+  return xs;
+}
+// daylight falling through the windows onto the floor below the wall
+function officeDrawWindowLight(ctx, worldW, floorTop) {
+  const hr = new Date().getHours() + new Date().getMinutes() / 60;
+  if (hr >= 20 || hr < 6) return;
+  const dusk = hr >= 17 || hr < 8;
+  const a = dusk ? 0.16 : 0.13;
+  const color = dusk ? `rgba(255,170,90,${a})` : `rgba(255,250,220,${a})`;
+  for (const x of officeWindowXs(worldW)) {
+    const g = ctx.createLinearGradient(0, floorTop, 0, floorTop + 70);
+    g.addColorStop(0, color); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x, floorTop); ctx.lineTo(x + 36, floorTop); ctx.lineTo(x + 46, floorTop + 70); ctx.lineTo(x - 10, floorTop + 70); ctx.closePath();
+    ctx.fill();
+  }
+}
 function officeDrawWindows(ctx, worldW) {
   const hr = new Date().getHours() + new Date().getMinutes() / 60;
   const night = hr >= 20 || hr < 6, dusk = !night && (hr >= 17 || hr < 8);
   const sky = night ? ['#0f1630', '#1b2447'] : dusk ? ['#f0a56a', '#7b6fa8'] : ['#8fd0ff', '#d8f0ff'];
-  const n = Math.max(2, Math.floor((worldW - 60) / 110));
-  for (let i = 0; i < n; i++) {
-    const x = Math.round(30 + i * ((worldW - 60 - 36) / Math.max(1, n - 1))), y = 6, w = 36, h = 22;
+  const xs = officeWindowXs(worldW);
+  for (let i = 0; i < xs.length; i++) {
+    const x = xs[i], y = 6, w = 36, h = 22;
     ctx.fillStyle = '#1c1b26'; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
     const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, sky[0]); g.addColorStop(1, sky[1]);
     ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
