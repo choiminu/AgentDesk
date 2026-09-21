@@ -108,8 +108,10 @@ macOS용 설치 파일(DMG)을 빌드하려면:
 npm run dist
 ```
 
-빌드가 완료되면 `dist/Orca Dashboard-0.1.0-arm64.dmg` 파일이 생성됩니다.
+빌드가 완료되면 `dist/` 아래에 Apple Silicon용 `Orca Dashboard-0.1.0-arm64.dmg`와 Intel용 `Orca Dashboard-0.1.0.dmg`(x64)가 생성됩니다. 자기 Mac에 맞는 파일을 설치하세요.
 
+> **Orca 버전**: 1.4 이상이 필요합니다(`terminal read --screen`, `--json`). 구버전이면 대시보드에 경고 배너가 표시됩니다.
+>
 > **세션 목록이 비어 있다면**: 위젯은 `orca` CLI를 `/usr/local/bin`, `/opt/homebrew/bin`, `/Applications/Orca.app/Contents/Resources/bin` 순으로 찾습니다. 호출에 실패하면 대시보드 상단에 빨간 배너로 원인이 표시됩니다. 터미널에서 `orca --version`이 되는지, Orca 앱이 실행 중인지 확인하세요. 필요하면 `sudo ln -s /Applications/Orca.app/Contents/Resources/bin/orca /usr/local/bin/orca`로 링크를 만들 수 있습니다.
 
 > **참고**: 코드 서명이 되어 있지 않으므로, DMG를 설치한 후 첫 실행 시 macOS에서 "확인되지 않은 개발자" 경고가 표시될 수 있습니다. **시스템 설정 > 개인정보 보호 및 보안**에서 "확인 없이 열기"를 클릭하세요.
@@ -174,6 +176,8 @@ npm run dist
 위젯은 Orca CLI(`orca worktree ps`, `orca terminal list`)로 세션 목록을 5초마다 가져오고, 열려 있는 터미널은 `orca terminal read --screen`으로 2초마다 화면을 읽어 실제 상태를 판정합니다. `~/.claude/projects/`의 Claude Code `.jsonl` 세션 파일은 세션 기록 보기에 사용합니다.
 
 ### Exact Detection (hooks) / 훅 기반 정확 감지
+
+> **다른 Mac에 설치했다면 정확 감지를 켜는 것을 권장합니다.** 화면 판독은 Claude Code TUI 문구와 시스템 로케일(영문/한국어 시각 표기는 지원)에 의존하지만, 훅은 이벤트를 그대로 받으므로 환경과 무관하게 정확합니다. 단, Claude Code 세션에만 적용되며 다른 에이전트(opencode, gemini 등)는 화면 판독·Orca 상태로 동작합니다.
 
 오피스 탭의 **정확 감지** 버튼을 켜면 `~/.claude/settings.json`에 위젯 훅이 등록됩니다(기존 항목 보존, `~/.roca/settings.backup-*.json`에 백업). 훅 스크립트 `~/.roca/hook.sh`는 이벤트 JSON을 `~/.roca/events.jsonl`에 한 줄씩 덧붙이기만 하고 즉시 종료하며(비동기, 5초 제한), 위젯이 이 파일을 감시합니다. Claude Code는 훅 설정을 즉시 다시 읽으므로 이미 실행 중인 세션에도 바로 적용됩니다.
 
