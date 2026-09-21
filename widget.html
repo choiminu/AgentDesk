@@ -4410,6 +4410,9 @@ const OFFICE_DEMO = location.hash === '#office-demo' ? [
   { id: 'demo-5', name: 'deploy', branch: 'ops/deploy', status: 'error', tool: '' },
   { id: 'demo-6', name: 'docs', branch: 'docs/readme', status: 'done', tool: '' },
   { id: 'demo-7', name: 'idle-bot', branch: 'main', status: 'done', tool: '' },
+  { id: 'demo-9', name: '[SIMPLE]-PM', branch: 'feat/x', status: 'done', tool: '' },
+  { id: 'demo-10', name: 'session-reporter', branch: 'main', status: 'done', tool: '' },
+  { id: 'demo-11', name: '매입', branch: 'main', status: 'done', tool: '' },
   { id: 'demo-1::explorer', parentId: 'demo-1', isSub: true, name: '↳ explorer', branch: 'auth-refactor', status: 'running', tool: 'Agent', toolInput: '코드베이스 탐색', subElapsed: '42s', subTokens: '12.3k' },
 ] : null;
 if (OFFICE_DEMO) {
@@ -4566,10 +4569,10 @@ function officeFrame(now) {
   const idle = [...officeChars.values()]
     .filter(c => !c.fading && !c.meeting && c.sess.status === 'done')
     .sort((a, b) => a.sid < b.sid ? -1 : 1);
-  const LOUNGE_ROW_H = 64, SOFA_STEP = 48;
+  const LOUNGE_ROW_H = 64, SOFA_STEP = 64;
   const usableW = cols * SEAT_PX;
   const sofasPerRow = Math.max(1, Math.floor((usableW - 40) / SOFA_STEP));
-  const nSofas = Math.max(2, Math.ceil(idle.length / 2));
+  const nSofas = Math.max(2, idle.length);
   const loungeRows = Math.ceil(nSofas / sofasPerRow);
   const lounge = { y, rows: loungeRows, sofas: [], count: idle.length, h: loungeRows * LOUNGE_ROW_H };
   for (let i = 0; i < nSofas; i++) {
@@ -4577,12 +4580,10 @@ function officeFrame(now) {
     const rowY = y + r * LOUNGE_ROW_H;
     const sofaX = originX + 4 + c * SOFA_STEP, sofaY = rowY + 22;
     const sofa = { x: sofaX, y: sofaY, seats: [] };
-    for (let k = 0; k < 2; k++) {
-      const ch = idle[i * 2 + k] || null;
-      const seat = { kind: 'sofa', chairX: sofaX + 8 + k * 16, chairY: rowY + 36, aisleY: rowY + LOUNGE_ROW_H - 8, ch };
-      if (ch) ch.seat = seat;
-      sofa.seats.push(seat);
-    }
+    const ch = idle[i] || null;
+    const seat = { kind: 'sofa', chairX: sofaX + 16, chairY: rowY + 36, aisleY: rowY + LOUNGE_ROW_H - 8, ch };
+    if (ch) ch.seat = seat;
+    sofa.seats.push(seat);
     lounge.sofas.push(sofa);
   }
   for (let r = 0; r < loungeRows; r++) aisleY.push(y + r * LOUNGE_ROW_H - 8);
@@ -4801,8 +4802,8 @@ function officeFrame(now) {
       seated.forEach((seat, k) => {
         const ch = seat.ch;
         if (ch.reactT > 0) drawBubble(ctx, seat.chairX + 2, seat.chairY - 44, 1, 'dots');
-        else if (Math.floor(now / 1400 + officeHash(ch.sid) % 3) % 2) drawBubble(ctx, seat.chairX + 2, seat.chairY - 44 - bob, 1, 'zz');
-        officeDrawName(ctx, ch.sess, seat.chairX, seat.chairY + 3 + (seat === sofa.seats[1] ? 11 : 0), ch.alpha);
+        else if (Math.floor(now / 2200 + officeHash(ch.sid) % 5) % 3 === 0) drawBubble(ctx, seat.chairX + 2, seat.chairY - 44 - bob, 1, 'zz');
+        officeDrawName(ctx, ch.sess, seat.chairX, seat.chairY + 4, ch.alpha, { maxLen: 9, gauge: false });
         officeSeats.push({ x: seat.chairX - 8, y: seat.chairY - 24, w: 16, h: 32, ch });
       });
     }
@@ -4875,9 +4876,9 @@ function officeRgba(hex, a) {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
-function officeDrawName(ctx, sess, cx, y, alpha = 1) {
+function officeDrawName(ctx, sess, cx, y, alpha = 1, opts = {}) {
   const st = sess.status;
-  const label = (sess.name || sess.id).slice(0, 12);
+  const label = (sess.name || sess.id).slice(0, opts.maxLen || 12);
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
@@ -4888,7 +4889,7 @@ function officeDrawName(ctx, sess, cx, y, alpha = 1) {
   ctx.fillStyle = st === 'running' ? '#9cc4ff' : st === 'waiting' ? '#f2d27a' : st === 'error' ? '#ff9a95' : '#d8dce6';
   ctx.fillText(label, Math.round(cx), y0);
   // context-window gauge: fills up as the session approaches auto-compact
-  if (sess.ctxPct != null && !sess.isSub) {
+  if (sess.ctxPct != null && !sess.isSub && opts.gauge !== false) {
     const pct = sess.ctxPct;
     const gw = tw, gx = x0, gy = y0 + 10;
     ctx.fillStyle = 'rgba(0,0,0,0.62)'; ctx.fillRect(gx, gy, gw, 3);
