@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld("orca", {
   hooksInstall: () => ipcRenderer.invoke("orca:hooks-install"),
   hooksUninstall: () => ipcRenderer.invoke("orca:hooks-uninstall"),
   hooksRecent: () => ipcRenderer.invoke("orca:hooks-recent"),
+  teamsRead: () => ipcRenderer.invoke("orca:teams-read"),
+  teamsWrite: (data) => ipcRenderer.invoke("orca:teams-write", data),
   onHookEvents: (cb) => ipcRenderer.on("roca:hook-events", (_e, evts) => cb(evts)),
   toggleAlwaysOnTop: () => ipcRenderer.invoke("orca:toggle-always-on-top"),
   sendSessionCounts: (counts) => ipcRenderer.send("orca:session-counts", counts),

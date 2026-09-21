@@ -18,6 +18,7 @@ A lightweight Electron desktop widget for monitoring [Orca](https://github.com/s
 - **Session Dashboard / 세션 대시보드** — Real-time monitoring of all Orca worktree sessions. Status is read from the live terminal screen every 2 seconds (spinner → running, `✻ … done` → waiting, permission/question prompt → needs input), so it stays correct even when Orca's own agent state lags. Orca 워크트리 세션을 실시간으로 모니터링합니다. 상태는 2초마다 터미널 화면을 읽어 판정하므로(스피너 → 작업 중, `✻ … done` → 대기, 선택지 → 선택 필요) Orca 상태가 지연되어도 정확합니다.
 - **Pixel Office / 픽셀 오피스** — Every recent session becomes a pixel-art agent. Working agents sit at station desks (dev / research / exec / docs, chosen from the tools they use) and type or read with a live tool tag and a context-window gauge; subagents spawned by a session appear as `↳ name` characters at the next desk; idle agents rest on the lounge sofa. A wall whiteboard summarizes the room. Click a character to chat, double-click to jump to its Orca terminal, right-click for actions. 최근 세션이 픽셀 캐릭터로 표시됩니다. 작업 중이면 도구에 따라 배정된 스테이션 책상에서 타이핑·읽기(도구 태그·컨텍스트 게이지 표시), 서브에이전트는 옆 책상에 `↳ 이름` 캐릭터로 등장, 쉬면 휴게실 소파. 클릭하면 채팅, 더블클릭하면 Orca 터미널, 우클릭하면 액션 메뉴입니다.
 - **Exact Detection via Hooks / 훅 기반 정확 감지 (opt-in)** — One click registers Claude Code hooks (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `PermissionRequest`, `SubagentStart/Stop`, `SessionEnd`) that append events to `~/.roca/events.jsonl`; the widget tails it and gets working / waiting / needs-input, the current tool, and subagents as facts with zero delay. Existing hooks are preserved and the previous settings are backed up. 버튼 한 번으로 Claude Code 훅을 등록해 작업 중·대기·선택 필요·현재 도구·서브에이전트를 이벤트로 즉시 받습니다. 기존 훅은 보존되고 이전 설정은 `~/.roca/`에 백업됩니다.
+- **PM Teams / PM 팀 (drag to build)** — Drag an agent onto the PM seat to create a team, drag others into the block as members (role = its current station, changeable). Right-click the PM → "팀 목표 지시": the PM writes a team brief (goal, scope, decisions, per-member deliverables, done criteria, forbidden), proposes a task split as JSON, you approve, and each member receives the brief + its task. When a member finishes (hook `Stop`), its report is collected and the PM decides the next step. 에이전트를 PM 자리에 드래그하면 팀이 생기고, 팀 블록에 끌어 넣은 에이전트가 팀원이 됩니다. PM에게 목표를 주면 브리프 작성 → 업무 분배 제안 → 승인 → 팀원에게 브리프와 함께 전달되고, 팀원이 끝나면 보고를 모아 PM이 다음 지시를 정합니다.
 - **Needs-input Alerts / 선택 필요 알림** — System notification, in-app toast, tray badge and an optional chime fire only when an agent is actually waiting for a choice (permission prompt or `AskUserQuestion`), not on every finished turn. 에이전트가 권한 승인·질문 선택을 기다릴 때만 알림(시스템 알림·토스트·트레이·선택형 알림음)이 뜹니다.
 - **Clipboard History / 클립보드 히스토리** — Tracks clipboard changes with one-click copy and search. 클립보드 변경 기록을 추적하며 원클릭 복사 및 검색을 지원합니다.
 - **Port Monitor / 포트 모니터** — Lists all listening TCP ports with process info and kill option. 리슨 중인 TCP 포트 목록과 프로세스 정보를 표시하며 프로세스 종료가 가능합니다.
@@ -144,6 +145,20 @@ npm run dist
 | 이름표 아래 게이지 | 컨텍스트 사용량. 75% 노랑, 90% 이상 빨강 깜빡임 |
 | 화이트보드 | 작업/대기/오류/휴식 인원과 가장 오래 기다린 세션 |
 | 상단 바 | 배율(자동/2×/3×/4×), **정확 감지** 토글(훅 등록/해제), 알림음 토글 |
+
+### PM 팀
+
+| 동작 | 설명 |
+|---|---|
+| 캐릭터 드래그 → 빈 PM 자리 | 새 팀 생성, 그 에이전트가 PM. 드래그 중에만 "새 팀" 블록이 나타남 |
+| 캐릭터 드래그 → 팀 블록 | 팀원으로 합류. 역할은 현재 스테이션(개발/조사/실행·테스트/문서화)으로 시작 |
+| 캐릭터 드래그 → 블록 밖 | 팀에서 해제 |
+| PM 우클릭 → 팀 목표 지시… | 목표 입력 → PM이 브리프 작성(`BRIEF_START…BRIEF_END`) → 분배 JSON 제안 → 승인 창에서 수정·선택 후 전달 |
+| PM 우클릭 → 팀 브리프·로그 보기 | 현재 브리프와 지시·보고 타임라인 |
+| PM 우클릭 → 자동 진행 켜기 | 이후 라운드는 승인 없이 자동 전달 (라운드 상한 12) |
+| 팀원 우클릭 → 역할 변경 | 개발 / 조사 / 실행·테스트 / 문서화 |
+
+팀원에게 가는 모든 지시에는 브리프 전체가 함께 들어가므로, 세션이 길어지거나 컨텍스트가 압축돼도 PM이 정한 규칙이 유지됩니다. 팀원은 작업을 끝낼 때 `REPORT_START…REPORT_END` 형식으로 보고하도록 요청받고, 위젯이 이를 읽어 PM에게 올립니다. 배치와 로그는 `~/.roca/teams.json`에 저장됩니다.
 
 ### 세션 카드 액션
 
