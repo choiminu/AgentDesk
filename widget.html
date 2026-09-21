@@ -2116,8 +2116,6 @@
   <div class="page-nav">
     <button class="page-nav-btn active" data-page="dashboard">대시보드</button>
     <button class="page-nav-btn" data-page="office">오피스<span class="nav-badge" id="badge-office" hidden>0</span></button>
-    <button class="page-nav-btn" data-page="orchestration">오케스트레이션</button>
-    <button class="page-nav-btn" data-page="collab">협력</button>
     <button class="page-nav-btn" data-page="clipboard">클립보드</button>
     <button class="page-nav-btn" data-page="ports">포트</button>
     <button class="page-nav-btn" data-page="memo">메모</button>
@@ -2157,7 +2155,7 @@
     <div class="office-bar">
       <span class="office-legend"><span class="office-legend-key" style="background:var(--accent)"></span>작업 중</span>
       <span class="office-legend"><span class="office-legend-key" style="background:var(--yellow)"></span>대기 (❓=선택 필요)</span>
-      <span class="office-legend"><span class="office-legend-key" style="background:var(--text3)"></span>완료(휴게실)</span><span class="office-legend"><span class="office-legend-key" style="background:#c9b3e0"></span>회의 중</span>
+      <span class="office-legend"><span class="office-legend-key" style="background:var(--text3)"></span>완료(휴게실)</span>
       <span class="office-legend"><span class="office-legend-key" style="background:var(--red)"></span>오류</span>
       <select class="office-zoom" id="office-zoom" title="확대 배율"><option value="auto">자동</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
       <button class="office-sound-btn" id="hooks-toggle" title="Claude Code hooks로 작업 중/대기/선택 필요를 이벤트 기반으로 정확히 감지합니다 (~/.claude/settings.json에 훅 등록)">정확 감지 꺼짐</button>
@@ -2191,7 +2189,7 @@
   </div>
 
   <!-- PAGE: Orchestration -->
-  <div class="page" id="page-orchestration">
+  <div class="page" id="page-orchestration" hidden style="display:none !important">
     <div class="orch-layout">
       <!-- Left: terminal/session list -->
       <div class="orch-left">
@@ -2222,7 +2220,7 @@
   </div>
 
   <!-- PAGE: Collaboration -->
-  <div class="page" id="page-collab">
+  <div class="page" id="page-collab" hidden style="display:none !important">
     <div class="collab-layout">
       <!-- Left: session pool -->
       <div class="collab-left">
