@@ -15,8 +15,9 @@ A lightweight Electron desktop widget for monitoring [Orca](https://github.com/s
 
 ## Features / 기능
 
-- **Session Dashboard / 세션 대시보드** — Real-time monitoring of all Orca worktree sessions with status detection (running / waiting / done / error). Orca 워크트리 세션의 실시간 상태(실행 중 / 대기 / 완료 / 오류)를 모니터링합니다.
-- **Pixel Office / 픽셀 오피스** — Every recent session becomes a pixel-art agent. Working agents sit at station desks (dev / research / exec / docs) and type or read with a live tool tag; idle agents rest on the lounge sofa; agents in a collaboration debate gather around a meeting table. Click a character to chat, double-click to jump to its Orca terminal. 최근 세션이 픽셀 캐릭터로 표시됩니다. 작업 중이면 스테이션 책상에서 타이핑·읽기, 쉬면 휴게실 소파, 협력 토론 중이면 회의 테이블에 모입니다. 클릭하면 채팅, 더블클릭하면 Orca 터미널로 전환됩니다.
+- **Session Dashboard / 세션 대시보드** — Real-time monitoring of all Orca worktree sessions. Status is read from the live terminal screen every 2 seconds (spinner → running, `✻ … done` → waiting, permission/question prompt → needs input), so it stays correct even when Orca's own agent state lags. Orca 워크트리 세션을 실시간으로 모니터링합니다. 상태는 2초마다 터미널 화면을 읽어 판정하므로(스피너 → 작업 중, `✻ … done` → 대기, 선택지 → 선택 필요) Orca 상태가 지연되어도 정확합니다.
+- **Pixel Office / 픽셀 오피스** — Every recent session becomes a pixel-art agent. Working agents sit at station desks (dev / research / exec / docs, chosen from the tools they use) and type or read with a live tool tag and a context-window gauge; subagents spawned by a session appear as `↳ name` characters at the next desk; idle agents rest on the lounge sofa; agents in a collaboration debate gather around a meeting table. A wall whiteboard summarizes the room. Click a character to chat, double-click to jump to its Orca terminal, right-click for actions. 최근 세션이 픽셀 캐릭터로 표시됩니다. 작업 중이면 도구에 따라 배정된 스테이션 책상에서 타이핑·읽기(도구 태그·컨텍스트 게이지 표시), 서브에이전트는 옆 책상에 `↳ 이름` 캐릭터로 등장, 쉬면 휴게실 소파, 협력 토론 중이면 회의 테이블에 모입니다. 클릭하면 채팅, 더블클릭하면 Orca 터미널, 우클릭하면 액션 메뉴입니다.
+- **Needs-input Alerts / 선택 필요 알림** — System notification, in-app toast, tray badge and an optional chime fire only when an agent is actually waiting for a choice (permission prompt or `AskUserQuestion`), not on every finished turn. 에이전트가 권한 승인·질문 선택을 기다릴 때만 알림(시스템 알림·토스트·트레이·선택형 알림음)이 뜹니다.
 - **Collaboration / 협력 토론** — Relay a debate between two groups of sessions (A ↔ B) or run master-worker mode where workers discuss and the master summarizes. 두 그룹 간 릴레이 토론과 마스터-워커 모드를 지원합니다.
 - **Orchestration / 오케스트레이션** — Manage orchestration runs, tasks, workers, and phase assignments. 오케스트레이션 실행, 태스크, 워커, 페이즈를 관리합니다.
 - **Clipboard History / 클립보드 히스토리** — Tracks clipboard changes with one-click copy and search. 클립보드 변경 기록을 추적하며 원클릭 복사 및 검색을 지원합니다.
@@ -123,7 +124,24 @@ npm run dist
 | ▴ 버튼 | 복원 |
 | 탭 전환 | 대시보드 / 오피스 / 오케스트레이션 / 협력 / 클립보드 / 포트 / 메모 / 타이머 |
 | 파일 드래그앤드롭 | 세션 카드에 파일을 드롭하면 경로가 터미널에 입력됨 (전송하지 않음) |
-| 트레이 아이콘 | 클릭으로 위젯 표시/숨김, 우클릭으로 메뉴 |
+| 우클릭 (카드 / 오피스 캐릭터) | 채팅 열기 · Orca 터미널 보기 · 세션 ID 복사 · 인터럽트 · 세션 종료 |
+| Esc | 채팅 패널 / 메뉴 닫기 |
+| 트레이 아이콘 | 클릭으로 위젯 표시/숨김, 우클릭으로 메뉴. 제목에 `▶실행 수 ?선택 필요 수` 표시 |
+
+### 오피스 탭
+
+| 요소 | 의미 |
+|---|---|
+| 스테이션 (개발 / 조사 / 실행·테스트 / 문서화) | 최근 도구의 다수결로 배정. Edit/Write → 개발(`.md`, `docs/`, README 등은 문서화), Read/Grep/Glob/Web → 조사, Bash → 실행·테스트 |
+| 파란 카펫 + 도구 태그 + 켜진 모니터 | 작업 중. 태그 아래 점은 직전 도구 3개 |
+| 노란 카펫 + ❓ + 손 흔들기 | 선택 필요(권한·질문). 일반 대기는 조용히 ✓ 표시 |
+| 빨간 카펫 + ! | 오류 |
+| `↳ 이름` 캐릭터 (옅은 파랑) | 부모 세션이 띄운 서브에이전트. 끝나면 사라짐 |
+| 휴게실 소파 | 쉬는(완료) 세션. 최근 24시간 목록에서 빠지면 캐릭터도 사라짐 |
+| 회의실 | 협력 토론 진행 중인 A·B 그룹과 마스터가 모여 앉음. 발언자에게 말풍선 |
+| 이름표 아래 게이지 | 컨텍스트 사용량. 75% 노랑, 90% 이상 빨강 깜빡임 |
+| 화이트보드 | 작업/대기/오류/휴식 인원과 가장 오래 기다린 세션 |
+| 상단 바 | 배율(자동/2×/3×/4×), 알림음 토글 |
 
 ### 세션 카드 액션
 
@@ -138,27 +156,42 @@ npm run dist
 
 | 아이콘 | 상태 | 조건 |
 |---|---|---|
-| 💬 (typing) | 실행 중 | 최근 2분 이내 출력 또는 도구 실행 중 |
-| 💤 | 대기 중 | 사용자 입력 대기 |
-| ✅ | 완료 | 작업 완료 |
+| 💬 (typing) | 실행 중 | 터미널에 스피너(`· Working… (12s · ↓ 1.2k tokens)`) 또는 응답 스트리밍 중 |
+| ❓ | 선택 필요 | 권한 승인 / `AskUserQuestion` 선택지가 떠 있음 |
+| 💤 | 대기 중 | 턴이 끝난 뒤 10분 이내 (`✻ … done 2:34 PM`) |
+| ✅ | 완료 | 끝난 뒤 10분 경과, 또는 다른 날에 끝남 |
 | ⚠️ | 오류 | 에러 발생 |
+
+카드의 시간은 상태 기준입니다: `작업 3m`(작업 시작 후), `대기 12s`(응답 완료 후), 완료 세션은 마지막 활동 시각. `🤖2`는 실행 중인 서브에이전트 수, `ctx 46%`는 컨텍스트 사용량입니다.
 
 ---
 
 ## How It Works / 동작 원리
 
-위젯은 Orca CLI(`orca worktree ps`, `orca terminal list` 등)와 통신하여 세션 데이터를 가져옵니다. 또한 `~/.claude/projects/` 디렉터리의 Claude Code `.jsonl` 세션 파일을 읽어 상세한 세션 기록을 표시합니다.
+위젯은 Orca CLI(`orca worktree ps`, `orca terminal list`)로 세션 목록을 5초마다 가져오고, 열려 있는 터미널은 `orca terminal read --screen`으로 2초마다 화면을 읽어 실제 상태를 판정합니다. `~/.claude/projects/`의 Claude Code `.jsonl` 세션 파일은 세션 기록 보기에 사용합니다.
 
 ### Status Detection / 상태 판별
 
-| 조건 | 판별 결과 |
+터미널 화면의 마지막 `❯` 프롬프트 줄을 기준으로, 그 위의 첫 의미 있는 줄을 봅니다(들여쓰기된 안내줄과 상태 표시줄은 건너뜀). 화면 판정이 있으면 Orca의 `agents[0].state`보다 우선합니다.
+
+| 화면 | 판별 결과 |
 |---|---|
-| `state=working` + 최근 출력 (2분 이내) | Running |
-| `state=working` + 활성 도구 (`toolName` 존재) | Running |
-| `state=working` + 최근 출력 없음 + 도구 없음 | Done |
-| `state=waiting` / `pending` | Waiting |
-| `state=error` | Error |
-| 모든 타임스탬프 10분 이상 경과 | Done |
+| 스피너 줄 `· Scurrying… (1m 14s · ↓ 3.8k tokens)` / `esc to interrupt` | Running |
+| `⏺` 응답이 아직 출력 중 | Running |
+| `✻ Worked for 22s · done 2:34 PM` (10분 이내) | Waiting |
+| `✻ … done` 10분 경과, 또는 `done Thursday 10:28 AM`처럼 다른 날 | Done |
+| `❯ 1. Yes` 선택지 / `Do you want …` | Waiting + Needs input |
+| 프롬프트가 없는 셸 터미널 | Orca 상태 사용 |
+
+같은 화면에서 추가로 읽는 정보: 상태 표시줄 아래 에이전트 패널(`⏺ main` / `◯ name  설명  17s · ↓ 30.5k tokens` 또는 `idle`) → 서브에이전트 목록, OMC 상태 표시줄의 `ctx:[#####-----]46%` → 컨텍스트 사용량.
+
+### Developer Switches / 개발용 환경 변수
+
+| 변수 | 동작 |
+|---|---|
+| `ROCA_START_PAGE=office` | 지정 탭으로 시작. `office-demo`는 가짜 세션 8개(서브에이전트·선택 필요·회의 포함)로 오피스를 재현 |
+| `ROCA_SHOT=/path/shot.png` | 6·14·22초 시점에 창을 `shot-1.png`… 로 저장 |
+| `ROCA_DEBUG=1` | 터미널 읽기 로그 출력 |
 
 ---
 
