@@ -4650,6 +4650,12 @@ function officeFrame(now) {
   if (meeting) officeTileArea(ctx, im, 'floor_checker', '#d6c3e6', 4, meeting.y - 12, worldW - 8, meeting.h);
   officeTileArea(ctx, im, 'floor_brick', '#d9c2b4', 4, lounge.y - 12, worldW - 8, lounge.h);
   ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, lounge.y - 12, worldW - 8, 2);
+  // low partition walls along the top of every room, with doorways where the vertical aisles pass
+  const partitionTops = [...blocks.map(b => b.y), lounge.y].concat(meeting ? [meeting.y] : []);
+  for (const py of partitionTops) officeDrawPartition(ctx, py, worldW, graph.xs);
+  // outer walls
+  ctx.fillStyle = '#3a3646'; ctx.fillRect(0, floorTop, 4, worldH - floorTop); ctx.fillRect(worldW - 4, floorTop, 4, worldH - floorTop);
+  ctx.fillStyle = '#5a5570'; ctx.fillRect(1, floorTop, 1, worldH - floorTop); ctx.fillRect(worldW - 2, floorTop, 1, worldH - floorTop);
   // wall: paneled band with baseboard, then wall decor
   ctx.fillStyle = '#2b2a36'; ctx.fillRect(0, 0, worldW, floorTop);
   ctx.fillStyle = '#34334a'; for (let x = 0; x < worldW; x += 32) ctx.fillRect(x, 0, 16, floorTop - 8);
@@ -4657,6 +4663,7 @@ function officeFrame(now) {
   ctx.fillStyle = '#4a4860'; ctx.fillRect(0, floorTop - 6, worldW, 4);
   ctx.fillStyle = '#1c1b26'; ctx.fillRect(0, floorTop - 2, worldW, 2);
   if (im.plant) { ctx.drawImage(im.plant, T * 0.25, floorTop - 16); ctx.drawImage(im.plant, worldW - T * 1.25, floorTop - 16); }
+  officeDrawWindows(ctx, worldW);
   const boardW = officeDrawBoard(ctx, shown, worldW, floorTop);
   officeDrawWallDecor(ctx, im, worldW, floorTop, boardW);
 
@@ -4702,11 +4709,18 @@ function officeFrame(now) {
       if (im.desk) ctx.drawImage(im.desk, deskX, deskY);
       const pcImg = sitting && st === 'running' ? im[`pc_on_${pcFrame + 1}`] : sitting && (st === 'waiting' || st === 'error') ? im.pc_on_1 : im.pc_off;
       if (pcImg) ctx.drawImage(pcImg, deskX + 16, deskY - 5);
-      if (sess && im.coffee && (officeHash(sess.id) % 2 === 0)) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
+      if (sess) {
+        const k = officeHash(sess.id) % 4;
+        if (k === 0 && im.coffee) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
+        else if (k === 1 && im.pot) ctx.drawImage(im.pot, deskX + 2, deskY + 2);
+        else if (k === 2) { ctx.fillStyle = '#f1efe6'; ctx.fillRect(deskX + 36, deskY + 14, 9, 7); ctx.fillStyle = '#b9b6ad'; ctx.fillRect(deskX + 38, deskY + 16, 5, 1); ctx.fillRect(deskX + 38, deskY + 18, 5, 1); }
+      }
       if (sitting && st === 'running') {
         ctx.fillStyle = `rgba(140,200,255,${0.10 + 0.12 * pulse})`; ctx.fillRect(deskX + 12, deskY - 2, 24, 22);
       }
+      officeShadow(ctx, deskX + 24, deskY + 33, 24, 3);
       if (im.chair_back) ctx.drawImage(im.chair_back, seat.chairX - 8, seat.chairY - 12);
+      if (sitting) officeShadow(ctx, seat.chairX, seat.chairY + 2, 8, 2.5);
 
       if (sitting) {
         const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
@@ -4761,6 +4775,7 @@ function officeFrame(now) {
     if (im.coffee_table && lastSofa && lastSofa.x + SOFA_STEP + 32 <= originX + usableW) ctx.drawImage(im.coffee_table, lastSofa.x + SOFA_STEP + 2, lounge.y + 10);
     if (im.large_plant && lastSofa && lastSofa.x + SOFA_STEP + 68 <= originX + usableW) ctx.drawImage(im.large_plant, lastSofa.x + SOFA_STEP + 38, lounge.y - 8);
     for (const sofa of lounge.sofas) {
+      officeShadow(ctx, sofa.x + 16, sofa.y + 16, 17, 3);
       if (im.sofa_front) ctx.drawImage(im.sofa_front, sofa.x, sofa.y);
       const seated = sofa.seats.filter(st => st.ch && st.ch.state === 'sit');
       for (const seat of seated) {
@@ -4787,6 +4802,7 @@ function officeFrame(now) {
     if (!sheet) continue;
     const walking = ch.state === 'toSeat' || ch.state === 'leave' || ch.state === 'wander';
     const frameCol = walking ? [0, 1, 2, 1][Math.floor(ch.animT / 0.13) % 4] : 0;
+    officeShadow(ctx, ch.x, ch.y + 2, 7, 2.5, ch.alpha);
     officeDrawChar(ctx, sheet, frameCol, ch.dir, ch.x, ch.y, ch.alpha);
     if (ch.reactT > 0) drawBubble(ctx, ch.x + 2, ch.y - 44, 1, 'dots');
     else if (!walking && !ch.fading && ch.sess && ch.sess.status === 'done') drawBubble(ctx, ch.x + 2, ch.y - 44 - bob, 1, 'zz');
@@ -4821,6 +4837,9 @@ function officeTileArea(ctx, im, key, tint, x0, y0, w, h) {
   for (let ty = Math.floor(y0 / T) * T; ty < y0 + h; ty += T)
     for (let tx = Math.floor(x0 / T) * T; tx < x0 + w; tx += T) {
       if (img) ctx.drawImage(img, tx, ty); else { ctx.fillStyle = '#6b6870'; ctx.fillRect(tx, ty, T, T); }
+      const n = officeHash(`${tx},${ty}`) % 100;
+      if (n < 9) { ctx.fillStyle = 'rgba(0,0,0,0.10)'; ctx.fillRect(tx, ty, T, T); }
+      else if (n > 93) { ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fillRect(tx, ty, T, T); }
     }
   ctx.globalCompositeOperation = 'multiply';
   ctx.fillStyle = tint; ctx.fillRect(x0, y0, w, h);
@@ -4952,17 +4971,64 @@ function officeDrawBoard(ctx, shown, worldW, floorTop) {
   return { x, w: Math.round(w) };
 }
 // decor row along the top of the wall (the whiteboard sits below it); spread evenly across the width
+function officeShadow(ctx, cx, cy, rx, ry, alpha = 1) {
+  ctx.save(); ctx.globalAlpha = 0.28 * alpha; ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(Math.round(cx), Math.round(cy), rx, ry, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+}
+// short wall + baseboard at the top edge of a room; 16px doorways centred on each vertical aisle
+function officeDrawPartition(ctx, y, worldW, aisleXs) {
+  const top = y - 4, h = 10;
+  const gaps = aisleXs.map(x => [x - 9, x + 9]);
+  let x = 4;
+  const segs = [];
+  for (const [g0, g1] of gaps.sort((a, b) => a[0] - b[0])) { if (g0 > x) segs.push([x, Math.min(g0, worldW - 4)]); x = Math.max(x, g1); }
+  if (x < worldW - 4) segs.push([x, worldW - 4]);
+  for (const [a, b] of segs) {
+    if (b - a < 6) continue;
+    ctx.fillStyle = '#4b4760'; ctx.fillRect(a, top, b - a, h);
+    ctx.fillStyle = '#6a6484'; ctx.fillRect(a, top, b - a, 2);
+    ctx.fillStyle = '#2a2836'; ctx.fillRect(a, top + h - 2, b - a, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(a, top + h, b - a, 3);   // floor shadow
+  }
+  // door posts
+  for (const [g0, g1] of gaps) {
+    if (g0 < 4 || g1 > worldW - 4) continue;
+    ctx.fillStyle = '#8a7a63'; ctx.fillRect(g0 - 2, top - 1, 2, h + 1); ctx.fillRect(g1, top - 1, 2, h + 1);
+  }
+}
+function officeDrawWindows(ctx, worldW) {
+  const hr = new Date().getHours() + new Date().getMinutes() / 60;
+  const night = hr >= 20 || hr < 6, dusk = !night && (hr >= 17 || hr < 8);
+  const sky = night ? ['#0f1630', '#1b2447'] : dusk ? ['#f0a56a', '#7b6fa8'] : ['#8fd0ff', '#d8f0ff'];
+  const n = Math.max(2, Math.floor((worldW - 60) / 110));
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(30 + i * ((worldW - 60 - 36) / Math.max(1, n - 1))), y = 6, w = 36, h = 22;
+    ctx.fillStyle = '#1c1b26'; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, sky[0]); g.addColorStop(1, sky[1]);
+    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+    if (night) { ctx.fillStyle = '#e8ecff'; for (let k = 0; k < 6; k++) { const sx = x + 3 + (officeHash(`s${i}${k}`) % (w - 6)), sy = y + 2 + (officeHash(`t${i}${k}`) % (h - 6)); ctx.fillRect(sx, sy, 1, 1); } }
+    else { ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(x + 6, y + 5, 10, 3); ctx.fillRect(x + 9, y + 3, 5, 2); }
+    ctx.fillStyle = '#5a5570'; ctx.fillRect(x + Math.floor(w / 2) - 1, y, 2, h); ctx.fillRect(x, y + Math.floor(h / 2) - 1, w, 2);
+    ctx.fillStyle = '#6a6484'; ctx.fillRect(x - 3, y + h + 2, w + 6, 2);   // sill
+  }
+}
 function officeDrawWallDecor(ctx, im, worldW, floorTop, board) {
+  // decor hangs in the gaps between windows
   const y = 2;
-  const items = [['hanging_plant', 16], ['large_painting', 32], ['small_painting', 16], ['whiteboard', 32], ['clock', 16], ['small_painting_2', 16], ['hanging_plant', 16]];
-  const total = items.reduce((a, [, w]) => a + w, 0);
-  const inner = worldW - 40;
-  let use = items;
-  while (use.length > 2 && total - (items.length - use.length) * 20 > inner) use = use.slice(0, -1);
-  const usedW = use.reduce((a, [, w]) => a + w, 0);
-  const gap = Math.max(6, Math.floor((inner - usedW) / Math.max(1, use.length - 1)));
-  let x = 20;
-  for (const [k, w] of use) { if (im[k]) ctx.drawImage(im[k], Math.round(x), y); x += w + gap; }
+  const n = Math.max(2, Math.floor((worldW - 60) / 110));
+  const winXs = []; for (let i = 0; i < n; i++) winXs.push(Math.round(30 + i * ((worldW - 60 - 36) / Math.max(1, n - 1))));
+  const items = [['large_painting', 32], ['whiteboard', 32], ['clock', 16], ['small_painting', 16], ['small_painting_2', 16]];
+  let k = 0;
+  const slots = [[8, winXs[0] - 4]];
+  for (let i = 0; i < winXs.length - 1; i++) slots.push([winXs[i] + 40, winXs[i + 1] - 4]);
+  slots.push([winXs[winXs.length - 1] + 40, worldW - 8]);
+  for (const [a, b] of slots) {
+    const [key, w] = items[k % items.length];
+    if (b - a < w + 4) continue;
+    if (im[key]) ctx.drawImage(im[key], Math.round((a + b) / 2 - w / 2), y);
+    k++;
+  }
+  if (im.hanging_plant) { ctx.drawImage(im.hanging_plant, 6, 0); ctx.drawImage(im.hanging_plant, worldW - 22, 0); }
 }
 let officeAudio = null;
 function officeBeep() {
