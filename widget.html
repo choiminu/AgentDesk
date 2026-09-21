@@ -4698,7 +4698,7 @@ function officeFrame(now) {
       if (im.carpet) {
         ctx.drawImage(im.carpet, sx + 8, sy + 12, 64, 64);
         ctx.globalCompositeOperation = 'multiply';
-        ctx.fillStyle = st === 'running' ? (sess && sess.isSub ? '#8fb3e8' : '#6f8fd8') : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : '#bdbac4';
+        ctx.fillStyle = st === 'running' ? (sess && sess.isSub ? '#8fb3e8' : '#6f8fd8') : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : st === 'empty' ? '#d8d6de' : '#bdbac4';
         ctx.fillRect(sx + 8, sy + 12, 64, 64);
         ctx.globalCompositeOperation = 'source-over';
       }
@@ -4718,7 +4718,6 @@ function officeFrame(now) {
       if (sitting && st === 'running') {
         ctx.fillStyle = `rgba(140,200,255,${0.10 + 0.12 * pulse})`; ctx.fillRect(deskX + 12, deskY - 2, 24, 22);
       }
-      officeShadow(ctx, deskX + 24, deskY + 33, 24, 3);
       if (im.chair_back) ctx.drawImage(im.chair_back, seat.chairX - 8, seat.chairY - 12);
       if (sitting) officeShadow(ctx, seat.chairX, seat.chairY + 2, 8, 2.5);
 
