@@ -613,6 +613,9 @@ ipcMain.handle("orca:version", async () => {
 ipcMain.handle("orca:hooks-status", () => ({ installed: hooksInstalled(), script: HOOK_SCRIPT, events: EVENTS_FILE }));
 ipcMain.handle("orca:hooks-install", () => { try { return installHooks(); } catch (e) { return { ok: false, error: e.message }; } });
 ipcMain.handle("orca:hooks-uninstall", () => { try { return uninstallHooks(); } catch (e) { return { ok: false, error: e.message }; } });
+const TEAMS_FILE = join(ROCA_DIR, "teams.json");
+ipcMain.handle("orca:teams-read", () => { try { return JSON.parse(readFileSync(TEAMS_FILE, "utf-8")); } catch { return null; } });
+ipcMain.handle("orca:teams-write", (_e, data) => { try { mkdirSync(ROCA_DIR, { recursive: true }); writeFileSync(TEAMS_FILE, JSON.stringify(data, null, 2)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
 ipcMain.handle("orca:hooks-recent", () => {
   // replay the last ~30 minutes so state is right immediately after launch
   try {

@@ -262,6 +262,21 @@
   .orca-error span { color: var(--text2); word-break: break-all; }
   .orca-error code { font-family: var(--mono); background: var(--surface); padding: 0 4px; border-radius: 3px; }
 
+  /* ── Team modal ── */
+  .team-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 300; display: flex; align-items: center; justify-content: center; }
+  .team-modal { width: min(560px, 92vw); max-height: 86vh; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: 0 12px 40px rgba(0,0,0,0.5); padding: 14px 16px; font-size: var(--fs-sm); color: var(--text); }
+  .team-modal h3 { margin: 0 0 8px; font-size: var(--fs-md); }
+  .team-modal p, .team-modal li { color: var(--text2); line-height: 1.5; }
+  .team-modal textarea { width: 100%; min-height: 90px; box-sizing: border-box; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font: inherit; resize: vertical; }
+  .team-modal .row { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  .team-modal button { background: var(--surface-raised, var(--surface)); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; }
+  .team-modal button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .team-modal .assign { border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px; margin-top: 8px; }
+  .team-modal .assign b { color: var(--accent); }
+  .team-modal .assign textarea { min-height: 56px; margin-top: 4px; }
+  .team-modal .log { font-family: var(--mono); font-size: var(--fs-xs); white-space: pre-wrap; background: var(--bg-solid); border-radius: 6px; padding: 8px; max-height: 50vh; overflow: auto; }
+  .team-modal .brief { font-family: var(--mono); font-size: var(--fs-xs); white-space: pre-wrap; background: var(--bg-solid); border-radius: 6px; padding: 8px; max-height: 30vh; overflow: auto; color: var(--text2); }
+
   /* ── Context menu ── */
   .ctx-menu {
     position: fixed; z-index: 200; min-width: 150px;
@@ -2160,7 +2175,7 @@
       <select class="office-zoom" id="office-zoom" title="확대 배율"><option value="auto">자동</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
       <button class="office-sound-btn" id="hooks-toggle" title="Claude Code hooks로 작업 중/대기/선택 필요를 이벤트 기반으로 정확히 감지합니다 (~/.claude/settings.json에 훅 등록)">정확 감지 꺼짐</button>
       <button class="office-sound-btn" id="office-sound" title="입력 대기 전환 시 알림음">🔕</button>
-      <span class="office-hint">클릭: 채팅 · 더블클릭: Orca 터미널 · 쉬는 중은 휴게실</span>
+      <span class="office-hint">클릭: 채팅 · 더블클릭: 터미널 · 드래그: 팀 배치(PM 자리/팀 블록) · 우클릭: 메뉴</span>
     </div>
     <div class="office-wrap" id="office-wrap">
       <canvas id="office-canvas"></canvas>
@@ -4297,6 +4312,7 @@ function openSessionMenu(x, y, sess) {
   if (handle) items.push(['🖥', 'Orca 터미널 보기', () => api.switchTo(handle)]);
   items.push(['📋', '세션 ID 복사', () => { window.orca.clipboardWrite(sess.id); showInAppToast('세션 ID 복사됨'); }]);
   if (handle && (sess.status === 'running' || sess.status === 'waiting')) items.push(['⏸', '인터럽트 (Esc)', () => api.interrupt(handle)]);
+  for (const it of (typeof teamMenuItems === 'function' ? teamMenuItems(sess) : [])) items.push(it);
   if (handle) items.push(['✕', '세션 종료', async () => { if (confirm(`${sess.name} 세션을 종료할까요?`)) { await api.close(handle); fetchData(); } }, 'danger']);
   const el = document.createElement('div');
   el.className = 'ctx-menu';
@@ -4312,6 +4328,7 @@ document.addEventListener('mousedown', e => { if (ctxMenuEl && !ctxMenuEl.contai
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (ctxMenuEl) { closeCtxMenu(); return; }
+    if ($('team-modal')) { closeTeamModal(); return; }
     const panel = $('chat-panel');
     if (panel.classList.contains('open')) { panel.classList.remove('open'); chatHandle = null; }
   }
@@ -4542,9 +4559,13 @@ function officeFrame(now) {
   const aisleY = [];
   const blocks = [];
   let y = originY;
+  // team blocks (PM + pinned members) come first
+  const teamBlocks = officeBuildTeams(y, originX, cols, SEAT_PX, SEAT_PY, aisleY);
+  for (const tb of teamBlocks) y += tb.h;
+  const pinned = new Set(teamBlocks.flatMap(tb => tb.seats.filter(st => st.ch).map(st => st.ch.sid)));
   for (const st of OFFICE_STATIONS) {
     const occ = [...officeChars.values()]
-      .filter(c => !c.fading && !c.meeting && c.station === st.id && c.sess.status !== 'done')
+      .filter(c => !c.fading && !c.meeting && !pinned.has(c.sid) && c.station === st.id && c.sess.status !== 'done')
       .sort((a, b) => a.sid < b.sid ? -1 : 1);
     const nDesks = Math.max(1, occ.length);
     const rowsN = Math.ceil(nDesks / cols);
@@ -4567,7 +4588,7 @@ function officeFrame(now) {
   // lounge: idle agents rest on sofas (finished subagents just fade out)
   for (const c of officeChars.values()) if (c.sess && c.sess.isSub && c.sess.status === 'done') { c.fading = true; c.alpha = Math.min(c.alpha, 0.99); }
   const idle = [...officeChars.values()]
-    .filter(c => !c.fading && !c.meeting && c.sess.status === 'done')
+    .filter(c => !c.fading && !c.meeting && !pinned.has(c.sid) && c.sess.status === 'done')
     .sort((a, b) => a.sid < b.sid ? -1 : 1);
   const LOUNGE_ROW_H = 64, SOFA_STEP = 64;
   const usableW = cols * SEAT_PX;
@@ -4642,6 +4663,11 @@ function officeFrame(now) {
   // 4) draw: floors — corridor planks everywhere, then each station paints its own tile + tint
   const floorTop = OFFICE.WALL_H * T;
   officeTileArea(ctx, im, 'floor_plank', '#dcc09a', 0, floorTop, worldW, worldH - floorTop);
+  for (const tb of teamBlocks) {
+    officeTileArea(ctx, im, 'floor_plank', tb.template ? '#cfcbd6' : '#e9d7a6', 4, tb.y - 12, worldW - 8, tb.h);
+    ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, tb.y - 12, worldW - 8, 2);
+    ctx.fillStyle = tb.template ? 'rgba(160,160,180,0.85)' : 'rgba(239,176,65,0.85)'; ctx.fillRect(4, tb.y - 10, worldW - 8, 1);
+  }
   for (const block of blocks) {
     const by = block.y - 12, bh = block.rowsN * SEAT_PY;
     officeTileArea(ctx, im, block.st.floor, block.st.tint, 4, by, worldW - 8, bh);
@@ -4652,7 +4678,7 @@ function officeFrame(now) {
   officeTileArea(ctx, im, 'floor_brick', '#d9c2b4', 4, lounge.y - 12, worldW - 8, lounge.h);
   ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, lounge.y - 12, worldW - 8, 2);
   // low partition walls along the top of every room, with doorways where the vertical aisles pass
-  const partitionTops = [...blocks.map(b => b.y), lounge.y].concat(meeting ? [meeting.y] : []);
+  const partitionTops = [...teamBlocks.map(b => b.y), ...blocks.map(b => b.y), lounge.y].concat(meeting ? [meeting.y] : []);
   for (const py of partitionTops) officeDrawPartition(ctx, py, worldW, graph.xs);
   // runner carpets along the vertical aisles (where characters walk)
   for (const ax of graph.xs) {
@@ -4688,8 +4714,9 @@ function officeFrame(now) {
   const boardW = officeDrawBoard(ctx, shown, worldW, floorTop);
   officeDrawWallDecor(ctx, im, worldW, floorTop, boardW);
 
-  // station blocks
   officeSeats = [];
+  for (const tb of teamBlocks) officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame);
+  // station blocks
   for (const block of blocks) {
     // station banner (right end of the top aisle) in the station color
     const signText = `${block.st.label} · ${block.count}`;
@@ -4710,68 +4737,7 @@ function officeFrame(now) {
       }
     }
 
-    for (const seat of block.seats) {
-      const { sx, sy, deskX, deskY, ch } = seat;
-      const sess = ch ? ch.sess : null;
-      const st = sess ? sess.status : 'empty';
-      const sitting = ch && ch.state === 'sit';
-
-      officeDrawRug(ctx, sx + 8, sy + 12, 64, 64, st === 'running' ? (sess && sess.isSub ? '#8fb3e8' : '#6f8fd8') : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : st === 'empty' ? '#b9b6c2' : '#bdbac4', st === 'empty');
-      if (st === 'running' && sitting) {
-        ctx.strokeStyle = `rgba(120,170,255,${0.35 + 0.55 * pulse})`; ctx.lineWidth = 1;
-        ctx.strokeRect(sx + 7.5, sy + 11.5, 65, 65);
-      }
-      if (im.desk) ctx.drawImage(im.desk, deskX, deskY);
-      const pcImg = sitting && st === 'running' ? im[`pc_on_${pcFrame + 1}`] : sitting && (st === 'waiting' || st === 'error') ? im.pc_on_1 : im.pc_off;
-      if (pcImg) ctx.drawImage(pcImg, deskX + 16, deskY - 5);
-      if (sess) {
-        const k = officeHash(sess.id) % 4;
-        if (k === 0 && im.coffee) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
-        else if (k === 1 && im.pot) ctx.drawImage(im.pot, deskX + 2, deskY + 2);
-        else if (k === 2) { ctx.fillStyle = '#f1efe6'; ctx.fillRect(deskX + 36, deskY + 14, 9, 7); ctx.fillStyle = '#b9b6ad'; ctx.fillRect(deskX + 38, deskY + 16, 5, 1); ctx.fillRect(deskX + 38, deskY + 18, 5, 1); }
-      }
-      if (sitting && st === 'running') {
-        ctx.fillStyle = `rgba(140,200,255,${0.10 + 0.12 * pulse})`; ctx.fillRect(deskX + 12, deskY - 2, 24, 22);
-      }
-      if (im.chair_back) ctx.drawImage(im.chair_back, seat.chairX - 8, seat.chairY - 12);
-      if (sitting) officeShadow(ctx, seat.chairX, seat.chairY + 2, 8, 2.5);
-
-      if (sitting) {
-        const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
-        let frameCol = 0, dir = 1;
-        if (st === 'running') {
-          const reading = officeIsReadingTool(sess.tool);
-          frameCol = (reading ? 5 : 3) + (Math.floor(ch.animT / (reading ? 0.45 : 0.22)) % 2);
-        } else if (st === 'waiting') {
-          dir = 0;
-          frameCol = sess.needsInput ? 3 + (Math.floor(ch.animT / 0.5) % 2) : 0;   // wave only when a choice is pending
-        } else if (st === 'error') { dir = 0; frameCol = 0; }
-        if (sheet) officeDrawChar(ctx, sheet, frameCol, dir, seat.chairX, seat.chairY, ch.alpha);
-        const headY = seat.chairY - 24;
-        if (ch.reactT > 0) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'dots');
-        else if (st === 'running') {
-          if (sess.isSub) {
-            const subTool = sess.tool && sess.tool !== 'Agent' ? officeToolLabel(sess.tool) : null;
-            officeDrawTag(ctx, seat.chairX, headY - 16, subTool ? subTool.label : `⇶ ${(sess.subElapsed || '').replace(/\s+/g, '')}`.trim(), subTool ? subTool.color : '#9cc4ff', now);
-          } else {
-            const tool = officeToolLabel(sess.tool);
-            officeDrawTag(ctx, seat.chairX, headY - 16, tool.label, tool.color, now);
-            officeDrawTrail(ctx, ch, seat.chairX, headY - 3);
-            const runningSubs = (sess.subagents || []).filter(a => a.state === 'running').length;
-            if (!runningSubs && /^(Task|Agent)\b/.test(String(sess.tool || ''))) officeDrawHelper(ctx, im, ch, seat, now);
-          }
-        } else if (st === 'waiting') {
-          drawBubble(ctx, seat.chairX + 2, headY - 16 - (sess.needsInput ? bob : 0), 1, sess.needsInput ? 'ask' : 'check');
-          officeDrawSince(ctx, seat.chairX + 15, headY - 14 - (sess.needsInput ? bob : 0), ch.statusSince, sess.needsInput ? '#F2C037' : '#9fd8b8');
-        } else if (st === 'error') {
-          if (Math.floor(now / 400) % 2) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'bang');
-          officeDrawSince(ctx, seat.chairX + 15, headY - 14, ch.statusSince, '#ff9a95');
-        }
-        officeDrawName(ctx, sess, seat.chairX, seat.chairY + 10);
-        if (ch.alertT > 0) officeDrawAlert(ctx, seat.chairX, seat.chairY - 12, ch.alertT);
-      }
-      officeSeats.push({ x: sx, y: sy, w: SEAT_PX, h: SEAT_PY, ch });
-    }
+    for (const seat of block.seats) officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SEAT_PY);
   }
 
   if (meeting) officeDrawMeeting(ctx, im, meeting, worldW, originX, now, bob);
@@ -4829,6 +4795,7 @@ function officeFrame(now) {
   }
 
   officeDrawLighting(ctx, worldW, worldH, floorTop, shown);
+  officeDrawDrag(ctx, im, teamBlocks, worldW);
 
   if (officeHover) {
     const h = officeHover;
@@ -4900,6 +4867,70 @@ function officeDrawName(ctx, sess, cx, y, alpha = 1, opts = {}) {
   ctx.restore();
 }
 let officeMovers = [];
+
+function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SEAT_PY) {
+      const { sx, sy, deskX, deskY, ch } = seat;
+  const sess = ch ? ch.sess : null;
+  const st = sess ? sess.status : 'empty';
+  const sitting = ch && ch.state === 'sit';
+
+  officeDrawRug(ctx, sx + 8, sy + 12, 64, 64, st === 'running' ? (sess && sess.isSub ? '#8fb3e8' : '#6f8fd8') : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : st === 'empty' ? '#b9b6c2' : '#bdbac4', st === 'empty');
+  if (st === 'running' && sitting) {
+  ctx.strokeStyle = `rgba(120,170,255,${0.35 + 0.55 * pulse})`; ctx.lineWidth = 1;
+  ctx.strokeRect(sx + 7.5, sy + 11.5, 65, 65);
+  }
+  if (im.desk) ctx.drawImage(im.desk, deskX, deskY);
+  const pcImg = sitting && st === 'running' ? im[`pc_on_${pcFrame + 1}`] : sitting && (st === 'waiting' || st === 'error') ? im.pc_on_1 : im.pc_off;
+  if (pcImg) ctx.drawImage(pcImg, deskX + 16, deskY - 5);
+  if (sess) {
+  const k = officeHash(sess.id) % 4;
+  if (k === 0 && im.coffee) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
+  else if (k === 1 && im.pot) ctx.drawImage(im.pot, deskX + 2, deskY + 2);
+  else if (k === 2) { ctx.fillStyle = '#f1efe6'; ctx.fillRect(deskX + 36, deskY + 14, 9, 7); ctx.fillStyle = '#b9b6ad'; ctx.fillRect(deskX + 38, deskY + 16, 5, 1); ctx.fillRect(deskX + 38, deskY + 18, 5, 1); }
+  }
+  if (sitting && st === 'running') {
+  ctx.fillStyle = `rgba(140,200,255,${0.10 + 0.12 * pulse})`; ctx.fillRect(deskX + 12, deskY - 2, 24, 22);
+  }
+  if (im.chair_back) ctx.drawImage(im.chair_back, seat.chairX - 8, seat.chairY - 12);
+  if (sitting) officeShadow(ctx, seat.chairX, seat.chairY + 2, 8, 2.5);
+
+  if (sitting) {
+  const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
+  let frameCol = 0, dir = 1;
+  if (st === 'running') {
+    const reading = officeIsReadingTool(sess.tool);
+    frameCol = (reading ? 5 : 3) + (Math.floor(ch.animT / (reading ? 0.45 : 0.22)) % 2);
+  } else if (st === 'waiting') {
+    dir = 0;
+    frameCol = sess.needsInput ? 3 + (Math.floor(ch.animT / 0.5) % 2) : 0;   // wave only when a choice is pending
+  } else if (st === 'error') { dir = 0; frameCol = 0; }
+  if (sheet) officeDrawChar(ctx, sheet, frameCol, dir, seat.chairX, seat.chairY, ch.alpha);
+  const headY = seat.chairY - 24;
+  if (ch.reactT > 0) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'dots');
+  else if (st === 'running') {
+    if (sess.isSub) {
+      const subTool = sess.tool && sess.tool !== 'Agent' ? officeToolLabel(sess.tool) : null;
+      officeDrawTag(ctx, seat.chairX, headY - 16, subTool ? subTool.label : `⇶ ${(sess.subElapsed || '').replace(/\s+/g, '')}`.trim(), subTool ? subTool.color : '#9cc4ff', now);
+    } else {
+      const tool = officeToolLabel(sess.tool);
+      officeDrawTag(ctx, seat.chairX, headY - 16, tool.label, tool.color, now);
+      officeDrawTrail(ctx, ch, seat.chairX, headY - 3);
+      const runningSubs = (sess.subagents || []).filter(a => a.state === 'running').length;
+      if (!runningSubs && /^(Task|Agent)\b/.test(String(sess.tool || ''))) officeDrawHelper(ctx, im, ch, seat, now);
+    }
+  } else if (st === 'waiting') {
+    drawBubble(ctx, seat.chairX + 2, headY - 16 - (sess.needsInput ? bob : 0), 1, sess.needsInput ? 'ask' : 'check');
+    officeDrawSince(ctx, seat.chairX + 15, headY - 14 - (sess.needsInput ? bob : 0), ch.statusSince, sess.needsInput ? '#F2C037' : '#9fd8b8');
+  } else if (st === 'error') {
+    if (Math.floor(now / 400) % 2) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'bang');
+    officeDrawSince(ctx, seat.chairX + 15, headY - 14, ch.statusSince, '#ff9a95');
+  }
+  officeDrawName(ctx, sess, seat.chairX, seat.chairY + 10);
+  if (ch.alertT > 0) officeDrawAlert(ctx, seat.chairX, seat.chairY - 12, ch.alertT);
+  }
+  officeSeats.push({ x: sx, y: sy, w: SEAT_PX, h: SEAT_PY, ch });
+
+}
 // ambient light by local time: warm at dusk, dim blue at night, monitors glow in the dark
 function officeDrawLighting(ctx, worldW, worldH, floorTop, shown) {
   const hr = new Date().getHours() + new Date().getMinutes() / 60;
@@ -5367,6 +5398,7 @@ $('office-canvas').addEventListener('mousemove', e => {
 $('office-canvas').addEventListener('mouseleave', () => { officeHover = null; $('office-tip').hidden = true; });
 let officeClickTimer = null;
 $('office-canvas').addEventListener('click', e => {
+  if (officeSuppressClick) return;
   const ch = officeCharAt(e);
   if (!ch) return;
   ch.reactT = 1.2;
@@ -5391,6 +5423,359 @@ $('office-canvas').addEventListener('dblclick', e => {
   const handle = officeHandleFor(ch);
   if (handle) api.switchTo(handle);
 });
+
+// ══════════════════════════════════════════
+// TEAMS: drag agents into a PM-led team; PM writes the brief and hands out tasks
+// ══════════════════════════════════════════
+const TEAM_ROLES = { dev: '개발', research: '조사', exec: '실행·테스트', docs: '문서화' };
+let teamState = { teams: {} };   // id → { id, pm, members:{sid:role}, brief, briefVersion, goal, log:[], rounds, autoDispatch, tasks:{sid:{task,done_when,sentAt,reported}} }
+let officeDrag = null;           // { ch, x, y, startX, startY, moved }
+let teamBlocksCache = [];
+
+async function teamsLoad() {
+  if (OFFICE_DEMO) {
+    teamState = { teams: { demo: { id: 'demo', pm: 'demo-4', members: { 'demo-1': 'dev', 'demo-8': 'docs' }, brief: '## 목표\n캐시 전략 결정', briefVersion: 1, goal: '캐시 전략 결정', log: [], rounds: 1, autoDispatch: false,
+      tasks: { 'demo-1': { task: 'Redis 캐시 어댑터 초안 구현', done_when: '단위 테스트 통과', sentAt: Date.now(), reported: false } } } } };
+    return;
+  }
+  try { const d = await window.orca.teamsRead(); if (d && d.teams) teamState = d; } catch {}
+}
+let teamsSaveTimer = null;
+function teamsSave() {
+  if (OFFICE_DEMO) return;
+  clearTimeout(teamsSaveTimer);
+  teamsSaveTimer = setTimeout(() => window.orca.teamsWrite(teamState).catch(() => {}), 300);
+}
+teamsLoad();
+
+function teamOf(sid) { for (const t of Object.values(teamState.teams)) if (t.pm === sid || t.members[sid]) return t; return null; }
+function teamRoleOf(sid) { const t = teamOf(sid); return t ? (t.pm === sid ? 'pm' : t.members[sid]) : null; }
+function teamUnpin(sid) {
+  const t = teamOf(sid); if (!t) return;
+  if (t.pm === sid) t.pm = null; else delete t.members[sid];
+  if (!t.pm && !Object.keys(t.members).length) delete teamState.teams[t.id];
+  teamsSave();
+}
+function teamNew() {
+  const id = 't' + Date.now().toString(36);
+  teamState.teams[id] = { id, pm: null, members: {}, brief: '', briefVersion: 0, goal: '', log: [], rounds: 0, autoDispatch: false, tasks: {} };
+  return teamState.teams[id];
+}
+function teamLog(t, type, text, extra = {}) {
+  t.log.push({ t: Date.now(), type, text: String(text).slice(0, 4000), ...extra });
+  if (t.log.length > 300) t.log.shift();
+  teamsSave();
+}
+
+// layout: one block per team (PM seat first, then members); a template block appears while dragging
+function officeBuildTeams(y0, originX, cols, SEAT_PX, SEAT_PY, aisleY) {
+  const out = [];
+  let y = y0;
+  const teams = Object.values(teamState.teams);
+  const showTemplate = officeDrag && !officeDrag.ch.sess.isSub && !teams.some(t => !t.pm);
+  const list = showTemplate ? [...teams, { id: '__template', pm: null, members: {}, template: true }] : teams;
+  for (const t of list) {
+    const pmCh = t.pm ? officeChars.get(t.pm) : null;
+    const memberChs = Object.keys(t.members).map(sid => officeChars.get(sid)).filter(Boolean);
+    const n = 1 + Math.max(memberChs.length, t.template ? 1 : 0);
+    const rowsN = Math.max(1, Math.ceil(n / cols));
+    const tb = { team: t, template: !!t.template, y, rowsN, h: rowsN * SEAT_PY, seats: [], pmSeat: null, rect: { x: 4, y: y - 12, w: 0, h: rowsN * SEAT_PY } };
+    for (let i = 0; i < Math.max(n, cols === 1 ? n : Math.min(n + 1, cols * rowsN)); i++) {
+      const col = i % cols, row = Math.floor(i / cols);
+      const sx = originX + col * SEAT_PX, sy = y + row * SEAT_PY;
+      const ch = i === 0 ? (pmCh && !pmCh.fading ? pmCh : null) : (memberChs[i - 1] || null);
+      const seat = { sx, sy, deskX: sx + 16, deskY: sy + 18, chairX: sx + 40, chairY: sy + 62, aisleY: sy + SEAT_PY - 8, ch, st: null, teamSeat: true, isPm: i === 0, role: ch && i > 0 ? t.members[ch.sid] : null, team: t };
+      if (ch) { ch.seat = seat; ch.meeting = false; }
+      if (i === 0) tb.pmSeat = seat;
+      tb.seats.push(seat);
+    }
+    for (let r = 0; r < rowsN; r++) aisleY.push(y + r * SEAT_PY - 8);
+    out.push(tb);
+    y += tb.h;
+  }
+  teamBlocksCache = out;
+  return out;
+}
+
+function officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame) {
+  const t = tb.team;
+  const pmName = t.pm ? (officeChars.get(t.pm)?.sess?.name || 'PM') : '';
+  const label = tb.template ? '새 팀 · PM 자리에 놓으세요' : `팀 · ${pmName || 'PM 없음'} · ${Object.keys(t.members).length}명`;
+  ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  const sw = Math.round(ctx.measureText(label).width + 12);
+  const signY = tb.y - 11, signX = worldW - originX - sw - 2;
+  ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(signX - 1, signY - 1, sw + 2, 13);
+  ctx.fillStyle = tb.template ? '#9a97a8' : '#efb041'; ctx.fillRect(signX, signY, sw, 11);
+  ctx.fillStyle = '#12141c'; ctx.fillText(label, signX + 6, signY + 1);
+  // dotted command lines PM → members
+  const pm = tb.pmSeat;
+  if (pm && pm.ch) {
+    ctx.save(); ctx.setLineDash([2, 2]); ctx.strokeStyle = 'rgba(239,176,65,0.85)'; ctx.lineWidth = 1;
+    for (const st of tb.seats) {
+      if (st === pm || !st.ch) continue;
+      const y0 = pm.sy + 10.5, y1 = st.sy + 10.5;
+      ctx.beginPath(); ctx.moveTo(pm.sx + 40, y0);
+      if (st.sy === pm.sy) ctx.lineTo(st.sx + 40, y1);
+      else { ctx.lineTo(pm.sx + 76, y0); ctx.lineTo(pm.sx + 76, y1); ctx.lineTo(st.sx + 40, y1); }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  for (const seat of tb.seats) {
+    if (!seat.ch) {
+      // empty slot: PM slot gets a crown outline, member slots a faint outline
+      officeDrawRug(ctx, seat.sx + 8, seat.sy + 12, 64, 64, seat.isPm ? '#efb041' : '#b9b6c2', true);
+      ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillStyle = 'rgba(20,20,30,0.75)';
+      ctx.fillText(seat.isPm ? 'PM' : '팀원', seat.sx + 40, seat.sy + 40);
+      if (im.desk) { ctx.globalAlpha = 0.6; ctx.drawImage(im.desk, seat.deskX, seat.deskY); ctx.globalAlpha = 1; }
+      continue;
+    }
+    officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, OFFICE.SEAT_W * OFFICE.T, OFFICE.SEAT_H * OFFICE.T);
+    // role / PM badge on the rug corner
+    const badge = seat.isPm ? '👑 PM' : (TEAM_ROLES[seat.role] || '팀원');
+    ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    const bw = Math.round(ctx.measureText(badge).width + 6);
+    ctx.fillStyle = seat.isPm ? '#efb041' : (OFFICE_STATIONS.find(x => x.id === seat.role)?.color || '#9a97a8');
+    ctx.fillRect(seat.sx + 8, seat.sy + 12, bw, 10);
+    ctx.fillStyle = '#12141c'; ctx.fillText(badge, seat.sx + 11, seat.sy + 12);
+    // pending task tag
+    const task = t.tasks && t.tasks[seat.ch.sid];
+    if (task && !task.reported && !seat.isPm) {
+      const tt = '▶ ' + String(task.task).replace(/\s+/g, ' ').slice(0, 12);
+      const tw = Math.min(64, Math.round(ctx.measureText(tt).width + 6));
+      ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(seat.sx + 8, seat.sy + 23, tw, 10);
+      ctx.fillStyle = '#ffd98a'; ctx.fillText(tt, seat.sx + 11, seat.sy + 23);
+    }
+  }
+}
+
+// drag ghost + drop-zone highlights
+function officeDrawDrag(ctx, im, teamBlocks, worldW) {
+  if (!officeDrag || !officeDrag.moved) return;
+  for (const tb of teamBlocks) {
+    ctx.fillStyle = 'rgba(239,176,65,0.10)'; ctx.fillRect(4, tb.y - 12, worldW - 8, tb.h);
+    const pm = tb.pmSeat;
+    if (pm && !pm.ch) { ctx.strokeStyle = 'rgba(239,176,65,0.95)'; ctx.lineWidth = 1; ctx.strokeRect(pm.sx + 7.5, pm.sy + 11.5, 65, 65); }
+    else if (pm) { ctx.strokeStyle = 'rgba(120,170,255,0.9)'; ctx.lineWidth = 1; ctx.strokeRect(4.5, tb.y - 11.5, worldW - 9, tb.h - 1); }
+  }
+  const sheet = im[`char_${officeHash(officeDrag.ch.sid) % OFFICE.CHAR_COUNT}`];
+  if (sheet) { ctx.globalAlpha = 0.85; officeDrawChar(ctx, sheet, 0, 0, officeDrag.x, officeDrag.y, 1); ctx.globalAlpha = 1; }
+  ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(Math.round(officeDrag.x) - 60, Math.round(officeDrag.y) + 12, 120, 10);
+  ctx.fillStyle = '#ffd98a'; ctx.fillText('PM 자리 또는 팀 블록에 놓기 · 밖에 놓으면 해제', Math.round(officeDrag.x), Math.round(officeDrag.y) + 12);
+}
+
+function officeWorldPos(evt) {
+  const canvas = $('office-canvas'); const rect = canvas.getBoundingClientRect(); const scale = canvas.__scale || 2;
+  return { x: (evt.clientX - rect.left) / scale, y: (evt.clientY - rect.top) / scale };
+}
+function officeDropAt(ch, x, y) {
+  for (const tb of teamBlocksCache) {
+    if (y < tb.y - 12 || y >= tb.y - 12 + tb.h) continue;
+    let t = tb.team;
+    if (tb.template) t = teamNew();
+    const pm = tb.pmSeat;
+    const onPm = pm && x >= pm.sx && x < pm.sx + OFFICE.SEAT_W * OFFICE.T && y >= pm.sy && y < pm.sy + OFFICE.SEAT_H * OFFICE.T;
+    teamUnpin(ch.sid);
+    if (onPm || !t.pm) {
+      if (t.pm && t.pm !== ch.sid) { showInAppToast('이미 PM이 있는 팀입니다', 'error'); return; }
+      t.pm = ch.sid; teamLog(t, 'pm', `${ch.sess.name}이(가) PM이 되었습니다`);
+    } else {
+      t.members[ch.sid] = ch.station && TEAM_ROLES[ch.station] ? ch.station : 'dev';
+      teamLog(t, 'join', `${ch.sess.name} 합류 (${TEAM_ROLES[t.members[ch.sid]]})`);
+    }
+    teamsSave(); return;
+  }
+  if (teamOf(ch.sid)) { teamUnpin(ch.sid); showInAppToast(`${ch.sess.name} 팀에서 해제`); }
+}
+$('office-canvas').addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const ch = officeCharAt(e);
+  if (!ch || !ch.sess || ch.sess.isSub) return;
+  const p = officeWorldPos(e);
+  officeDrag = { ch, x: p.x, y: p.y, startX: p.x, startY: p.y, moved: false };
+});
+window.addEventListener('mousemove', e => {
+  if (!officeDrag) return;
+  const p = officeWorldPos(e);
+  officeDrag.x = p.x; officeDrag.y = p.y;
+  if (!officeDrag.moved && Math.hypot(p.x - officeDrag.startX, p.y - officeDrag.startY) > 4) { officeDrag.moved = true; $('office-tip').hidden = true; }
+});
+window.addEventListener('mouseup', e => {
+  if (!officeDrag) return;
+  const d = officeDrag; officeDrag = null;
+  if (!d.moved) return;
+  officeSuppressClick = true; setTimeout(() => { officeSuppressClick = false; }, 300);
+  const p = officeWorldPos(e);
+  officeDropAt(d.ch, p.x, p.y);
+});
+let officeSuppressClick = false;
+
+// ── PM actions ──
+function teamModal(html) {
+  closeTeamModal();
+  const bg = document.createElement('div'); bg.className = 'team-modal-bg'; bg.id = 'team-modal';
+  bg.innerHTML = `<div class="team-modal">${html}</div>`;
+  bg.addEventListener('mousedown', e => { if (e.target === bg) closeTeamModal(); });
+  document.body.appendChild(bg);
+  return bg.firstElementChild;
+}
+function closeTeamModal() { const el = $('team-modal'); if (el) el.remove(); }
+
+async function teamAsk(handle, prompt, timeoutMs = 240000) {
+  const single = prompt.replace(/\r?\n+/g, ' ').trim();
+  const sendRes = await window.orca.terminalSend(handle, single, true, 15);
+  if (!sendRes?.result?.send?.accepted) throw new Error('전송이 거부되었습니다 (세션이 입력 대기 상태인지 확인)');
+  try { await window.orca.terminalWait(handle, 'tui-idle', timeoutMs); } catch {}
+  await new Promise(r => setTimeout(r, 800));
+  const res = await window.orca.terminalRead(handle, true);
+  return extractLastResponse(extractTail(res)) || '';
+}
+function teamMembersDesc(t) {
+  return Object.entries(t.members).map(([sid, role]) => `- ${officeChars.get(sid)?.sess?.name || sid} (${TEAM_ROLES[role] || role})`).join('\n');
+}
+function parseJsonLoose(text) {
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/); if (fence) { try { return JSON.parse(fence[1]); } catch {} }
+  const a = text.indexOf('{'), b = text.lastIndexOf('}');
+  if (a >= 0 && b > a) { try { return JSON.parse(text.slice(a, b + 1)); } catch {} }
+  return null;
+}
+function teamBriefPrompt(t, goal) {
+  return `[팀 PM 역할] 당신은 이 팀의 PM입니다. 코드를 직접 수정하지 말고 지시와 검수에만 집중하세요. 목표: "${goal}". 팀원: ${teamMembersDesc(t).replace(/\n/g, ' ')}. 아래 형식 그대로, BRIEF_START 와 BRIEF_END 사이에 팀 브리프를 작성하세요. 섹션: ## 목표 / ## 범위와 비범위 / ## 결정 사항(아키텍처·규칙·코딩 컨벤션) / ## 팀원별 담당과 산출물 / ## 완료 조건 / ## 금지 사항. 각 섹션은 3~6줄, 다른 말은 덧붙이지 마세요. BRIEF_START (여기에 브리프) BRIEF_END`;
+}
+function teamAssignPrompt(t, context) {
+  return `[팀 PM 역할] 브리프 v${t.briefVersion}를 기준으로 다음 지시를 정하세요. ${context} 팀원: ${teamMembersDesc(t).replace(/\n/g, ' ')}. 반드시 JSON 하나만 출력: {"assign":[{"to":"팀원 이름","task":"구체적 지시(2~5문장)","done_when":"완료 조건"}],"brief_update":"브리프 수정이 필요하면 바뀐 섹션 전체, 없으면 빈 문자열","done":false,"note":"사용자에게 남길 한 줄"}. 지시가 없는 팀원은 assign에서 빼고, 모든 작업이 끝났으면 done을 true로.`;
+}
+function teamMemberPrompt(t, role, task) {
+  return `[팀 지시 · 브리프 v${t.briefVersion}] 당신은 이 팀의 ${TEAM_ROLES[role] || role} 담당입니다. 아래 팀 브리프의 결정 사항·금지 사항을 반드시 지키고, 범위 밖 작업은 하지 마세요. === 브리프 === ${t.brief.replace(/\s+/g, ' ')} === 이번 태스크 === ${task.task} 완료 조건: ${task.done_when || '-'} === 보고 형식 === 작업을 끝내면 마지막에 REPORT_START 로 시작해 [한 일] [변경 파일] [막힌 점] [다음 제안] 네 항목을 각 1~3줄로 쓰고 REPORT_END 로 끝내세요.`;
+}
+function teamParseBrief(text) {
+  const m = text.match(/BRIEF_START([\s\S]*?)BRIEF_END/); return m ? m[1].trim() : (text.includes('## 목표') ? text.trim() : null);
+}
+function teamParseReport(text) {
+  const m = text.match(/REPORT_START([\s\S]*?)REPORT_END/); return m ? m[1].trim() : text.trim().slice(-1200);
+}
+
+async function teamStartFlow(t) {
+  const pmCh = officeChars.get(t.pm); const pmHandle = t.pm && handles.get(t.pm);
+  if (!pmCh || !pmHandle) { showInAppToast('PM 세션의 터미널을 찾을 수 없습니다', 'error'); return; }
+  if (!Object.keys(t.members).length) { showInAppToast('팀원을 먼저 팀 블록에 드래그하세요', 'error'); return; }
+  const m = teamModal(`<h3>팀 목표 지시 · ${esc(pmCh.sess.name)}</h3>
+    <p>PM이 브리프를 작성하고 팀원별 지시를 제안합니다. 제안은 승인 후 전달됩니다.</p>
+    <textarea id="team-goal" placeholder="예: 결제 재시도 로직을 추가하고 문서화까지 마무리">${esc(t.goal || '')}</textarea>
+    <div class="row"><label><input type="checkbox" id="team-auto" ${t.autoDispatch ? 'checked' : ''}> 이후 지시는 승인 없이 자동 전달</label>
+    <span style="margin-left:auto"></span><button id="team-cancel">취소</button><button class="primary" id="team-go">브리프 작성 요청</button></div>
+    <div id="team-status" style="margin-top:8px;color:var(--text3)"></div>`);
+  m.querySelector('#team-cancel').onclick = closeTeamModal;
+  m.querySelector('#team-go').onclick = async () => {
+    const goal = m.querySelector('#team-goal').value.trim(); if (!goal) return;
+    t.goal = goal; t.autoDispatch = m.querySelector('#team-auto').checked; teamsSave();
+    const status = m.querySelector('#team-status');
+    m.querySelector('#team-go').disabled = true;
+    try {
+      status.textContent = 'PM이 브리프를 작성하는 중…';
+      const briefText = await teamAsk(pmHandle, teamBriefPrompt(t, goal));
+      const brief = teamParseBrief(briefText);
+      if (!brief) throw new Error('브리프 형식을 읽지 못했습니다: ' + briefText.slice(0, 200));
+      t.brief = brief; t.briefVersion += 1; teamLog(t, 'brief', brief, { version: t.briefVersion });
+      status.textContent = 'PM이 업무 분배를 정하는 중…';
+      const assignText = await teamAsk(pmHandle, teamAssignPrompt(t, `목표: "${goal}". 첫 라운드입니다.`));
+      const plan = parseJsonLoose(assignText);
+      if (!plan || !Array.isArray(plan.assign)) throw new Error('분배 JSON을 읽지 못했습니다: ' + assignText.slice(0, 200));
+      closeTeamModal();
+      teamReviewPlan(t, plan);
+    } catch (e) { status.textContent = '실패: ' + e.message; m.querySelector('#team-go').disabled = false; }
+  };
+}
+function teamResolveMember(t, name) {
+  const n = String(name || '').trim().toLowerCase();
+  for (const sid of Object.keys(t.members)) { const nm = (officeChars.get(sid)?.sess?.name || '').toLowerCase(); if (nm === n || nm.includes(n) || n.includes(nm)) return sid; }
+  return null;
+}
+function teamReviewPlan(t, plan, auto = false) {
+  if (plan.brief_update && plan.brief_update.trim()) { t.brief = t.brief + '\n\n[갱신 v' + (t.briefVersion + 1) + ']\n' + plan.brief_update.trim(); t.briefVersion += 1; teamLog(t, 'brief', plan.brief_update, { version: t.briefVersion }); }
+  if (plan.note) teamLog(t, 'pm-note', plan.note);
+  const items = plan.assign.map(a => ({ sid: teamResolveMember(t, a.to), to: a.to, task: a.task || '', done_when: a.done_when || '' }));
+  if (plan.done) { teamLog(t, 'done', '팀 작업 완료: ' + (plan.note || '')); window.orca.notify('팀 작업 완료', `${officeChars.get(t.pm)?.sess?.name || 'PM'}: ${plan.note || ''}`); return; }
+  if (auto || t.autoDispatch) { teamDispatch(t, items); return; }
+  const m = teamModal(`<h3>PM 분배안 승인</h3>${plan.note ? `<p>${esc(plan.note)}</p>` : ''}
+    ${items.map((it, i) => `<div class="assign"><label><input type="checkbox" data-i="${i}" ${it.sid ? 'checked' : 'disabled'}> <b>${esc(it.to)}</b>${it.sid ? '' : ' <span style="color:var(--red)">(팀원 매칭 실패)</span>'}</label><textarea data-task="${i}">${esc(it.task)}</textarea><div style="color:var(--text3);margin-top:3px">완료 조건: ${esc(it.done_when)}</div></div>`).join('')}
+    <div class="row"><button id="team-cancel">취소</button><span style="margin-left:auto"></span><button class="primary" id="team-send">선택한 팀원에게 전달</button></div>`);
+  m.querySelector('#team-cancel').onclick = closeTeamModal;
+  m.querySelector('#team-send').onclick = () => {
+    const chosen = [];
+    m.querySelectorAll('input[type=checkbox][data-i]').forEach(cb => { if (cb.checked) { const i = +cb.dataset.i; items[i].task = m.querySelector(`textarea[data-task="${i}"]`).value; chosen.push(items[i]); } });
+    closeTeamModal(); teamDispatch(t, chosen);
+  };
+}
+async function teamDispatch(t, items) {
+  t.rounds = (t.rounds || 0) + 1; t.tasks = t.tasks || {};
+  for (const it of items) {
+    if (!it.sid) continue;
+    const h = handles.get(it.sid); const name = officeChars.get(it.sid)?.sess?.name || it.to;
+    if (!h) { teamLog(t, 'error', `${name}: 터미널 없음`); continue; }
+    try {
+      const r = await window.orca.terminalSend(h, teamMemberPrompt(t, t.members[it.sid], it).replace(/\r?\n+/g, ' '), true, 15);
+      if (!r?.result?.send?.accepted) throw new Error('전송 거부');
+      t.tasks[it.sid] = { task: it.task, done_when: it.done_when, sentAt: Date.now(), reported: false, briefVersion: t.briefVersion };
+      teamLog(t, 'dispatch', it.task, { to: name });
+      const ch = officeChars.get(it.sid); if (ch) ch.reactT = 1.5;
+    } catch (e) { teamLog(t, 'error', `${name}: ${e.message}`); showInAppToast(`${name} 전달 실패: ${e.message}`, 'error'); }
+  }
+  teamsSave();
+}
+// report loop: a member with a pending task goes running → waiting ⇒ collect its report and ask the PM for the next step
+const teamPrevStatus = new Map();
+let teamLoopBusy = false;
+async function teamTick() {
+  if (teamLoopBusy) return;
+  for (const t of Object.values(teamState.teams)) {
+    if (!t.pm || !t.tasks) continue;
+    for (const [sid, task] of Object.entries(t.tasks)) {
+      const sess = sessions.find(x => x.id === sid); if (!sess) continue;
+      const prev = teamPrevStatus.get(sid); teamPrevStatus.set(sid, sess.status);
+      if (task.reported || !(prev === 'running' && sess.status === 'waiting') || Date.now() - task.sentAt < 5000) continue;
+      teamLoopBusy = true;
+      try {
+        const h = handles.get(sid); const res = await window.orca.terminalRead(h, true);
+        const report = teamParseReport(extractLastResponse(extractTail(res)) || '');
+        task.reported = true; task.report = report; teamLog(t, 'report', report, { from: sess.name });
+        if ((t.rounds || 0) >= 12) { teamLog(t, 'stop', '라운드 상한(12)에 도달해 자동 진행을 멈춥니다'); showInAppToast('팀 라운드 상한 도달', 'error'); continue; }
+        const pmHandle = handles.get(t.pm); if (!pmHandle) continue;
+        const ctxTxt = `팀원 "${sess.name}"의 보고: ${report.replace(/\s+/g, ' ').slice(0, 1500)}. 아직 진행 중인 팀원: ${Object.entries(t.tasks).filter(([s, k]) => !k.reported).map(([s]) => officeChars.get(s)?.sess?.name || s).join(', ') || '없음'}.`;
+        const next = parseJsonLoose(await teamAsk(pmHandle, teamAssignPrompt(t, ctxTxt)));
+        if (!next || !Array.isArray(next.assign)) { teamLog(t, 'error', 'PM 응답을 JSON으로 읽지 못했습니다'); continue; }
+        teamReviewPlan(t, next, t.autoDispatch);
+      } catch (e) { teamLog(t, 'error', e.message); }
+      finally { teamLoopBusy = false; }
+    }
+  }
+}
+setInterval(teamTick, 2500);
+
+function teamShowLog(t) {
+  const lines = t.log.map(l => `${new Date(l.t).toLocaleTimeString('ko-KR')} [${l.type}${l.to ? '→' + l.to : ''}${l.from ? '←' + l.from : ''}] ${l.text}`).join('\n\n');
+  teamModal(`<h3>팀 로그 · ${esc(officeChars.get(t.pm)?.sess?.name || 'PM')}</h3>
+    ${t.brief ? `<p><b>브리프 v${t.briefVersion}</b></p><div class="brief">${esc(t.brief)}</div>` : ''}
+    <div class="log" style="margin-top:8px">${esc(lines || '기록이 없습니다')}</div>
+    <div class="row"><button id="team-close">닫기</button></div>`).querySelector('#team-close').onclick = closeTeamModal;
+}
+function teamMenuItems(sess) {
+  const t = teamOf(sess.id); const items = [];
+  if (!t) return items;
+  if (t.pm === sess.id) {
+    items.push(['🧭', '팀 목표 지시…', () => teamStartFlow(t)]);
+    items.push(['📜', '팀 브리프·로그 보기', () => teamShowLog(t)]);
+    items.push(['⏹', '자동 진행 ' + (t.autoDispatch ? '끄기' : '켜기'), () => { t.autoDispatch = !t.autoDispatch; teamsSave(); }]);
+  } else {
+    for (const [role, label] of Object.entries(TEAM_ROLES)) if (t.members[sess.id] !== role) items.push(['🏷', `역할: ${label}`, () => { t.members[sess.id] = role; teamsSave(); }]);
+    items.push(['📜', '팀 브리프·로그 보기', () => teamShowLog(t)]);
+  }
+  items.push(['↩', '팀에서 해제', () => teamUnpin(sess.id)]);
+  return items;
+}
+
 window.addEventListener('resize', () => { if (currentPage === 'office' && officeReady) officeFrame(performance.now()); });
 
 // ══════════════════════════════════════════
