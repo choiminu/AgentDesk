@@ -4329,7 +4329,7 @@ const OFFICE = {
   T: 16,            // tile px (world units)
   SEAT_W: 5,        // tiles per seat (x)
   SEAT_H: 6,        // tiles per seat (y)
-  WALL_H: 3,        // wall tiles at top
+  WALL_H: 4,        // wall tiles at top (decor row + whiteboard row)
   PAD: 1,           // margin tiles
   CHAR_COUNT: 6,
 };
@@ -4344,7 +4344,9 @@ let officeFontPx = 9;
 function officeLoadImages() {
   if (officeReady) return Promise.resolve();
   try { document.fonts.load(`9px 'Galmuri9'`).then(fs => { if (!fs.length) { officeFontPx = 7; } }); } catch { officeFontPx = 7; }
-  const names = ['desk', 'pc_on_1', 'pc_on_2', 'pc_on_3', 'pc_off', 'chair_back', 'plant', 'coffee', 'floor', 'carpet', 'sofa_front', 'coffee_table', 'large_plant'];
+  const names = ['desk', 'pc_on_1', 'pc_on_2', 'pc_on_3', 'pc_off', 'chair_back', 'plant', 'coffee', 'floor', 'carpet', 'sofa_front', 'coffee_table', 'large_plant',
+    'floor_plank', 'floor_tiles', 'floor_checker', 'floor_grid', 'floor_brick',
+    'bookshelf', 'double_bookshelf', 'whiteboard', 'large_painting', 'small_painting', 'small_painting_2', 'hanging_plant', 'clock', 'cactus', 'plant_2', 'bin', 'pot'];
   for (let i = 0; i < OFFICE.CHAR_COUNT; i++) names.push(`char_${i}`);
   return Promise.all(names.map(n => new Promise(res => {
     const img = new Image();
@@ -4413,6 +4415,7 @@ const OFFICE_DEMO = location.hash === '#office-demo' ? [
 if (OFFICE_DEMO) {
   setTimeout(() => { document.querySelector('.page-nav').style.pointerEvents = 'none'; const mb = $('minimize-btn'); if (mb) mb.style.pointerEvents = 'none'; }, 2000);
   setTimeout(() => { const d3 = OFFICE_DEMO.find(d => d.id === 'demo-3'); if (d3) { d3.status = 'waiting'; d3.tool = ''; } }, 11000);
+  setTimeout(() => { const w = $('office-wrap'); w.scrollTop = w.scrollHeight; }, 12000);
   setTimeout(() => {
     Object.assign(debateState, { running: true, groupA: ['demo-1', 'demo-2'], groupB: ['demo-3'], master: 'demo-4', mode: 'master-worker', round: 2, maxRounds: 3, topic: '캐시 전략 결정', currentHandle: 'demo-2' });
     setTimeout(() => { const w = $('office-wrap'); w.scrollTop = w.scrollHeight; }, 5000);
@@ -4635,40 +4638,49 @@ function officeFrame(now) {
     ch.animT += dt;
   }
 
-  // 4) draw: floor
-  const floorTiles = Math.ceil(worldW / T);
+  // 4) draw: floors — corridor planks everywhere, then each station paints its own tile + tint
   const floorTop = OFFICE.WALL_H * T;
-  for (let ty = OFFICE.WALL_H; ty < worldH / T; ty++)
-    for (let tx = 0; tx < floorTiles; tx++) {
-      if (im.floor) ctx.drawImage(im.floor, tx * T, ty * T);
-      else { ctx.fillStyle = '#3b3a48'; ctx.fillRect(tx * T, ty * T, T, T); }
-    }
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.fillStyle = '#e0bf8f';
-  ctx.fillRect(0, floorTop, worldW, worldH - floorTop);
-  ctx.globalCompositeOperation = 'source-over';
-  // wall
+  officeTileArea(ctx, im, 'floor_plank', '#dcc09a', 0, floorTop, worldW, worldH - floorTop);
+  for (const block of blocks) {
+    const by = block.y - 12, bh = block.rowsN * SEAT_PY;
+    officeTileArea(ctx, im, block.st.floor, block.st.tint, 4, by, worldW - 8, bh);
+    ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, by, worldW - 8, 2);
+    ctx.fillStyle = officeRgba(block.st.color, 0.85); ctx.fillRect(4, by + 2, worldW - 8, 1);
+  }
+  if (meeting) officeTileArea(ctx, im, 'floor_checker', '#d6c3e6', 4, meeting.y - 12, worldW - 8, meeting.h);
+  officeTileArea(ctx, im, 'floor_brick', '#d9c2b4', 4, lounge.y - 12, worldW - 8, lounge.h);
+  ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, lounge.y - 12, worldW - 8, 2);
+  // wall: paneled band with baseboard, then wall decor
   ctx.fillStyle = '#2b2a36'; ctx.fillRect(0, 0, worldW, floorTop);
+  ctx.fillStyle = '#34334a'; for (let x = 0; x < worldW; x += 32) ctx.fillRect(x, 0, 16, floorTop - 8);
+  ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(0, floorTop - 32, worldW, 26);   // shelf shadow behind the board
   ctx.fillStyle = '#4a4860'; ctx.fillRect(0, floorTop - 6, worldW, 4);
   ctx.fillStyle = '#1c1b26'; ctx.fillRect(0, floorTop - 2, worldW, 2);
   if (im.plant) { ctx.drawImage(im.plant, T * 0.25, floorTop - 16); ctx.drawImage(im.plant, worldW - T * 1.25, floorTop - 16); }
-  officeDrawBoard(ctx, shown, worldW, floorTop);
+  const boardW = officeDrawBoard(ctx, shown, worldW, floorTop);
+  officeDrawWallDecor(ctx, im, worldW, floorTop, boardW);
 
   // station blocks
   officeSeats = [];
   for (const block of blocks) {
-    // station strip + sign
-    ctx.fillStyle = officeRgba(block.st.color, 0.10);
-    ctx.fillRect(0, block.y - 4, worldW, block.rowsN * SEAT_PY);
-    ctx.fillStyle = officeRgba(block.st.color, 0.9);
-    ctx.fillRect(0, block.y - 4, 3, block.rowsN * SEAT_PY);
+    // station banner (right end of the top aisle) in the station color
     const signText = `${block.st.label} · ${block.count}`;
     ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    const sw = ctx.measureText(signText).width + 8;
-    const signY = block.y - 14, signX = worldW - originX - sw - 2;
-    ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(signX, signY, sw, 11);
-    ctx.fillStyle = block.st.color; ctx.fillRect(signX, signY, 2, 11);
-    ctx.fillStyle = '#e8ecf5'; ctx.fillText(signText, signX + 5, signY + 1);
+    const sw = Math.round(ctx.measureText(signText).width + 12);
+    const signY = block.y - 11, signX = worldW - originX - sw - 2;
+    ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(signX - 1, signY - 1, sw + 2, 13);
+    ctx.fillStyle = block.st.color; ctx.fillRect(signX, signY, sw, 11);
+    ctx.fillStyle = '#12141c'; ctx.fillText(signText, signX + 6, signY + 1);
+    // props in the first free desk slot of the last row (right of the last desk)
+    {
+      const n = block.seats.length, lastRowCount = n % cols === 0 ? cols : n % cols;
+      if (lastRowCount < cols) {
+        const px = originX + lastRowCount * SEAT_PX + 12, py = block.y + (block.rowsN - 1) * SEAT_PY + 20;
+        const [a, b] = block.st.props;
+        if (im[a]) ctx.drawImage(im[a], px, py);
+        if (im[b]) ctx.drawImage(im[b], px + (im[a] ? im[a].width : 0) + 8, py + (im[a] ? im[a].height : 32) - (im[b] ? im[b].height : 16));
+      }
+    }
 
     for (const seat of block.seats) {
       const { sx, sy, deskX, deskY, ch } = seat;
@@ -4738,17 +4750,13 @@ function officeFrame(now) {
 
   // lounge
   {
-    ctx.fillStyle = 'rgba(150,140,170,0.14)';
-    ctx.fillRect(0, lounge.y - 4, worldW, lounge.h);
-    ctx.fillStyle = 'rgba(190,170,210,0.9)';
-    ctx.fillRect(0, lounge.y - 4, 3, lounge.h);
     const signText = `휴게실 · ${lounge.count}`;
     ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    const sw = ctx.measureText(signText).width + 8;
-    const signY = lounge.y - 14, signX = worldW - originX - sw - 2;
-    ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(signX, signY, sw, 11);
-    ctx.fillStyle = '#c9b3e0'; ctx.fillRect(signX, signY, 2, 11);
-    ctx.fillStyle = '#e8ecf5'; ctx.fillText(signText, signX + 5, signY + 1);
+    const sw = Math.round(ctx.measureText(signText).width + 12);
+    const signY = lounge.y - 11, signX = worldW - originX - sw - 2;
+    ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(signX - 1, signY - 1, sw + 2, 13);
+    ctx.fillStyle = '#c9b3e0'; ctx.fillRect(signX, signY, sw, 11);
+    ctx.fillStyle = '#12141c'; ctx.fillText(signText, signX + 6, signY + 1);
     const lastSofa = lounge.sofas[Math.min(lounge.sofas.length, sofasPerRow) - 1];
     if (im.coffee_table && lastSofa && lastSofa.x + SOFA_STEP + 32 <= originX + usableW) ctx.drawImage(im.coffee_table, lastSofa.x + SOFA_STEP + 2, lounge.y + 10);
     if (im.large_plant && lastSofa && lastSofa.x + SOFA_STEP + 68 <= originX + usableW) ctx.drawImage(im.large_plant, lastSofa.x + SOFA_STEP + 38, lounge.y - 8);
@@ -4800,11 +4808,24 @@ function officeFrame(now) {
 }
 
 const OFFICE_STATIONS = [
-  { id: 'dev', label: '개발', color: '#6f8fd8' },
-  { id: 'research', label: '조사', color: '#b08ae8' },
-  { id: 'exec', label: '실행·테스트', color: '#6fc79a' },
-  { id: 'docs', label: '문서화', color: '#e0b060' },
+  { id: 'dev',      label: '개발',       color: '#6f8fd8', floor: 'floor_tiles',   tint: '#aebfe8', props: ['double_bookshelf', 'bin'] },
+  { id: 'research', label: '조사',       color: '#b08ae8', floor: 'floor_checker', tint: '#cbb8ea', props: ['bookshelf', 'pot'] },
+  { id: 'exec',     label: '실행·테스트', color: '#6fc79a', floor: 'floor_grid',    tint: '#b6dcc4', props: ['cactus', 'bin'] },
+  { id: 'docs',     label: '문서화',     color: '#e0b060', floor: 'floor_plank',   tint: '#e6c99c', props: ['double_bookshelf', 'plant_2'] },
 ];
+function officeTileArea(ctx, im, key, tint, x0, y0, w, h) {
+  const T = OFFICE.T;
+  const img = im[key] || im.floor;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x0, y0, w, h); ctx.clip();
+  for (let ty = Math.floor(y0 / T) * T; ty < y0 + h; ty += T)
+    for (let tx = Math.floor(x0 / T) * T; tx < x0 + w; tx += T) {
+      if (img) ctx.drawImage(img, tx, ty); else { ctx.fillStyle = '#6b6870'; ctx.fillRect(tx, ty, T, T); }
+    }
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = tint; ctx.fillRect(x0, y0, w, h);
+  ctx.restore();
+}
 const OFFICE_DOC_RE = /\.(md|mdx|markdown|txt|rst|adoc)(\b|$)|(^|\/)(docs?|doc|wiki|documentation|obsidian|notes?)\/|README|CHANGELOG|CONTRIBUTING|LICENSE/i;
 function officeClassify(sess) {
   const tool = sess.tool ? String(sess.tool) : '';
@@ -4923,11 +4944,25 @@ function officeDrawBoard(ctx, shown, worldW, floorTop) {
     w = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width) + 12;
     if (w <= maxW) break;
   }
-  const h = 24, x = Math.max(4, Math.round((worldW - w) / 2)), y = floorTop - h - 5;
+  const h = 24, x = Math.max(4, Math.round((worldW - w) / 2)), y = floorTop - h - 7;
   ctx.fillStyle = '#6b5a48'; ctx.fillRect(x - 2, y - 2, Math.round(w) + 4, h + 4);
   ctx.fillStyle = '#f2f3f6'; ctx.fillRect(x, y, Math.round(w), h);
   ctx.fillStyle = '#2b2f3a'; ctx.fillText(l1, x + 6, y + 2);
   ctx.fillStyle = longest ? '#b8860b' : '#5b6675'; ctx.fillText(l2, x + 6, y + 12);
+  return { x, w: Math.round(w) };
+}
+// decor row along the top of the wall (the whiteboard sits below it); spread evenly across the width
+function officeDrawWallDecor(ctx, im, worldW, floorTop, board) {
+  const y = 2;
+  const items = [['hanging_plant', 16], ['large_painting', 32], ['small_painting', 16], ['whiteboard', 32], ['clock', 16], ['small_painting_2', 16], ['hanging_plant', 16]];
+  const total = items.reduce((a, [, w]) => a + w, 0);
+  const inner = worldW - 40;
+  let use = items;
+  while (use.length > 2 && total - (items.length - use.length) * 20 > inner) use = use.slice(0, -1);
+  const usedW = use.reduce((a, [, w]) => a + w, 0);
+  const gap = Math.max(6, Math.floor((inner - usedW) / Math.max(1, use.length - 1)));
+  let x = 20;
+  for (const [k, w] of use) { if (im[k]) ctx.drawImage(im[k], Math.round(x), y); x += w + gap; }
 }
 let officeAudio = null;
 function officeBeep() {
