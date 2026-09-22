@@ -26,6 +26,7 @@ A lightweight Electron desktop widget for monitoring [Orca](https://github.com/s
 - **Pomodoro Timer / 뽀모도로 타이머** — Focus timer with system notifications. 시스템 알림이 포함된 집중 타이머입니다.
 - **File Drag & Drop / 파일 드래그앤드롭** — Drag files onto a session card to insert the file path into its terminal prompt. 파일을 세션 카드에 드래그하면 터미널 프롬프트에 경로가 입력됩니다.
 - **Minimize Mode / 최소화 모드** — Collapse to a compact header bar showing only session counts. 헤더 바만 남기는 미니 모드를 지원합니다.
+- **English / Korean UI** — English by default; switch to Korean with the footer language button (persisted). 기본 언어는 영어이며 푸터의 언어 버튼(한/EN)으로 한국어로 전환할 수 있습니다.
 - **Window Memory / 창 위치 기억** — Remembers last window position and size across restarts. 마지막 창 위치와 크기를 기억합니다.
 
 ---
@@ -131,6 +132,7 @@ npm run dist
 | 우클릭 (카드 / 오피스 캐릭터) | 채팅 열기 · Orca 터미널 보기 · 세션 ID 복사 · 인터럽트 · 세션 종료 |
 | Esc | 채팅 패널 / 메뉴 닫기 |
 | 트레이 아이콘 | 클릭으로 위젯 표시/숨김, 우클릭으로 메뉴. 제목에 `▶실행 수 ?선택 필요 수` 표시 |
+| 푸터 한/EN 버튼 | UI 언어 전환 (기본 영어). PM 팀 프롬프트도 선택한 언어로 전달됨 |
 
 ### 오피스 탭
 
@@ -222,7 +224,7 @@ npm run dist
 
 | 변수 | 동작 |
 |---|---|
-| `ROCA_START_PAGE=office` | 지정 탭으로 시작. `office-demo`는 가짜 세션 8개(서브에이전트·선택 필요·회의 포함)로 오피스를 재현 |
+| `ROCA_START_PAGE=office` | 지정 탭으로 시작. `office-demo`는 가짜 세션 12개(서브에이전트·선택 필요·팀 포함)로 오피스를 재현. `,ko` / `,en`을 붙여 언어 지정 (예: `office-demo,en`) |
 | `ROCA_SHOT=/path/shot.png` | 6·14·22초 시점에 창을 `shot-1.png`… 로 저장 |
 | `ROCA_DEBUG=1` | 터미널 읽기 로그 출력 |
 | `ROCA_HOOKS_INSTALL=1` | 시작 시 훅을 바로 등록 |
