@@ -5374,12 +5374,13 @@ function officeDrawChar(ctx, sheet, frameCol, dir, x, y, alpha) {
 }
 // hover outline: 1px white halo on the 4-neighbours of the sprite's opaque pixels, cached per (sheet, frame, dir)
 const officeOutlineCache = new Map();
+const officeOutlineScratch = document.createElement('canvas'); officeOutlineScratch.width = 16; officeOutlineScratch.height = 32;
 function officeOutlineFor(sheetIdx, sheet, frameCol, dir) {
   const key = `${sheetIdx}_${frameCol}_${dir}`;
   if (officeOutlineCache.has(key)) return officeOutlineCache.get(key);
   let out = null;
   try {
-    const sc = officeScratch.getContext('2d');
+    const sc = officeOutlineScratch.getContext('2d', { willReadFrequently: true });
     sc.save(); sc.setTransform(1, 0, 0, 1, 0, 0); sc.globalCompositeOperation = 'source-over'; sc.imageSmoothingEnabled = false;
     sc.clearRect(0, 0, 16, 32);
     const row = dir === 1 ? 1 : dir === 0 ? 0 : 2;
