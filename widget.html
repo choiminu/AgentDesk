@@ -4436,7 +4436,7 @@ const OFFICE_DEMO = location.hash === '#office-demo' ? [
 if (OFFICE_DEMO) {
   setTimeout(() => { document.querySelector('.page-nav').style.pointerEvents = 'none'; const mb = $('minimize-btn'); if (mb) mb.style.pointerEvents = 'none'; }, 2000);
   setTimeout(() => { const d3 = OFFICE_DEMO.find(d => d.id === 'demo-3'); if (d3) { d3.status = 'waiting'; d3.tool = ''; } }, 11000);
-  setTimeout(() => { officeHover = officeChars.get('demo-8') || null; }, 3000);
+  const demoHover = setInterval(() => { const c = officeChars.get('demo-8'); if (c) { officeHover = c; clearInterval(demoHover); } }, 500);
   setTimeout(() => { officeHover = null; }, 15000);
   // renderer timers start ~3s after the main-process screenshot timers, so the lounge shot (24s) is prepared from 17.5s
   for (const ms of [17500, 19500]) setTimeout(() => { officePet.heartT = 4; const w = $('office-wrap'); w.scrollTo({ top: w.scrollHeight, behavior: 'instant' }); }, ms);
