@@ -2429,6 +2429,13 @@ const I18N = {
   '훅 설치 실패: ': 'Hook install failed: ', '⚠ 문맥 갱신 필요': '⚠ stale brief', '⚠ 브리프가 갱신되어 문맥이 오래되었습니다': '⚠ Brief was updated; this member has stale context', '(응답 없음)': '(no reply)', '● 작업 중': '● Working',
   'Orca 버전': 'Orca version', '은(는) 지원 범위 밖입니다. 1.4 이상으로 업데이트하면 화면 기반 상태 판독과 채팅이 동작합니다.': ' is not supported. Update to 1.4 or newer for screen-based status and chat.',
 };
+Object.assign(I18N, {
+  '프롬프트 존': 'Prompt zones', '존 프롬프트 보내기': 'Send zone prompt', '이 내용으로 보내기': 'Send this', '다음부터 이 존은 확인 없이 바로 보내기': 'Skip this confirmation for this zone from now on',
+  '존 편집': 'Edit zone', '새 존 추가…': 'New zone…', '이 존 삭제': 'Delete this zone', '존에서 해제': 'Release from zone', '프롬프트 편집…': 'Edit prompt…',
+  '이름': 'Name', '아이콘': 'Icon', '프롬프트 템플릿': 'Prompt template', '확인 없이 바로 보내기': 'Send without confirmation', '저장': 'Save', '취소': 'Cancel',
+  '드래그해 놓으면 이 프롬프트를 보냅니다': 'Drop an agent here to send this prompt', '존 작업 응답 완료': 'zone task answered', '여기에 놓기': 'drop here',
+  '배포 문서': 'Deploy docs', '릴리스 노트': 'Release notes', '테스트 보강': 'More tests', '프롬프트 보내기': 'send prompt',
+});
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
   if (LANG === 'ko' || !str || !/[가-힣]/.test(str)) return str;
@@ -4431,10 +4438,16 @@ function openSessionMenu(x, y, sess) {
   items.push(['📋', '세션 ID 복사', () => { window.orca.clipboardWrite(sess.id); showInAppToast('세션 ID 복사됨'); }]);
   if (handle && (sess.status === 'running' || sess.status === 'waiting')) items.push(['⏸', '인터럽트 (Esc)', () => api.interrupt(handle)]);
   for (const it of (typeof teamMenuItems === 'function' ? teamMenuItems(sess) : [])) items.push(it);
+  for (const it of (typeof zoneMenuItems === 'function' ? zoneMenuItems(sess) : [])) items.push(it);
   if (handle) items.push(['✕', '세션 종료', async () => { if (confirm(`${sess.name} ${t('세션을 종료할까요?')}`)) { await api.close(handle); fetchData(); } }, 'danger']);
+  openItemsMenu(x, y, sess.name, items);
+}
+// items: [icon, label, onClick, cssClass?]
+function openItemsMenu(x, y, title, items) {
+  closeCtxMenu();
   const el = document.createElement('div');
   el.className = 'ctx-menu';
-  el.innerHTML = `<div class="ctx-title">${esc(sess.name)}</div>` + items.map((it, i) => `<button data-i="${i}" class="${it[3] || ''}"><span>${it[0]}</span>${esc(t(it[1]))}</button>`).join('');
+  el.innerHTML = `<div class="ctx-title">${esc(title)}</div>` + items.map((it, i) => `<button data-i="${i}" class="${it[3] || ''}"><span>${it[0]}</span>${esc(t(it[1]))}</button>`).join('');
   el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; closeCtxMenu(); items[+b.dataset.i][2](); });
   document.body.appendChild(el);
   const r = el.getBoundingClientRect();
@@ -4690,6 +4703,8 @@ function officeFrame(now) {
   const teamBlocks = officeBuildTeams(y, originX, cols, SEAT_PX, SEAT_PY, aisleY);
   for (const tb of teamBlocks) y += tb.h;
   const pinned = new Set(teamBlocks.flatMap(tb => tb.seats.filter(st => st.ch).map(st => st.ch.sid)));
+  zoneTick();
+  for (const sid of Object.keys(zoneState.assign)) if (zonePinned(sid)) pinned.add(sid);
   for (const st of OFFICE_STATIONS) {
     const occ = [...officeChars.values()]
       .filter(c => !c.fading && !c.meeting && !pinned.has(c.sid) && c.station === st.id && c.sess.status !== 'done')
@@ -4715,6 +4730,9 @@ function officeFrame(now) {
   const templateBlocks = officeBuildTeams(y, originX, cols, SEAT_PX, SEAT_PY, aisleY, 'template');
   for (const tb of templateBlocks) y += tb.h;
   const allTeamBlocks = [...teamBlocks, ...templateBlocks];
+  // prompt zones: drop an agent on a zone desk to send that zone's prompt
+  const zoneBlock = officeBuildZones(y, originX, cols, SEAT_PX, SEAT_PY, aisleY);
+  if (zoneBlock) y += zoneBlock.h;
 
   // lounge: idle agents rest on sofas (finished subagents just fade out)
   for (const c of officeChars.values()) if (c.sess && c.sess.isSub && c.sess.status === 'done') { c.fading = true; c.alpha = Math.min(c.alpha, 0.99); }
@@ -4808,10 +4826,15 @@ function officeFrame(now) {
     ctx.fillStyle = officeRgba(block.st.color, 0.85); ctx.fillRect(4, by + 2, worldW - 8, 1);
   }
   if (meeting) officeTileArea(ctx, im, 'floor_checker', '#d6c3e6', 4, meeting.y - 12, worldW - 8, meeting.h);
+  if (zoneBlock) {
+    officeTileArea(ctx, im, 'floor_grid', '#b9d9d0', 4, zoneBlock.y - 12, worldW - 8, zoneBlock.h);
+    ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, zoneBlock.y - 12, worldW - 8, 2);
+    ctx.fillStyle = 'rgba(95,199,179,0.85)'; ctx.fillRect(4, zoneBlock.y - 10, worldW - 8, 1);
+  }
   officeTileArea(ctx, im, 'floor_brick', '#d9c2b4', 4, lounge.y - 12, worldW - 8, lounge.h);
   ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, lounge.y - 12, worldW - 8, 2);
   // low partition walls along the top of every room, with doorways where the vertical aisles pass
-  const partitionTops = [...allTeamBlocks.map(b => b.y), ...blocks.map(b => b.y), lounge.y].concat(meeting ? [meeting.y] : []);
+  const partitionTops = [...allTeamBlocks.map(b => b.y), ...blocks.map(b => b.y), lounge.y].concat(meeting ? [meeting.y] : []).concat(zoneBlock ? [zoneBlock.y] : []);
   // runner carpets along the vertical aisles (where characters walk)
   for (const ax of graph.xs) {
     if (ax < 8 || ax > worldW - 8) continue;
@@ -4872,6 +4895,7 @@ function officeFrame(now) {
   }
 
   if (meeting) zItems.push({ z: meeting.tableY + meeting.tableH, draw: () => officeDrawMeeting(ctx, im, meeting, worldW, originX, now, bob) });
+  if (zoneBlock) officeDrawZoneBlock(ctx, im, zoneBlock, worldW, originX, now, bob, pulse, pcFrame, zItems);
 
   // lounge
   {
@@ -5615,10 +5639,12 @@ $('office-canvas').addEventListener('mousemove', e => {
   const canvas = $('office-canvas');
   officeHover = ch;
   const onPet = !ch && officePetHit(e);
+  const zs = !ch && !onPet ? officeZoneSeatAt(officeWorldPos(e).x, officeWorldPos(e).y) : null;
   canvas.classList.toggle('hit', !!ch || onPet);
   if (!ch) {
-    if (!onPet) { tip.hidden = true; return; }
-    tip.innerHTML = '<b>Gitcat</b><span>휴게실 고양이 · 클릭하면 좋아합니다</span>';
+    if (!onPet && !zs) { tip.hidden = true; return; }
+    tip.innerHTML = zs ? `<b>${esc(zs.zone.icon)} ${esc(t(zs.zone.name))}</b><span style="display:block;max-width:260px;white-space:normal;color:var(--text2)">${esc(zs.zone.prompt.slice(0, 140))}${zs.zone.prompt.length > 140 ? '…' : ''}</span><span style="display:block;color:#5fc7b3;margin-top:2px">${t('드래그해 놓으면 이 프롬프트를 보냅니다')}${zs.zone.auto ? ' · ' + t('확인 없이 바로 보내기') : ''}</span>`
+      : '<b>Gitcat</b><span>' + t('휴게실 고양이 · 클릭하면 좋아합니다') + '</span>';
     const wr0 = $('office-wrap').getBoundingClientRect();
     tip.style.left = (e.clientX - wr0.left + 12) + 'px'; tip.style.top = (e.clientY - wr0.top + $('office-wrap').scrollTop + 12) + 'px';
     tip.hidden = false; return;
@@ -5633,6 +5659,8 @@ $('office-canvas').addEventListener('mousemove', e => {
   const tm = teamOf(ch.sid);
   const tmTask = tm?.tasks?.[ch.sid];
   const briefWarn = tmTask && tmTask.briefVersion != null && tmTask.briefVersion < tm.briefVersion ? '<span style="display:block;color:#F2C037;margin-top:2px">' + t('⚠ 브리프가 갱신되어 문맥이 오래되었습니다 · 우클릭 → 브리프 다시 전달') + '</span>' : '';
+  const zn = zoneOf(ch.sid);
+  const zoneTxt = zn ? `<span style="display:block;color:#5fc7b3;margin-top:2px">${esc(zn.icon)} ${esc(zn.name)} (${officeFmtSince(zoneState.assign[ch.sid].sentAt)})</span>` : '';
   let teamTxt = '';
   if (tm && tm.pm === ch.sid) {
     const all = Object.values(tm.tasks || {}), pending = all.filter(k => !k.reported).length;
@@ -5640,7 +5668,7 @@ $('office-canvas').addEventListener('mousemove', e => {
   } else if (tmTask) {
     teamTxt = `<span style="display:block;max-width:240px;white-space:normal;color:#ffd98a;margin-top:2px">${tmTask.reported ? t('✓ 보고 완료') : '▶ ' + esc(String(tmTask.task).replace(/\s+/g, ' ').slice(0, 80))}${tmTask.done_when && !tmTask.reported ? t(' · 완료 조건: ') + esc(String(tmTask.done_when).slice(0, 40)) : ''}${tmTask.sentAt ? ' (' + officeFmtSince(tmTask.sentAt) + ')' : ''}</span>`;
   }
-  tip.innerHTML = `<b>${esc(s.name)}</b><span>${esc(s.branch || '')} · ${stLabel}${since}${s.tool ? ' · ' + esc(s.tool) : ''}${target ? ' ' + esc(target) : ''}${station && s.status !== 'done' ? ' · ' + t(station.label) : ''}${ctxTxt}</span>${msg}${teamTxt}${briefWarn}`;
+  tip.innerHTML = `<b>${esc(s.name)}</b><span>${esc(s.branch || '')} · ${stLabel}${since}${s.tool ? ' · ' + esc(s.tool) : ''}${target ? ' ' + esc(target) : ''}${station && s.status !== 'done' ? ' · ' + t(station.label) : ''}${ctxTxt}</span>${msg}${zoneTxt}${teamTxt}${briefWarn}`;
   const wrap = $('office-wrap');
   const wr = wrap.getBoundingClientRect();
   tip.style.left = (e.clientX - wr.left + 12) + 'px';
@@ -5664,7 +5692,11 @@ $('office-canvas').addEventListener('click', e => {
 });
 $('office-canvas').addEventListener('contextmenu', e => {
   const ch = officeCharAt(e);
-  if (!ch || !ch.sess) return;
+  if (!ch || !ch.sess) {
+    const p = officeWorldPos(e); const zs = officeZoneSeatAt(p.x, p.y);
+    if (zs) { e.preventDefault(); openItemsMenu(e.clientX, e.clientY, `${zs.zone.icon} ${zs.zone.name}`, zoneCellMenuItems(zs.zone)); }
+    return;
+  }
   e.preventDefault(); ch.reactT = 1.2;
   openSessionMenu(e.clientX, e.clientY, ch.sess.isSub ? (sessions.find(x => x.id === ch.sess.parentId) || ch.sess) : ch.sess);
 });
@@ -5733,8 +5765,8 @@ function officeBuildTeams(y0, originX, cols, SEAT_PX, SEAT_PY, aisleY, mode = 't
   const showTemplate = mode === 'template' && officeDrag && officeDrag.moved && !officeDrag.ch.sess.isSub && !teams.some(t => !t.pm);
   const list = mode === 'template' ? (showTemplate ? [{ id: '__template', pm: null, members: {}, template: true }] : []) : teams;
   for (const t of list) {
-    const pmCh = t.pm ? officeChars.get(t.pm) : null;
-    const memberChs = Object.keys(t.members).map(sid => officeChars.get(sid)).filter(Boolean);
+    const pmCh = t.pm && !zonePinned(t.pm) ? officeChars.get(t.pm) : null;
+    const memberChs = Object.keys(t.members).filter(sid => !zonePinned(sid)).map(sid => officeChars.get(sid)).filter(Boolean);
     const n = 1 + Math.max(memberChs.length, t.template ? 1 : 0);
     const rowsN = Math.max(1, Math.ceil(n / cols));
     const tb = { team: t, template: !!t.template, y, rowsN, h: rowsN * SEAT_PY, seats: [], pmSeat: null, rect: { x: 4, y: y - 12, w: 0, h: rowsN * SEAT_PY } };
@@ -5842,6 +5874,11 @@ function officeDrawTeamFlights(ctx) {
 // drag ghost + drop-zone highlights
 function officeDrawDrag(ctx, im, teamBlocks, worldW) {
   if (!officeDrag || !officeDrag.moved) return;
+  if (zoneBlockCache) {
+    ctx.fillStyle = 'rgba(95,199,179,0.10)'; ctx.fillRect(4, zoneBlockCache.y - 12, worldW - 8, zoneBlockCache.h);
+    ctx.strokeStyle = 'rgba(95,199,179,0.95)'; ctx.lineWidth = 1;
+    for (const st of zoneBlockCache.seats) ctx.strokeRect(st.sx + 7.5, st.sy + 11.5, 65, 65);
+  }
   for (const tb of teamBlocks) {
     ctx.fillStyle = 'rgba(239,176,65,0.10)'; ctx.fillRect(4, tb.y - 12, worldW - 8, tb.h);
     const pm = tb.pmSeat;
@@ -5860,6 +5897,8 @@ function officeWorldPos(evt) {
   return { x: (evt.clientX - rect.left) / scale, y: (evt.clientY - rect.top) / scale };
 }
 function officeDropAt(ch, x, y) {
+  const zs = officeZoneSeatAt(x, y);
+  if (zs) { zoneDrop(ch, zs.zone); return; }
   for (const tb of teamBlocksCache) {
     if (y < tb.y - 12 || y >= tb.y - 12 + tb.h) continue;
     let t = tb.team;
@@ -5900,6 +5939,152 @@ window.addEventListener('mouseup', e => {
   officeDropAt(d.ch, p.x, p.y);
 });
 let officeSuppressClick = false;
+
+// ══════════════════════════════════════════
+// PROMPT ZONES: drop an agent on a zone desk → its prompt template (filled with session context) is sent to that terminal
+// ══════════════════════════════════════════
+const ZONE_DEFAULTS = [
+  { id: 'deploy', icon: '📦', name: '배포 문서', auto: false, prompt: '현재 브랜치 {branch}의 변경 사항을 기준으로 배포 문서를 작성해 주세요. 포함할 항목: 배포 대상과 순서, 사전 조건(환경 변수·마이그레이션·의존성), 배포 절차(실행 명령 포함), 배포 후 검증 방법, 롤백 절차. 결과는 docs/deploy/ 아래 마크다운 파일로 저장하고 파일 경로를 알려 주세요.' },
+  { id: 'release', icon: '📝', name: '릴리스 노트', auto: false, prompt: '최근 커밋과 변경 파일을 바탕으로 사용자 관점의 릴리스 노트를 작성해 주세요. 새 기능 / 개선 / 버그 수정 / 주의 사항으로 나누고 각 항목은 한 줄로 정리합니다. CHANGELOG.md 맨 위에 오늘 날짜({date})로 추가해 주세요.' },
+  { id: 'tests', icon: '🧪', name: '테스트 보강', auto: false, prompt: '방금 변경한 코드({file})에 대해 누락된 테스트를 찾아 추가해 주세요. 경계값과 실패 경로를 우선하고, 기존 테스트 러너로 실행해 통과를 확인한 뒤 추가한 테스트와 결과를 요약해 주세요.' },
+];
+let zoneState = { zones: ZONE_DEFAULTS.map(z => ({ ...z })), assign: {} };   // assign: sid → { zoneId, sentAt }
+let zoneBlockCache = null;
+async function zonesLoad() {
+  if (OFFICE_DEMO) { zoneState.assign = { 'demo-2': { zoneId: 'deploy', sentAt: Date.now() } }; return; }
+  try { const d = await window.orca.zonesRead(); if (d && Array.isArray(d.zones)) zoneState = { zones: d.zones, assign: d.assign || {} }; } catch {}
+}
+let zonesSaveTimer = null;
+function zonesSave() {
+  if (OFFICE_DEMO) return;
+  clearTimeout(zonesSaveTimer);
+  zonesSaveTimer = setTimeout(() => window.orca.zonesWrite(zoneState).catch(() => {}), 300);
+}
+zonesLoad();
+function zoneById(id) { return zoneState.zones.find(z => z.id === id) || null; }
+// assigned AND currently able to sit at the zone desk (present, not fading, not in a meeting)
+function zonePinned(sid) { const c = zoneState.assign[sid] ? officeChars.get(sid) : null; return !!(c && !c.fading && !c.meeting); }
+function zoneOf(sid) { const a = zoneState.assign[sid]; return a ? zoneById(a.zoneId) : null; }
+function zoneFill(tpl, sess) {
+  const file = sess.toolInput ? String(sess.toolInput).split(/\s+/)[0] : '';
+  const vars = { name: sess.name || '', branch: sess.branch || '', repo: sess.repo || '', tool: sess.tool || '', file: file || '변경한 파일', date: new Date().toISOString().slice(0, 10) };
+  return tpl.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+}
+// an assignment ends once the session has answered (left running for 5s+) or the character is gone
+function zoneTick() {
+  for (const [sid, a] of Object.entries(zoneState.assign)) {
+    const ch = officeChars.get(sid); const z = zoneById(a.zoneId);
+    const answered = ch && ch.sess && ch.sess.status !== 'running' && Date.now() - a.sentAt > 5000;
+    if (!z || !ch || ch.fading || answered) {
+      delete zoneState.assign[sid]; zonesSave();
+      if (answered && z) showInAppToast(`${ch.sess.name}: ${z.icon} ${z.name} ${t('존 작업 응답 완료')}`);
+    }
+  }
+}
+function officeBuildZones(y, originX, cols, SEAT_PX, SEAT_PY, aisleY) {
+  const zones = zoneState.zones;
+  if (!zones.length) { zoneBlockCache = null; return null; }
+  const rowsN = Math.ceil(zones.length / cols);
+  const zb = { y, rowsN, h: rowsN * SEAT_PY, seats: [] };
+  zones.forEach((zone, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    const sx = originX + col * SEAT_PX, sy = y + row * SEAT_PY;
+    const sid = Object.keys(zoneState.assign).find(s => zoneState.assign[s].zoneId === zone.id);
+    let ch = sid ? officeChars.get(sid) : null;
+    if (ch && (ch.fading || ch.meeting)) ch = null;
+    const seat = { sx, sy, deskX: sx + 16, deskY: sy + 18, chairX: sx + 40, chairY: sy + 62, aisleY: sy + SEAT_PY - 8, ch, st: null, zone };
+    if (ch) ch.seat = seat;
+    zb.seats.push(seat);
+  });
+  for (let r = 0; r < rowsN; r++) aisleY.push(y + r * SEAT_PY - 8);
+  zoneBlockCache = zb;
+  return zb;
+}
+function officeDrawZoneBlock(ctx, im, zb, worldW, originX, now, bob, pulse, pcFrame, zItems) {
+  officeQueueSign(ctx, `프롬프트 존 · ${zb.seats.length}`, '#5fc7b3', zb.y - 11, worldW, originX);
+  for (const seat of zb.seats) {
+    const z = seat.zone;
+    if (seat.ch) zItems.push({ z: seat.chairY, draw: () => officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, OFFICE.SEAT_W * OFFICE.T, OFFICE.SEAT_H * OFFICE.T) });
+    else {
+      officeDrawRug(ctx, seat.sx + 8, seat.sy + 12, 64, 64, '#7fcfbd', true);
+      if (im.desk) { ctx.globalAlpha = 0.6; ctx.drawImage(im.desk, seat.deskX, seat.deskY); ctx.globalAlpha = 1; }
+      ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillStyle = 'rgba(20,20,30,0.7)'; ctx.fillText(t('여기에 놓기'), seat.sx + 40, seat.sy + 58);
+    }
+    // zone label on the rug corner (drawn after the seat so it stays readable)
+    zItems.push({ z: seat.chairY + 1, draw: () => {
+      const badge = `${z.icon} ${t(z.name)}`.slice(0, 14);
+      ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      const bw = Math.min(64, Math.round(ctx.measureText(badge).width + 6));
+      ctx.fillStyle = '#5fc7b3'; ctx.fillRect(seat.sx + 8, seat.sy + 12, bw, 10);
+      ctx.fillStyle = '#12141c'; ctx.fillText(badge, seat.sx + 11, seat.sy + 12);
+      if (z.auto) { ctx.fillStyle = '#12141c'; ctx.fillRect(seat.sx + 8 + bw + 2, seat.sy + 12, 10, 10); ctx.fillStyle = '#ffd98a'; ctx.fillText('⚡', seat.sx + 9 + bw + 2, seat.sy + 12); }
+    } });
+  }
+}
+function officeZoneSeatAt(x, y) {
+  const zb = zoneBlockCache; if (!zb) return null;
+  if (y < zb.y - 12 || y >= zb.y - 12 + zb.h) return null;
+  return zb.seats.find(st => x >= st.sx && x < st.sx + OFFICE.SEAT_W * OFFICE.T && y >= st.sy - 12 && y < st.sy - 12 + OFFICE.SEAT_H * OFFICE.T) || null;
+}
+async function zoneSend(ch, zone, text) {
+  const handle = officeHandleFor(ch); const name = ch.sess.name;
+  if (!handle) { showInAppToast(t('터미널 핸들을 찾을 수 없습니다'), 'error'); return; }
+  try {
+    const r = await window.orca.terminalSend(handle, text.replace(/\r?\n+/g, ' ').trim(), true, 15);
+    if (!r?.result?.send?.accepted) throw new Error(t('전송이 거부되었습니다 (세션이 입력 대기 상태인지 확인)'));
+    for (const sid of Object.keys(zoneState.assign)) if (zoneState.assign[sid].zoneId === zone.id) delete zoneState.assign[sid];
+    zoneState.assign[ch.sid] = { zoneId: zone.id, sentAt: Date.now() };
+    ch.reactT = 1.5; zonesSave();
+    showInAppToast(`${name} → ${zone.icon} ${zone.name}`);
+  } catch (e) { showInAppToast(`${name}: ${e.message}`, 'error'); }
+}
+function zoneDrop(ch, zone) {
+  const text = zoneFill(zone.prompt, ch.sess);
+  if (zone.auto) { zoneSend(ch, zone, text); return; }
+  const m = teamModal(`<h3>${esc(zone.icon)} ${esc(zone.name)} · ${t('존 프롬프트 보내기')}</h3>
+    <p style="color:var(--text3)">→ <b>${esc(ch.sess.name)}</b>${ch.sess.branch ? ' · ' + esc(ch.sess.branch) : ''}</p>
+    <textarea id="zone-text" style="min-height:140px">${esc(text)}</textarea>
+    <label style="display:block;margin-top:8px"><input type="checkbox" id="zone-auto"> ${t('다음부터 이 존은 확인 없이 바로 보내기')}</label>
+    <div class="row"><button id="zone-cancel">${t('취소')}</button><span style="margin-left:auto"></span><button class="primary" id="zone-send">${t('이 내용으로 보내기')}</button></div>`);
+  m.querySelector('#zone-cancel').onclick = closeTeamModal;
+  m.querySelector('#zone-send').onclick = () => {
+    if (m.querySelector('#zone-auto').checked) { zone.auto = true; zonesSave(); }
+    const txt = m.querySelector('#zone-text').value; closeTeamModal(); zoneSend(ch, zone, txt);
+  };
+}
+function zoneEdit(zone) {
+  const isNew = !zone;
+  const z = zone || { id: 'z' + Date.now().toString(36), icon: '✨', name: '', prompt: '', auto: false };
+  const m = teamModal(`<h3>${t(isNew ? '새 존 추가…' : '존 편집')}</h3>
+    <div class="row" style="gap:8px"><label>${t('아이콘')} <input id="zone-icon" value="${esc(z.icon)}" style="width:3em"></label><label style="flex:1">${t('이름')} <input id="zone-name" value="${esc(z.name)}" style="width:100%"></label></div>
+    <label style="display:block;margin-top:8px">${t('프롬프트 템플릿')} <span style="color:var(--text3)">{name} {branch} {repo} {tool} {file} {date}</span></label>
+    <textarea id="zone-prompt" style="min-height:140px">${esc(z.prompt)}</textarea>
+    <label style="display:block;margin-top:8px"><input type="checkbox" id="zone-auto2" ${z.auto ? 'checked' : ''}> ${t('확인 없이 바로 보내기')}</label>
+    <div class="row"><button id="zone-cancel">${t('취소')}</button><span style="margin-left:auto"></span><button class="primary" id="zone-save">${t('저장')}</button></div>`);
+  m.querySelector('#zone-cancel').onclick = closeTeamModal;
+  m.querySelector('#zone-save').onclick = () => {
+    z.icon = m.querySelector('#zone-icon').value.trim() || '✨'; z.name = m.querySelector('#zone-name').value.trim() || z.id;
+    z.prompt = m.querySelector('#zone-prompt').value.trim(); z.auto = m.querySelector('#zone-auto2').checked;
+    if (isNew) zoneState.zones.push(z);
+    zonesSave(); closeTeamModal();
+  };
+}
+function zoneCellMenuItems(zone) {
+  const items = [['✎', '프롬프트 편집…', () => zoneEdit(zone)], ['＋', '새 존 추가…', () => zoneEdit(null)]];
+  const sid = Object.keys(zoneState.assign).find(s => zoneState.assign[s].zoneId === zone.id);
+  if (sid) items.push(['↩', '존에서 해제', () => { delete zoneState.assign[sid]; zonesSave(); }]);
+  items.push(['🗑', '이 존 삭제', () => { zoneState.zones = zoneState.zones.filter(z => z.id !== zone.id); for (const s of Object.keys(zoneState.assign)) if (zoneState.assign[s].zoneId === zone.id) delete zoneState.assign[s]; zonesSave(); }, 'danger']);
+  return items;
+}
+function zoneMenuItems(sess) {
+  const items = [];
+  const cur = zoneOf(sess.id);
+  if (cur) items.push(['↩', `존에서 해제 (${cur.icon} ${cur.name})`, () => { delete zoneState.assign[sess.id]; zonesSave(); }]);
+  const ch = officeChars.get(sess.id);
+  if (ch && !sess.isSub) for (const z of zoneState.zones) if (!cur || cur.id !== z.id) items.push([z.icon, `${z.name} 프롬프트 보내기`, () => zoneDrop(ch, z)]);
+  return items;
+}
 
 // ── PM actions ──
 function teamModal(html) {
