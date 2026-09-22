@@ -4812,7 +4812,6 @@ function officeFrame(now) {
   ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, lounge.y - 12, worldW - 8, 2);
   // low partition walls along the top of every room, with doorways where the vertical aisles pass
   const partitionTops = [...allTeamBlocks.map(b => b.y), ...blocks.map(b => b.y), lounge.y].concat(meeting ? [meeting.y] : []);
-  for (const py of partitionTops) officeDrawPartition(ctx, py, worldW, graph.xs);
   // runner carpets along the vertical aisles (where characters walk)
   for (const ax of graph.xs) {
     if (ax < 8 || ax > worldW - 8) continue;
@@ -4847,21 +4846,17 @@ function officeFrame(now) {
   const boardW = officeDrawBoard(ctx, shown, worldW, floorTop);
   officeDrawWallDecor(ctx, im, worldW, floorTop, boardW);
 
-  officeSeats = [];
+  officeSeats = []; officeSignQueue = [];
   // everything that stands on the floor is collected with its base y (zY) and drawn back-to-front,
   // so a character walking past a desk is hidden behind it instead of riding on top
   const zItems = [];
+  // partitions sort by their base so a character on the aisle above a room is hidden behind the wall
+  for (const py of partitionTops) zItems.push({ z: py + 6, draw: () => officeDrawPartition(ctx, py, worldW, graph.xs) });
   for (const tb of allTeamBlocks) officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame, zItems);
   // station blocks
   for (const block of blocks) {
     // station banner (right end of the top aisle) in the station color
-    const signText = `${t(block.st.label)} · ${block.count}`;
-    ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    const sw = Math.round(ctx.measureText(signText).width + 12);
-    const signY = block.y - 11, signX = worldW - originX - sw - 2;
-    ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(signX - 1, signY - 1, sw + 2, 13);
-    ctx.fillStyle = block.st.color; ctx.fillRect(signX, signY, sw, 11);
-    ctx.fillStyle = '#12141c'; ctx.fillText(signText, signX + 6, signY + 1);
+    officeQueueSign(ctx, `${block.st.label} · ${block.count}`, block.st.color, block.y - 11, worldW, originX);
     // props in the first free desk slot of the last row (right of the last desk)
     {
       const n = block.seats.length, lastRowCount = n % cols === 0 ? cols : n % cols;
@@ -4880,13 +4875,7 @@ function officeFrame(now) {
 
   // lounge
   {
-    const signText = `${t('휴게실')} · ${lounge.count}`;
-    ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    const sw = Math.round(ctx.measureText(signText).width + 12);
-    const signY = lounge.y - 11, signX = worldW - originX - sw - 2;
-    ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(signX - 1, signY - 1, sw + 2, 13);
-    ctx.fillStyle = '#c9b3e0'; ctx.fillRect(signX, signY, sw, 11);
-    ctx.fillStyle = '#12141c'; ctx.fillText(signText, signX + 6, signY + 1);
+    officeQueueSign(ctx, `휴게실 · ${lounge.count}`, '#c9b3e0', lounge.y - 11, worldW, originX);
     const lastSofa = lounge.sofas[Math.min(lounge.sofas.length, sofasPerRow) - 1];
     if (im.coffee_table && lastSofa && lastSofa.x + SOFA_STEP + 32 <= originX + usableW) ctx.drawImage(im.coffee_table, lastSofa.x + SOFA_STEP + 2, lounge.y + 10);
     if (im.large_plant && lastSofa && lastSofa.x + SOFA_STEP + 68 <= originX + usableW) ctx.drawImage(im.large_plant, lastSofa.x + SOFA_STEP + 38, lounge.y - 8);
@@ -4929,6 +4918,7 @@ function officeFrame(now) {
   zItems.push({ z: officePet.y, draw: () => officeDrawPet(ctx, im, officePet) });
   zItems.sort((a, b) => a.z - b.z);
   for (const it of zItems) it.draw();
+  for (const drawSign of officeSignQueue) drawSign();
   officeDrawTeamFlights(ctx);
 
   if (!shown.length) {
@@ -5012,6 +5002,25 @@ function officeDrawName(ctx, sess, cx, y, alpha = 1, opts = {}) {
   ctx.restore();
 }
 let officeMovers = [];
+let officeSignQueue = [];
+// room banners are wall signs: queued and drawn after the depth-sorted pass so partitions never cover them
+function officeQueueSign(ctx, rawText, color, signY, worldW, originX, dark = false) {
+  const text = t(rawText);
+  officeSignQueue.push(() => {
+    ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    const sw = Math.round(ctx.measureText(text).width + (dark ? 8 : 12));
+    const signX = worldW - originX - sw - 2;
+    if (dark) {
+      ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(signX, signY, sw, 11);
+      ctx.fillStyle = color; ctx.fillRect(signX, signY, 2, 11);
+      ctx.fillStyle = '#e8ecf5'; ctx.fillText(text, signX + 5, signY + 1);
+    } else {
+      ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(signX - 1, signY - 1, sw + 2, 13);
+      ctx.fillStyle = color; ctx.fillRect(signX, signY, sw, 11);
+      ctx.fillStyle = '#12141c'; ctx.fillText(text, signX + 6, signY + 1);
+    }
+  });
+}
 
 function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SEAT_PY) {
       const { sx, sy, deskX, deskY, ch } = seat;
@@ -5138,9 +5147,17 @@ function officeDrawBoard(ctx, shown, worldW, floorTop) {
   const subs = shown.filter(s => s.isSub && s.status === 'running').length;
   const line1 = t(`작업 ${run - subs}${subs ? ' +서브 ' + subs : ''} · 대기 ${wait}${ask ? ' (선택 필요 ' + ask + ')' : ''}${err ? ' · 오류 ' + err : ''} · 휴식 ${done}`);
   const hot = shown.filter(s => s.ctxPct != null && !s.isSub).sort((a, b) => b.ctxPct - a.ctxPct)[0];
+  // team status when nothing more urgent is going on: first team that has a PM and tasks
+  let teamLine = '';
+  for (const tm of Object.values(teamState.teams)) {
+    const all = Object.values(tm.tasks || {}); if (!tm.pm || !all.length) continue;
+    const pending = all.filter(k => !k.reported).length, stale = all.filter(k => k.briefVersion != null && k.briefVersion < tm.briefVersion).length;
+    teamLine = `팀 ${(officeChars.get(tm.pm)?.sess?.name || 'PM').slice(0, 10)}: R${tm.rounds || 0} · 진행 ${pending} · 보고 ${all.length - pending}${stale ? ' · 갱신 필요 ' + stale : ''}`;
+    break;
+  }
   const line2 = t(longest ? `가장 오래 대기: ${(longest.sess.name || '').slice(0, 12)} ${officeFmtSince(longest.statusSince)}`
     : (hot && hot.ctxPct >= 75) ? `컨텍스트 주의: ${(hot.name || '').slice(0, 12)} ${hot.ctxPct}%`
-    : (run ? '모두 응답 중입니다' : '대기 중인 요청이 없습니다'));
+    : teamLine || (run ? '모두 응답 중입니다' : '대기 중인 요청이 없습니다'));
   ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
   // shrink the copy until the board fits the room
   const maxW = worldW - 16;
@@ -5321,7 +5338,12 @@ function officePetTick(dt, lounge, originX, usableW) {
   p.animT += dt; if (p.heartT > 0) p.heartT -= dt;
   if (p.state === 'idle') {
     p.pauseT -= dt;
-    if (p.pauseT <= 0) { p.tx = Math.round(x0 + Math.random() * (x1 - x0)); p.ty = Math.round(yMin + Math.random() * (yMax - yMin)); p.state = 'walk'; p.animT = 0; }
+    if (p.pauseT <= 0) {
+      // a third of the time the cat trots over to whoever is passing through the lounge
+      const near = Math.random() < 0.34 ? [...officeChars.values()].find(c => !c.fading && c.state !== 'sit' && c.y >= lounge.y - 24 && c.y <= lounge.y + lounge.h) : null;
+      p.tx = near ? Math.round(near.x + (near.x > p.x ? -14 : 14)) : Math.round(x0 + Math.random() * (x1 - x0));
+      p.ty = Math.round(yMin + Math.random() * (yMax - yMin)); p.state = 'walk'; p.animT = 0;
+    }
   } else {
     const ddx = p.tx - p.x, ddy = p.ty - p.y, dist = Math.hypot(ddx, ddy), step = OFFICE_PET_SPEED * dt;
     if (dist <= step) { p.x = p.tx; p.y = p.ty; p.state = 'idle'; p.pauseT = 3 + Math.random() * 9; p.animT = 0; }
@@ -5385,13 +5407,8 @@ function officeDrawMeeting(ctx, im, m, worldW, originX, now, bob) {
   ctx.fillStyle = 'rgba(190,170,210,0.16)'; ctx.fillRect(0, m.y - 4, worldW, m.h);
   ctx.fillStyle = 'rgba(201,179,224,0.95)'; ctx.fillRect(0, m.y - 4, 3, m.h);
   const modeLabel = { debate: '토론', brainstorm: '브레인스톰', review: '코드리뷰', 'master-worker': '마스터-워커' }[debateState.mode] || '토론';
-  const signText = `회의실 · ${modeLabel} ${debateState.round}/${debateState.maxRounds}`;
+  officeQueueSign(ctx, `회의실 · ${modeLabel} ${debateState.round}/${debateState.maxRounds}`, '#c9b3e0', m.y - 14, worldW, originX, true);
   ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  const sw = ctx.measureText(signText).width + 8;
-  const signY = m.y - 14, signX = worldW - originX - sw - 2;
-  ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(signX, signY, sw, 11);
-  ctx.fillStyle = '#c9b3e0'; ctx.fillRect(signX, signY, 2, 11);
-  ctx.fillStyle = '#e8ecf5'; ctx.fillText(signText, signX + 5, signY + 1);
   // table
   ctx.fillStyle = '#5a3a22'; ctx.fillRect(m.tableX - 1, m.tableY - 1, m.tableW + 2, m.tableH + 2);
   ctx.fillStyle = '#a06b3d'; ctx.fillRect(m.tableX, m.tableY, m.tableW, m.tableH);
@@ -5615,8 +5632,15 @@ $('office-canvas').addEventListener('mousemove', e => {
   const msg = s.lastMsg ? `<span style="display:block;max-width:220px;white-space:normal;color:var(--text2);margin-top:2px">${esc(String(s.lastMsg).replace(/\s+/g, ' ').slice(0, 90))}</span>` : '';
   const tm = teamOf(ch.sid);
   const tmTask = tm?.tasks?.[ch.sid];
-  const briefWarn = tmTask && tmTask.briefVersion != null && tmTask.briefVersion < tm.briefVersion ? '<span style="display:block;color:#F2C037;margin-top:2px">' + t('⚠ 브리프가 갱신되어 문맥이 오래되었습니다') + '</span>' : '';
-  tip.innerHTML = `<b>${esc(s.name)}</b><span>${esc(s.branch || '')} · ${stLabel}${since}${s.tool ? ' · ' + esc(s.tool) : ''}${target ? ' ' + esc(target) : ''}${station && s.status !== 'done' ? ' · ' + t(station.label) : ''}${ctxTxt}</span>${msg}${briefWarn}`;
+  const briefWarn = tmTask && tmTask.briefVersion != null && tmTask.briefVersion < tm.briefVersion ? '<span style="display:block;color:#F2C037;margin-top:2px">' + t('⚠ 브리프가 갱신되어 문맥이 오래되었습니다 · 우클릭 → 브리프 다시 전달') + '</span>' : '';
+  let teamTxt = '';
+  if (tm && tm.pm === ch.sid) {
+    const all = Object.values(tm.tasks || {}), pending = all.filter(k => !k.reported).length;
+    teamTxt = `<span style="display:block;color:#efb041;margin-top:2px">` + t(`👑 PM · 브리프 v${tm.briefVersion} · 라운드 ${tm.rounds || 0} · 진행 ${pending} / 보고 ${all.length - pending}${tm.autoDispatch ? ' · 자동 진행' : ''}`) + `</span>`;
+  } else if (tmTask) {
+    teamTxt = `<span style="display:block;max-width:240px;white-space:normal;color:#ffd98a;margin-top:2px">${tmTask.reported ? t('✓ 보고 완료') : '▶ ' + esc(String(tmTask.task).replace(/\s+/g, ' ').slice(0, 80))}${tmTask.done_when && !tmTask.reported ? t(' · 완료 조건: ') + esc(String(tmTask.done_when).slice(0, 40)) : ''}${tmTask.sentAt ? ' (' + officeFmtSince(tmTask.sentAt) + ')' : ''}</span>`;
+  }
+  tip.innerHTML = `<b>${esc(s.name)}</b><span>${esc(s.branch || '')} · ${stLabel}${since}${s.tool ? ' · ' + esc(s.tool) : ''}${target ? ' ' + esc(target) : ''}${station && s.status !== 'done' ? ' · ' + t(station.label) : ''}${ctxTxt}</span>${msg}${teamTxt}${briefWarn}`;
   const wrap = $('office-wrap');
   const wr = wrap.getBoundingClientRect();
   tip.style.left = (e.clientX - wr.left + 12) + 'px';
@@ -5734,13 +5758,8 @@ function officeBuildTeams(y0, originX, cols, SEAT_PX, SEAT_PY, aisleY, mode = 't
 function officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame, zItems) {
   const team = tb.team;
   const pmName = team.pm ? (officeChars.get(team.pm)?.sess?.name || 'PM') : '';
-  const label = tb.template ? t('새 팀 · PM 자리에 놓으세요') : `${t('팀')} · ${pmName || t('PM 없음')} · ${Object.keys(team.members).length}${t('명')}`;
-  ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  const sw = Math.round(ctx.measureText(label).width + 12);
-  const signY = tb.y - 11, signX = worldW - originX - sw - 2;
-  ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(signX - 1, signY - 1, sw + 2, 13);
-  ctx.fillStyle = tb.template ? '#9a97a8' : '#efb041'; ctx.fillRect(signX, signY, sw, 11);
-  ctx.fillStyle = '#12141c'; ctx.fillText(label, signX + 6, signY + 1);
+  const label = tb.template ? '새 팀 · PM 자리에 놓으세요' : `팀 · ${pmName || 'PM 없음'} · ${Object.keys(team.members).length}명`;
+  officeQueueSign(ctx, label, tb.template ? '#9a97a8' : '#efb041', tb.y - 11, worldW, originX);
   // dotted command lines PM → members
   const pm = tb.pmSeat;
   if (pm && pm.ch) {
@@ -5999,6 +6018,20 @@ async function teamDispatch(t, items) {
   }
   teamsSave();
 }
+// a member whose task was handed out under an older brief gets the current brief again, keeping the same task
+async function teamResendBrief(team, sid) {
+  const h = handles.get(sid); const task = team.tasks && team.tasks[sid]; const name = officeChars.get(sid)?.sess?.name || sid;
+  if (!h || !task) { showInAppToast(t('전달할 터미널 또는 과제가 없습니다'), 'error'); return; }
+  try {
+    const msg = `[브리프 갱신 v${team.briefVersion}] 팀 브리프가 바뀌었습니다. 아래 최신 브리프를 기준으로 진행 중인 과제를 이어서 수행하세요. ` + teamMemberPrompt(team, team.members[sid], task);
+    const r = await window.orca.terminalSend(h, msg.replace(/\r?\n+/g, ' '), true, 15);
+    if (!r?.result?.send?.accepted) throw new Error('전송 거부');
+    task.briefVersion = team.briefVersion; teamLog(team, 'brief-resend', `브리프 v${team.briefVersion} 재전달`, { to: name });
+    if (team.pm) teamFlights.push({ fromSid: team.pm, toSid: sid, t: 0, dur: 1.0, kind: 'dispatch' });
+    const ch = officeChars.get(sid); if (ch) ch.reactT = 1.5;
+    teamsSave(); showInAppToast(t(`${name}에게 브리프 v${team.briefVersion} 전달`));
+  } catch (e) { teamLog(team, 'error', `${name}: ${e.message}`); showInAppToast(t(`${name} 전달 실패: ${e.message}`), 'error'); }
+}
 // report loop: a member with a pending task goes running → waiting ⇒ collect its report and ask the PM for the next step
 const teamPrevStatus = new Map();
 let teamLoopBusy = false;
@@ -6016,6 +6049,7 @@ async function teamTick() {
         const report = teamParseReport(extractLastResponse(extractTail(res)) || '');
         task.reported = true; task.report = report; teamLog(t, 'report', report, { from: sess.name });
         teamFlights.push({ fromSid: sid, toSid: t.pm, t: 0, dur: 1.0, kind: 'report' });
+        showInAppToast(`${sess.name} 보고 도착 → PM 검토 중`);
         if ((t.rounds || 0) >= 12) { teamLog(t, 'stop', '라운드 상한(12)에 도달해 자동 진행을 멈춥니다'); showInAppToast('팀 라운드 상한 도달', 'error'); continue; }
         const pmHandle = handles.get(t.pm); if (!pmHandle) continue;
         const ctxTxt = `팀원 "${sess.name}"의 보고: ${report.replace(/\s+/g, ' ').slice(0, 1500)}. 아직 진행 중인 팀원: ${Object.entries(t.tasks).filter(([s, k]) => !k.reported).map(([s]) => officeChars.get(s)?.sess?.name || s).join(', ') || '없음'}.`;
@@ -6044,6 +6078,8 @@ function teamMenuItems(sess) {
     items.push(['📜', '팀 브리프·로그 보기', () => teamShowLog(t)]);
     items.push(['⏹', '자동 진행 ' + (t.autoDispatch ? '끄기' : '켜기'), () => { t.autoDispatch = !t.autoDispatch; teamsSave(); }]);
   } else {
+    const task = t.tasks && t.tasks[sess.id];
+    if (task && task.briefVersion != null && task.briefVersion < t.briefVersion) items.push(['⚠', `브리프 v${t.briefVersion} 다시 전달`, () => teamResendBrief(t, sess.id)]);
     for (const [role, label] of Object.entries(TEAM_ROLES)) if (t.members[sess.id] !== role) items.push(['🏷', `역할: ${label}`, () => { t.members[sess.id] = role; teamsSave(); }]);
     items.push(['📜', '팀 브리프·로그 보기', () => teamShowLog(t)]);
   }
