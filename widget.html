@@ -4519,10 +4519,14 @@ function officeFrame(now) {
       officeChars.set(sess.id, ch);
     }
     ch.sess = sess; ch.fading = false;
-    if (ch.lastStatus !== sess.status) { ch.lastStatus = sess.status; ch.statusSince = Date.now(); }
+    if (ch.lastStatus !== sess.status) {
+      if (ch.lastStatus === 'running' && sess.status === 'done' && !sess.isSub) officeBeep('done');
+      ch.lastStatus = sess.status; ch.statusSince = Date.now();
+    }
     if (!!sess.needsInput !== !!ch.lastNeedsInput) {
-      if (sess.needsInput && ch.lastNeedsInput !== undefined) { ch.alertT = 4; officeBeep(); }
+      if (sess.needsInput && ch.lastNeedsInput !== undefined) { ch.alertT = 4; officeBeep('ask'); }
       ch.lastNeedsInput = !!sess.needsInput;
+      if (sess.needsInput) { const tm = teamOf(sess.id); if (tm && tm.pm !== sess.id) teamLog(tm, 'needs-input', `${sess.name}: 사용자 입력 대기`, { from: sess.name }); }
     }
     // tool history: remember the last few distinct tools for the trail and for a stable station vote
     const base = sess.tool ? String(sess.tool).split(/[\s:(]/)[0] : '';
@@ -4663,6 +4667,7 @@ function officeFrame(now) {
     if (ch.alertT > 0) ch.alertT -= dt;
     ch.animT += dt;
   }
+  for (let i = teamFlights.length - 1; i >= 0; i--) { teamFlights[i].t += dt; if (teamFlights[i].t >= teamFlights[i].dur) teamFlights.splice(i, 1); }
 
   // 4) draw: floors — corridor planks everywhere, then each station paints its own tile + tint
   const floorTop = OFFICE.WALL_H * T;
@@ -4720,6 +4725,7 @@ function officeFrame(now) {
 
   officeSeats = [];
   for (const tb of allTeamBlocks) officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame);
+  officeDrawTeamFlights(ctx);
   // station blocks
   for (const block of blocks) {
     // station banner (right end of the top aisle) in the station color
@@ -5117,12 +5123,13 @@ function officeDrawWallDecor(ctx, im, worldW, floorTop, board) {
   if (im.hanging_plant) { ctx.drawImage(im.hanging_plant, 6, 0); ctx.drawImage(im.hanging_plant, worldW - 22, 0); }
 }
 let officeAudio = null;
-function officeBeep() {
+function officeBeep(kind = 'ask') {
   if (!$('office-sound').classList.contains('on')) return;
   try {
     officeAudio = officeAudio || new (window.AudioContext || window.webkitAudioContext)();
     const ac = officeAudio, t0 = ac.currentTime;
-    [[880, 0], [1175, 0.12]].forEach(([f, d]) => {
+    const tones = kind === 'done' ? [[1175, 0], [1480, 0.12]] : [[880, 0], [660, 0.12]];
+    tones.forEach(([f, d]) => {
       const o = ac.createOscillator(), g = ac.createGain();
       o.type = 'square'; o.frequency.value = f;
       g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(0.08, t0 + d + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.14);
@@ -5135,7 +5142,7 @@ function officeBeep() {
   let on = false; try { on = localStorage.getItem('roca-office-sound') === '1'; } catch {}
   const apply = () => { btn.classList.toggle('on', on); btn.textContent = on ? '🔔' : '🔕'; };
   apply();
-  btn.addEventListener('click', () => { on = !on; try { localStorage.setItem('roca-office-sound', on ? '1' : '0'); } catch {} apply(); if (on) officeBeep(); });
+  btn.addEventListener('click', () => { on = !on; try { localStorage.setItem('roca-office-sound', on ? '1' : '0'); } catch {} apply(); if (on) officeBeep('done'); });
 }
 function usableW0(cols, seatPx) { return cols * seatPx; }
 function officeFmtSince(since) {
@@ -5392,7 +5399,10 @@ $('office-canvas').addEventListener('mousemove', e => {
   const since = ch.statusSince ? ` (${officeFmtSince(ch.statusSince)})` : '';
   const ctxTxt = s.ctxPct != null ? ` · ctx ${s.ctxPct}%` : '';
   const msg = s.lastMsg ? `<span style="display:block;max-width:220px;white-space:normal;color:var(--text2);margin-top:2px">${esc(String(s.lastMsg).replace(/\s+/g, ' ').slice(0, 90))}</span>` : '';
-  tip.innerHTML = `<b>${esc(s.name)}</b><span>${esc(s.branch || '')} · ${stLabel}${since}${s.tool ? ' · ' + esc(s.tool) : ''}${target ? ' ' + esc(target) : ''}${station && s.status !== 'done' ? ' · ' + station.label : ''}${ctxTxt}</span>${msg}`;
+  const tm = teamOf(ch.sid);
+  const tmTask = tm?.tasks?.[ch.sid];
+  const briefWarn = tmTask && tmTask.briefVersion != null && tmTask.briefVersion < tm.briefVersion ? '<span style="display:block;color:#F2C037;margin-top:2px">⚠ 브리프가 갱신되어 문맥이 오래되었습니다</span>' : '';
+  tip.innerHTML = `<b>${esc(s.name)}</b><span>${esc(s.branch || '')} · ${stLabel}${since}${s.tool ? ' · ' + esc(s.tool) : ''}${target ? ' ' + esc(target) : ''}${station && s.status !== 'done' ? ' · ' + station.label : ''}${ctxTxt}</span>${msg}${briefWarn}`;
   const wrap = $('office-wrap');
   const wr = wrap.getBoundingClientRect();
   tip.style.left = (e.clientX - wr.left + 12) + 'px';
@@ -5435,11 +5445,14 @@ const TEAM_ROLES = { dev: '개발', research: '조사', exec: '실행·테스트
 let teamState = { teams: {} };   // id → { id, pm, members:{sid:role}, brief, briefVersion, goal, log:[], rounds, autoDispatch, tasks:{sid:{task,done_when,sentAt,reported}} }
 let officeDrag = null;           // { ch, x, y, startX, startY, moved }
 let teamBlocksCache = [];
+const teamFlights = [];
 
 async function teamsLoad() {
   if (OFFICE_DEMO) {
-    teamState = { teams: { demo: { id: 'demo', pm: 'demo-4', members: { 'demo-1': 'dev', 'demo-8': 'docs' }, brief: '## 목표\n캐시 전략 결정', briefVersion: 1, goal: '캐시 전략 결정', log: [], rounds: 1, autoDispatch: false,
-      tasks: { 'demo-1': { task: 'Redis 캐시 어댑터 초안 구현', done_when: '단위 테스트 통과', sentAt: Date.now(), reported: false } } } } };
+    teamState = { teams: { demo: { id: 'demo', pm: 'demo-4', members: { 'demo-1': 'dev', 'demo-8': 'docs' }, brief: '## 목표\n캐시 전략 결정\n\n[갱신 v2]\n범위 축소: Redis만 평가', briefVersion: 2, goal: '캐시 전략 결정', log: [], rounds: 1, autoDispatch: false,
+      tasks: { 'demo-1': { task: 'Redis 캐시 어댑터 초안 구현', done_when: '단위 테스트 통과', sentAt: Date.now(), reported: false, briefVersion: 1 } } } } };
+    setTimeout(() => { teamFlights.push({ fromSid: 'demo-4', toSid: 'demo-1', t: 0, dur: 1.5, kind: 'dispatch' }); }, 7000);
+    setTimeout(() => { teamFlights.push({ fromSid: 'demo-1', toSid: 'demo-4', t: 0, dur: 1.5, kind: 'report' }); }, 12500);
     return;
   }
   try { const d = await window.orca.teamsRead(); if (d && d.teams) teamState = d; } catch {}
@@ -5553,9 +5566,43 @@ function officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFr
       ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(seat.sx + 8, seat.sy + 23, tw, 10);
       ctx.fillStyle = '#ffd98a'; ctx.fillText(tt, seat.sx + 11, seat.sy + 23);
     }
+    if (task && task.briefVersion != null && task.briefVersion < t.briefVersion && !seat.isPm) {
+      const bvt = '⚠ 문맥 갱신 필요';
+      const bvw = Math.round(ctx.measureText(bvt).width + 6);
+      ctx.fillStyle = 'rgba(60,50,10,0.9)'; ctx.fillRect(seat.sx + 8, seat.sy + 34, bvw, 10);
+      ctx.fillStyle = '#F2C037'; ctx.fillText(bvt, seat.sx + 11, seat.sy + 34);
+    }
   }
 }
 
+function officeDrawTeamFlights(ctx) {
+  for (const f of teamFlights) {
+    const fromCh = officeChars.get(f.fromSid), toCh = officeChars.get(f.toSid);
+    if (!fromCh || !toCh) continue;
+    const fx = fromCh.seat ? fromCh.seat.chairX : fromCh.x, fy = (fromCh.seat ? fromCh.seat.chairY : fromCh.y) - 20;
+    const tx = toCh.seat ? toCh.seat.chairX : toCh.x, ty = (toCh.seat ? toCh.seat.chairY : toCh.y) - 20;
+    const p = Math.min(1, f.t / f.dur);
+    const ep = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+    const x = Math.round(fx + (tx - fx) * ep);
+    const y = Math.round(fy + (ty - fy) * ep - Math.sin(ep * Math.PI) * 14);
+    if (f.kind === 'dispatch') {
+      ctx.fillStyle = '#ffd98a'; ctx.fillRect(x - 3, y - 2, 7, 5);
+      ctx.fillStyle = '#12141c';
+      ctx.fillRect(x - 3, y - 2, 7, 1); ctx.fillRect(x - 3, y + 2, 7, 1);
+      ctx.fillRect(x - 3, y - 2, 1, 5); ctx.fillRect(x + 3, y - 2, 1, 5);
+      ctx.fillStyle = '#efb041';
+      ctx.fillRect(x - 2, y - 1, 1, 1); ctx.fillRect(x + 2, y - 1, 1, 1);
+      ctx.fillRect(x - 1, y, 1, 1); ctx.fillRect(x + 1, y, 1, 1); ctx.fillRect(x, y, 1, 1);
+    } else {
+      ctx.fillStyle = '#b8e8cc'; ctx.fillRect(x - 2, y - 3, 5, 7);
+      ctx.fillStyle = '#12141c';
+      ctx.fillRect(x - 2, y - 3, 5, 1); ctx.fillRect(x - 2, y + 3, 5, 1);
+      ctx.fillRect(x - 2, y - 3, 1, 7); ctx.fillRect(x + 2, y - 3, 1, 7);
+      ctx.fillStyle = '#3ecf8e';
+      ctx.fillRect(x - 1, y - 1, 3, 1); ctx.fillRect(x, y - 2, 1, 1);
+    }
+  }
+}
 // drag ghost + drop-zone highlights
 function officeDrawDrag(ctx, im, teamBlocks, worldW) {
   if (!officeDrag || !officeDrag.moved) return;
@@ -5727,6 +5774,7 @@ async function teamDispatch(t, items) {
       t.tasks[it.sid] = { task: it.task, done_when: it.done_when, sentAt: Date.now(), reported: false, briefVersion: t.briefVersion };
       teamLog(t, 'dispatch', it.task, { to: name });
       const ch = officeChars.get(it.sid); if (ch) ch.reactT = 1.5;
+      if (ch?.seat) teamFlights.push({ fromSid: t.pm, toSid: it.sid, t: 0, dur: 1.0, kind: 'dispatch' });
     } catch (e) { teamLog(t, 'error', `${name}: ${e.message}`); showInAppToast(`${name} 전달 실패: ${e.message}`, 'error'); }
   }
   teamsSave();
@@ -5747,6 +5795,7 @@ async function teamTick() {
         const h = handles.get(sid); const res = await window.orca.terminalRead(h, true);
         const report = teamParseReport(extractLastResponse(extractTail(res)) || '');
         task.reported = true; task.report = report; teamLog(t, 'report', report, { from: sess.name });
+        teamFlights.push({ fromSid: sid, toSid: t.pm, t: 0, dur: 1.0, kind: 'report' });
         if ((t.rounds || 0) >= 12) { teamLog(t, 'stop', '라운드 상한(12)에 도달해 자동 진행을 멈춥니다'); showInAppToast('팀 라운드 상한 도달', 'error'); continue; }
         const pmHandle = handles.get(t.pm); if (!pmHandle) continue;
         const ctxTxt = `팀원 "${sess.name}"의 보고: ${report.replace(/\s+/g, ' ').slice(0, 1500)}. 아직 진행 중인 팀원: ${Object.entries(t.tasks).filter(([s, k]) => !k.reported).map(([s]) => officeChars.get(s)?.sess?.name || s).join(', ') || '없음'}.`;
