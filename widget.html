@@ -2435,6 +2435,9 @@ Object.assign(I18N, {
   '이름': 'Name', '아이콘': 'Icon', '프롬프트 템플릿': 'Prompt template', '확인 없이 바로 보내기': 'Send without confirmation', '저장': 'Save', '취소': 'Cancel',
   '드래그해 놓으면 이 프롬프트를 보냅니다': 'Drop an agent here to send this prompt', '존 작업 응답 완료': 'zone task answered', '여기에 놓기': 'drop here',
   '배포 문서': 'Deploy docs', '릴리스 노트': 'Release notes', '테스트 보강': 'More tests', '프롬프트 보내기': 'send prompt',
+  '존 기록 보기': 'Zone history', '존 기록': 'Zone history', '기록이 없습니다': 'No records yet', '닫기': 'Close', '캐릭터 바꾸기': 'Change character',
+  '화이트보드': 'Whiteboard', '클릭: 가장 오래 기다리는 세션으로 이동해 채팅 열기': 'Click: jump to the longest-waiting session and open chat', '대기 중인 세션이 없습니다': 'No session is waiting',
+  '휴게실 펫 · 클릭하면 좋아합니다': 'Lounge pet · click to pet',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -4436,6 +4439,7 @@ function openSessionMenu(x, y, sess) {
   if (handle) items.push(['💬', '채팅 열기', () => openChat(handle)]);
   if (handle) items.push(['🖥', 'Orca 터미널 보기', () => api.switchTo(handle)]);
   items.push(['📋', '세션 ID 복사', () => { window.orca.clipboardWrite(sess.id); showInAppToast('세션 ID 복사됨'); }]);
+  if (officeChars.has(sess.id)) items.push(['🎨', '캐릭터 바꾸기', () => { officeSetSkin(sess.id, officeSkin(sess.id) + 1); const c = officeChars.get(sess.id); if (c) c.reactT = 1.2; }]);
   if (handle && (sess.status === 'running' || sess.status === 'waiting')) items.push(['⏸', '인터럽트 (Esc)', () => api.interrupt(handle)]);
   for (const it of (typeof teamMenuItems === 'function' ? teamMenuItems(sess) : [])) items.push(it);
   for (const it of (typeof zoneMenuItems === 'function' ? zoneMenuItems(sess) : [])) items.push(it);
@@ -4494,7 +4498,7 @@ function officeLoadImages() {
   try { document.fonts.load(`9px 'Galmuri9'`).then(fs => { if (!fs.length) { officeFontPx = 7; } }); } catch { officeFontPx = 7; }
   const names = ['desk', 'pc_on_1', 'pc_on_2', 'pc_on_3', 'pc_off', 'chair_back', 'plant', 'coffee', 'floor', 'carpet', 'sofa_front', 'coffee_table', 'large_plant',
     'floor_plank', 'floor_tiles', 'floor_checker', 'floor_grid', 'floor_brick',
-    'bookshelf', 'double_bookshelf', 'whiteboard', 'large_painting', 'small_painting', 'small_painting_2', 'hanging_plant', 'clock', 'cactus', 'plant_2', 'bin', 'pot', 'pet_gitcat'];
+    'bookshelf', 'double_bookshelf', 'whiteboard', 'large_painting', 'small_painting', 'small_painting_2', 'hanging_plant', 'clock', 'cactus', 'plant_2', 'bin', 'pot', 'pet_gitcat', 'pet_claudio'];
   for (let i = 0; i < OFFICE.CHAR_COUNT; i++) names.push(`char_${i}`);
   return Promise.all(names.map(n => new Promise(res => {
     const img = new Image();
@@ -4549,6 +4553,39 @@ function officeHash(str) {
   for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
   return h >>> 0;
 }
+// sprite sheet per session: hashed by default, overridable from the context menu and remembered per session id
+let officeSkins = {};
+try { officeSkins = JSON.parse(localStorage.getItem('roca-office-skins') || '{}') || {}; } catch {}
+function officeSkin(sid) { const v = officeSkins[sid]; return Number.isInteger(v) ? v % OFFICE.CHAR_COUNT : officeHash(sid) % OFFICE.CHAR_COUNT; }
+function officeSetSkin(sid, idx) {
+  officeSkins[sid] = ((idx % OFFICE.CHAR_COUNT) + OFFICE.CHAR_COUNT) % OFFICE.CHAR_COUNT;
+  try { localStorage.setItem('roca-office-skins', JSON.stringify(officeSkins)); } catch {}
+}
+// confetti burst above a desk when a session finishes its work
+const officeParticles = [];
+function officeBurst(x, y, n = 18) {
+  const colors = ['#ffd98a', '#5fc7b3', '#9cc4ff', '#ff9a95', '#c7a8ff', '#f2f3f6'];
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6, sp = 40 + Math.random() * 50;
+    officeParticles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, color: colors[i % colors.length], t: 0, life: 0.9 + Math.random() * 0.5, spin: Math.random() < 0.5 });
+  }
+}
+function officeParticlesTick(dt) {
+  for (let i = officeParticles.length - 1; i >= 0; i--) {
+    const p = officeParticles[i]; p.t += dt;
+    if (p.t >= p.life) { officeParticles.splice(i, 1); continue; }
+    p.vy += 120 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.98;
+  }
+}
+function officeDrawParticles(ctx) {
+  for (const p of officeParticles) {
+    ctx.globalAlpha = Math.max(0, 1 - p.t / p.life);
+    ctx.fillStyle = p.color;
+    const w = p.spin && Math.floor(p.t * 12) % 2 ? 1 : 2;
+    ctx.fillRect(Math.round(p.x), Math.round(p.y), w, 2);
+  }
+  ctx.globalAlpha = 1;
+}
 
 const OFFICE_DEMO = location.hash.split(',')[0] === '#office-demo' ? [
   { id: 'demo-1', name: 'auth-refactor', branch: 'feat/auth', status: 'running', tool: 'Edit', ctxPct: 82 },
@@ -4570,7 +4607,8 @@ if (OFFICE_DEMO) {
   const demoHover = setInterval(() => { const c = officeChars.get('demo-8'); if (c) { officeHover = c; clearInterval(demoHover); } }, 500);
   setTimeout(() => { officeHover = null; }, 15000);
   // renderer timers start ~3s after the main-process screenshot timers, so the lounge shot (24s) is prepared from 17.5s
-  for (const ms of [17500, 19500]) setTimeout(() => { officePet.heartT = 4; const w = $('office-wrap'); w.scrollTo({ top: w.scrollHeight, behavior: 'instant' }); }, ms);
+  setTimeout(() => { const c = officeChars.get('demo-3'); if (c) officeBurst(c.x, c.y - 30, 28); }, 9300);
+  for (const ms of [17500, 19500]) setTimeout(() => { for (const p of officePets) p.heartT = 4; const w = $('office-wrap'); w.scrollTo({ top: w.scrollHeight, behavior: 'instant' }); }, ms);
   setTimeout(() => { const w = $('office-wrap'); w.scrollTop = w.scrollHeight; }, 12000);
   setTimeout(() => {
     Object.assign(debateState, { running: true, groupA: ['demo-1', 'demo-2'], groupB: ['demo-3'], master: 'demo-4', mode: 'master-worker', round: 2, maxRounds: 3, topic: '캐시 전략 결정', currentHandle: 'demo-2' });
@@ -4656,7 +4694,7 @@ function officeFrame(now) {
     }
     ch.sess = sess; ch.fading = false;
     if (ch.lastStatus !== sess.status) {
-      if (ch.lastStatus === 'running' && sess.status === 'done' && !sess.isSub) officeBeep('done');
+      if (ch.lastStatus === 'running' && sess.status === 'done' && !sess.isSub) { officeBeep('done'); officeBurst(ch.x, ch.y - 30); }
       ch.lastStatus = sess.status; ch.statusSince = Date.now();
     }
     if (!!sess.needsInput !== !!ch.lastNeedsInput) {
@@ -4809,7 +4847,8 @@ function officeFrame(now) {
     ch.animT += dt;
   }
   for (let i = teamFlights.length - 1; i >= 0; i--) { teamFlights[i].t += dt; if (teamFlights[i].t >= teamFlights[i].dur) teamFlights.splice(i, 1); }
-  officePetTick(dt, lounge, originX, usableW);
+  for (const p of officePets) officePetTick(p, dt, lounge, originX, usableW);
+  officeParticlesTick(dt);
 
   // 4) draw: floors — corridor planks everywhere, then each station paints its own tile + tint
   const floorTop = OFFICE.WALL_H * T;
@@ -4909,7 +4948,7 @@ function officeFrame(now) {
       const seated = sofa.seats.filter(st => st.ch && st.ch.state === 'sit');
       for (const seat of seated) {
         const ch = seat.ch;
-        const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
+        const sheet = im[`char_${officeSkin(ch.sid)}`];
         ch.drawn = [0, 0, seat.chairX, seat.chairY];
         if (sheet) officeDrawChar(ctx, sheet, 0, 0, seat.chairX, seat.chairY, ch.alpha);
       }
@@ -4928,7 +4967,7 @@ function officeFrame(now) {
   // walking / standing / fading characters
   officeMovers = [...officeChars.values()].filter(c => c.state !== 'sit' || c.fading);
   for (const ch of officeMovers) zItems.push({ z: ch.y, draw: () => {
-    const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
+    const sheet = im[`char_${officeSkin(ch.sid)}`];
     if (!sheet) return;
     const walking = ch.state === 'toSeat' || ch.state === 'leave' || ch.state === 'wander';
     const frameCol = walking ? [0, 1, 2, 1][Math.floor(ch.animT / 0.13) % 4] : 0;
@@ -4939,11 +4978,12 @@ function officeFrame(now) {
     else if (!walking && !ch.fading && ch.sess && ch.sess.status === 'done') drawBubble(ctx, ch.x + 2, ch.y - 44 - bob, 1, 'zz');
     if (ch.sess) officeDrawName(ctx, ch.sess, ch.x, ch.y + 3, ch.alpha);
   } });
-  zItems.push({ z: officePet.y, draw: () => officeDrawPet(ctx, im, officePet) });
+  for (const p of officePets) zItems.push({ z: p.y, draw: () => officeDrawPet(ctx, im, p) });
   zItems.sort((a, b) => a.z - b.z);
   for (const it of zItems) it.draw();
   for (const drawSign of officeSignQueue) drawSign();
   officeDrawTeamFlights(ctx);
+  officeDrawParticles(ctx);
 
   if (!shown.length) {
     ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.fillStyle = '#9aa0b4';
@@ -4955,7 +4995,7 @@ function officeFrame(now) {
 
   if (officeHover) {
     const h = officeHover;
-    const idx = officeHash(h.sid) % OFFICE.CHAR_COUNT;
+    const idx = officeSkin(h.sid);
     const [col, dir, hx, hy] = h.drawn || [0, 0, h.x, h.y];
     const ol = im[`char_${idx}`] ? officeOutlineFor(idx, im[`char_${idx}`], col, dir) : null;
     if (ol) { ctx.globalAlpha = 0.9; ctx.drawImage(ol, Math.round(hx - 9), Math.round(hy - 25)); ctx.globalAlpha = 1; }
@@ -5073,7 +5113,7 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
   if (sitting) officeShadow(ctx, seat.chairX, seat.chairY + 2, 8, 2.5);
 
   if (sitting) {
-  const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
+  const sheet = im[`char_${officeSkin(ch.sid)}`];
   let frameCol = 0, dir = 1;
   if (st === 'running') {
     const reading = officeIsReadingTool(sess.tool);
@@ -5157,6 +5197,26 @@ function officeDrawAlert(ctx, cx, cy, t) {
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
   }
 }
+let officeBoardRect = null;
+let officeJumpIdx = 0;
+function officeBoardHit(evt) {
+  const r = officeBoardRect; if (!r) return false;
+  const p = officeWorldPos(evt);
+  return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+}
+// clicking the whiteboard jumps to the longest-waiting session; repeated clicks cycle through everyone who needs input
+function officeJumpToWaiting() {
+  const waiting = [...officeChars.values()].filter(c => !c.fading && c.sess && (c.sess.needsInput || c.sess.status === 'waiting') && !c.sess.isSub)
+    .sort((a, b) => (b.sess.needsInput ? 1 : 0) - (a.sess.needsInput ? 1 : 0) || a.statusSince - b.statusSince);
+  if (!waiting.length) { showInAppToast(t('대기 중인 세션이 없습니다')); return; }
+  const target = waiting[officeJumpIdx % waiting.length]; officeJumpIdx++;
+  const wrap = $('office-wrap'), scale = $('office-canvas').__scale || 2;
+  const cy = (target.seat ? target.seat.chairY : target.y) * scale;
+  wrap.scrollTo({ top: Math.max(0, cy - wrap.clientHeight / 2), behavior: 'smooth' });
+  target.alertT = 3; target.reactT = 1.2; officeHover = target;
+  const handle = officeHandleFor(target);
+  if (handle) openChat(handle);
+}
 function officeDrawBoard(ctx, shown, worldW, floorTop) {
   const run = shown.filter(s => s.status === 'running').length;
   const wait = shown.filter(s => s.status === 'waiting').length;
@@ -5196,6 +5256,7 @@ function officeDrawBoard(ctx, shown, worldW, floorTop) {
     if (w <= maxW) break;
   }
   const h = 24, x = Math.max(4, Math.round((worldW - w) / 2)), y = floorTop - h - 7;
+  officeBoardRect = { x, y, w: Math.round(w), h, target: longest };
   ctx.fillStyle = '#6b5a48'; ctx.fillRect(x - 2, y - 2, Math.round(w) + 4, h + 4);
   ctx.fillStyle = '#f2f3f6'; ctx.fillRect(x, y, Math.round(w), h);
   ctx.fillStyle = '#2b2f3a'; ctx.fillText(l1, x + 6, y + 2);
@@ -5350,14 +5411,16 @@ function officeDrawHelper(ctx, im, ch, seat, now) {
 }
 // lounge pet (Gitcat). Sheet 96×96: row 0 = facing down (walk cols 0-2, idle cols 3-5, 16×32), row 1 = facing up (same),
 // row 2 = walking right (3 frames, 32×32); left is the right row flipped. Anchor is bottom-centre of the frame.
-const officePet = { x: 0, y: 0, tx: 0, ty: 0, dir: 0, state: 'idle', animT: 0, pauseT: 2, heartT: 0, init: false };
+const officePets = [
+  { sheet: 'pet_gitcat', name: 'Gitcat', home: 0.72, x: 0, y: 0, tx: 0, ty: 0, dir: 0, state: 'idle', animT: 0, pauseT: 2, heartT: 0, init: false },
+  { sheet: 'pet_claudio', name: 'Claudio', home: 0.3, x: 0, y: 0, tx: 0, ty: 0, dir: 0, state: 'idle', animT: 0, pauseT: 5, heartT: 0, init: false },
+];
 const OFFICE_PET_SPEED = 32;
-function officePetTick(dt, lounge, originX, usableW) {
-  const p = officePet;
+function officePetTick(p, dt, lounge, originX, usableW) {
   const x0 = originX + 12, x1 = originX + usableW - 12;
   // the strip between the lounge partition and the sofa backs
   const yMin = lounge.y + 10, yMax = lounge.y + 16;
-  if (!p.init || Math.abs(p.y - yMin) > 48) { p.x = Math.round(x0 + (x1 - x0) * 0.72); p.y = yMin + 2; p.tx = p.x; p.ty = p.y; p.state = 'idle'; p.pauseT = 2; p.init = true; }
+  if (!p.init || Math.abs(p.y - yMin) > 48) { p.x = Math.round(x0 + (x1 - x0) * p.home); p.y = yMin + 2; p.tx = p.x; p.ty = p.y; p.state = 'idle'; p.pauseT = 2; p.init = true; }
   p.y = Math.max(yMin, Math.min(yMax, p.y)); p.ty = Math.max(yMin, Math.min(yMax, p.ty)); p.tx = Math.max(x0, Math.min(x1, p.tx));
   p.animT += dt; if (p.heartT > 0) p.heartT -= dt;
   if (p.state === 'idle') {
@@ -5375,7 +5438,7 @@ function officePetTick(dt, lounge, originX, usableW) {
   }
 }
 function officeDrawPet(ctx, im, p) {
-  const sheet = im.pet_gitcat; if (!sheet || !p.init) return;
+  const sheet = im[p.sheet]; if (!sheet || !p.init) return;
   const x = Math.round(p.x), y = Math.round(p.y);
   officeShadow(ctx, x, y + 1, 6, 2);
   const walking = p.state === 'walk';
@@ -5392,9 +5455,8 @@ function officeDrawPet(ctx, im, p) {
   if (p.heartT > 0) { ctx.save(); ctx.globalAlpha = Math.min(1, p.heartT / 0.4); drawBubble(ctx, x - 5, y - 31, 1, 'heart'); ctx.restore(); }
 }
 function officePetHit(evt) {
-  const p = officePet; if (!p.init) return false;
   const pos = officeWorldPos(evt);
-  return pos.x >= p.x - 9 && pos.x <= p.x + 9 && pos.y >= p.y - 18 && pos.y <= p.y + 2;
+  return officePets.find(p => p.init && pos.x >= p.x - 9 && pos.x <= p.x + 9 && pos.y >= p.y - 18 && pos.y <= p.y + 2) || null;
 }
 function officeMeetingHandles() {
   const set = new Set();
@@ -5442,7 +5504,7 @@ function officeDrawMeeting(ctx, im, m, worldW, originX, now, bob) {
   const seated = m.seats.filter(st => st.ch.state === 'sit').sort((a, b) => a.chairY - b.chairY);
   for (const st of seated) {
     const ch = st.ch;
-    const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
+    const sheet = im[`char_${officeSkin(ch.sid)}`];
     const speaking = debateState.currentHandle && (handles.get(ch.sid) === debateState.currentHandle || ch.sid === debateState.currentHandle);
     const frame = speaking ? 3 + (Math.floor(now / 250) % 2) : 0;
     ch.drawn = [frame, st.dir, st.chairX, st.chairY];
@@ -5638,13 +5700,15 @@ $('office-canvas').addEventListener('mousemove', e => {
   const tip = $('office-tip');
   const canvas = $('office-canvas');
   officeHover = ch;
-  const onPet = !ch && officePetHit(e);
+  const onPet = !ch ? officePetHit(e) : null;
   const zs = !ch && !onPet ? officeZoneSeatAt(officeWorldPos(e).x, officeWorldPos(e).y) : null;
-  canvas.classList.toggle('hit', !!ch || onPet);
+  const onBoard = !ch && !onPet && !zs && officeBoardHit(e);
+  canvas.classList.toggle('hit', !!ch || !!onPet || onBoard);
   if (!ch) {
-    if (!onPet && !zs) { tip.hidden = true; return; }
+    if (!onPet && !zs && !onBoard) { tip.hidden = true; return; }
     tip.innerHTML = zs ? `<b>${esc(zs.zone.icon)} ${esc(t(zs.zone.name))}</b><span style="display:block;max-width:260px;white-space:normal;color:var(--text2)">${esc(zs.zone.prompt.slice(0, 140))}${zs.zone.prompt.length > 140 ? '…' : ''}</span><span style="display:block;color:#5fc7b3;margin-top:2px">${t('드래그해 놓으면 이 프롬프트를 보냅니다')}${zs.zone.auto ? ' · ' + t('확인 없이 바로 보내기') : ''}</span>`
-      : '<b>Gitcat</b><span>' + t('휴게실 고양이 · 클릭하면 좋아합니다') + '</span>';
+      : onBoard ? '<b>' + t('화이트보드') + '</b><span>' + t('클릭: 가장 오래 기다리는 세션으로 이동해 채팅 열기') + '</span>'
+      : `<b>${esc(onPet.name)}</b><span>` + t('휴게실 펫 · 클릭하면 좋아합니다') + '</span>';
     const wr0 = $('office-wrap').getBoundingClientRect();
     tip.style.left = (e.clientX - wr0.left + 12) + 'px'; tip.style.top = (e.clientY - wr0.top + $('office-wrap').scrollTop + 12) + 'px';
     tip.hidden = false; return;
@@ -5680,7 +5744,11 @@ let officeClickTimer = null;
 $('office-canvas').addEventListener('click', e => {
   if (officeSuppressClick) return;
   const ch = officeCharAt(e);
-  if (!ch) { if (officePetHit(e)) officePet.heartT = 1.6; return; }
+  if (!ch) {
+    const pet = officePetHit(e); if (pet) { pet.heartT = 1.6; return; }
+    if (officeBoardHit(e)) officeJumpToWaiting();
+    return;
+  }
   ch.reactT = 1.2;
   if (officeClickTimer) return;           // second click of a double-click is handled below
   officeClickTimer = setTimeout(() => {
@@ -5885,7 +5953,7 @@ function officeDrawDrag(ctx, im, teamBlocks, worldW) {
     if (pm && !pm.ch) { ctx.strokeStyle = 'rgba(239,176,65,0.95)'; ctx.lineWidth = 1; ctx.strokeRect(pm.sx + 7.5, pm.sy + 11.5, 65, 65); }
     else if (pm) { ctx.strokeStyle = 'rgba(120,170,255,0.9)'; ctx.lineWidth = 1; ctx.strokeRect(4.5, tb.y - 11.5, worldW - 9, tb.h - 1); }
   }
-  const sheet = im[`char_${officeHash(officeDrag.ch.sid) % OFFICE.CHAR_COUNT}`];
+  const sheet = im[`char_${officeSkin(officeDrag.ch.sid)}`];
   if (sheet) { ctx.globalAlpha = 0.85; officeDrawChar(ctx, sheet, 0, 0, officeDrag.x, officeDrag.y, 1); ctx.globalAlpha = 1; }
   ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(Math.round(officeDrag.x) - 60, Math.round(officeDrag.y) + 12, 120, 10);
@@ -5977,9 +6045,28 @@ function zoneTick() {
     const answered = ch && ch.sess && ch.sess.status !== 'running' && Date.now() - a.sentAt > 5000;
     if (!z || !ch || ch.fading || answered) {
       delete zoneState.assign[sid]; zonesSave();
-      if (answered && z) showInAppToast(`${ch.sess.name}: ${z.icon} ${z.name} ${t('존 작업 응답 완료')}`);
+      if (answered && z) { showInAppToast(`${ch.sess.name}: ${z.icon} ${z.name} ${t('존 작업 응답 완료')}`); zoneCapture(ch, z, a); }
     }
   }
+}
+// keep the terminal's last answer so the zone's output can be reviewed later (newest first, capped)
+async function zoneCapture(ch, zone, a) {
+  const handle = officeHandleFor(ch); if (!handle) return;
+  try {
+    const res = await window.orca.terminalRead(handle, true);
+    const text = (extractLastResponse(extractTail(res)) || '').trim().slice(0, 2000);
+    zoneState.history = zoneState.history || [];
+    zoneState.history.unshift({ t: Date.now(), sentAt: a.sentAt, sid: ch.sid, name: ch.sess.name, branch: ch.sess.branch || '', zoneId: zone.id, text });
+    zoneState.history = zoneState.history.slice(0, 40);
+    zonesSave();
+  } catch {}
+}
+function zoneShowHistory(zone) {
+  const rows = (zoneState.history || []).filter(h => !zone || h.zoneId === zone.id);
+  const body = rows.length ? rows.map(h => { const z = zoneById(h.zoneId); return `<div class="assign"><b>${z ? esc(z.icon + ' ' + t(z.name)) : ''} · ${esc(h.name)}</b>${h.branch ? ' <span style="color:var(--text3)">' + esc(h.branch) + '</span>' : ''} <span style="color:var(--text3);float:right">${new Date(h.t).toLocaleString('ko-KR')}</span><div class="log" style="margin-top:4px;white-space:pre-wrap">${esc(h.text || '(응답을 읽지 못했습니다)')}</div></div>`; }).join('')
+    : `<p style="color:var(--text3)">${t('기록이 없습니다')}</p>`;
+  teamModal(`<h3>${t('존 기록')}${zone ? ' · ' + esc(zone.icon + ' ' + t(zone.name)) : ''}</h3>${body}<div class="row"><button id="zone-hist-close">${t('닫기')}</button></div>`)
+    .querySelector('#zone-hist-close').onclick = closeTeamModal;
 }
 function officeBuildZones(y, originX, cols, SEAT_PX, SEAT_PY, aisleY) {
   const zones = zoneState.zones;
@@ -6013,9 +6100,9 @@ function officeDrawZoneBlock(ctx, im, zb, worldW, originX, now, bob, pulse, pcFr
     }
     // zone label on the rug corner (drawn after the seat so it stays readable)
     zItems.push({ z: seat.chairY + 1, draw: () => {
-      const badge = `${z.icon} ${t(z.name)}`.slice(0, 14);
+      const badge = `${z.icon} ${t(z.name)}`.slice(0, 18);
       ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      const bw = Math.min(64, Math.round(ctx.measureText(badge).width + 6));
+      const bw = Math.min(72, Math.round(ctx.measureText(badge).width + 6));
       ctx.fillStyle = '#5fc7b3'; ctx.fillRect(seat.sx + 8, seat.sy + 12, bw, 10);
       ctx.fillStyle = '#12141c'; ctx.fillText(badge, seat.sx + 11, seat.sy + 12);
       if (z.auto) { ctx.fillStyle = '#12141c'; ctx.fillRect(seat.sx + 8 + bw + 2, seat.sy + 12, 10, 10); ctx.fillStyle = '#ffd98a'; ctx.fillText('⚡', seat.sx + 9 + bw + 2, seat.sy + 12); }
@@ -6071,7 +6158,7 @@ function zoneEdit(zone) {
   };
 }
 function zoneCellMenuItems(zone) {
-  const items = [['✎', '프롬프트 편집…', () => zoneEdit(zone)], ['＋', '새 존 추가…', () => zoneEdit(null)]];
+  const items = [['✎', '프롬프트 편집…', () => zoneEdit(zone)], ['📜', '존 기록 보기', () => zoneShowHistory(zone)], ['＋', '새 존 추가…', () => zoneEdit(null)]];
   const sid = Object.keys(zoneState.assign).find(s => zoneState.assign[s].zoneId === zone.id);
   if (sid) items.push(['↩', '존에서 해제', () => { delete zoneState.assign[sid]; zonesSave(); }]);
   items.push(['🗑', '이 존 삭제', () => { zoneState.zones = zoneState.zones.filter(z => z.id !== zone.id); for (const s of Object.keys(zoneState.assign)) if (zoneState.assign[s].zoneId === zone.id) delete zoneState.assign[s]; zonesSave(); }, 'danger']);
