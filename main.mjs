@@ -43,7 +43,8 @@ function createWindow() {
   const x = saved?.x ?? (sw - WIN_W - MARGIN);
   const y = saved?.y ?? (sh - WIN_H - MARGIN);
   const w = saved?.width ?? WIN_W;
-  const h = saved?.height ?? WIN_H;
+  // a widget minimized to its header bar (44px) must not come back minimized
+  const h = Math.max(saved?.height ?? WIN_H, 300);
 
   mainWindow = new BrowserWindow({
     width: w,
@@ -81,7 +82,7 @@ function createWindow() {
   mainWindow.webContents.on("did-finish-load", () => console.log(`[win] did-finish-load url=${mainWindow.webContents.getURL()}`));
   mainWindow.webContents.on("render-process-gone", (_e, d) => console.log(`[win] render-process-gone reason=${d.reason} code=${d.exitCode}`));
   mainWindow.webContents.on("console-message", (_e, level, msg) => {
-    if (level >= 2) console.log(`[renderer] ${msg}`);
+    if (level >= 2 || process.env.ROCA_DEBUG) console.log(`[renderer:${level}] ${msg}`);
   });
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
