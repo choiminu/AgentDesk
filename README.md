@@ -3,6 +3,8 @@
 A lightweight Electron desktop widget for monitoring [Orca](https://github.com/stablyai/orca) AI coding sessions at a glance.
 
 [Orca](https://github.com/stablyai/orca) AI 코딩 세션을 실시간으로 모니터링하는 경량 Electron 데스크톱 위젯입니다. 세션 상태 확인, 오케스트레이션 관리, 클립보드 히스토리, 포트 모니터, 메모, 뽀모도로 타이머 등의 기능을 제공합니다.
+<img width="635" height="717" alt="image" src="https://github.com/user-attachments/assets/6ec55127-14d7-495d-ad5d-9379c010775a" />
+
 <img width="1772" height="869" alt="image" src="https://github.com/user-attachments/assets/5e9c3146-bf3b-4b1f-b525-7f08f5502929" />
 
 
