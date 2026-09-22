@@ -4726,10 +4726,6 @@ function officeFrame(now) {
   // meeting room: agents taking part in a running debate gather around a table
   const meeting = officeBuildMeeting(y, originX, usableW0(cols, SEAT_PX), aisleY);
   if (meeting) y += meeting.h;
-  // "new team" drop template (only while dragging)
-  const templateBlocks = officeBuildTeams(y, originX, cols, SEAT_PX, SEAT_PY, aisleY, 'template');
-  for (const tb of templateBlocks) y += tb.h;
-  const allTeamBlocks = [...teamBlocks, ...templateBlocks];
   // prompt zones: drop an agent on a zone desk to send that zone's prompt
   const zoneBlock = officeBuildZones(y, originX, cols, SEAT_PX, SEAT_PY, aisleY);
   if (zoneBlock) y += zoneBlock.h;
@@ -4758,6 +4754,10 @@ function officeFrame(now) {
   }
   for (let r = 0; r < loungeRows; r++) aisleY.push(y + r * LOUNGE_ROW_H - 8);
   y += lounge.h;
+  // "new team" drop template (only while dragging) goes below the lounge so its appearance never shifts existing seats
+  const templateBlocks = officeBuildTeams(y, originX, cols, SEAT_PX, SEAT_PY, aisleY, 'template');
+  for (const tb of templateBlocks) y += tb.h;
+  const allTeamBlocks = [...teamBlocks, ...templateBlocks];
   aisleY.push(y - 8);
   const worldH = y + OFFICE.PAD * T;
   const graph = { xs: aisleX, ys: aisleY };
@@ -5928,7 +5928,7 @@ window.addEventListener('mousemove', e => {
   if (!officeDrag) return;
   const p = officeWorldPos(e);
   officeDrag.x = p.x; officeDrag.y = p.y;
-  if (!officeDrag.moved && Math.hypot(p.x - officeDrag.startX, p.y - officeDrag.startY) > 4) { officeDrag.moved = true; $('office-tip').hidden = true; }
+  if (!officeDrag.moved && Math.hypot(p.x - officeDrag.startX, p.y - officeDrag.startY) > 7) { officeDrag.moved = true; $('office-tip').hidden = true; }
 });
 window.addEventListener('mouseup', e => {
   if (!officeDrag) return;
