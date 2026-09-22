@@ -4584,6 +4584,10 @@ function officeFrame(now) {
   // meeting room: agents taking part in a running debate gather around a table
   const meeting = officeBuildMeeting(y, originX, usableW0(cols, SEAT_PX), aisleY);
   if (meeting) y += meeting.h;
+  // "new team" drop template (only while dragging)
+  const templateBlocks = officeBuildTeams(y, originX, cols, SEAT_PX, SEAT_PY, aisleY, 'template');
+  for (const tb of templateBlocks) y += tb.h;
+  const allTeamBlocks = [...teamBlocks, ...templateBlocks];
 
   // lounge: idle agents rest on sofas (finished subagents just fade out)
   for (const c of officeChars.values()) if (c.sess && c.sess.isSub && c.sess.status === 'done') { c.fading = true; c.alpha = Math.min(c.alpha, 0.99); }
@@ -4663,7 +4667,7 @@ function officeFrame(now) {
   // 4) draw: floors — corridor planks everywhere, then each station paints its own tile + tint
   const floorTop = OFFICE.WALL_H * T;
   officeTileArea(ctx, im, 'floor_plank', '#dcc09a', 0, floorTop, worldW, worldH - floorTop);
-  for (const tb of teamBlocks) {
+  for (const tb of allTeamBlocks) {
     officeTileArea(ctx, im, 'floor_plank', tb.template ? '#cfcbd6' : '#e9d7a6', 4, tb.y - 12, worldW - 8, tb.h);
     ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, tb.y - 12, worldW - 8, 2);
     ctx.fillStyle = tb.template ? 'rgba(160,160,180,0.85)' : 'rgba(239,176,65,0.85)'; ctx.fillRect(4, tb.y - 10, worldW - 8, 1);
@@ -4678,7 +4682,7 @@ function officeFrame(now) {
   officeTileArea(ctx, im, 'floor_brick', '#d9c2b4', 4, lounge.y - 12, worldW - 8, lounge.h);
   ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, lounge.y - 12, worldW - 8, 2);
   // low partition walls along the top of every room, with doorways where the vertical aisles pass
-  const partitionTops = [...teamBlocks.map(b => b.y), ...blocks.map(b => b.y), lounge.y].concat(meeting ? [meeting.y] : []);
+  const partitionTops = [...allTeamBlocks.map(b => b.y), ...blocks.map(b => b.y), lounge.y].concat(meeting ? [meeting.y] : []);
   for (const py of partitionTops) officeDrawPartition(ctx, py, worldW, graph.xs);
   // runner carpets along the vertical aisles (where characters walk)
   for (const ax of graph.xs) {
@@ -4715,7 +4719,7 @@ function officeFrame(now) {
   officeDrawWallDecor(ctx, im, worldW, floorTop, boardW);
 
   officeSeats = [];
-  for (const tb of teamBlocks) officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame);
+  for (const tb of allTeamBlocks) officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame);
   // station blocks
   for (const block of blocks) {
     // station banner (right end of the top aisle) in the station color
@@ -4795,7 +4799,7 @@ function officeFrame(now) {
   }
 
   officeDrawLighting(ctx, worldW, worldH, floorTop, shown);
-  officeDrawDrag(ctx, im, teamBlocks, worldW);
+  officeDrawDrag(ctx, im, allTeamBlocks, worldW);
 
   if (officeHover) {
     const h = officeHover;
@@ -5468,12 +5472,14 @@ function teamLog(t, type, text, extra = {}) {
 }
 
 // layout: one block per team (PM seat first, then members); a template block appears while dragging
-function officeBuildTeams(y0, originX, cols, SEAT_PX, SEAT_PY, aisleY) {
+function officeBuildTeams(y0, originX, cols, SEAT_PX, SEAT_PY, aisleY, mode = 'teams') {
   const out = [];
   let y = y0;
   const teams = Object.values(teamState.teams);
-  const showTemplate = officeDrag && !officeDrag.ch.sess.isSub && !teams.some(t => !t.pm);
-  const list = showTemplate ? [...teams, { id: '__template', pm: null, members: {}, template: true }] : teams;
+  // the "new team" template only exists while a drag is actually in progress, and is laid out
+  // separately (just above the lounge) so existing desks never shift when someone merely clicks
+  const showTemplate = mode === 'template' && officeDrag && officeDrag.moved && !officeDrag.ch.sess.isSub && !teams.some(t => !t.pm);
+  const list = mode === 'template' ? (showTemplate ? [{ id: '__template', pm: null, members: {}, template: true }] : []) : teams;
   for (const t of list) {
     const pmCh = t.pm ? officeChars.get(t.pm) : null;
     const memberChs = Object.keys(t.members).map(sid => officeChars.get(sid)).filter(Boolean);
@@ -5493,7 +5499,7 @@ function officeBuildTeams(y0, originX, cols, SEAT_PX, SEAT_PY, aisleY) {
     out.push(tb);
     y += tb.h;
   }
-  teamBlocksCache = out;
+  if (mode === 'teams') teamBlocksCache = out; else teamBlocksCache = [...teamBlocksCache.filter(b => !b.template), ...out];
   return out;
 }
 
