@@ -4435,6 +4435,8 @@ const OFFICE_DEMO = location.hash === '#office-demo' ? [
 if (OFFICE_DEMO) {
   setTimeout(() => { document.querySelector('.page-nav').style.pointerEvents = 'none'; const mb = $('minimize-btn'); if (mb) mb.style.pointerEvents = 'none'; }, 2000);
   setTimeout(() => { const d3 = OFFICE_DEMO.find(d => d.id === 'demo-3'); if (d3) { d3.status = 'waiting'; d3.tool = ''; } }, 11000);
+  setTimeout(() => { officeHover = officeChars.get('demo-8') || null; }, 5000);
+  setTimeout(() => { officeHover = null; }, 15000);
   setTimeout(() => { const w = $('office-wrap'); w.scrollTop = w.scrollHeight; }, 12000);
   setTimeout(() => {
     Object.assign(debateState, { running: true, groupA: ['demo-1', 'demo-2'], groupB: ['demo-3'], master: 'demo-4', mode: 'master-worker', round: 2, maxRounds: 3, topic: '캐시 전략 결정', currentHandle: 'demo-2' });
@@ -4724,8 +4726,10 @@ function officeFrame(now) {
   officeDrawWallDecor(ctx, im, worldW, floorTop, boardW);
 
   officeSeats = [];
-  for (const tb of allTeamBlocks) officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame);
-  officeDrawTeamFlights(ctx);
+  // everything that stands on the floor is collected with its base y (zY) and drawn back-to-front,
+  // so a character walking past a desk is hidden behind it instead of riding on top
+  const zItems = [];
+  for (const tb of allTeamBlocks) officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame, zItems);
   // station blocks
   for (const block of blocks) {
     // station banner (right end of the top aisle) in the station color
@@ -4747,10 +4751,10 @@ function officeFrame(now) {
       }
     }
 
-    for (const seat of block.seats) officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SEAT_PY);
+    for (const seat of block.seats) zItems.push({ z: seat.chairY, draw: () => officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SEAT_PY) });
   }
 
-  if (meeting) officeDrawMeeting(ctx, im, meeting, worldW, originX, now, bob);
+  if (meeting) zItems.push({ z: meeting.tableY + meeting.tableH, draw: () => officeDrawMeeting(ctx, im, meeting, worldW, originX, now, bob) });
 
   // lounge
   {
@@ -4764,13 +4768,14 @@ function officeFrame(now) {
     const lastSofa = lounge.sofas[Math.min(lounge.sofas.length, sofasPerRow) - 1];
     if (im.coffee_table && lastSofa && lastSofa.x + SOFA_STEP + 32 <= originX + usableW) ctx.drawImage(im.coffee_table, lastSofa.x + SOFA_STEP + 2, lounge.y + 10);
     if (im.large_plant && lastSofa && lastSofa.x + SOFA_STEP + 68 <= originX + usableW) ctx.drawImage(im.large_plant, lastSofa.x + SOFA_STEP + 38, lounge.y - 8);
-    for (const sofa of lounge.sofas) {
+    for (const sofa of lounge.sofas) zItems.push({ z: sofa.y + 16, draw: () => {
       officeShadow(ctx, sofa.x + 16, sofa.y + 16, 17, 3);
       if (im.sofa_front) ctx.drawImage(im.sofa_front, sofa.x, sofa.y);
       const seated = sofa.seats.filter(st => st.ch && st.ch.state === 'sit');
       for (const seat of seated) {
         const ch = seat.ch;
         const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
+        ch.drawn = [0, 0, seat.chairX, seat.chairY];
         if (sheet) officeDrawChar(ctx, sheet, 0, 0, seat.chairX, seat.chairY, ch.alpha);
       }
       // only the sofa's front rail (sprite rows 12-15) overlaps the shins, so the body sits on the cushion
@@ -4782,22 +4787,26 @@ function officeFrame(now) {
         officeDrawName(ctx, ch.sess, seat.chairX, seat.chairY + 9, ch.alpha, { maxLen: 9, gauge: false });
         officeSeats.push({ x: seat.chairX - 8, y: seat.chairY - 24, w: 16, h: 32, ch });
       });
-    }
+    } });
   }
 
-  // walking / standing / fading characters (sorted by y)
-  officeMovers = [...officeChars.values()].filter(c => c.state !== 'sit' || c.fading).sort((a, b) => a.y - b.y);
-  for (const ch of officeMovers) {
+  // walking / standing / fading characters
+  officeMovers = [...officeChars.values()].filter(c => c.state !== 'sit' || c.fading);
+  for (const ch of officeMovers) zItems.push({ z: ch.y, draw: () => {
     const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
-    if (!sheet) continue;
+    if (!sheet) return;
     const walking = ch.state === 'toSeat' || ch.state === 'leave' || ch.state === 'wander';
     const frameCol = walking ? [0, 1, 2, 1][Math.floor(ch.animT / 0.13) % 4] : 0;
     officeShadow(ctx, ch.x, ch.y + 2, 7, 2.5, ch.alpha);
+    ch.drawn = [frameCol, ch.dir, ch.x, ch.y];
     officeDrawChar(ctx, sheet, frameCol, ch.dir, ch.x, ch.y, ch.alpha);
     if (ch.reactT > 0) drawBubble(ctx, ch.x + 2, ch.y - 44, 1, 'dots');
     else if (!walking && !ch.fading && ch.sess && ch.sess.status === 'done') drawBubble(ctx, ch.x + 2, ch.y - 44 - bob, 1, 'zz');
     if (ch.sess) officeDrawName(ctx, ch.sess, ch.x, ch.y + 3, ch.alpha);
-  }
+  } });
+  zItems.sort((a, b) => a.z - b.z);
+  for (const it of zItems) it.draw();
+  officeDrawTeamFlights(ctx);
 
   if (!shown.length) {
     ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.fillStyle = '#9aa0b4';
@@ -4809,8 +4818,11 @@ function officeFrame(now) {
 
   if (officeHover) {
     const h = officeHover;
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1;
-    ctx.strokeRect(Math.round(h.x - 9) + 0.5, Math.round(h.y - 26) + 0.5, 18, 35);
+    const idx = officeHash(h.sid) % OFFICE.CHAR_COUNT;
+    const [col, dir, hx, hy] = h.drawn || [0, 0, h.x, h.y];
+    const ol = im[`char_${idx}`] ? officeOutlineFor(idx, im[`char_${idx}`], col, dir) : null;
+    if (ol) { ctx.globalAlpha = 0.9; ctx.drawImage(ol, Math.round(hx - 9), Math.round(hy - 25)); ctx.globalAlpha = 1; }
+    else { ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1; ctx.strokeRect(Math.round(hx - 9) + 0.5, Math.round(hy - 26) + 0.5, 18, 35); }
   }
 }
 
@@ -4914,6 +4926,7 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
     dir = 0;
     frameCol = sess.needsInput ? 3 + (Math.floor(ch.animT / 0.5) % 2) : 0;   // wave only when a choice is pending
   } else if (st === 'error') { dir = 0; frameCol = 0; }
+  ch.drawn = [frameCol, dir, seat.chairX, seat.chairY];
   if (sheet) officeDrawChar(ctx, sheet, frameCol, dir, seat.chairX, seat.chairY, ch.alpha);
   const headY = seat.chairY - 24;
   if (ch.reactT > 0) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'dots');
@@ -5225,6 +5238,7 @@ function officeDrawMeeting(ctx, im, m, worldW, originX, now, bob) {
     const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
     const speaking = debateState.currentHandle && (handles.get(ch.sid) === debateState.currentHandle || ch.sid === debateState.currentHandle);
     const frame = speaking ? 3 + (Math.floor(now / 250) % 2) : 0;
+    ch.drawn = [frame, st.dir, st.chairX, st.chairY];
     if (sheet) officeDrawChar(ctx, sheet, frame, st.dir, st.chairX, st.chairY, ch.alpha);
     const color = st.side === 'master' ? '#efb041' : st.side === 'a' ? '#5b9cf5' : '#3ecf8e';
     ctx.fillStyle = color; ctx.fillRect(st.chairX - 3, st.chairY + 5, 6, 2);
@@ -5309,6 +5323,32 @@ function officeDrawChar(ctx, sheet, frameCol, dir, x, y, alpha) {
     ctx.drawImage(src, sx, sy, 16, 32, dx, dy, 16, 32);
   }
   ctx.restore();
+}
+// hover outline: 1px white halo on the 4-neighbours of the sprite's opaque pixels, cached per (sheet, frame, dir)
+const officeOutlineCache = new Map();
+function officeOutlineFor(sheetIdx, sheet, frameCol, dir) {
+  const key = `${sheetIdx}_${frameCol}_${dir}`;
+  if (officeOutlineCache.has(key)) return officeOutlineCache.get(key);
+  let out = null;
+  try {
+    const sc = officeScratch.getContext('2d');
+    sc.save(); sc.setTransform(1, 0, 0, 1, 0, 0); sc.globalCompositeOperation = 'source-over'; sc.imageSmoothingEnabled = false;
+    sc.clearRect(0, 0, 16, 32);
+    const row = dir === 1 ? 1 : dir === 0 ? 0 : 2;
+    if (dir === 3) { sc.translate(16, 0); sc.scale(-1, 1); }
+    sc.drawImage(sheet, frameCol * 16, row * 32, 16, 32, 0, 0, 16, 32);
+    sc.restore();
+    const px = sc.getImageData(0, 0, 16, 32).data;
+    const solid = (x, y) => x >= 0 && x < 16 && y >= 0 && y < 32 && px[(y * 16 + x) * 4 + 3] > 40;
+    out = document.createElement('canvas'); out.width = 18; out.height = 34;
+    const oc = out.getContext('2d'); oc.fillStyle = '#fff';
+    for (let y = -1; y <= 32; y++) for (let x = -1; x <= 16; x++) {
+      if (solid(x, y)) continue;
+      if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) oc.fillRect(x + 1, y + 1, 1, 1);
+    }
+  } catch { out = null; }
+  officeOutlineCache.set(key, out);
+  return out;
 }
 function officeNearest(arr, v) {
   let best = arr[0];
@@ -5451,8 +5491,8 @@ async function teamsLoad() {
   if (OFFICE_DEMO) {
     teamState = { teams: { demo: { id: 'demo', pm: 'demo-4', members: { 'demo-1': 'dev', 'demo-8': 'docs' }, brief: '## 목표\n캐시 전략 결정\n\n[갱신 v2]\n범위 축소: Redis만 평가', briefVersion: 2, goal: '캐시 전략 결정', log: [], rounds: 1, autoDispatch: false,
       tasks: { 'demo-1': { task: 'Redis 캐시 어댑터 초안 구현', done_when: '단위 테스트 통과', sentAt: Date.now(), reported: false, briefVersion: 1 } } } } };
-    setTimeout(() => { teamFlights.push({ fromSid: 'demo-4', toSid: 'demo-1', t: 0, dur: 1.5, kind: 'dispatch' }); }, 7000);
-    setTimeout(() => { teamFlights.push({ fromSid: 'demo-1', toSid: 'demo-4', t: 0, dur: 1.5, kind: 'report' }); }, 12500);
+    let demoFlip = false;
+    setInterval(() => { demoFlip = !demoFlip; teamFlights.push(demoFlip ? { fromSid: 'demo-4', toSid: 'demo-1', t: 0, dur: 1.5, kind: 'dispatch' } : { fromSid: 'demo-1', toSid: 'demo-4', t: 0, dur: 1.5, kind: 'report' }); }, 4500);
     return;
   }
   try { const d = await window.orca.teamsRead(); if (d && d.teams) teamState = d; } catch {}
@@ -5516,7 +5556,7 @@ function officeBuildTeams(y0, originX, cols, SEAT_PX, SEAT_PY, aisleY, mode = 't
   return out;
 }
 
-function officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame) {
+function officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame, zItems) {
   const t = tb.team;
   const pmName = t.pm ? (officeChars.get(t.pm)?.sess?.name || 'PM') : '';
   const label = tb.template ? '새 팀 · PM 자리에 놓으세요' : `팀 · ${pmName || 'PM 없음'} · ${Object.keys(t.members).length}명`;
@@ -5550,6 +5590,7 @@ function officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFr
       if (im.desk) { ctx.globalAlpha = 0.6; ctx.drawImage(im.desk, seat.deskX, seat.deskY); ctx.globalAlpha = 1; }
       continue;
     }
+    zItems.push({ z: seat.chairY, draw: () => {
     officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, OFFICE.SEAT_W * OFFICE.T, OFFICE.SEAT_H * OFFICE.T);
     // role / PM badge on the rug corner
     const badge = seat.isPm ? '👑 PM' : (TEAM_ROLES[seat.role] || '팀원');
@@ -5572,6 +5613,7 @@ function officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFr
       ctx.fillStyle = 'rgba(60,50,10,0.9)'; ctx.fillRect(seat.sx + 8, seat.sy + 34, bvw, 10);
       ctx.fillStyle = '#F2C037'; ctx.fillText(bvt, seat.sx + 11, seat.sy + 34);
     }
+    } });
   }
 }
 
