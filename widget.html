@@ -4363,7 +4363,7 @@ function officeLoadImages() {
   try { document.fonts.load(`9px 'Galmuri9'`).then(fs => { if (!fs.length) { officeFontPx = 7; } }); } catch { officeFontPx = 7; }
   const names = ['desk', 'pc_on_1', 'pc_on_2', 'pc_on_3', 'pc_off', 'chair_back', 'plant', 'coffee', 'floor', 'carpet', 'sofa_front', 'coffee_table', 'large_plant',
     'floor_plank', 'floor_tiles', 'floor_checker', 'floor_grid', 'floor_brick',
-    'bookshelf', 'double_bookshelf', 'whiteboard', 'large_painting', 'small_painting', 'small_painting_2', 'hanging_plant', 'clock', 'cactus', 'plant_2', 'bin', 'pot'];
+    'bookshelf', 'double_bookshelf', 'whiteboard', 'large_painting', 'small_painting', 'small_painting_2', 'hanging_plant', 'clock', 'cactus', 'plant_2', 'bin', 'pot', 'pet_gitcat'];
   for (let i = 0; i < OFFICE.CHAR_COUNT; i++) names.push(`char_${i}`);
   return Promise.all(names.map(n => new Promise(res => {
     const img = new Image();
@@ -4394,10 +4394,11 @@ const BUBBLE_GLYPH = {
   zz:    ['XXX.....', '..X.....', '.X..XXX.', 'X.....X.', '.....X..', '....XXX.'],
   dots:  ['........', '........', '........', 'X..X..X.', 'X..X..X.', '........'],
   ask:   ['.XXXX...', 'X....X..', '....X...', '...X....', '........', '...X....'],
+  heart: ['.XX.XX..', 'XXXXXXX.', 'XXXXXXX.', '.XXXXX..', '..XXX...', '...X....'],
 };
 function drawBubble(ctx, x, y, s, kind) {
   x = Math.round(x); y = Math.round(y);
-  const accent = kind === 'check' ? '#44BB66' : kind === 'bang' ? '#E85D5D' : kind === 'dots' ? '#E8A33D' : kind === 'ask' ? '#F2C037' : '#8A93A8';
+  const accent = kind === 'check' ? '#44BB66' : kind === 'bang' ? '#E85D5D' : kind === 'dots' ? '#E8A33D' : kind === 'ask' ? '#F2C037' : kind === 'heart' ? '#E64566' : '#8A93A8';
   const glyph = BUBBLE_GLYPH[kind];
   for (let r = 0; r < BUBBLE_BASE.length; r++) {
     for (let c = 0; c < 11; c++) {
@@ -4435,8 +4436,10 @@ const OFFICE_DEMO = location.hash === '#office-demo' ? [
 if (OFFICE_DEMO) {
   setTimeout(() => { document.querySelector('.page-nav').style.pointerEvents = 'none'; const mb = $('minimize-btn'); if (mb) mb.style.pointerEvents = 'none'; }, 2000);
   setTimeout(() => { const d3 = OFFICE_DEMO.find(d => d.id === 'demo-3'); if (d3) { d3.status = 'waiting'; d3.tool = ''; } }, 11000);
-  setTimeout(() => { officeHover = officeChars.get('demo-8') || null; }, 5000);
+  setTimeout(() => { officeHover = officeChars.get('demo-8') || null; }, 3000);
   setTimeout(() => { officeHover = null; }, 15000);
+  // renderer timers start ~3s after the main-process screenshot timers, so the lounge shot (24s) is prepared from 17.5s
+  for (const ms of [17500, 19500]) setTimeout(() => { officePet.heartT = 4; const w = $('office-wrap'); w.scrollTo({ top: w.scrollHeight, behavior: 'instant' }); }, ms);
   setTimeout(() => { const w = $('office-wrap'); w.scrollTop = w.scrollHeight; }, 12000);
   setTimeout(() => {
     Object.assign(debateState, { running: true, groupA: ['demo-1', 'demo-2'], groupB: ['demo-3'], master: 'demo-4', mode: 'master-worker', round: 2, maxRounds: 3, topic: '캐시 전략 결정', currentHandle: 'demo-2' });
@@ -4670,6 +4673,7 @@ function officeFrame(now) {
     ch.animT += dt;
   }
   for (let i = teamFlights.length - 1; i >= 0; i--) { teamFlights[i].t += dt; if (teamFlights[i].t >= teamFlights[i].dur) teamFlights.splice(i, 1); }
+  officePetTick(dt, lounge, originX, usableW);
 
   // 4) draw: floors — corridor planks everywhere, then each station paints its own tile + tint
   const floorTop = OFFICE.WALL_H * T;
@@ -4804,6 +4808,7 @@ function officeFrame(now) {
     else if (!walking && !ch.fading && ch.sess && ch.sess.status === 'done') drawBubble(ctx, ch.x + 2, ch.y - 44 - bob, 1, 'zz');
     if (ch.sess) officeDrawName(ctx, ch.sess, ch.x, ch.y + 3, ch.alpha);
   } });
+  zItems.push({ z: officePet.y, draw: () => officeDrawPet(ctx, im, officePet) });
   zItems.sort((a, b) => a.z - b.z);
   for (const it of zItems) it.draw();
   officeDrawTeamFlights(ctx);
@@ -5184,6 +5189,49 @@ function officeDrawHelper(ctx, im, ch, seat, now) {
   ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(hx - 10, hy - 37, 20, 10);
   ctx.fillStyle = '#9cc4ff'; ctx.fillText('sub', hx, hy - 37);
 }
+// lounge pet (Gitcat). Sheet 96×96: row 0 = facing down (walk cols 0-2, idle cols 3-5, 16×32), row 1 = facing up (same),
+// row 2 = walking right (3 frames, 32×32); left is the right row flipped. Anchor is bottom-centre of the frame.
+const officePet = { x: 0, y: 0, tx: 0, ty: 0, dir: 0, state: 'idle', animT: 0, pauseT: 2, heartT: 0, init: false };
+const OFFICE_PET_SPEED = 32;
+function officePetTick(dt, lounge, originX, usableW) {
+  const p = officePet;
+  const x0 = originX + 12, x1 = originX + usableW - 12;
+  // the strip between the lounge partition and the sofa backs
+  const yMin = lounge.y + 10, yMax = lounge.y + 16;
+  if (!p.init || Math.abs(p.y - yMin) > 48) { p.x = Math.round(x0 + (x1 - x0) * 0.72); p.y = yMin + 2; p.tx = p.x; p.ty = p.y; p.state = 'idle'; p.pauseT = 2; p.init = true; }
+  p.y = Math.max(yMin, Math.min(yMax, p.y)); p.ty = Math.max(yMin, Math.min(yMax, p.ty)); p.tx = Math.max(x0, Math.min(x1, p.tx));
+  p.animT += dt; if (p.heartT > 0) p.heartT -= dt;
+  if (p.state === 'idle') {
+    p.pauseT -= dt;
+    if (p.pauseT <= 0) { p.tx = Math.round(x0 + Math.random() * (x1 - x0)); p.ty = Math.round(yMin + Math.random() * (yMax - yMin)); p.state = 'walk'; p.animT = 0; }
+  } else {
+    const ddx = p.tx - p.x, ddy = p.ty - p.y, dist = Math.hypot(ddx, ddy), step = OFFICE_PET_SPEED * dt;
+    if (dist <= step) { p.x = p.tx; p.y = p.ty; p.state = 'idle'; p.pauseT = 3 + Math.random() * 9; p.animT = 0; }
+    else { p.x += ddx / dist * step; p.y += ddy / dist * step; p.dir = Math.abs(ddx) >= Math.abs(ddy) ? (ddx > 0 ? 2 : 3) : (ddy > 0 ? 0 : 1); }
+  }
+}
+function officeDrawPet(ctx, im, p) {
+  const sheet = im.pet_gitcat; if (!sheet || !p.init) return;
+  const x = Math.round(p.x), y = Math.round(p.y);
+  officeShadow(ctx, x, y + 1, 6, 2);
+  const walking = p.state === 'walk';
+  if (walking && (p.dir === 2 || p.dir === 3)) {
+    const f = [0, 1, 0, 2][Math.floor(p.animT / 0.15) % 4];
+    if (p.dir === 3) { ctx.save(); ctx.translate(x + 16, y - 32); ctx.scale(-1, 1); ctx.drawImage(sheet, f * 32, 64, 32, 32, 0, 0, 32, 32); ctx.restore(); }
+    else ctx.drawImage(sheet, f * 32, 64, 32, 32, x - 16, y - 32, 32, 32);
+  } else {
+    // idle has no side pose: facing right rests on the down row, facing left on the up row
+    const row = (p.dir === 1 || p.dir === 3) ? 1 : 0;
+    const f = walking ? [0, 1, 0, 2][Math.floor(p.animT / 0.15) % 4] : 3 + [0, 1, 2, 1][Math.floor(p.animT / 0.3) % 4];
+    ctx.drawImage(sheet, f * 16, row * 32, 16, 32, x - 8, y - 32, 16, 32);
+  }
+  if (p.heartT > 0) { ctx.save(); ctx.globalAlpha = Math.min(1, p.heartT / 0.4); drawBubble(ctx, x - 5, y - 31, 1, 'heart'); ctx.restore(); }
+}
+function officePetHit(evt) {
+  const p = officePet; if (!p.init) return false;
+  const pos = officeWorldPos(evt);
+  return pos.x >= p.x - 9 && pos.x <= p.x + 9 && pos.y >= p.y - 18 && pos.y <= p.y + 2;
+}
 function officeMeetingHandles() {
   const set = new Set();
   if (!debateState.running) return set;
@@ -5430,8 +5478,15 @@ $('office-canvas').addEventListener('mousemove', e => {
   const tip = $('office-tip');
   const canvas = $('office-canvas');
   officeHover = ch;
-  canvas.classList.toggle('hit', !!ch);
-  if (!ch) { tip.hidden = true; return; }
+  const onPet = !ch && officePetHit(e);
+  canvas.classList.toggle('hit', !!ch || onPet);
+  if (!ch) {
+    if (!onPet) { tip.hidden = true; return; }
+    tip.innerHTML = '<b>Gitcat</b><span>휴게실 고양이 · 클릭하면 좋아합니다</span>';
+    const wr0 = $('office-wrap').getBoundingClientRect();
+    tip.style.left = (e.clientX - wr0.left + 12) + 'px'; tip.style.top = (e.clientY - wr0.top + $('office-wrap').scrollTop + 12) + 'px';
+    tip.hidden = false; return;
+  }
   const s = ch.sess;
   const stLabel = { running: '작업 중', waiting: '입력 대기', done: '쉬는 중', error: '오류' }[s.status] || s.status;
   const station = OFFICE_STATIONS.find(st => st.id === ch.station);
@@ -5454,7 +5509,7 @@ let officeClickTimer = null;
 $('office-canvas').addEventListener('click', e => {
   if (officeSuppressClick) return;
   const ch = officeCharAt(e);
-  if (!ch) return;
+  if (!ch) { if (officePetHit(e)) officePet.heartT = 1.6; return; }
   ch.reactT = 1.2;
   if (officeClickTimer) return;           // second click of a double-click is handled below
   officeClickTimer = setTimeout(() => {
