@@ -147,14 +147,15 @@ Every instruction sent to a member carries the full team brief (goal, scope, dec
 ```bash
 brew tap mongodb/brew && brew install mongodb-community && brew services start mongodb-community
 cd recall && npm install
-node cli.mjs install          # SessionEnd + PreCompact + prompt hooks for Claude Code / Gemini CLI / Codex CLI, and the /recall skill
+node cli.mjs install          # SessionStart + SessionEnd + PreCompact + prompt hooks for Claude Code / Gemini CLI / Codex CLI, and the /recall skill
 node cli.mjs backfill --since 7d   # optional: notes for last week's transcripts
 node cli.mjs search "iTerm session matching"
 ```
 
-- **SessionEnd** and **PreCompact** (a compaction is a natural chapter boundary, and the only chance to capture sessions that stay open for days) → a detached worker digests the transcript (prompts and answers only, tool output dropped), masks secrets, asks `claude -p` (Haiku) for a JSON note and upserts it into `agentdesk.session_notes` with the git commit and files it relies on.
-- **UserPromptSubmit** → the top 3 matching notes for the current repo are added as context, flagged `⚠ N file(s) changed since` when their files changed after the note was written.
-- `/recall` skill and `agentdesk-recall search | show | list` for explicit lookups. Nothing leaves the machine unless you point `AGENTDESK_MONGO_URL` at a remote cluster.
+- **SessionEnd** and **PreCompact** (a compaction is a natural chapter boundary, and the only chance to capture sessions that stay open for days) → a detached worker digests the transcript (prompts and answers only, tool output dropped), masks secrets, asks `claude -p` (Haiku, JSON schema enforced) for a note and upserts it into `agentdesk.session_notes` with the git commit, worktree and files it relies on. One note per session, refreshed on each trigger.
+- **Every prompt** (including the first one of a session) → the prompt's words are searched in MongoDB and up to 3 matching notes are added as context. A note from the same worktree needs one matching term; a note from another worktree of the same repo needs at least two, so a shared word like "session" does not drag unrelated work in. Notes whose files changed since they were written are flagged `⚠ N file(s) changed since`.
+- **SessionStart** → before any prompt exists, the branch name, modified files and files of the last commits are used as the query; only notes from this worktree (or ones touching the files you are editing) are shown, at most 2, or nothing.
+- `/recall` skill and `agentdesk-recall search | show | list [--worktree NAME | --all]` for explicit lookups; MongoDB Compass (`mongodb://127.0.0.1:27017`, db `agentdesk`) to browse the notes. Nothing leaves the machine unless you point `AGENTDESK_MONGO_URL` at a remote cluster.
 
 ## Development
 

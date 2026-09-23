@@ -143,14 +143,15 @@ npm start
 ```bash
 brew tap mongodb/brew && brew install mongodb-community && brew services start mongodb-community
 cd recall && npm install
-node cli.mjs install          # Claude Code / Gemini CLI / Codex CLI 에 SessionEnd·PreCompact·프롬프트 훅 + /recall 스킬 등록
+node cli.mjs install          # Claude Code / Gemini CLI / Codex CLI 에 SessionStart·SessionEnd·PreCompact·프롬프트 훅 + /recall 스킬 등록
 node cli.mjs backfill --since 7d   # 선택: 지난 일주일 트랜스크립트 노트 생성
 node cli.mjs search "iTerm 세션 매칭"
 ```
 
-- **SessionEnd** 와 **PreCompact**(컨텍스트 압축은 대화의 자연스러운 장 경계이고, 며칠씩 열어 두는 세션을 잡을 유일한 시점) → 분리된 워커가 트랜스크립트를 요약 입력(프롬프트·응답만, 도구 출력 제외)으로 만들고 비밀 값을 마스킹한 뒤 `claude -p`(Haiku)로 JSON 노트를 받아 `agentdesk.session_notes` 에 git 커밋·관련 파일과 함께 저장합니다.
-- **UserPromptSubmit** → 현재 저장소에서 가장 잘 맞는 노트 3개를 컨텍스트로 덧붙이고, 노트가 의존한 파일이 그 뒤 바뀌었으면 `⚠ N file(s) changed since` 로 표시합니다.
-- `/recall` 스킬과 `agentdesk-recall search | show | list` 로 직접 찾아볼 수 있습니다. `AGENTDESK_MONGO_URL` 을 원격으로 바꾸지 않는 한 데이터는 이 컴퓨터를 떠나지 않습니다.
+- **SessionEnd** 와 **PreCompact**(컨텍스트 압축은 대화의 자연스러운 장 경계이고, 며칠씩 열어 두는 세션을 잡을 유일한 시점) → 분리된 워커가 트랜스크립트를 요약 입력(프롬프트·응답만, 도구 출력 제외)으로 만들고 비밀 값을 마스킹한 뒤 `claude -p`(Haiku, JSON 스키마 강제)로 노트를 받아 `agentdesk.session_notes` 에 git 커밋·워크트리·관련 파일과 함께 저장합니다. 세션당 노트 하나이며 트리거마다 갱신됩니다.
+- **모든 프롬프트**(세션의 첫 메시지 포함) → 프롬프트의 단어로 MongoDB를 검색해 가장 잘 맞는 노트 최대 3개를 컨텍스트로 덧붙입니다. 같은 워크트리 노트는 용어 1개, 같은 저장소의 다른 워크트리 노트는 2개 이상 일치해야 하므로 "세션"처럼 흔한 단어 하나로 무관한 작업이 끼어들지 않습니다. 노트가 의존한 파일이 그 뒤 바뀌었으면 `⚠ N file(s) changed since` 로 표시합니다.
+- **SessionStart** → 프롬프트가 아직 없으니 브랜치 이름·수정 중인 파일·최근 커밋의 파일을 검색어로 삼아, 이 워크트리의 노트(또는 편집 중인 파일을 다룬 노트)만 최대 2개 보여 주고 없으면 아무것도 붙이지 않습니다.
+- `/recall` 스킬과 `agentdesk-recall search | show | list [--worktree NAME | --all]` 로 직접 찾아볼 수 있고, MongoDB Compass(`mongodb://127.0.0.1:27017`, DB `agentdesk`)로 노트를 훑어볼 수 있습니다. `AGENTDESK_MONGO_URL` 을 원격으로 바꾸지 않는 한 데이터는 이 컴퓨터를 떠나지 않습니다.
 
 ## 개발
 
