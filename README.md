@@ -81,7 +81,7 @@ The widget polls `orca worktree ps` and `orca terminal list` every 5 seconds for
 | Mode | Sessions come from | Chat, PM teams, interrupt |
 |---|---|---|
 | **Orca** | `orca worktree ps` + terminal list; hook events enrich them | Orca terminals |
-| **Hooks only** | Claude Code hook events (`~/.roca/events.jsonl`) + transcript metadata (title, last message, context usage, git branch) | tmux panes in the same directory (`tmux send-keys` / `capture-pane`); read-only otherwise |
+| **Hooks only** | Claude Code hook events (`~/.roca/events.jsonl`) + transcript metadata (title from `/rename` or the AI title, last message, context usage, git branch) | tmux panes (`send-keys` / `capture-pane`), or iTerm2 / Terminal.app tabs found through the `claude` process (AppleScript); read-only otherwise |
 | **Auto** (default) | Orca when its CLI answers, otherwise hooks only | — |
 
 Hooks-only mode needs Exact detection turned on; the dashboard shows a banner with a one-click button when it is off.

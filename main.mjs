@@ -388,44 +388,120 @@ async function tmuxPanes() {
   } catch { return []; }
 }
 ipcMain.handle("roca:tmux-panes", () => tmuxPanes());
-ipcMain.handle("roca:tmux-available", async () => !!(await findTmux()));
 
-const SPINNER_LINE = /^[·•✢✳✶✻✽✦✧*⠁-⣿]\s*\S[^(]*…\s*(\(|$)|esc to interrupt/;
-async function tmuxCapture(pane, lines = 80) {
-  const out = await tmux("capture-pane", "-p", "-t", pane, "-S", `-${lines}`);
-  const tail = out.replace(/\n+$/, "").split("\n");
-  return { ok: true, result: { terminal: { handle: `tmux:${pane}`, tail } } };
+// claude processes running in ordinary terminal tabs: handle "term:<pid>". iTerm2 sessions are matched by the
+// ITERM_SESSION_ID the process inherited (Claude Code may sit on its own pty, so tty alone is unreliable);
+// Terminal.app tabs are matched by tty.
+const termTargets = new Map();   // pid → { pid, tty, cwd, sessionId, program, itermId }
+async function ttyTargets() {
+  try {
+    const { stdout } = await exec("/bin/ps", ["-axo", "pid=,tty=,command="]);
+    const rows = stdout.split("\n").map(l => l.trim()).filter(l => /^\d+\s+ttys\d+\s+(\S*\/)?claude(\s|$)/.test(l));
+    const out = [];
+    for (const row of rows) {
+      const m = row.match(/^(\d+)\s+(ttys\d+)\s+(.*)$/); if (!m) continue;
+      const pid = Number(m[1]), tty = `/dev/${m[2]}`, cmd = m[3];
+      const sessionId = (cmd.match(/--resume\s+([0-9a-f-]{8,})/) || [])[1] || null;
+      let cwd = "", program = "", itermId = "";
+      try { const r = await exec("/usr/sbin/lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"], { timeout: 4000 }); cwd = (r.stdout.split("\n").find(l => l.startsWith("n")) || "").slice(1); } catch {}
+      try {
+        const r = await exec("/bin/ps", ["eww", "-o", "command=", "-p", String(pid)], { timeout: 4000 });
+        program = (r.stdout.match(/\bTERM_PROGRAM=(\S+)/) || [])[1] || "";
+        itermId = ((r.stdout.match(/\bITERM_SESSION_ID=(\S+)/) || [])[1] || "").split(":").pop();
+      } catch {}
+      if (/^Orca$/i.test(program) || /TMUX=/.test("")) continue;               // Orca terminals are handled by Orca itself
+      const target = { handle: `term:${pid}`, pid, tty, cwd, sessionId, program, itermId, cmd };
+      termTargets.set(pid, target);
+      out.push(target);
+    }
+    return out;
+  } catch { return []; }
 }
-async function tmuxSend(pane, text, enter) {
-  await tmux("send-keys", "-t", pane, "-l", text);
-  if (enter !== false) { await new Promise(r => setTimeout(r, 120)); await tmux("send-keys", "-t", pane, "Enter"); }
-  // mirror Orca's --wait-submit: report whether the TUI started a turn within ~4s
+ipcMain.handle("roca:tty-targets", () => ttyTargets());
+
+const isTerm = h => typeof h === "string" && h.startsWith("term:");
+const targetOf = h => termTargets.get(Number(h.slice(5)));
+async function osa(script) { const { stdout } = await exec("/usr/bin/osascript", ["-e", script], { timeout: 10000 }); return stdout.replace(/\n$/, ""); }
+const q = s => String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+// AppleScript that runs `body` with `s` (iTerm session) or `tb` (Terminal tab) bound to the matching terminal
+function termScript(tg, bodyIterm, bodyTerminal) {
+  if (tg.itermId) return `tell application "iTerm2"
+  repeat with w in windows
+    repeat with tb in tabs of w
+      repeat with s in sessions of tb
+        if (id of s) contains "${tg.itermId}" then
+          ${bodyIterm}
+        end if
+      end repeat
+    end repeat
+  end repeat
+end tell
+return "__notfound__"`;
+  return `tell application "Terminal"
+  repeat with w in windows
+    repeat with tb in tabs of w
+      if tty of tb is "${tg.tty}" then
+        ${bodyTerminal}
+      end if
+    end repeat
+  end repeat
+end tell
+return "__notfound__"`;
+}
+async function runTerm(tg, bodyIterm, bodyTerminal) {
+  const r = await osa(termScript(tg, bodyIterm, bodyTerminal));
+  if (r === "__notfound__") throw new Error("terminal tab not found");
+  return r;
+}
+async function termRead(tg) {
+  const text = await runTerm(tg, `return contents of s`, `return contents of tb`);
+  const tail = text.replace(/\s+$/, "").split("\n").slice(-80);
+  return { ok: true, result: { terminal: { handle: tg.handle, tail } } };
+}
+async function termSend(tg, text, enter) {
+  await runTerm(tg, `tell s to write text "${q(text)}" newline ${enter === false ? "false" : "true"}
+          return "ok"`, `do script "${q(text)}" in tb
+        return "ok"`);
   let started = false;
   for (let i = 0; i < 8 && !started; i++) {
     await new Promise(r => setTimeout(r, 500));
-    try { const { result } = await tmuxCapture(pane, 25); started = result.terminal.tail.some(l => SPINNER_LINE.test(l.trim())); } catch {}
+    try { const { result } = await termRead(tg); started = result.terminal.tail.slice(-25).some(l => SPINNER_LINE.test(l.trim())); } catch {}
   }
   return { ok: true, result: { send: { accepted: true, prompt: { stages: started ? ["submitted", "turn_started"] : ["submitted"] } } } };
 }
-async function tmuxWaitIdle(pane, timeoutMs) {
+async function termWaitIdle(tg, timeoutMs) {
   const until = Date.now() + (timeoutMs || 180000);
   while (Date.now() < until) {
-    try { const { result } = await tmuxCapture(pane, 25); if (!result.terminal.tail.some(l => SPINNER_LINE.test(l.trim()))) return { ok: true, result: { state: "tui-idle" } }; } catch {}
-    await new Promise(r => setTimeout(r, 1000));
+    try { const { result } = await termRead(tg); if (!result.terminal.tail.slice(-25).some(l => SPINNER_LINE.test(l.trim()))) return { ok: true, result: { state: "tui-idle" } }; } catch {}
+    await new Promise(r => setTimeout(r, 1500));
   }
   return { ok: false, error: "timeout" };
 }
-async function tmuxSwitch(pane) {
+async function termSwitch(tg) {
   try {
-    const target = (await tmux("display-message", "-p", "-t", pane, "#{session_name}:#{window_index}.#{pane_index}")).trim();
-    await tmux("select-window", "-t", target); await tmux("select-pane", "-t", pane);
-    exec("/usr/bin/osascript", ["-e", 'tell application "System Events" to set frontmost of (first process whose name is in {"iTerm2", "Terminal", "WezTerm", "Ghostty", "kitty", "Alacritty"}) to true'], { timeout: 3000 }).catch(() => {});
+    await runTerm(tg, `tell tb to select
+          tell w to select
+          activate
+          return "ok"`, `set selected of tb to true
+        set frontmost of w to true
+        activate
+        return "ok"`);
     return { ok: true };
   } catch (e) { return { ok: false, error: e.message }; }
 }
+async function termInterrupt(tg) {
+  try {
+    if (tg.itermId) await runTerm(tg, `tell s to write text (ASCII character 27) newline false
+          return "ok"`, ``);
+    else { await termSwitch(tg); await osa(`tell application "System Events" to key code 53`); }
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+const withTarget = (handle, fn) => { const tg = targetOf(handle); return tg ? fn(tg) : Promise.resolve({ ok: false, error: "terminal process is gone" }); };
 
 ipcMain.handle("orca:terminal-switch", async (_e, handle) => {
   if (isTmux(handle)) return tmuxSwitch(paneOf(handle));
+  if (isTerm(handle)) return withTarget(handle, termSwitch);
   const result = await orca("terminal", "switch", "--terminal", handle);
   exec("/usr/bin/osascript", ["-e", 'tell application "Orca" to activate'], { timeout: 3000 }).catch(() => {});
   return result;
@@ -433,11 +509,13 @@ ipcMain.handle("orca:terminal-switch", async (_e, handle) => {
 
 ipcMain.handle("orca:terminal-interrupt", async (_e, handle) => {
   if (isTmux(handle)) { try { await tmux("send-keys", "-t", paneOf(handle), "Escape"); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } }
+  if (isTerm(handle)) return withTarget(handle, termInterrupt);
   return orca("terminal", "send", "--terminal", handle, "--interrupt");
 });
 
 ipcMain.handle("orca:terminal-send", (_e, handle, text, enter, waitSubmit) => {
   if (isTmux(handle)) return tmuxSend(paneOf(handle), text, enter).catch(err => ({ ok: false, error: err.message }));
+  if (isTerm(handle)) return withTarget(handle, tg => termSend(tg, text, enter)).catch(err => ({ ok: false, error: err.message }));
   const args = ["terminal", "send", "--terminal", handle, "--text", text];
   if (enter) args.push("--enter");
   if (waitSubmit) args.push("--wait-submit", String(waitSubmit));
@@ -450,6 +528,7 @@ ipcMain.handle("orca:terminal-send", (_e, handle, text, enter, waitSubmit) => {
 
 ipcMain.handle("orca:terminal-wait", (_e, handle, condition, timeoutMs) => {
   if (isTmux(handle)) return tmuxWaitIdle(paneOf(handle), timeoutMs);
+  if (isTerm(handle)) return withTarget(handle, tg => termWaitIdle(tg, timeoutMs));
   const args = ["terminal", "wait", "--terminal", handle, "--for", condition];
   if (timeoutMs) args.push("--timeout-ms", String(timeoutMs));
   return exec(orcaBin, [...args, "--json"], {
@@ -460,6 +539,7 @@ ipcMain.handle("orca:terminal-wait", (_e, handle, condition, timeoutMs) => {
 
 ipcMain.handle("orca:terminal-read", async (_e, handle, screen, cursor, limit) => {
   if (isTmux(handle)) return tmuxCapture(paneOf(handle)).catch(err => ({ ok: false, error: err.message }));
+  if (isTerm(handle)) return withTarget(handle, termRead).catch(err => ({ ok: false, error: err.message }));
   const args = ["terminal", "read", "--terminal", handle];
   if (screen) args.push("--screen");
   if (cursor != null) args.push("--cursor", String(cursor));
@@ -472,6 +552,7 @@ ipcMain.handle("orca:terminal-read", async (_e, handle, screen, cursor, limit) =
 
 ipcMain.handle("orca:terminal-close", async (_e, handle) => {
   if (isTmux(handle)) { try { await tmux("kill-pane", "-t", paneOf(handle)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } }
+  if (isTerm(handle)) return { ok: false, error: "close is not supported for plain terminal tabs" };
   return orca("terminal", "close", "--terminal", handle);
 });
 
@@ -486,9 +567,14 @@ ipcMain.handle("roca:session-meta", async (_e, transcriptPath, cwd) => {
       if (cached && cached.mtimeMs === st.mtimeMs) Object.assign(out, cached.meta);
       else {
         const size = st.size, from = Math.max(0, size - 400000);
-        const fd = openSync(transcriptPath, "r"); const buf = Buffer.alloc(size - from); readSync(fd, buf, 0, buf.length, from); closeSync(fd);
+        const fd = openSync(transcriptPath, "r");
+        const buf = Buffer.alloc(size - from); readSync(fd, buf, 0, buf.length, from);
+        // title records (ai-title / custom-title) sit near the top of the file
+        const headLen = Math.min(size, 200000); const head = Buffer.alloc(headLen); readSync(fd, head, 0, headLen, 0);
+        closeSync(fd);
         let usage = null, model = null, lastText = "", title = null, customTitle = null;
-        for (const line of buf.toString("utf-8").split("\n")) {
+        const lines = from > headLen ? head.toString("utf-8").split("\n").concat(buf.toString("utf-8").split("\n")) : buf.toString("utf-8").split("\n");
+        for (const line of lines) {
           if (!line.startsWith("{")) continue;
           let rec; try { rec = JSON.parse(line); } catch { continue; }
           if (rec.type === "ai-title") title = rec.aiTitle || title;

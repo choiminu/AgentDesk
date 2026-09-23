@@ -77,7 +77,7 @@ npm start
 | 모드 | 세션 출처 | 채팅·PM 팀·인터럽트 |
 |---|---|---|
 | **Orca** | `orca worktree ps` + 터미널 목록, 훅 이벤트로 보강 | Orca 터미널 |
-| **훅 전용** | Claude Code 훅 이벤트(`~/.roca/events.jsonl`) + 트랜스크립트 메타(제목·마지막 메시지·컨텍스트·브랜치) | 같은 디렉터리의 tmux 패널(`send-keys` / `capture-pane`), 없으면 읽기 전용 |
+| **훅 전용** | Claude Code 훅 이벤트(`~/.roca/events.jsonl`) + 트랜스크립트 메타(`/rename` 또는 AI 제목·마지막 메시지·컨텍스트·브랜치) | tmux 패널(`send-keys` / `capture-pane`), 또는 `claude` 프로세스로 찾은 iTerm2 / Terminal.app 탭(AppleScript), 없으면 읽기 전용 |
 | **자동**(기본) | Orca CLI가 응답하면 Orca, 아니면 훅 전용 | — |
 
 훅 전용 모드는 정확 감지가 켜져 있어야 하며, 꺼져 있으면 대시보드 배너의 버튼으로 바로 켤 수 있습니다.

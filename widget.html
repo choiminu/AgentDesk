@@ -2440,7 +2440,8 @@ const I18N = {
   'Claude Code 훅을 ~/.claude/settings.json에 등록합니다 (기존 설정은 보존, ~/.roca/에 백업). 이후 새로 시작하는 Claude 세션부터 이벤트 기반으로 정확히 감지됩니다. 진행할까요?': 'Register Claude Code hooks in ~/.claude/settings.json (existing settings kept, backup in ~/.roca/). Sessions are then detected exactly from events. Continue?',
   '훅 설치 실패: ': 'Hook install failed: ', 'Orca 없이 훅 모드로 동작 중': 'Running in hook mode (no Orca)', 'Claude Code 세션': 'Claude Code sessions', '연결됨': 'connected', '없음': 'none',
   'Orca가 없습니다': 'Orca is not available', '오피스 탭에서 정확 감지를 켜면 Claude Code 세션을 훅으로 표시합니다.': 'Turn on Exact detection in the Office tab to show Claude Code sessions via hooks.',
-  '읽기 전용 (tmux 없음)': 'read-only (no tmux)', '이름 변경': 'Rename', '위젯에 표시할 이름 (비우면 원래 이름)': 'Name shown in the widget (leave empty to reset)', '읽기 전용': 'read-only', 'tmux 보기': 'Open in tmux', 'tmux 터미널로 전환': 'Switch to the tmux terminal', 'tmux 터미널 보기': 'Show tmux terminal', 'tmux 터미널로 연결됨': 'Connected via tmux', '훅 전용 모드': 'Hooks-only mode', 'Claude Code 훅이 꺼져 있습니다': 'Claude Code hooks are off',
+  '읽기 전용 (tmux 없음)': 'read-only (no tmux)', '읽기 전용 (터미널 없음)': 'read-only (no terminal found)', '터미널로 연결됨': 'Connected to its terminal', '터미널': 'terminal', '연결 가능한 터미널': 'controllable terminals',
+  '터미널 보기': 'Open terminal', '터미널 탭으로 전환': 'Switch to the terminal tab', '터미널 탭 보기': 'Show terminal tab', '이름 변경': 'Rename', '위젯에 표시할 이름 (비우면 원래 이름)': 'Name shown in the widget (leave empty to reset)', '읽기 전용': 'read-only', 'tmux 보기': 'Open in tmux', 'tmux 터미널로 전환': 'Switch to the tmux terminal', 'tmux 터미널 보기': 'Show tmux terminal', 'tmux 터미널로 연결됨': 'Connected via tmux', '훅 전용 모드': 'Hooks-only mode', 'Claude Code 훅이 꺼져 있습니다': 'Claude Code hooks are off',
   '훅을 켜면 Claude Code 세션이 이벤트로 표시됩니다. tmux 안에서 실행 중인 세션은 채팅과 지시도 가능합니다.': 'Turn hooks on to show Claude Code sessions from events. Sessions running inside tmux can also be chatted with and directed.',
   '정확 감지 켜기': 'Turn on exact detection', '데이터 소스 모드: 세션을 어디서 읽고 어떻게 제어할지 선택합니다': 'Data source: where sessions are read from and how agents are controlled',
   '자동 (Orca → 훅)': 'Auto (Orca → hooks)',
@@ -2884,11 +2885,12 @@ async function fetchData() {
   try {
     await hooksReady;
     const viaOrca = useOrca();
-    const [ps, terms, rl, panes] = await Promise.all([
+    const [ps, terms, rl, panes, ttys] = await Promise.all([
       viaOrca ? api.ps() : Promise.resolve({ ok: false, skipped: true }),
       viaOrca ? api.terminals() : Promise.resolve({ ok: false, skipped: true }),
       viaOrca ? window.orca.rateLimits() : Promise.resolve({ ok: false, skipped: true }),
       window.orca.tmuxPanes().catch(() => []),
+      window.orca.ttyTargets().catch(() => []),
     ]);
     orcaAvailable = viaOrca && !(ps && ps.ok === false);
     if (viaOrca && dataMode === 'auto') orcaProbe = orcaAvailable;   // auto mode: fall back to hooks once Orca fails
@@ -2905,10 +2907,10 @@ async function fetchData() {
 
     // Claude Code sessions known only from hooks (not an Orca worktree) — e.g. no Orca installed, or a
     // plain terminal / tmux session. They get a tmux pane as handle when one runs in the same directory.
-    const hookOnly = hookOnlySessions(wts, panes);
+    const hookOnly = hookOnlySessions(wts, panes, ttys);
     for (const h of hookOnly) if (h.handle) handles.set(h.id, h.handle);
     showOrcaError(!orcaAvailable ? (hooksEnabled || !viaOrca ? null : ps.error) : (orcaVersionWarning || null));
-    showModeBanner(orcaAvailable, hookOnly.length, panes.length);
+    showModeBanner(orcaAvailable, hookOnly.length, panes.length + ttys.length);
     $('tokenBars').style.display = orcaAvailable ? '' : 'none';
 
     await refreshScreenStatuses();
@@ -3077,15 +3079,18 @@ function useOrca() {
   sel.addEventListener('change', () => { dataMode = sel.value; try { localStorage.setItem('roca-mode', dataMode); } catch {} applyHelp(); showOrcaError(null); fetchData(); });
 }
 const HOOK_ONLY_RECENT_MS = 6 * 60 * 60 * 1000;
-function hookOnlySessions(wts, panes) {
+function hookOnlySessions(wts, panes, ttys) {
   if (!hooksEnabled) return [];
   const wtPaths = wts.map(w => String(w.worktreeId || '').split('::').pop()).filter(Boolean);
   const out = [];
   for (const st of hookSessions.values()) {
     if (st.ended || !st.cwd || Date.now() - st.last > HOOK_ONLY_RECENT_MS) continue;
     if (wtPaths.some(p => st.cwd === p || st.cwd.startsWith(p.replace(/\/$/, '') + '/'))) continue;   // already an Orca session
+    // terminal to drive this session: tmux pane in the same folder → terminal tab resumed with this session id → tab in the same folder
     const pane = (panes || []).find(p => p.cwd === st.cwd && /claude|node/i.test(p.cmd || '')) || (panes || []).find(p => p.cwd === st.cwd);
-    out.push({ id: `hook:${st.sid}::${st.cwd}`, st, handle: pane ? pane.handle : null, pane });
+    const tty = !pane ? ((ttys || []).find(x => x.sessionId === st.sid) || (ttys || []).find(x => x.cwd === st.cwd)) : null;
+    const target = pane || tty;
+    out.push({ id: `hook:${st.sid}::${st.cwd}`, st, handle: target ? target.handle : null, pane: target });
   }
   return out;
 }
@@ -3119,7 +3124,7 @@ function showModeBanner(orcaOk, hookOnlyCount, paneCount) {
   }
   const modeLabel = dataMode === 'hooks' ? t('훅 전용 모드') : t('Orca 없이 훅 모드로 동작 중');
   el.innerHTML = hooksEnabled
-    ? `<b>${esc(modeLabel)}</b><span>${esc(t('Claude Code 세션'))} ${hookOnlyCount} · tmux ${paneCount ? esc(t('연결됨')) + ' ' + paneCount : esc(t('없음'))}</span>`
+    ? `<b>${esc(modeLabel)}</b><span>${esc(t('Claude Code 세션'))} ${hookOnlyCount} · ${esc(t('연결 가능한 터미널'))} ${paneCount}</span>`
     : `<b>${esc(t('Claude Code 훅이 꺼져 있습니다'))}</b><span>${esc(t('훅을 켜면 Claude Code 세션이 이벤트로 표시됩니다. tmux 안에서 실행 중인 세션은 채팅과 지시도 가능합니다.'))}</span><button id="mode-enable-hooks">${esc(t('정확 감지 켜기'))}</button>`;
   const btn = el.querySelector('#mode-enable-hooks');
   if (btn) btn.onclick = () => $('hooks-toggle').click();
@@ -3132,7 +3137,7 @@ function setNameOverride(id, name) {
   try { localStorage.setItem('roca-names', JSON.stringify(nameOverrides)); } catch {}
   fetchData();
 }
-function terminalKind(handle) { return String(handle || '').startsWith('tmux:') ? 'tmux' : 'Orca'; }
+function terminalKind(handle) { const h = String(handle || ''); return h.startsWith('tmux:') ? 'tmux' : h.startsWith('term:') ? 'terminal' : 'Orca'; }
 function needsInputFor(id, toolName, status) {
   if (status !== 'waiting' && status !== 'running') return false;
   if (screenChoiceCache.get(id)) return true;
@@ -3322,7 +3327,7 @@ function renderDashboard() {
             <span class="s-branch">${esc(s.branch)}</span>
             <span class="s-time" title="${s.status === 'running' ? '작업 시작 후 경과' : s.status === 'waiting' ? '응답 완료 후 대기' : '마지막 활동'}">${sessionTimeLabel(s)}</span>
             ${s.tool ? `<span class="s-tool">${esc(s.tool)}</span>` : ''}
-            ${s.hookOnly ? `<span class="s-tool" title="${esc(t(s.connected ? 'tmux 터미널로 연결됨' : '읽기 전용 (tmux 없음)'))}">${s.connected ? 'tmux' : t('읽기 전용')}</span>` : ''}
+            ${s.hookOnly ? `<span class="s-tool" title="${esc(t(s.connected ? '터미널로 연결됨' : '읽기 전용 (터미널 없음)'))}">${s.connected ? esc(terminalKind(handles.get(s.id)) === 'tmux' ? 'tmux' : t('터미널')) : t('읽기 전용')}</span>` : ''}
             ${s.ctxPct != null ? `<span class="s-tool ctx-chip ${s.ctxPct >= 90 ? 'crit' : s.ctxPct >= 75 ? 'warn' : ''}" title="컨텍스트 사용량">ctx ${s.ctxPct}%</span>` : ''}
             ${(s.subagents || []).filter(a => a.state === 'running').length ? `<span class="s-tool" title="${esc((s.subagents || []).filter(a => a.state === 'running').map(a => a.name).join(', '))}">🤖${(s.subagents || []).filter(a => a.state === 'running').length}</span>` : ''}
           </div>
@@ -4416,8 +4421,8 @@ let chatSending = false;
 function openChat(handle) {
   chatHandle = handle;
   const kind = terminalKind(handle);
-  $('chat-orca').textContent = t(kind === 'tmux' ? 'tmux 보기' : 'Orca 보기');
-  $('chat-orca').title = t(kind === 'tmux' ? 'tmux 터미널로 전환' : 'Orca 터미널로 전환');
+  $('chat-orca').textContent = t(kind === 'tmux' ? 'tmux 보기' : kind === 'terminal' ? '터미널 보기' : 'Orca 보기');
+  $('chat-orca').title = t(kind === 'tmux' ? 'tmux 터미널로 전환' : kind === 'terminal' ? '터미널 탭으로 전환' : 'Orca 터미널로 전환');
   const panel = $('chat-panel');
   const activePage = document.querySelector('.page.active');
   if (activePage && panel.parentElement !== activePage) activePage.appendChild(panel);
@@ -4560,7 +4565,7 @@ function openSessionMenu(x, y, sess) {
   const handle = handles.get(sess.id);
   const items = [];
   if (handle) items.push(['💬', '채팅 열기', () => openChat(handle)]);
-  if (handle) items.push(['🖥', terminalKind(handle) === 'tmux' ? 'tmux 터미널 보기' : 'Orca 터미널 보기', () => api.switchTo(handle)]);
+  if (handle) items.push(['🖥', { tmux: 'tmux 터미널 보기', terminal: '터미널 탭 보기', Orca: 'Orca 터미널 보기' }[terminalKind(handle)], () => api.switchTo(handle)]);
   items.push(['📋', '세션 ID 복사', () => { window.orca.clipboardWrite(sess.id); showInAppToast('세션 ID 복사됨'); }]);
   items.push(['✏️', '이름 변경', () => { const v = prompt(t('위젯에 표시할 이름 (비우면 원래 이름)'), sess.name); if (v !== null) setNameOverride(sess.id, v); }]);
   if (officeChars.has(sess.id)) items.push(['🎨', '캐릭터 바꾸기', () => { officeSetSkin(sess.id, officeSkin(sess.id) + 1); const c = officeChars.get(sess.id); if (c) c.reactT = 1.2; }]);
