@@ -49,7 +49,13 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - run: ls -laR artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.exe
+          fail_on_unmatched_files: true
           generate_release_notes: true
