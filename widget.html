@@ -328,6 +328,24 @@
   #office-minimap { position: absolute; right: 10px; top: 0; pointer-events: auto; cursor: pointer; image-rendering: pixelated;
     border: 1px solid rgba(255,255,255,0.28); border-radius: 3px; background: rgba(12,14,22,0.78); box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
   #office-minimap[hidden] { display: none; }
+  /* inline answer popover next to a character that is waiting for a choice */
+  .office-ask { position: absolute; z-index: 6; width: 260px; background: var(--surface); border: 1px solid #F2C037; border-radius: var(--radius-sm);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.45); padding: 8px 10px; font-size: var(--fs-xs); color: var(--text); }
+  .office-ask[hidden] { display: none; }
+  .office-ask .ask-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .office-ask .ask-head b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .office-ask .ask-head button { background: none; border: none; color: var(--text3); cursor: pointer; font-size: var(--fs-sm); padding: 0 2px; }
+  .office-ask .ask-q { white-space: pre-wrap; max-height: 120px; overflow: auto; color: var(--text2); margin-bottom: 6px; line-height: 1.35; }
+  .office-ask .ask-opts { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+  .office-ask .ask-opts button { text-align: left; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px; cursor: pointer; font: inherit; }
+  .office-ask .ask-opts button:hover { border-color: #F2C037; }
+  .office-ask .ask-opts button.sel { border-color: #F2C037; background: rgba(242,192,55,0.12); }
+  .office-ask .ask-opts button span { color: #F2C037; margin-right: 6px; }
+  .office-ask .ask-row { display: flex; gap: 4px; }
+  .office-ask .ask-row input { flex: 1; min-width: 0; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font: inherit; }
+  .office-ask .ask-row button { background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; cursor: pointer; font: inherit; }
+  .office-ask .ask-status { color: var(--text3); margin-top: 4px; min-height: 12px; }
+  .office-ask .ask-status.err { color: var(--red); }
   .office-tip {
     position: absolute;
     pointer-events: none;
@@ -2384,6 +2402,7 @@
       <div class="office-minimap-wrap"><canvas id="office-minimap" hidden></canvas></div>
       <canvas id="office-canvas"></canvas>
       <div class="office-tip" id="office-tip" hidden></div>
+      <div class="office-ask" id="office-ask" hidden></div>
     </div>
   </div>
 
@@ -2708,6 +2727,8 @@ Object.assign(I18N, {
   '존 기록 보기': 'Zone history', '존 기록': 'Zone history', '기록이 없습니다': 'No records yet', '닫기': 'Close', '캐릭터 바꾸기': 'Change character',
   '화이트보드': 'Whiteboard', '클릭: 가장 오래 기다리는 세션으로 이동해 채팅 열기': 'Click: jump to the longest-waiting session and open chat', '대기 중인 세션이 없습니다': 'No session is waiting',
   '휴게실 펫 · 클릭하면 좋아합니다': 'Lounge pet · click to pet', '회사 이름': 'Company name', '회사 간판 · 클릭해서 이름 변경': 'Company sign · click to rename',
+  '화면을 읽는 중…': 'Reading the screen…', '입력 대기가 끝났습니다': 'no longer waiting for input', '화면 읽기 실패: ': 'Could not read the screen: ', '직접 입력해서 답하기': 'Type an answer',
+  '보내기': 'Send', '선택지를 찾지 못했습니다. 아래에 답을 입력하거나 채팅을 여세요.': 'No choices found on screen. Type an answer below or open the chat.', '전송됨: ': 'Sent: ', '전송 실패: ': 'Send failed: ', '전송 거부': 'send rejected',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -4874,6 +4895,8 @@ if (OFFICE_DEMO) {
   // renderer timers start ~3s after the main-process screenshot timers, so the lounge shot (24s) is prepared from 17.5s
   setTimeout(() => { const c = officeChars.get('demo-3'); if (c) officeBurst(c.x, c.y - 30, 28); }, 9300);
   for (const ms of [2500, 4500]) setTimeout(() => { $('office-wrap').scrollTo({ top: 0, behavior: 'instant' }); }, ms);
+  setTimeout(() => { const c = officeChars.get('demo-4'); if (c) officeAskOpen(c); }, 2500);
+  setTimeout(officeAskClose, 11500);
   setTimeout(() => { $('office-wrap').scrollTo({ top: 215 * ($("office-canvas").__scale || 2), behavior: "instant" }); }, 9000);
   for (const ms of [17500, 19500]) setTimeout(() => { for (const p of officePets) p.heartT = 4; const w = $('office-wrap'); w.scrollTo({ top: w.scrollHeight, behavior: 'instant' }); }, ms);
   setTimeout(() => { const w = $('office-wrap'); w.scrollTop = w.scrollHeight; }, 12000);
@@ -5301,6 +5324,7 @@ function officeFrame(now) {
   }
 
   officeAisleXs = graph.xs.filter(ax => ax >= 8 && ax <= worldW - 8);
+  if (officeAsk) officeAskPlace();
   officeDrawLighting(ctx, worldW, worldH, floorTop, shown);
   officeDrawDrag(ctx, im, allTeamBlocks, worldW);
   officeDrawMinimap(canvas, worldW, worldH, floorTop, L.scale, [
@@ -5558,6 +5582,115 @@ function officeDrawAlert(ctx, cx, cy, t) {
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
   }
 }
+// ── inline answer: read the choice prompt off the terminal screen and answer it from the office ──
+// Claude Code renders choices as "❯ 1. Yes" / "  2. No"; permission dialogs wrap them in a │ box.
+function officeParseChoice(lines) {
+  if (!lines || !lines.length) return null;
+  const clean = lines.map(l => String(l).replace(/^\s*[│┃]\s?/, '').replace(/\s?[│┃]\s*$/, '').replace(/\s+$/, ''));
+  let first = -1, last = -1;
+  for (let i = clean.length - 1; i >= Math.max(0, clean.length - 40); i--) {
+    if (/^\s*❯?\s*\d+\.\s+\S/.test(clean[i])) { if (last < 0) last = i; first = i; }
+    else if (last >= 0) { if (/^\s{3,}\S/.test(clean[i])) continue; break; }
+  }
+  if (last < 0) return null;
+  const options = [];
+  for (let i = first; i <= last; i++) {
+    const m = clean[i].match(/^\s*(❯)?\s*(\d+)\.\s+(.*)$/);
+    if (m) options.push({ n: +m[2], label: m[3].trim(), selected: !!m[1] });
+    else if (options.length) options[options.length - 1].label += ' ' + clean[i].trim();
+  }
+  const q = [];
+  for (let i = first - 1; i >= 0 && q.length < 8; i--) {
+    const tl = clean[i].trim();
+    if (!tl || /^[─╭╰╮╯┌└┐┘═]+$/.test(tl)) { if (q.length) break; continue; }
+    if (/^(esc to cancel|enter to confirm|↑\/↓|tab to)/i.test(tl)) continue;
+    if (/^❯/.test(tl)) break;
+    q.unshift(tl);
+  }
+  return { question: q.join('\n'), options };
+}
+let officeAsk = null;   // { ch, handle, timer, lastSig }
+function officeAskClose() {
+  if (officeAsk?.timer) clearInterval(officeAsk.timer);
+  officeAsk = null;
+  const el = $('office-ask'); el.hidden = true; el.innerHTML = '';
+}
+function officeAskPlace() {
+  if (!officeAsk) return;
+  const el = $('office-ask'), wrap = $('office-wrap'), scale = $('office-canvas').__scale || 2;
+  const ch = officeAsk.ch, x = ch.x * scale, y = (ch.y - 44) * scale;
+  const w = el.offsetWidth || 260, h = el.offsetHeight || 120;
+  el.style.left = Math.max(4, Math.min(wrap.clientWidth - w - 4, Math.round(x + 14))) + 'px';
+  el.style.top = Math.max(4, Math.round(y - h)) + 'px';
+}
+async function officeAskOpen(ch) {
+  officeAskClose();
+  const handle = officeHandleFor(ch);
+  officeAsk = { ch, handle, timer: null, lastSig: '' };
+  const el = $('office-ask'); el.hidden = false;
+  el.innerHTML = `<div class="ask-head"><b>${esc(ch.sess.name)}</b><button data-act="chat" title="${t('채팅 열기')}">💬</button><button data-act="close">✕</button></div><div class="ask-status">${t('화면을 읽는 중…')}</div>`;
+  el.onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.act === 'close') officeAskClose();
+    else if (b.dataset.act === 'chat') { const h = officeAsk?.handle; officeAskClose(); if (h) openChat(h); }
+    else if (b.dataset.act === 'opt') officeAnswer(b.dataset.n, b.textContent);
+    else if (b.dataset.act === 'send') { const inp = el.querySelector('input'); if (inp && inp.value.trim()) officeAnswer(null, inp.value.trim()); }
+  };
+  el.onkeydown = e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.value.trim()) { officeAnswer(null, e.target.value.trim()); e.preventDefault(); } if (e.key === 'Escape') officeAskClose(); };
+  officeAskPlace();
+  await officeAskRefresh();
+  if (officeAsk) officeAsk.timer = setInterval(officeAskRefresh, 3000);
+}
+async function officeAskReadLines() {
+  if (OFFICE_DEMO) return ['⏺ 캐시 전략을 결정해야 합니다. 어느 쪽으로 진행할까요?', '', 'Do you want to proceed?', '❯ 1. Yes', '  2. Yes, and don\'t ask again for this session', '  3. No, and tell Claude what to do differently', '', 'esc to cancel'];
+  const res = await window.orca.terminalRead(officeAsk.handle, true);
+  return extractTail(res);
+}
+async function officeAskRefresh() {
+  const a = officeAsk; if (!a) return;
+  const el = $('office-ask');
+  if (!a.ch.sess || (!a.ch.sess.needsInput && !OFFICE_DEMO)) { officeAskClose(); showInAppToast(`${a.ch.sess?.name || ''}: ${t('입력 대기가 끝났습니다')}`); return; }
+  let lines = [];
+  try { lines = await officeAskReadLines(); } catch (e) { el.querySelector('.ask-status')?.classList.add('err'); const s = el.querySelector('.ask-status'); if (s) s.textContent = t('화면 읽기 실패: ') + e.message; return; }
+  if (!officeAsk || officeAsk !== a) return;
+  const parsed = officeParseChoice(lines);
+  const sig = JSON.stringify(parsed);
+  if (sig === a.lastSig) return;
+  a.lastSig = sig;
+  const head = `<div class="ask-head"><b>${esc(a.ch.sess.name)}</b><button data-act="chat" title="${t('채팅 열기')}">💬</button><button data-act="close">✕</button></div>`;
+  const input = `<div class="ask-row"><input placeholder="${t('직접 입력해서 답하기')}"><button data-act="send">${t('보내기')}</button></div><div class="ask-status"></div>`;
+  if (!parsed) {
+    el.innerHTML = head + `<div class="ask-q">${esc(t('선택지를 찾지 못했습니다. 아래에 답을 입력하거나 채팅을 여세요.'))}</div>` + input;
+  } else {
+    el.innerHTML = head + (parsed.question ? `<div class="ask-q">${esc(parsed.question)}</div>` : '')
+      + `<div class="ask-opts">${parsed.options.map(o => `<button data-act="opt" data-n="${o.n}" class="${o.selected ? 'sel' : ''}"><span>${o.n}</span>${esc(o.label)}</button>`).join('')}</div>` + input;
+  }
+  officeAskPlace();
+}
+async function officeAnswer(n, text) {
+  const a = officeAsk; if (!a) return;
+  const el = $('office-ask'), status = el.querySelector('.ask-status');
+  const say = (m, err) => { if (status) { status.textContent = m; status.classList.toggle('err', !!err); } };
+  el.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try {
+    if (OFFICE_DEMO) { say(t('전송됨: ') + (n ? n + '. ' : '') + text); setTimeout(officeAskClose, 900); return; }
+    if (n) {
+      // a digit selects the option; if the dialog is still up after a moment, resend with Enter to confirm
+      const r1 = await window.orca.terminalSend(a.handle, String(n), false, 0);
+      if (!r1?.result?.send?.accepted && r1?.ok === false) throw new Error(r1.error || t('전송 거부'));
+      await new Promise(r => setTimeout(r, 700));
+      const still = officeParseChoice(await officeAskReadLines());
+      if (still && JSON.stringify(still) === a.lastSig) await window.orca.terminalSend(a.handle, String(n), true, 5);
+    } else {
+      const r = await window.orca.terminalSend(a.handle, text, true, 15);
+      if (!r?.result?.send?.accepted) throw new Error(t('전송 거부'));
+    }
+    say(t('전송됨: ') + (n ? n + '. ' : '') + text);
+    a.ch.reactT = 1.5;
+    setTimeout(() => { if (officeAsk === a) { a.lastSig = ''; officeAskRefresh(); } }, 1500);
+  } catch (e) { say(t('전송 실패: ') + e.message, true); el.querySelectorAll('button').forEach(b => { b.disabled = false; }); }
+}
+document.addEventListener('mousedown', e => { if (officeAsk && !$('office-ask').contains(e.target) && !$('office-canvas').contains(e.target)) officeAskClose(); });
 // ── reception & company sign ──
 let officeCompany = 'ORCA';
 try { officeCompany = localStorage.getItem('roca-office-company') || 'ORCA'; } catch {}
@@ -6228,6 +6361,8 @@ $('office-canvas').addEventListener('click', e => {
   officeClickTimer = setTimeout(() => {
     officeClickTimer = null;
     const handle = officeHandleFor(ch);
+    // a session waiting on a choice gets the inline answer popover instead of the full chat panel
+    if (ch.sess.needsInput && (handle || OFFICE_DEMO)) { officeAskOpen(ch); return; }
     if (handle) openChat(handle);
     else if (ch.sess && ch.sess.hookOnly && ch.sess.sessionId) resumeSessionInTerminal(ch.sess);
     else if (!String(ch.sid).startsWith('demo-')) showInAppToast(t('터미널 핸들을 찾을 수 없습니다'), 'error');
