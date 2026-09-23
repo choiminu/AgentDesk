@@ -2443,7 +2443,7 @@ Object.assign(I18N, {
   '배포 문서': 'Deploy docs', '릴리스 노트': 'Release notes', '테스트 보강': 'More tests', '프롬프트 보내기': 'send prompt',
   '존 기록 보기': 'Zone history', '존 기록': 'Zone history', '기록이 없습니다': 'No records yet', '닫기': 'Close', '캐릭터 바꾸기': 'Change character',
   '화이트보드': 'Whiteboard', '클릭: 가장 오래 기다리는 세션으로 이동해 채팅 열기': 'Click: jump to the longest-waiting session and open chat', '대기 중인 세션이 없습니다': 'No session is waiting',
-  '휴게실 펫 · 클릭하면 좋아합니다': 'Lounge pet · click to pet',
+  '휴게실 펫 · 클릭하면 좋아합니다': 'Lounge pet · click to pet', '회사 이름': 'Company name', '회사 간판 · 클릭해서 이름 변경': 'Company sign · click to rename',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -4614,6 +4614,9 @@ const OFFICE_DEMO = location.hash.split(',')[0] === '#office-demo' ? [
   { id: 'demo-10', name: 'session-reporter', branch: 'main', status: 'done', tool: '' },
   { id: 'demo-11', name: '매입', branch: 'main', status: 'done', tool: '' },
   { id: 'demo-1::explorer', parentId: 'demo-1', isSub: true, name: '↳ explorer', branch: 'auth-refactor', status: 'running', tool: 'Agent', toolInput: '코드베이스 탐색', subElapsed: '42s', subTokens: '12.3k' },
+  { id: 'demo-12', name: 'api-gateway', branch: 'feat/gateway', status: 'running', tool: 'Edit', toolInput: '/repo/src/gateway.ts', ctxPct: 41 },
+  { id: 'demo-13', name: 'billing-fix', branch: 'fix/billing', status: 'running', tool: 'Write', toolInput: '/repo/src/billing.ts', ctxPct: 55 },
+  { id: 'demo-14', name: 'ui-polish', branch: 'feat/ui', status: 'running', tool: 'Edit', toolInput: '/repo/src/App.tsx', ctxPct: 23 },
 ] : null;
 if (OFFICE_DEMO) {
   setTimeout(() => { document.querySelector('.page-nav').style.pointerEvents = 'none'; const mb = $('minimize-btn'); if (mb) mb.style.pointerEvents = 'none'; }, 2000);
@@ -4622,6 +4625,8 @@ if (OFFICE_DEMO) {
   setTimeout(() => { officeHover = null; }, 15000);
   // renderer timers start ~3s after the main-process screenshot timers, so the lounge shot (24s) is prepared from 17.5s
   setTimeout(() => { const c = officeChars.get('demo-3'); if (c) officeBurst(c.x, c.y - 30, 28); }, 9300);
+  for (const ms of [2500, 4500]) setTimeout(() => { $('office-wrap').scrollTo({ top: 0, behavior: 'instant' }); }, ms);
+  setTimeout(() => { $('office-wrap').scrollTo({ top: 215 * ($("office-canvas").__scale || 2), behavior: "instant" }); }, 9000);
   for (const ms of [17500, 19500]) setTimeout(() => { for (const p of officePets) p.heartT = 4; const w = $('office-wrap'); w.scrollTo({ top: w.scrollHeight, behavior: 'instant' }); }, ms);
   setTimeout(() => { const w = $('office-wrap'); w.scrollTop = w.scrollHeight; }, 12000);
   setTimeout(() => {
@@ -4751,6 +4756,9 @@ function officeFrame(now) {
   const aisleY = [];
   const blocks = [];
   let y = originY;
+  // reception: company sign, front counter and a waiting bench — the first thing past the wall
+  const reception = { y, h: 64 };
+  y += reception.h;
   // team blocks (PM + pinned members) come first
   const teamBlocks = officeBuildTeams(y, originX, cols, SEAT_PX, SEAT_PY, aisleY);
   for (const tb of teamBlocks) y += tb.h;
@@ -4767,11 +4775,18 @@ function officeFrame(now) {
     for (let i = 0; i < nDesks; i++) {
       const col = i % cols, row = Math.floor(i / cols);
       const sx = originX + col * SEAT_PX, sy = y + row * SEAT_PY;
-      const seat = { sx, sy, deskX: sx + 16, deskY: sy + 18, chairX: sx + 40, chairY: sy + 62, aisleY: sy + SEAT_PY - 8, ch: occ[i] || null, st };
+      // desks pair up into islands: an even row that has a partner below sits with the chair above the desk (facing down),
+      // the odd row below faces up; the two desks meet in the middle behind a low divider. A lone last row is a normal row.
+      const flip = row % 2 === 0 && row + 1 < rowsN;
+      const lower = row % 2 === 1;
+      const seat = flip
+        ? { sx, sy, flip: true, deskX: sx + 16, deskY: sy + 58, chairX: sx + 40, chairY: sy + 36, aisleY: sy - 8, ch: occ[i] || null, st }
+        : { sx, sy, deskX: sx + 16, deskY: sy + (lower ? 8 : 18), chairX: sx + 40, chairY: sy + (lower ? 54 : 62), aisleY: sy + SEAT_PY - 8, ch: occ[i] || null, st };
       if (occ[i]) occ[i].seat = seat;
       block.seats.push(seat);
     }
-    for (let r = 0; r < rowsN; r++) aisleY.push(y + r * SEAT_PY - 8);
+    // no aisle runs between the two halves of an island
+    for (let r = 0; r < rowsN; r++) if (r % 2 === 0) aisleY.push(y + r * SEAT_PY - 8);
     y += rowsN * SEAT_PY;
     blocks.push(block);
   }
@@ -4829,6 +4844,7 @@ function officeFrame(now) {
       else { ch.x = graph.xs[Math.floor(Math.random() * graph.xs.length)]; ch.y = graph.ys[graph.ys.length - 1]; ch.state = 'pause'; ch.pauseT = 0.5; }
     }
     if (seat) {
+      ch.lastAisleY = seat.aisleY;
       const atSeat = Math.abs(ch.x - seat.chairX) < 0.5 && Math.abs(ch.y - seat.chairY) < 0.5;
       const settling = now - officeStartedAt < 1500;
       if (settling && ch.state === 'sit' && !atSeat) { ch.x = seat.chairX; ch.y = seat.chairY; }
@@ -4839,7 +4855,7 @@ function officeFrame(now) {
         if (!last || last.x !== seat.chairX || last.y !== seat.chairY) ch.path = officeRouteToSeat(ch, seat, graph);
       }
     } else if (ch.state === 'sit' || ch.state === 'toSeat') {
-      const outY = officeNearest(graph.ys, ch.y + 30);
+      const outY = ch.lastAisleY != null ? ch.lastAisleY : officeNearest(graph.ys, ch.y + 30);
       ch.path = [{ x: ch.x, y: outY }, { x: officeNearest(graph.xs, ch.x), y: outY }];
       ch.state = 'leave';
     }
@@ -4879,6 +4895,7 @@ function officeFrame(now) {
     ctx.fillStyle = officeRgba(block.st.color, 0.85); ctx.fillRect(4, by + 2, worldW - 8, 1);
   }
   if (meeting) officeTileArea(ctx, im, 'floor_checker', '#d6c3e6', 4, meeting.y - 12, worldW - 8, meeting.h);
+  officeTileArea(ctx, im, 'floor_plank', '#d9c6a4', 4, reception.y - 12, worldW - 8, reception.h);
   if (zoneBlock) {
     officeTileArea(ctx, im, 'floor_grid', '#b9d9d0', 4, zoneBlock.y - 12, worldW - 8, zoneBlock.h);
     ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, zoneBlock.y - 12, worldW - 8, 2);
@@ -4921,6 +4938,7 @@ function officeFrame(now) {
   officeDrawWindows(ctx, worldW);
   const boardW = officeDrawBoard(ctx, shown, worldW, floorTop);
   officeDrawWallDecor(ctx, im, worldW, floorTop, boardW);
+  officeDrawSafety(ctx, worldW, floorTop, originX);
 
   officeSeats = []; officeSignQueue = [];
   // everything that stands on the floor is collected with its base y (zY) and drawn back-to-front,
@@ -4928,6 +4946,7 @@ function officeFrame(now) {
   const zItems = [];
   // partitions sort by their base so a character on the aisle above a room is hidden behind the wall
   for (const py of partitionTops) zItems.push({ z: py + 6, draw: () => officeDrawPartition(ctx, py, worldW, graph.xs) });
+  officeDrawReception(ctx, im, reception, worldW, originX, usableW, zItems);
   for (const tb of allTeamBlocks) officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame, zItems);
   // station blocks
   for (const block of blocks) {
@@ -4949,7 +4968,17 @@ function officeFrame(now) {
       }
     }
 
-    for (const seat of block.seats) zItems.push({ z: seat.chairY, draw: () => officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SEAT_PY) });
+    for (const seat of block.seats) {
+      zItems.push({ z: seat.chairY, draw: () => officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SEAT_PY) });
+      // low divider between the two desks of an island
+      if (seat.flip) zItems.push({ z: seat.sy + 95, draw: () => {
+        const dx = seat.sx + 8, dy = seat.sy + 91;
+        ctx.fillStyle = '#5d5a70'; ctx.fillRect(dx, dy, 64, 6);
+        ctx.fillStyle = '#8e8aa8'; ctx.fillRect(dx, dy, 64, 2);
+        ctx.fillStyle = '#3b384c'; ctx.fillRect(dx, dy + 5, 64, 1);
+        ctx.fillStyle = '#8a7a63'; ctx.fillRect(dx - 1, dy - 1, 2, 8); ctx.fillRect(dx + 63, dy - 1, 2, 8);
+      } });
+    }
   }
 
   if (meeting) zItems.push({ z: meeting.tableY + meeting.tableH, draw: () => officeDrawMeeting(ctx, im, meeting, worldW, originX, now, bob) });
@@ -4962,7 +4991,7 @@ function officeFrame(now) {
     // break-room corner right of the sofas: cafe table, vending machines, mini fridge and a drinks counter, then a plant
     if (lastSofa) {
       let cx = lastSofa.x + SOFA_STEP + 4; const baseY = lounge.y + 52, maxX = originX + usableW - 2;
-      for (const key of ['k_cafe_table', 'k_vending_orange', 'k_vending_green', 'k_fridge_small', 'k_counter_bottles', 'k_counter_food', 'k_tree_round_dark']) {
+      for (const key of ['k_cafe_table', 'k_vending_orange', 'k_vending_green', 'k_fridge_small', 'k_counter_bottles', 'k_counter_food', 'k_counter_plates', 'k_stove', 'k_tree_round_dark']) {
         const img = im[key]; if (!img) continue;
         if (cx + img.width > maxX) break;
         ctx.drawImage(img, cx, baseY - img.height);
@@ -5027,6 +5056,7 @@ function officeFrame(now) {
   officeDrawLighting(ctx, worldW, worldH, floorTop, shown);
   officeDrawDrag(ctx, im, allTeamBlocks, worldW);
   officeDrawMinimap(canvas, worldW, worldH, floorTop, L.scale, [
+    { y: reception.y - 12, h: reception.h, color: '#a8926e' },
     ...allTeamBlocks.map(b => ({ y: b.y - 12, h: b.h, color: '#efb041' })),
     ...blocks.map(b => ({ y: b.y - 12, h: b.rowsN * SEAT_PY, color: b.st.color })),
     ...(meeting ? [{ y: meeting.y - 12, h: meeting.h, color: '#c9b3e0' }] : []),
@@ -5045,10 +5075,11 @@ function officeFrame(now) {
 }
 
 const OFFICE_STATIONS = [
-  { id: 'dev',      label: '개발',       color: '#6f8fd8', floor: 'floor_tiles',   tint: '#aebfe8', props: ['k_shelf_orange', 'k_locker_brown', 'k_bin_grey', 'k_plant_b'] },
-  { id: 'research', label: '조사',       color: '#b08ae8', floor: 'floor_checker', tint: '#cbb8ea', props: ['k_shelf_tall_green', 'k_shelf_tall_orange', 'k_tree_round', 'k_box_a'] },
-  { id: 'exec',     label: '실행·테스트', color: '#6fc79a', floor: 'floor_grid',    tint: '#b6dcc4', props: ['k_rack_a', 'k_rack_b', 'k_ac_unit', 'cactus'] },
-  { id: 'docs',     label: '문서화',     color: '#e0b060', floor: 'floor_plank',   tint: '#e6c99c', props: ['k_shelf_green', 'k_cabinet_beige', 'k_plant_a', 'k_stool_brown'] },
+  // one carpet through the whole work floor; departments differ only by a light tint, their banner and their props
+  { id: 'dev',      label: '개발',       color: '#6f8fd8', floor: 'floor_tiles',   tint: '#c8cfe0', props: ['k_shelf_orange', 'k_locker_brown', 'k_bin_grey', 'k_plant_b'] },
+  { id: 'research', label: '조사',       color: '#b08ae8', floor: 'floor_tiles',   tint: '#d2cadf', props: ['k_shelf_tall_green', 'k_shelf_tall_orange', 'k_tree_round', 'k_box_a'] },
+  { id: 'exec',     label: '실행·테스트', color: '#6fc79a', floor: 'floor_tiles',   tint: '#c6d8cf', props: ['k_rack_a', 'k_rack_b', 'k_ac_unit', 'cactus'] },
+  { id: 'docs',     label: '문서화',     color: '#e0b060', floor: 'floor_tiles',   tint: '#dad2c4', props: ['k_shelf_green', 'k_cabinet_beige', 'k_plant_a', 'k_stool_brown'] },
 ];
 function officeTileArea(ctx, im, key, tint, x0, y0, w, h) {
   const T = OFFICE.T;
@@ -5133,36 +5164,41 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
   const st = sess ? sess.status : 'empty';
   const sitting = ch && ch.state === 'sit';
 
-  officeDrawRug(ctx, sx + 8, sy + 12, 64, 64, st === 'running' ? (sess && sess.isSub ? '#8fb3e8' : '#6f8fd8') : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : st === 'empty' ? '#b9b6c2' : '#bdbac4', st === 'empty');
+  const rugY = seat.flip ? sy + 12 : (seat.deskY < sy + 12 ? sy + 4 : sy + 12);
+  officeDrawRug(ctx, sx + 8, rugY, 64, 64, st === 'running' ? (sess && sess.isSub ? '#8fb3e8' : '#6f8fd8') : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : st === 'empty' ? '#b9b6c2' : '#bdbac4', st === 'empty');
   if (st === 'running' && sitting) {
   ctx.strokeStyle = `rgba(120,170,255,${0.35 + 0.55 * pulse})`; ctx.lineWidth = 1;
-  ctx.strokeRect(sx + 7.5, sy + 11.5, 65, 65);
+  ctx.strokeRect(sx + 7.5, rugY - 0.5, 65, 65);
   }
-  if (im.desk) ctx.drawImage(im.desk, deskX, deskY);
-  const pcImg = sitting && st === 'running' ? im[`pc_on_${pcFrame + 1}`] : sitting && (st === 'waiting' || st === 'error') ? im.pc_on_1 : im.pc_off;
-  if (pcImg) ctx.drawImage(pcImg, deskX + 16, deskY - 5);
-  if (sess && officeNightAmount(officeHourNow()) > 0.35) {
-    // small desk lamp: post, shade, lit bulb
-    ctx.fillStyle = '#2a2836'; ctx.fillRect(deskX + 43, deskY - 4, 1, 8); ctx.fillRect(deskX + 41, deskY + 4, 5, 1);
-    ctx.fillStyle = '#c9743a'; ctx.fillRect(deskX + 40, deskY - 7, 7, 3);
-    ctx.fillStyle = '#ffe9a8'; ctx.fillRect(deskX + 41, deskY - 4, 5, 1);
-  }
-  if (sess) {
-  const k = officeHash(sess.id) % 7;
-  if (k >= 4) { const vase = im[['k_vase_a', 'k_vase_b', 'k_vase_c'][k - 4]]; if (vase) ctx.drawImage(vase, deskX + 34, deskY - 2); }
-  if (k === 0 && im.coffee) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
-  else if (k === 1 && im.pot) ctx.drawImage(im.pot, deskX + 2, deskY + 2);
-  else if (k === 2) { ctx.fillStyle = '#f1efe6'; ctx.fillRect(deskX + 36, deskY + 14, 9, 7); ctx.fillStyle = '#b9b6ad'; ctx.fillRect(deskX + 38, deskY + 16, 5, 1); ctx.fillRect(deskX + 38, deskY + 18, 5, 1); }
-  }
-  if (sitting && st === 'running') {
-  ctx.fillStyle = `rgba(140,200,255,${0.10 + 0.12 * pulse})`; ctx.fillRect(deskX + 12, deskY - 2, 24, 22);
-  }
+  const drawDesk = () => {
+    if (im.desk) ctx.drawImage(im.desk, deskX, deskY);
+    const pcImg = sitting && st === 'running' ? im[`pc_on_${pcFrame + 1}`] : sitting && (st === 'waiting' || st === 'error') ? im.pc_on_1 : im.pc_off;
+    if (pcImg) ctx.drawImage(pcImg, deskX + 16, deskY - 5);
+    if (sess && officeNightAmount(officeHourNow()) > 0.35) {
+      // small desk lamp: post, shade, lit bulb
+      ctx.fillStyle = '#2a2836'; ctx.fillRect(deskX + 43, deskY - 4, 1, 8); ctx.fillRect(deskX + 41, deskY + 4, 5, 1);
+      ctx.fillStyle = '#c9743a'; ctx.fillRect(deskX + 40, deskY - 7, 7, 3);
+      ctx.fillStyle = '#ffe9a8'; ctx.fillRect(deskX + 41, deskY - 4, 5, 1);
+    }
+    if (sess) {
+      const k = officeHash(sess.id) % 7;
+      if (k >= 4) { const vase = im[['k_vase_a', 'k_vase_b', 'k_vase_c'][k - 4]]; if (vase) ctx.drawImage(vase, deskX + 34, deskY - 2); }
+      if (k === 0 && im.coffee) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
+      else if (k === 1 && im.pot) ctx.drawImage(im.pot, deskX + 2, deskY + 2);
+      else if (k === 2) { ctx.fillStyle = '#f1efe6'; ctx.fillRect(deskX + 36, deskY + 14, 9, 7); ctx.fillStyle = '#b9b6ad'; ctx.fillRect(deskX + 38, deskY + 16, 5, 1); ctx.fillRect(deskX + 38, deskY + 18, 5, 1); }
+    }
+    if (sitting && st === 'running') {
+      ctx.fillStyle = `rgba(140,200,255,${0.10 + 0.12 * pulse})`; ctx.fillRect(deskX + 12, deskY - 2, 24, 22);
+    }
+  };
+  // a flipped seat (chair above the desk) draws the desk after the character so it sits in front of them
+  if (!seat.flip) drawDesk();
   if (im.chair_back) ctx.drawImage(im.chair_back, seat.chairX - 8, seat.chairY - 12);
   if (sitting) officeShadow(ctx, seat.chairX, seat.chairY + 2, 8, 2.5);
 
   if (sitting) {
   const sheet = im[`char_${officeSkin(ch.sid)}`];
-  let frameCol = 0, dir = 1;
+  let frameCol = 0, dir = seat.flip ? 0 : 1;
   if (st === 'running') {
     const reading = officeIsReadingTool(sess.tool);
     frameCol = (reading ? 5 : 3) + (Math.floor(ch.animT / (reading ? 0.45 : 0.22)) % 2);
@@ -5172,6 +5208,7 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
   } else if (st === 'error') { dir = 0; frameCol = 0; }
   ch.drawn = [frameCol, dir, seat.chairX, seat.chairY];
   if (sheet) officeDrawChar(ctx, sheet, frameCol, dir, seat.chairX, seat.chairY, ch.alpha);
+  if (seat.flip) drawDesk();
   const headY = seat.chairY - 24;
   if (ch.reactT > 0) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'dots');
   else if (st === 'running') {
@@ -5194,7 +5231,7 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
   }
   officeDrawName(ctx, sess, seat.chairX, seat.chairY + 10);
   if (ch.alertT > 0) officeDrawAlert(ctx, seat.chairX, seat.chairY - 12, ch.alertT);
-  }
+  } else if (seat.flip) drawDesk();
   officeSeats.push({ x: sx, y: sy, w: SEAT_PX, h: SEAT_PY, ch });
 
 }
@@ -5272,6 +5309,64 @@ function officeDrawAlert(ctx, cx, cy, t) {
     ctx.lineWidth = 2 - q;
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
   }
+}
+// ── reception & company sign ──
+let officeCompany = 'ORCA';
+try { officeCompany = localStorage.getItem('roca-office-company') || 'ORCA'; } catch {}
+let officeSignRect = null;
+function officeSignHit(evt) {
+  const r = officeSignRect; if (!r) return false;
+  const p = officeWorldPos(evt);
+  return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+}
+function officeCompanyEdit() {
+  const m = teamModal(`<h3>${t('회사 이름')}</h3><input id="company-name" value="${esc(officeCompany)}" maxlength="24" style="width:100%;box-sizing:border-box;padding:8px;font:inherit;background:var(--bg-solid);color:var(--text);border:1px solid var(--border);border-radius:6px">
+    <div class="row"><button id="company-cancel">${t('취소')}</button><span style="margin-left:auto"></span><button class="primary" id="company-save">${t('저장')}</button></div>`);
+  const input = m.querySelector('#company-name'); input.focus(); input.select();
+  const save = () => { officeCompany = input.value.trim() || 'ORCA'; try { localStorage.setItem('roca-office-company', officeCompany); } catch {} closeTeamModal(); };
+  m.querySelector('#company-cancel').onclick = closeTeamModal;
+  m.querySelector('#company-save').onclick = save;
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
+}
+function officeDrawReception(ctx, im, rc, worldW, originX, usableW, zItems) {
+  const y = rc.y;
+  // welcome mat in front of the counter
+  officeDrawRug(ctx, originX + 4, y + 30, 56, 18, '#8a5a3c', false);
+  zItems.push({ z: y + 44, draw: () => {
+    // front counter with a vase on top, then the waiting bench and a plant on the right
+    let cx = originX + 6;
+    for (const key of ['k_counter_drawer', 'k_counter', 'k_counter_drawer']) { if (im[key]) ctx.drawImage(im[key], cx, y + 12); cx += 16; }
+    if (im.k_vase_b) ctx.drawImage(im.k_vase_b, originX + 22, y);
+    if (im.k_bench && im.k_wood_chair) {
+      const bx = originX + usableW - 56;
+      if (bx > cx + 40) { ctx.drawImage(im.k_wood_chair, bx, y + 22); ctx.drawImage(im.k_bench, bx + 16, y + 22); ctx.drawImage(im.k_wood_chair, bx + 32, y + 22); }
+    }
+    if (im.k_tree_tall_green && originX + usableW - 16 > cx + 20) ctx.drawImage(im.k_tree_tall_green, originX + usableW - 14, y - 4);
+  } });
+  // company sign: dark plate with the name, drawn late so nothing covers it; clicking opens the editor
+  officeSignQueue.push(() => {
+    ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const label = officeCompany;
+    const w = Math.max(48, Math.round(ctx.measureText(label).width + 22)), h = 16;
+    const x = Math.round((worldW - w) / 2), sy = y - 6;
+    officeSignRect = { x, y: sy, w, h };
+    ctx.fillStyle = '#1c1b26'; ctx.fillRect(x - 1, sy - 1, w + 2, h + 2);
+    ctx.fillStyle = '#2f2d3e'; ctx.fillRect(x, sy, w, h);
+    ctx.fillStyle = '#efb041'; ctx.fillRect(x + 3, sy + h - 3, w - 6, 1);
+    ctx.fillStyle = '#f6d98a'; ctx.fillText(label, x + w / 2, sy + 3);
+    ctx.fillStyle = '#efb041'; ctx.fillRect(x + 3, sy + 3, 3, 3); ctx.fillRect(x + w - 6, sy + 3, 3, 3);
+  });
+}
+// exit sign and a fire extinguisher on the top wall — small things that make it read as a workplace
+function officeDrawSafety(ctx, worldW, floorTop, originX) {
+  const ex = worldW - originX - 30, ey = floorTop - 20;
+  ctx.fillStyle = '#1f6b3a'; ctx.fillRect(ex, ey, 26, 9);
+  ctx.fillStyle = '#7fe0b0'; ctx.fillRect(ex + 1, ey + 1, 24, 7);
+  ctx.fillStyle = '#0e3a20'; ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText('EXIT', ex + 13, ey);
+  const fx = originX + 4, fy = floorTop - 14;
+  ctx.fillStyle = '#c23c36'; ctx.fillRect(fx, fy + 2, 4, 9);
+  ctx.fillStyle = '#2a2836'; ctx.fillRect(fx, fy, 4, 2); ctx.fillRect(fx + 4, fy + 3, 1, 5);
+  ctx.fillStyle = '#f2f3f6'; ctx.fillRect(fx + 1, fy + 5, 2, 2);
 }
 // ── minimap: rooms as colour bands, sessions as dots, viewport as a frame; visible only when the office overflows ──
 let officeMinimapScale = 0;
@@ -5613,7 +5708,13 @@ function officeBuildMeeting(y, originX, usableW, aisleY) {
 }
 function officeDrawMeeting(ctx, im, m, worldW, originX, now, bob) {
   ctx.fillStyle = 'rgba(190,170,210,0.16)'; ctx.fillRect(0, m.y - 4, worldW, m.h);
-  ctx.fillStyle = 'rgba(201,179,224,0.95)'; ctx.fillRect(0, m.y - 4, 3, m.h);
+  // glass walls: translucent panes with a light frame along the top and both sides, plus a wall screen
+  ctx.fillStyle = 'rgba(160,210,245,0.22)'; ctx.fillRect(4, m.y - 8, worldW - 8, 9); ctx.fillRect(4, m.y - 8, 6, m.h - 4); ctx.fillRect(worldW - 10, m.y - 8, 6, m.h - 4);
+  ctx.fillStyle = 'rgba(230,245,255,0.55)'; ctx.fillRect(4, m.y - 8, worldW - 8, 1); ctx.fillRect(4, m.y, worldW - 8, 1);
+  ctx.fillStyle = '#7f8ba6'; for (let x = 4; x < worldW - 4; x += 40) ctx.fillRect(x, m.y - 9, 2, 11);
+  ctx.fillStyle = '#2a2836'; ctx.fillRect(worldW - originX - 44, m.y + 4, 30, 18);
+  ctx.fillStyle = '#4f7fc9'; ctx.fillRect(worldW - originX - 42, m.y + 6, 26, 12);
+  ctx.fillStyle = '#9cc4ff'; ctx.fillRect(worldW - originX - 40, m.y + 8, 14, 1); ctx.fillRect(worldW - originX - 40, m.y + 11, 20, 1); ctx.fillRect(worldW - originX - 40, m.y + 14, 10, 1);
   const modeLabel = { debate: '토론', brainstorm: '브레인스톰', review: '코드리뷰', 'master-worker': '마스터-워커' }[debateState.mode] || '토론';
   officeQueueSign(ctx, `회의실 · ${modeLabel} ${debateState.round}/${debateState.maxRounds}`, '#c9b3e0', m.y - 14, worldW, originX, true);
   ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
@@ -5825,10 +5926,12 @@ $('office-canvas').addEventListener('mousemove', e => {
   const onPet = !ch ? officePetHit(e) : null;
   const zs = !ch && !onPet ? officeZoneSeatAt(officeWorldPos(e).x, officeWorldPos(e).y) : null;
   const onBoard = !ch && !onPet && !zs && officeBoardHit(e);
-  canvas.classList.toggle('hit', !!ch || !!onPet || onBoard);
+  const onSign = !ch && !onPet && !zs && !onBoard && officeSignHit(e);
+  canvas.classList.toggle('hit', !!ch || !!onPet || onBoard || onSign);
   if (!ch) {
-    if (!onPet && !zs && !onBoard) { tip.hidden = true; return; }
-    tip.innerHTML = zs ? `<b>${esc(zs.zone.icon)} ${esc(t(zs.zone.name))}</b><span style="display:block;max-width:260px;white-space:normal;color:var(--text2)">${esc(zs.zone.prompt.slice(0, 140))}${zs.zone.prompt.length > 140 ? '…' : ''}</span><span style="display:block;color:#5fc7b3;margin-top:2px">${t('드래그해 놓으면 이 프롬프트를 보냅니다')}${zs.zone.auto ? ' · ' + t('확인 없이 바로 보내기') : ''}</span>`
+    if (!onPet && !zs && !onBoard && !onSign) { tip.hidden = true; return; }
+    tip.innerHTML = onSign ? '<b>' + esc(officeCompany) + '</b><span>' + t('회사 간판 · 클릭해서 이름 변경') + '</span>'
+      : zs ?`<b>${esc(zs.zone.icon)} ${esc(t(zs.zone.name))}</b><span style="display:block;max-width:260px;white-space:normal;color:var(--text2)">${esc(zs.zone.prompt.slice(0, 140))}${zs.zone.prompt.length > 140 ? '…' : ''}</span><span style="display:block;color:#5fc7b3;margin-top:2px">${t('드래그해 놓으면 이 프롬프트를 보냅니다')}${zs.zone.auto ? ' · ' + t('확인 없이 바로 보내기') : ''}</span>`
       : onBoard ? '<b>' + t('화이트보드') + '</b><span>' + t('클릭: 가장 오래 기다리는 세션으로 이동해 채팅 열기') + '</span>'
       : `<b>${esc(onPet.name)}</b><span>` + t('휴게실 펫 · 클릭하면 좋아합니다') + '</span>';
     const wr0 = $('office-wrap').getBoundingClientRect();
@@ -5868,6 +5971,7 @@ $('office-canvas').addEventListener('click', e => {
   const ch = officeCharAt(e);
   if (!ch) {
     const pet = officePetHit(e); if (pet) { pet.heartT = 1.6; return; }
+    if (officeSignHit(e)) { officeCompanyEdit(); return; }
     if (officeBoardHit(e)) officeJumpToWaiting();
     return;
   }
