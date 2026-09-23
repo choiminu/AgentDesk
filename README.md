@@ -8,7 +8,7 @@ A pixel-art office for your AI coding agents. AgentDesk is a lightweight macOS d
 
 [한국어 README](README.ko.md)
 
-![macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
+![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![Electron](https://img.shields.io/badge/electron-36-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -29,7 +29,7 @@ A pixel-art office for your AI coding agents. AgentDesk is a lightweight macOS d
 
 ## Quick start
 
-Requirements: macOS, Node.js 18+ and at least one agent CLI (Claude Code, Gemini CLI or Codex CLI). [Orca](https://github.com/stablyai/orca) 1.4+ is optional — without it the widget runs in hooks-only mode (Claude Code hooks + [tmux](https://github.com/tmux/tmux) for sending messages).
+Requirements: macOS, Linux or Windows, Node.js 18+ and at least one agent CLI (Claude Code, Gemini CLI or Codex CLI). [Orca](https://github.com/stablyai/orca) 1.4+ is optional — without it the widget runs in hooks-only mode (Claude Code hooks + [tmux](https://github.com/tmux/tmux) for sending messages).
 
 ```bash
 git clone https://github.com/choiminu/AgentDesk.git
@@ -38,7 +38,13 @@ npm install
 npm start
 ```
 
-The widget opens as an always-on-top window. Install the prebuilt app instead with `npm run dist`, which produces `dist/AgentDesk-<version>-arm64.dmg` (Apple Silicon) and `dist/AgentDesk-<version>.dmg` (Intel). The app is not code-signed: on first launch allow it under **System Settings → Privacy & Security**.
+The widget opens as an always-on-top window. Prebuilt installers are attached to each [GitHub release](https://github.com/choiminu/AgentDesk/releases) (macOS DMG for Apple Silicon and Intel, Linux AppImage and .deb, Windows installer and portable .exe); build them yourself with `npm run dist` (macOS), `npm run dist:linux` or `npm run dist:win`. The macOS app is not code-signed: on first launch allow it under **System Settings → Privacy & Security**.
+
+| Platform | Session states (hooks) | Chat, direct, interrupt | Switch to terminal | Reopen ended session |
+|---|---|---|---|---|
+| macOS | ✓ | Orca, tmux, iTerm2, Terminal.app | ✓ | iTerm2 / Terminal |
+| Linux | ✓ | tmux only | tmux window | gnome-terminal, konsole, kitty, alacritty, xterm… |
+| Windows | ✓ | — | — | Windows Terminal / cmd |
 
 On first launch a short onboarding checks the machine (Claude Code, the widget hooks, the Orca CLI, terminal Automation permission) and lets you turn on **Exact detection** in one click. This registers Claude Code hooks (see [How it works](#how-it-works)) so states arrive as events instead of being inferred; you can also toggle it later in ⚙ Settings. Run with `ROCA_START_PAGE=onboarding` to see the onboarding again.
 
