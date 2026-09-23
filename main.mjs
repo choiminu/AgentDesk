@@ -717,22 +717,68 @@ ipcMain.handle("orca:terminal-close", async (_e, handle) => {
 
 // ── transcript metadata for hook-discovered sessions (no Orca): last assistant text, context usage, git branch ──
 const transcriptMetaCache = new Map();
-ipcMain.handle("roca:session-meta", async (_e, transcriptPath, cwd) => {
+// transcript readers per agent: title (user's /rename or AI title, else the first real prompt), last assistant text, context usage
+function readHeadTail(path, size) {
+  const from = Math.max(0, size - 400000);
+  const fd = openSync(path, "r");
+  const buf = Buffer.alloc(size - from); readSync(fd, buf, 0, buf.length, from);
+  const headLen = Math.min(size, 200000); const head = Buffer.alloc(headLen); readSync(fd, head, 0, headLen, 0);
+  closeSync(fd);
+  return from > headLen ? head.toString("utf-8").split("\n").concat(buf.toString("utf-8").split("\n")) : buf.toString("utf-8").split("\n");
+}
+const firstLine = s => String(s || "").replace(/\s+/g, " ").trim().slice(0, 80);
+// Gemini CLI: ~/.gemini/tmp/<project>/chats/session-*.jsonl — message objects {type:'user'|'gemini', content}, plus {$set:{messages:[…]}} patches
+function parseGeminiTranscript(lines) {
+  const out = { title: null, lastMsg: "", ctxPct: null, model: null };
+  const msgs = [];
+  for (const line of lines) {
+    if (!line.startsWith("{")) continue;
+    let rec; try { rec = JSON.parse(line); } catch { continue; }
+    if (rec.$set && Array.isArray(rec.$set.messages)) msgs.push(...rec.$set.messages);
+    else if (rec.type) msgs.push(rec);
+  }
+  let lastTokens = null;
+  for (const msg of msgs) {
+    const text = Array.isArray(msg.content) ? msg.content.map(c => c && c.text || "").join(" ") : String(msg.content || "");
+    if (msg.type === "user" && !out.title && text && !/^\s*<session_context>/.test(text)) out.title = firstLine(text);
+    if (msg.type === "gemini") { if (text) out.lastMsg = text.slice(0, 300); if (msg.tokens) lastTokens = msg.tokens; if (msg.model) out.model = msg.model; }
+  }
+  if (lastTokens && lastTokens.total) { const window = /pro/i.test(out.model || "") ? 1000000 : 1000000; out.ctxPct = Math.min(100, Math.round((lastTokens.input || lastTokens.total) / window * 100)); }
+  return out;
+}
+// Codex CLI: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl — {type:'response_item', payload:{type:'message', role, content:[{type:'input_text'|'output_text', text}]}}
+// and {type:'event_msg', payload:{type:'token_count', info:{last_token_usage:{total_tokens}, model_context_window}}}
+function parseCodexTranscript(lines) {
+  const out = { title: null, lastMsg: "", ctxPct: null, model: null };
+  let used = null, window = null;
+  for (const line of lines) {
+    if (!line.startsWith("{")) continue;
+    let rec; try { rec = JSON.parse(line); } catch { continue; }
+    const p = rec.payload || rec;
+    if (rec.type === "session_meta" || p.type === "session_meta") { out.model = (p.payload && p.payload.model) || p.model || out.model; continue; }
+    if (p.type === "message" && Array.isArray(p.content)) {
+      const text = p.content.map(c => c && (c.text || c.input_text || c.output_text) || "").join(" ");
+      if (p.role === "user" && !out.title && text && !/^\s*(<environment_context>|<user_instructions>|#\s*AGENTS)/i.test(text)) out.title = firstLine(text);
+      if (p.role === "assistant" && text) out.lastMsg = text.slice(0, 300);
+    }
+    if (p.type === "token_count" && p.info) { const u = p.info.last_token_usage || p.info.total_token_usage; if (u) used = u.total_tokens || used; window = p.info.model_context_window || window; }
+  }
+  if (used && window) out.ctxPct = Math.min(100, Math.round(used / window * 100));
+  return out;
+}
+ipcMain.handle("roca:session-meta", async (_e, transcriptPath, cwd, agent) => {
   const out = { title: null, lastMsg: "", ctxPct: null, branch: "", model: null };
   try {
     if (transcriptPath && existsSync(transcriptPath)) {
       const st = statSync(transcriptPath);
       const cached = transcriptMetaCache.get(transcriptPath);
       if (cached && cached.mtimeMs === st.mtimeMs) Object.assign(out, cached.meta);
-      else {
-        const size = st.size, from = Math.max(0, size - 400000);
-        const fd = openSync(transcriptPath, "r");
-        const buf = Buffer.alloc(size - from); readSync(fd, buf, 0, buf.length, from);
-        // title records (ai-title / custom-title) sit near the top of the file
-        const headLen = Math.min(size, 200000); const head = Buffer.alloc(headLen); readSync(fd, head, 0, headLen, 0);
-        closeSync(fd);
+      else if (agent === "gemini" || agent === "codex") {
+        Object.assign(out, (agent === "gemini" ? parseGeminiTranscript : parseCodexTranscript)(readHeadTail(transcriptPath, st.size)));
+        transcriptMetaCache.set(transcriptPath, { mtimeMs: st.mtimeMs, meta: { ...out } });
+      } else {
         let usage = null, model = null, lastText = "", title = null, customTitle = null;
-        const lines = from > headLen ? head.toString("utf-8").split("\n").concat(buf.toString("utf-8").split("\n")) : buf.toString("utf-8").split("\n");
+        const lines = readHeadTail(transcriptPath, st.size);
         for (const line of lines) {
           if (!line.startsWith("{")) continue;
           let rec; try { rec = JSON.parse(line); } catch { continue; }
@@ -1020,6 +1066,26 @@ function startEventsWatch() {
   try { eventsWatcher = fsWatch(EVENTS_FILE, () => pushEvents(readNewEvents())); } catch {}
   eventsPollTimer = setInterval(() => pushEvents(readNewEvents()), 1500);   // fs.watch can miss appends on macOS
 }
+// new-version check against GitHub Releases, at most once a day (cached in userData); the renderer shows a badge
+const UPDATE_API = "https://api.github.com/repos/choiminu/AgentDesk/releases/latest";
+const UPDATE_CACHE = join(app.getPath("userData"), "update-check.json");
+const semverNewer = (a, b) => { const pa = String(a).replace(/^v/, "").split(".").map(n => parseInt(n, 10) || 0), pb = String(b).replace(/^v/, "").split(".").map(n => parseInt(n, 10) || 0); for (let i = 0; i < 3; i++) { if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0); } return false; };
+ipcMain.handle("roca:update-check", async (_e, force) => {
+  const current = app.getVersion();
+  let cache = null; try { cache = JSON.parse(readFileSync(UPDATE_CACHE, "utf-8")); } catch {}
+  if (!force && cache && Date.now() - cache.at < 24 * 3600 * 1000) return { ...cache, current, newer: semverNewer(cache.latest, current) };
+  try {
+    const res = await fetch(UPDATE_API, { headers: { "User-Agent": `AgentDesk/${current}`, Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const j = await res.json();
+    const info = { at: Date.now(), latest: String(j.tag_name || "").replace(/^v/, ""), url: j.html_url || "https://github.com/choiminu/AgentDesk/releases", name: j.name || "" };
+    try { writeFileSync(UPDATE_CACHE, JSON.stringify(info)); } catch {}
+    return { ...info, current, newer: semverNewer(info.latest, current) };
+  } catch (e) { return { at: Date.now(), current, latest: cache?.latest || null, url: cache?.url || null, newer: cache ? semverNewer(cache.latest, current) : false, error: e.message }; }
+});
+ipcMain.handle("roca:app-version", () => app.getVersion());
+ipcMain.handle("roca:open-external", (_e, url) => { if (/^https:\/\/github\.com\//.test(String(url))) shell.openExternal(url); });
+
 ipcMain.handle("orca:version", async () => {
   await orcaReady;
   try { const { stdout } = await exec(orcaBin, ["--version"], { timeout: 8000, env: { ...process.env, PATH: EXEC_PATH } }); return stdout.trim(); }

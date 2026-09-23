@@ -1,6 +1,6 @@
 {
   "name": "agentdesk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AgentDesk — a pixel-art office for your AI coding agents",
   "main": "main.mjs",
   "type": "module",
@@ -10,7 +10,8 @@
     "dist": "electron-builder --mac --publish never",
     "dist:linux": "electron-builder --linux --publish never",
     "dist:win": "electron-builder --win --publish never",
-    "dist:all": "electron-builder -mwl --publish never"
+    "dist:all": "electron-builder -mwl --publish never",
+    "test": "node --test \"test/**/*.test.mjs\""
   },
   "dependencies": {},
   "devDependencies": {
@@ -55,6 +56,7 @@
       "main.mjs",
       "widget.html",
       "preload.cjs",
+      "core/**/*",
       "package.json",
       "assets/**/*"
     ],
