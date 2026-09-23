@@ -1,12 +1,12 @@
-# Contributing to Orca Widget
+# Contributing to AgentDesk
 
 Thank you for your interest in contributing! Here's how you can help.
 
 ## Getting Started
 
 ```bash
-git clone https://github.com/choiminu/orca-widget.git
-cd orca-widget
+git clone https://github.com/choiminu/agentdesk.git
+cd agentdesk
 npm install
 npm start
 ```
