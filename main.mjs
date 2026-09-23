@@ -487,12 +487,12 @@ ipcMain.handle("roca:session-meta", async (_e, transcriptPath, cwd) => {
       else {
         const size = st.size, from = Math.max(0, size - 400000);
         const fd = openSync(transcriptPath, "r"); const buf = Buffer.alloc(size - from); readSync(fd, buf, 0, buf.length, from); closeSync(fd);
-        let usage = null, model = null, lastText = "", title = null;
+        let usage = null, model = null, lastText = "", title = null, customTitle = null;
         for (const line of buf.toString("utf-8").split("\n")) {
           if (!line.startsWith("{")) continue;
           let rec; try { rec = JSON.parse(line); } catch { continue; }
           if (rec.type === "ai-title") title = rec.aiTitle || title;
-          if (rec.type === "custom-title") title = rec.customTitle || title;
+          if (rec.type === "custom-title") customTitle = rec.customTitle || customTitle;
           if (rec.type !== "assistant") continue;
           const m = rec.message || {};
           if (m.usage) { usage = m.usage; model = m.model || model; }
@@ -503,7 +503,7 @@ ipcMain.handle("roca:session-meta", async (_e, transcriptPath, cwd) => {
           const window = /1m|fable/i.test(model || "") ? 1000000 : 200000;
           out.ctxPct = Math.min(100, Math.round(used / window * 100));
         }
-        out.lastMsg = lastText.slice(0, 300); out.model = model; out.title = title;
+        out.lastMsg = lastText.slice(0, 300); out.model = model; out.title = customTitle || title;   // /rename wins over the AI title
         transcriptMetaCache.set(transcriptPath, { mtimeMs: st.mtimeMs, meta: { ...out } });
       }
     }
