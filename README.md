@@ -36,7 +36,7 @@ npm start
 
 The widget opens as an always-on-top window. Install the prebuilt app instead with `npm run dist`, which produces `dist/Orca Dashboard-<version>-arm64.dmg` (Apple Silicon) and `dist/Orca Dashboard-<version>.dmg` (Intel). The app is not code-signed: on first launch allow it under **System Settings → Privacy & Security**.
 
-Recommended after installing: open the **Office** tab and turn on **Exact detection**. This registers Claude Code hooks (see [How it works](#how-it-works)) so states arrive as events instead of being inferred.
+On first launch a short onboarding checks the machine (Claude Code, the widget hooks, the Orca CLI, terminal Automation permission) and lets you turn on **Exact detection** in one click. This registers Claude Code hooks (see [How it works](#how-it-works)) so states arrive as events instead of being inferred; you can also toggle it later from the **Office** tab. Run with `ROCA_START_PAGE=onboarding` to see the onboarding again.
 
 ## Usage
 
@@ -134,7 +134,7 @@ npm run dist         # build arm64 and x64 DMGs into dist/
 
 | Environment variable | Effect |
 |---|---|
-| `ROCA_START_PAGE=office` | Start on a tab. `office-demo` renders twelve fake sessions (subagents, needs-input, a team). Append `,en` or `,ko` to force a language |
+| `ROCA_START_PAGE=office` | Start on a tab (`onboarding`, `onboarding-2`, `onboarding-3` open the onboarding steps). `office-demo` renders twelve fake sessions (subagents, needs-input, a team). Append `,en` or `,ko` to force a language |
 | `ROCA_SHOT=/path/shot.png` | Capture the window at 8 s, 13.5 s and 24 s as `shot-1.png` … |
 | `ROCA_DEBUG=1` | Print terminal-read and renderer console logs |
 | `ROCA_HOOKS_INSTALL=1` | Register hooks at startup |
