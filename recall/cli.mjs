@@ -84,7 +84,9 @@ function parseDur(s) { const m = String(s).match(/^(\d+)([hdw])$/); if (!m) retu
 
 // hooks + skill registration
 async function install() {
-  const node = process.execPath;
+  // prefer a version-stable node path: Homebrew's Cellar path changes on every upgrade and would break the hooks silently
+  const stable = ["/opt/homebrew/bin/node", "/usr/local/bin/node", join(homedir(), ".local", "bin", "node")].find(p => existsSync(p));
+  const node = stable || process.execPath;
   const entry = (script, agent) => ({ hooks: [{ type: "command", command: `${agent && agent !== "claude" ? `AGENTDESK_AGENT=${agent} ` : ""}"${node}" "${join(HERE, script)}"`, timeout: agent === "gemini" ? 10000 : 10 }] });
   const isOurs = (e) => Array.isArray(e?.hooks) && e.hooks.some(h => /agentdesk-recall|\/recall\/on-(session-start|session-end|prompt)\.mjs/.test(h.command || ""));
   // a note is (re)written when a session ends AND right before its context is compacted — compaction is a natural
