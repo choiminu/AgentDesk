@@ -2285,6 +2285,9 @@
   .s-tool, .s-branch { padding: 1px 6px; border-radius: 5px; background: var(--surface-hover); border: 1px solid var(--border-subtle); opacity: 1; color: var(--text2); font-size: 9.5px; line-height: 1.5; }
   .s-agent { border-radius: 5px; font-size: 9px; padding: 1px 6px; line-height: 1.5; }
   .s-agent.claude { background: var(--accent-dim); color: var(--accent); }
+  .s-agent.gemini { background: var(--purple-dim); color: var(--purple); }
+  .s-agent.codex { background: var(--green-dim); color: var(--green); }
+  .s-agent.opencode { background: var(--yellow-dim); color: var(--yellow); }
   .s-time { color: var(--text3); }
   .s-act { border-radius: 8px; width: 22px; height: 22px; }
   .hover-demo .session:nth-child(2) .s-actions { display: flex; }   /* ROCA_START_PAGE=...,hover-demo: show one card's hover state for captures */
@@ -2607,6 +2610,12 @@ const I18N = {
   '기타': 'Other', '온보딩 다시 보기': 'Show onboarding again', '소개, 환경 점검, 사용 팁을 다시 표시합니다.': 'Shows the intro, environment check and tips again.', '열기': 'Open',
   '훅 스크립트': 'Hook script', '이벤트 로그': 'Event log', '나중에 ⚙ 설정에서 바꿀 수 있습니다.': 'You can change it later in ⚙ Settings.',
   '헤더의 ⚙ 설정에서 언어, 테마, 정확 감지, 알림음, 픽셀 배율을 바꿀 수 있습니다. 새로 시작하는 Claude Code 세션부터 훅 이벤트가 기록되니, 세션이 안 보이면 프롬프트를 한 번 보내 보세요.': 'The ⚙ Settings in the header hold language, theme, exact detection, chime and pixel zoom. Hook events are recorded from the next Claude Code activity on, so if a session is missing, send it a prompt once.',
+  '정확 감지 (에이전트 훅)': 'Exact detection (agent hooks)', '켜짐': 'on', '꺼짐': 'off', '대상': 'targets', '에이전트 CLI': 'Agent CLIs', '에이전트 훅 (정확 감지)': 'Agent hooks (exact detection)',
+  '켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 세션도 표시됩니다.': 'On. Session states arrive as events, and sessions started in a terminal are shown too.',
+  '꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.': 'Off. Turning it on adds the widget hooks to each installed agent CLI (existing hooks kept, backup in ~/.roca/). Needed for sessions to show up.',
+  'claude / gemini / codex 명령을 찾지 못했습니다. 에이전트 CLI를 하나 이상 설치하고 로그인해 주세요.': 'None of claude / gemini / codex was found. Install at least one agent CLI and sign in.',
+  '꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, 백업 저장). 세션이 보이려면 반드시 필요합니다.': 'Off. Turning it on adds the widget hooks to each installed agent CLI (existing hooks kept, backup saved). Required for sessions to show up.',
+  '설치된 에이전트 CLI(Claude Code · Gemini CLI · Codex CLI)의 설정에 위젯 훅을 등록합니다 (기존 설정은 보존, ~/.roca/에 백업). 이후 새로 시작하는 세션부터 이벤트 기반으로 정확히 감지됩니다. 진행할까요?': 'Registers the widget hooks with each installed agent CLI (Claude Code, Gemini CLI, Codex CLI); existing settings are kept and backed up under ~/.roca/. Sessions started from now on are detected exactly from events. Continue?',
   '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'AgentDesk에 오신 것을 환영합니다': 'Welcome to AgentDesk',
   'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
   '픽셀 오피스': 'Pixel office', '필요할 때만 알림': 'Alerts only when needed',
@@ -3174,6 +3183,13 @@ async function fetchData() {
 // ══════════════════════════════════════════
 const hookSessions = new Map();   // claude session_id → state
 let hooksEnabled = false;
+let hooksAgents = {};   // { claude: 'on'|'off'|'absent', gemini: ..., codex: ... }
+const AGENT_LABELS = { claude: 'Claude Code', gemini: 'Gemini CLI', codex: 'Codex CLI', opencode: 'OpenCode' };
+function hooksAgentsSummary() {
+  const on = Object.entries(hooksAgents).filter(([, v]) => v === 'on').map(([k]) => AGENT_LABELS[k] || k);
+  const off = Object.entries(hooksAgents).filter(([, v]) => v === 'off').map(([k]) => AGENT_LABELS[k] || k);
+  return { on, off };
+}
 const HOOK_STALE_MS = 2 * 60 * 60 * 1000;
 
 function hookToolInput(tool, input) {
@@ -3187,11 +3203,15 @@ function applyHookEvent(rec) {
   if (!st) { st = { sid, cwd: ev.cwd, transcript: ev.transcript_path || '', first: ts, status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false }; hookSessions.set(sid, st); }
   if (ev.cwd) st.cwd = ev.cwd;
   if (rec.term) st.term = rec.term;   // TERM_PROGRAM of the launching terminal (Orca, iTerm.app, tmux, Apple_Terminal)
+  st.agent = rec.agent || st.agent || 'claude';   // which CLI emitted the event (claude / gemini / codex)
   if (ev.transcript_path) st.transcript = ev.transcript_path;
   st.last = Math.max(st.last, ts);
   const setStatus = (v) => { if (st.status !== v) { st.status = v; st.since = ts; } };
   const sub = ev.agent_id ? st.subagents.get(ev.agent_id) : null;
-  switch (ev.hook_event_name) {
+  // Gemini CLI uses its own event names; Codex CLI shares Claude Code's. Normalize to the Claude Code set.
+  const GEMINI_EVENTS = { BeforeAgent: 'UserPromptSubmit', AfterAgent: 'Stop', BeforeTool: 'PreToolUse', AfterTool: 'PostToolUse', PreCompress: 'PostCompact' };
+  const evName = GEMINI_EVENTS[ev.hook_event_name] || ev.hook_event_name;
+  switch (evName) {
     case 'SessionStart': st.ended = false; break;
     case 'UserPromptSubmit': setStatus('running'); st.tool = ''; st.toolInput = ''; st.needsInput = false; st.ended = false; break;
     case 'PreToolUse':
@@ -3205,11 +3225,11 @@ function applyHookEvent(rec) {
     case 'PermissionRequest': setStatus('waiting'); st.needsInput = true; break;
     case 'Notification': {
       const nt = ev.notification_type || '';
-      if (/permission_prompt|agent_needs_input|elicitation_dialog|elicitation_url_dialog/.test(nt)) { setStatus('waiting'); st.needsInput = true; }
+      if (/permission_prompt|agent_needs_input|elicitation_dialog|elicitation_url_dialog|ToolPermission|approval/i.test(nt)) { setStatus('waiting'); st.needsInput = true; }   // Claude / Gemini / Codex names
       else if (nt === 'idle_prompt') setStatus('waiting');
       break;
     }
-    case 'Stop': setStatus('waiting'); st.tool = ''; st.toolInput = ''; st.needsInput = false; break;
+    case 'Stop': case 'Interrupt': setStatus('waiting'); st.tool = ''; st.toolInput = ''; st.needsInput = false; break;
     case 'SubagentStart': if (ev.agent_id) st.subagents.set(ev.agent_id, { id: ev.agent_id, type: ev.agent_type || 'agent', since: ts, last: ts, tool: '', toolInput: '' }); break;
     case 'SubagentStop': if (ev.agent_id) st.subagents.delete(ev.agent_id); break;
     case 'SessionEnd': st.ended = true; st.status = 'done'; st.since = ts; st.subagents.clear(); break;
@@ -3248,6 +3268,7 @@ async function refreshHooksStatus() {
   try {
     const r = await window.orca.hooksStatus();
     hooksEnabled = !!r.installed;
+    hooksAgents = r.agents || {};
     const btn = $('hooks-toggle');
     btn.classList.toggle('on', hooksEnabled);
     btn.textContent = hooksEnabled ? '정확 감지 켜짐' : '정확 감지 꺼짐';
@@ -3258,7 +3279,7 @@ $('hooks-toggle').addEventListener('click', async () => {
     if (!confirm(t('정확 감지를 끌까요? ~/.claude/settings.json에서 위젯 훅만 제거합니다.'))) return;
     await window.orca.hooksUninstall();
   } else {
-    if (!confirm(t('Claude Code 훅을 ~/.claude/settings.json에 등록합니다 (기존 설정은 보존, ~/.roca/에 백업). 이후 새로 시작하는 Claude 세션부터 이벤트 기반으로 정확히 감지됩니다. 진행할까요?'))) return;
+    if (!confirm(t('설치된 에이전트 CLI(Claude Code · Gemini CLI · Codex CLI)의 설정에 위젯 훅을 등록합니다 (기존 설정은 보존, ~/.roca/에 백업). 이후 새로 시작하는 세션부터 이벤트 기반으로 정확히 감지됩니다. 진행할까요?'))) return;
     const r = await window.orca.hooksInstall();
     if (r.ok === false) { showInAppToast(`훅 설치 실패: ${r.error}`, 'error'); return; }
     hookSessions.clear();
@@ -3305,7 +3326,7 @@ function hookOnlySessions(wts, panes, ttys) {
     const procs = st.ended ? [] : (ttys || []);
     let target = procs.find(x => x.sessionId === st.sid) || null;
     if (!target && !st.ended) {
-      const same = procs.filter(x => x.cwd === st.cwd && !usedTargets.has(x.handle));
+      const same = procs.filter(x => x.cwd === st.cwd && !usedTargets.has(x.handle) && (x.agent || 'claude') === (st.agent || 'claude'));
       same.sort((a, b) => Math.abs((a.startedAt || 0) - st.first) - Math.abs((b.startedAt || 0) - st.first));
       target = same[0] || null;
     }
@@ -3319,7 +3340,7 @@ async function hookOnlySession(h) {
   const st = h.st;
   let meta = hookMetaCache.get(st.sid);
   if (!meta || Date.now() - meta.at > 15000) {
-    try { meta = { at: Date.now(), ...(await window.orca.sessionMeta(st.transcript, st.cwd)) }; } catch { meta = { at: Date.now() }; }
+    try { meta = { at: Date.now(), ...((st.agent || 'claude') === 'claude' ? await window.orca.sessionMeta(st.transcript, st.cwd) : await window.orca.sessionMeta('', st.cwd)) }; } catch { meta = { at: Date.now() }; }
     hookMetaCache.set(st.sid, meta);
   }
   const folder = st.cwd.split('/').filter(Boolean).pop() || st.cwd;
@@ -3327,7 +3348,7 @@ async function hookOnlySession(h) {
   const finalStatus = st.ended ? 'done' : resolveStatus('done', screenSt, st);
   return {
     id: h.id, name: displayNameFor(h.id, meta.title || folder), branch: meta.branch || '', repo: st.cwd, cwd: st.cwd, sessionId: st.sid, ended: !!st.ended,
-    status: finalStatus, baseStatus: 'done', agent: 'claude', time: st.last,
+    status: finalStatus, baseStatus: 'done', agent: st.agent || 'claude', time: st.last,
     tool: st.tool || '', toolInput: st.toolInput || '', viaHooks: true, hookOnly: true,
     prompt: '', lastMsg: meta.lastMsg || '', connected: !!h.handle,
     needsInput: st.needsInput && finalStatus !== 'done',
@@ -3359,7 +3380,7 @@ function setNameOverride(id, name) {
 }
 async function resumeSessionInTerminal(sess) {
   if (!sess || !sess.sessionId) return;
-  const r = await window.orca.resumeSession(sess.cwd, sess.sessionId);
+  const r = await window.orca.resumeSession(sess.cwd, sess.sessionId, sess.agent || 'claude');
   if (r && r.ok) showInAppToast(`${sess.name}: ${t('터미널에서 다시 열었습니다')} (${r.app})`);
   else showInAppToast(`${t('다시 열기 실패')}: ${r && r.error ? r.error : ''}`, 'error');
 }
@@ -7208,7 +7229,7 @@ function settingsRender() {
     ${row(t('언어'), t('UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.'), seg('lang', LANG, [['en', 'English'], ['ko', '한국어']]))}
     ${row(t('테마'), t('시스템 설정을 따르거나 라이트/다크로 고정합니다.'), seg('theme', currentTheme, [['system', t('시스템')], ['light', t('라이트')], ['dark', t('다크')]]))}
     <h2>${esc(t('감지와 알림'))}</h2>
-    ${row(t('정확 감지 (Claude Code 훅)'), hooksEnabled ? t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 Claude Code 세션도 표시됩니다.') : t('꺼져 있습니다. 켜면 ~/.claude/settings.json에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.'), sw('hooks', hooksEnabled))}
+    ${row(t('정확 감지 (에이전트 훅)'), (() => { const s = hooksAgentsSummary(); return (hooksEnabled ? t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 세션도 표시됩니다.') : t('꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.')) + (s.on.length ? ` · ${t('켜짐')}: ${s.on.join(', ')}` : '') + (s.off.length ? ` · ${t('꺼짐')}: ${s.off.join(', ')}` : ''); })(), sw('hooks', hooksEnabled))}
     ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
     <h2>${esc(t('오피스'))}</h2>
     ${row(t('픽셀 배율'), t('자동은 창 크기에 맞춰 정수 배율을 고릅니다.'), seg('zoom', zoom, [['auto', t('자동')], ['2', '2×'], ['3', '3×'], ['4', '4×']]))}
@@ -7268,8 +7289,8 @@ function onboardRender() {
       <div class="onboard-step">${esc(t('환경 점검'))}</div>
       <h1>${esc(t('이 Mac에서 무엇을 볼 수 있는지 확인합니다'))}</h1>
       <p>${esc(t('위젯은 이 컴퓨터의 Claude Code와 Orca만 읽습니다. 아래 항목이 준비되어야 세션이 나타납니다.'))}</p>
-      ${row('warn', 'Claude Code', e?.claude?.found, e?.claude?.path ? `${t('설치됨')} · ${e.claude.path}` : t('설치됨'), t('claude 명령을 찾지 못했습니다. Claude Code를 설치하고 로그인해 주세요.'), null)}
-      ${row('warn', t('Claude Code 훅 (정확 감지)'), e?.hooks, t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어옵니다.'), t('꺼져 있습니다. 켜면 ~/.claude/settings.json에 위젯 훅을 추가합니다(기존 훅 보존, 백업 저장). 세션이 보이려면 반드시 필요합니다.'), { act: 'hooks', label: t('켜기') })}
+      ${(() => { const ag = e?.agents || {}; const found = Object.entries(ag).filter(([, v]) => v).map(([k]) => AGENT_LABELS[k] || k); return row('warn', t('에이전트 CLI'), found.length, `${t('발견')} · ${found.join(', ')}`, t('claude / gemini / codex 명령을 찾지 못했습니다. 에이전트 CLI를 하나 이상 설치하고 로그인해 주세요.'), null); })()}
+      ${(() => { const ha = e?.hookAgents || {}; const on = Object.entries(ha).filter(([, v]) => v === 'on').map(([k]) => AGENT_LABELS[k] || k); const off = Object.entries(ha).filter(([, v]) => v === 'off').map(([k]) => AGENT_LABELS[k] || k); return row('warn', t('에이전트 훅 (정확 감지)'), e?.hooks, `${t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어옵니다.')} · ${on.join(', ')}`, `${t('꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, 백업 저장). 세션이 보이려면 반드시 필요합니다.')}${off.length ? ` · ${t('대상')}: ${off.join(', ')}` : ''}`, { act: 'hooks', label: t('켜기') }); })()}
       ${row('off', 'Orca CLI', e?.orca?.found, `${t('발견')} · ${e?.orca?.version || e?.orca?.path || ''}`, t('선택 사항. Orca를 쓰지 않으면 넘어가세요. Orca 사용자인데 안 잡히면 터미널에서 `orca --version`을 확인하세요.'), null)}
       ${row('off', t('터미널 제어 권한'), e && e.terminals && e.terminals.length && e.autoOk, e ? `${t('허용됨')} · ${(e.terminals || []).join(', ')}` : '', (e && e.terminals && e.terminals.length) ? t('채팅 패널에서 터미널로 메시지를 보내거나 탭을 전환하려면 macOS 자동화 권한이 필요합니다. 버튼을 누르면 권한 창이 뜹니다.') : t('iTerm2 또는 Terminal이 실행 중일 때 권한을 요청할 수 있습니다. 나중에 첫 사용 시 macOS가 물어봅니다.'), (e && e.terminals && e.terminals.length) ? { act: 'automation', label: t('권한 요청') } : null)}
       <p style="margin-top:6px"><button class="theme-btn" data-act="recheck" style="width:auto;padding:0 10px;font-size:11px">${esc(t('다시 확인'))}</button></p>`;
