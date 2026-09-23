@@ -25,7 +25,7 @@ AI 코딩 에이전트를 위한 픽셀 아트 사무실. AgentDesk는 Claude Co
 
 ## 빠른 시작
 
-요구 사항: macOS, Node.js 18 이상, 에이전트 CLI 하나 이상(Claude Code, Gemini CLI 또는 Codex CLI). [Orca](https://github.com/stablyai/orca) 1.4 이상은 선택 사항이며, 없으면 훅 전용 모드(Claude Code 훅 + 메시지 전송용 [tmux](https://github.com/tmux/tmux))로 동작합니다.
+요구 사항: macOS·Linux·Windows, Node.js 18 이상, 에이전트 CLI 하나 이상(Claude Code, Gemini CLI 또는 Codex CLI). [Orca](https://github.com/stablyai/orca) 1.4 이상은 선택 사항이며, 없으면 훅 전용 모드(Claude Code 훅 + 메시지 전송용 [tmux](https://github.com/tmux/tmux))로 동작합니다.
 
 ```bash
 git clone https://github.com/choiminu/AgentDesk.git
@@ -34,7 +34,13 @@ npm install
 npm start
 ```
 
-설치형 앱은 `npm run dist`로 빌드합니다. `dist/AgentDesk-<버전>-arm64.dmg`(Apple Silicon)와 `dist/AgentDesk-<버전>.dmg`(Intel)가 생성됩니다. 코드 서명이 없으므로 첫 실행 시 **시스템 설정 → 개인정보 보호 및 보안**에서 열기를 허용해야 합니다.
+설치 파일은 [GitHub 릴리스](https://github.com/choiminu/AgentDesk/releases)에 첨부됩니다(macOS DMG Apple Silicon·Intel, Linux AppImage·.deb, Windows 설치 프로그램·포터블 .exe). 직접 빌드하려면 `npm run dist`(macOS), `npm run dist:linux`, `npm run dist:win`을 사용합니다.
+
+| 플랫폼 | 세션 상태(훅) | 채팅·지시·인터럽트 | 터미널 전환 | 종료 세션 다시 열기 |
+|---|---|---|---|---|
+| macOS | ✓ | Orca, tmux, iTerm2, Terminal.app | ✓ | iTerm2 / Terminal |
+| Linux | ✓ | tmux만 | tmux 창 | gnome-terminal, konsole, kitty, alacritty, xterm… |
+| Windows | ✓ | — | — | Windows Terminal / cmd | 코드 서명이 없으므로 첫 실행 시 **시스템 설정 → 개인정보 보호 및 보안**에서 열기를 허용해야 합니다.
 
 처음 실행하면 짧은 온보딩이 이 Mac의 환경(Claude Code, 위젯 훅, Orca CLI, 터미널 자동화 권한)을 점검하고 **정확 감지**를 버튼 하나로 켤 수 있게 안내합니다. 정확 감지는 Claude Code 훅을 등록해([동작 원리](#동작-원리) 참고) 상태를 추정이 아닌 이벤트로 받게 하며, 이후에도 ⚙ 설정에서 켜고 끌 수 있습니다. 온보딩을 다시 보려면 `ROCA_START_PAGE=onboarding` 으로 실행합니다.
 
