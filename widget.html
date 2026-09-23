@@ -2124,6 +2124,38 @@
   }
 
   [hidden] { display: none !important; }
+
+  /* ── first-run onboarding ── */
+  .onboard { position: fixed; inset: 0; z-index: 200; background: var(--bg); display: flex; flex-direction: column; -webkit-app-region: no-drag; }
+  .onboard[hidden] { display: none; }
+  .onboard-body { flex: 1; overflow-y: auto; padding: 22px 18px 12px; }
+  .onboard h1 { font-size: 17px; font-weight: 700; margin: 0 0 6px; color: var(--text); letter-spacing: -0.01em; }
+  .onboard p { font-size: 11.5px; line-height: 1.55; color: var(--text2); margin: 0 0 12px; }
+  .onboard-step { font-size: 10px; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
+  .onboard-feat { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-hover); margin-bottom: 8px; }
+  .onboard-feat .ic { font-size: 16px; line-height: 1; margin-top: 1px; }
+  .onboard-feat b { display: block; font-size: 11.5px; color: var(--text); margin-bottom: 2px; }
+  .onboard-feat span { font-size: 10.5px; color: var(--text3); line-height: 1.45; }
+  .onboard-check { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-hover); margin-bottom: 8px; }
+  .onboard-check .st { width: 16px; text-align: center; font-size: 13px; flex-shrink: 0; }
+  .onboard-check .st.ok { color: #4ade80; } .onboard-check .st.warn { color: #fbbf24; } .onboard-check .st.off { color: var(--text3); } .onboard-check .st.wait { color: var(--text3); animation: pulse 1s infinite; }
+  .onboard-check .tx { flex: 1; min-width: 0; }
+  .onboard-check .tx b { display: block; font-size: 11.5px; color: var(--text); }
+  .onboard-check .tx span { display: block; font-size: 10px; color: var(--text3); line-height: 1.4; margin-top: 1px; word-break: break-all; }
+  .onboard-check button { flex-shrink: 0; font-size: 10.5px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent); cursor: pointer; }
+  .onboard-check button:hover { background: var(--accent); color: #fff; }
+  .onboard-foot { display: flex; align-items: center; gap: 8px; padding: 10px 18px 14px; border-top: 1px solid var(--border-subtle); }
+  .onboard-dots { display: flex; gap: 5px; flex: 1; }
+  .onboard-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+  .onboard-dots i.on { background: var(--accent); }
+  .onboard-foot button { font-size: 11.5px; padding: 6px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-hover); color: var(--text2); cursor: pointer; }
+  .onboard-foot button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .onboard-foot button:hover { filter: brightness(1.1); }
+  .onboard-lang { display: flex; gap: 6px; margin-bottom: 14px; }
+  .onboard-lang button { font-size: 11px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text3); cursor: pointer; }
+  .onboard-lang button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .onboard-tip { display: flex; gap: 8px; font-size: 11px; color: var(--text2); line-height: 1.5; margin-bottom: 8px; }
+  .onboard-tip kbd { font-family: inherit; font-size: 10px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-hover); color: var(--text); white-space: nowrap; height: fit-content; }
 </style>
 
 <div class="widget">
@@ -2374,6 +2406,16 @@
 
   <div class="toast-stack" id="toasts"></div>
 
+
+  <!-- first-run onboarding (shown once; ROCA_START_PAGE=onboarding reopens it) -->
+  <div class="onboard" id="onboard" hidden>
+    <div class="onboard-body" id="onboard-body"></div>
+    <div class="onboard-foot">
+      <div class="onboard-dots" id="onboard-dots"></div>
+      <button id="onboard-back">이전</button>
+      <button class="primary" id="onboard-next">다음</button>
+    </div>
+  </div>
   <div class="footer" id="footer">
     <div id="tokenBars"></div>
     <div class="footer-row">
@@ -2397,6 +2439,28 @@ function trunc(s, n) { return !s ? '' : s.length > n ? s.slice(0, n) + '…' : s
 let LANG = 'en';
 try { LANG = localStorage.getItem('roca-lang') || 'en'; } catch {}
 const I18N = {
+  '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'Orca Widget에 오신 것을 환영합니다': 'Welcome to Orca Widget',
+  'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
+  '픽셀 오피스': 'Pixel office', '필요할 때만 알림': 'Alerts only when needed',
+  'Orca 세션과 터미널(iTerm2·Terminal·tmux)에서 띄운 Claude Code 세션을 한 목록에서. 작업 중 / 대기 / 선택 필요 / 완료 상태를 정확히 표시합니다.': 'Orca sessions and Claude Code sessions started in a terminal (iTerm2, Terminal, tmux) in one list, with exact working / waiting / needs-input / done states.',
+  '세션마다 캐릭터가 하나씩. 일하는 에이전트는 책상에서, 쉬는 에이전트는 소파에서. PM 자리에 끌어다 놓으면 팀을 만들어 지시를 내립니다.': 'One character per session: working agents at their desks, idle ones on the sofa. Drag one onto the PM seat to form a team and hand out tasks.',
+  '권한 확인이나 질문처럼 정말 당신의 선택이 필요할 때만 알림·배지·알림음이 울립니다.': 'Notifications, badge and chime fire only when an agent really needs you — a permission prompt or a question.',
+  '환경 점검': 'Environment check', '이 Mac에서 무엇을 볼 수 있는지 확인합니다': 'Checking what this Mac can show',
+  '위젯은 이 컴퓨터의 Claude Code와 Orca만 읽습니다. 아래 항목이 준비되어야 세션이 나타납니다.': 'The widget only reads Claude Code and Orca on this computer. Sessions appear once the items below are ready.',
+  '확인 중…': 'Checking…', '설치됨': 'Installed', 'claude 명령을 찾지 못했습니다. Claude Code를 설치하고 로그인해 주세요.': 'The claude command was not found. Install Claude Code and sign in.',
+  'Claude Code 훅 (정확 감지)': 'Claude Code hooks (exact detection)', '켜져 있습니다. 세션 상태가 이벤트로 정확히 들어옵니다.': 'On. Session states arrive as events.',
+  '꺼져 있습니다. 켜면 ~/.claude/settings.json에 위젯 훅을 추가합니다(기존 훅 보존, 백업 저장). 세션이 보이려면 반드시 필요합니다.': 'Off. Turning it on adds the widget hooks to ~/.claude/settings.json (existing hooks kept, backup saved). Required for sessions to show up.',
+  '켜기': 'Turn on', '발견': 'Found', '선택 사항. Orca를 쓰지 않으면 넘어가세요. Orca 사용자인데 안 잡히면 터미널에서 `orca --version`을 확인하세요.': 'Optional. Skip if you do not use Orca. If you do and it is not detected, check `orca --version` in a terminal.',
+  '터미널 제어 권한': 'Terminal control permission', '허용됨': 'Granted',
+  '채팅 패널에서 터미널로 메시지를 보내거나 탭을 전환하려면 macOS 자동화 권한이 필요합니다. 버튼을 누르면 권한 창이 뜹니다.': 'Sending messages to a terminal or switching tabs from the chat panel needs the macOS Automation permission. The button opens the prompt.',
+  'iTerm2 또는 Terminal이 실행 중일 때 권한을 요청할 수 있습니다. 나중에 첫 사용 시 macOS가 물어봅니다.': 'Can be requested while iTerm2 or Terminal is running. Otherwise macOS asks on first use.',
+  '권한 요청': 'Request', '다시 확인': 'Re-check', '설치 중…': 'Installing…', '요청 중…': 'Requesting…', '훅 설치 실패': 'Hook install failed',
+  '권한이 허용되지 않았습니다. 시스템 설정 → 개인정보 보호 및 보안 → 자동화에서 Orca Dashboard를 허용해 주세요.': 'Permission was not granted. Allow Orca Dashboard under System Settings → Privacy & Security → Automation.',
+  '사용 팁': 'Tips', '준비되었습니다': 'You are all set', '클릭': 'Click', '더블클릭': 'Double-click', '우클릭': 'Right-click', '드래그': 'Drag',
+  '세션 카드나 캐릭터를 누르면 채팅 패널이 열려 화면을 읽고 메시지를 보낼 수 있습니다. 종료된 터미널 세션은 claude --resume 으로 다시 엽니다.': 'Click a session card or character to open the chat panel, read its screen and send a message. Ended terminal sessions reopen with claude --resume.',
+  '해당 세션의 터미널로 바로 전환합니다.': 'Jumps to that session\'s terminal.', '이름 변경, 세션 ID 복사, 인터럽트, 팀 작업 메뉴.': 'Rename, copy session ID, interrupt, team actions.',
+  '오피스에서 캐릭터를 PM 자리에 놓으면 팀이 만들어지고, 다른 캐릭터를 팀 블록에 넣으면 팀원이 됩니다. PM에게 목표를 주면 브리프와 분담을 제안합니다.': 'In the office, drop a character on the PM seat to create a team and drop others into the block to add members. Give the PM a goal and it proposes a brief and a task split.',
+  '헤더에서 테마와 언어를 바꿀 수 있습니다. 새로 시작하는 Claude Code 세션부터 훅 이벤트가 기록되니, 세션이 안 보이면 프롬프트를 한 번 보내 보세요.': 'Theme and language live in the header. Hook events are recorded from the next Claude Code activity on, so if a session is missing, send it a prompt once.',
   '대시보드': 'Dashboard', '오피스': 'Office', '클립보드': 'Clipboard', '포트': 'Ports', '메모': 'Memo', '타이머': 'Timer',
   '전체': 'All', '최근': 'Recent', '실행 중': 'Running', '완료': 'Done', '검색...': 'Search...', '세션 검색...': 'Search sessions...',
   '대기 중': 'Waiting', '작업 중': 'Working', '입력 대기': 'Waiting for input', '쉬는 중': 'Idle', '오류': 'Error', '선택 필요': 'Needs input',
@@ -6970,4 +7034,83 @@ function formatElapsed(ms) {
 // ── Start polling ──
 fetchData();
 setInterval(fetchData, POLL);
+
+// ═══════════════════════════════════════════════════════════════════
+// FIRST-RUN ONBOARDING — welcome, environment check (Claude Code / hooks / Orca / terminal permission), tips
+// ═══════════════════════════════════════════════════════════════════
+let onboardStep = 0, onboardEnv = null;
+function onboardShouldShow() {
+  const h = location.hash.replace('#', '').split(',').find(x => /^onboarding(-\d)?$/.test(x));   // ROCA_START_PAGE=onboarding[-2|-3] for dev
+  if (h) { onboardStep = Math.min(2, Math.max(0, (parseInt(h.split('-')[1] || '1', 10) - 1))); return true; }
+  try { return !localStorage.getItem('roca-onboarded'); } catch { return false; }
+}
+function onboardCheckRow(state, title, desc, btn) {
+  const ic = { ok: '✓', warn: '!', off: '–', wait: '…' }[state] || '–';
+  return `<div class="onboard-check"><div class="st ${state}">${ic}</div><div class="tx"><b>${esc(title)}</b><span>${esc(desc)}</span></div>${btn ? `<button data-act="${btn.act}">${esc(btn.label)}</button>` : ''}</div>`;
+}
+function onboardRender() {
+  const body = $('onboard-body');
+  $('onboard-dots').innerHTML = [0, 1, 2].map(i => `<i class="${i === onboardStep ? 'on' : ''}"></i>`).join('');
+  $('onboard-back').style.visibility = onboardStep === 0 ? 'hidden' : '';
+  $('onboard-next').textContent = onboardStep === 2 ? t('시작하기') : t('다음');
+  if (onboardStep === 0) {
+    body.innerHTML = `
+      <div class="onboard-lang"><button data-lang="en" class="${LANG === 'en' ? 'on' : ''}">English</button><button data-lang="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</button></div>
+      <h1>${esc(t('Orca Widget에 오신 것을 환영합니다'))}</h1>
+      <p>${esc(t('AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.'))}</p>
+      <div class="onboard-feat"><div class="ic">📋</div><div><b>${esc(t('대시보드'))}</b><span>${esc(t('Orca 세션과 터미널(iTerm2·Terminal·tmux)에서 띄운 Claude Code 세션을 한 목록에서. 작업 중 / 대기 / 선택 필요 / 완료 상태를 정확히 표시합니다.'))}</span></div></div>
+      <div class="onboard-feat"><div class="ic">🏢</div><div><b>${esc(t('픽셀 오피스'))}</b><span>${esc(t('세션마다 캐릭터가 하나씩. 일하는 에이전트는 책상에서, 쉬는 에이전트는 소파에서. PM 자리에 끌어다 놓으면 팀을 만들어 지시를 내립니다.'))}</span></div></div>
+      <div class="onboard-feat"><div class="ic">🔔</div><div><b>${esc(t('필요할 때만 알림'))}</b><span>${esc(t('권한 확인이나 질문처럼 정말 당신의 선택이 필요할 때만 알림·배지·알림음이 울립니다.'))}</span></div></div>`;
+  } else if (onboardStep === 1) {
+    const e = onboardEnv;
+    const row = (k, title, ok, okDesc, badDesc, btn) => onboardCheckRow(e ? (ok ? 'ok' : k) : 'wait', title, e ? (ok ? okDesc : badDesc) : t('확인 중…'), e && !ok ? btn : null);
+    body.innerHTML = `
+      <div class="onboard-step">${esc(t('환경 점검'))}</div>
+      <h1>${esc(t('이 Mac에서 무엇을 볼 수 있는지 확인합니다'))}</h1>
+      <p>${esc(t('위젯은 이 컴퓨터의 Claude Code와 Orca만 읽습니다. 아래 항목이 준비되어야 세션이 나타납니다.'))}</p>
+      ${row('warn', 'Claude Code', e?.claude?.found, e?.claude?.path ? `${t('설치됨')} · ${e.claude.path}` : t('설치됨'), t('claude 명령을 찾지 못했습니다. Claude Code를 설치하고 로그인해 주세요.'), null)}
+      ${row('warn', t('Claude Code 훅 (정확 감지)'), e?.hooks, t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어옵니다.'), t('꺼져 있습니다. 켜면 ~/.claude/settings.json에 위젯 훅을 추가합니다(기존 훅 보존, 백업 저장). 세션이 보이려면 반드시 필요합니다.'), { act: 'hooks', label: t('켜기') })}
+      ${row('off', 'Orca CLI', e?.orca?.found, `${t('발견')} · ${e?.orca?.version || e?.orca?.path || ''}`, t('선택 사항. Orca를 쓰지 않으면 넘어가세요. Orca 사용자인데 안 잡히면 터미널에서 `orca --version`을 확인하세요.'), null)}
+      ${row('off', t('터미널 제어 권한'), e && e.terminals && e.terminals.length && e.autoOk, e ? `${t('허용됨')} · ${(e.terminals || []).join(', ')}` : '', (e && e.terminals && e.terminals.length) ? t('채팅 패널에서 터미널로 메시지를 보내거나 탭을 전환하려면 macOS 자동화 권한이 필요합니다. 버튼을 누르면 권한 창이 뜹니다.') : t('iTerm2 또는 Terminal이 실행 중일 때 권한을 요청할 수 있습니다. 나중에 첫 사용 시 macOS가 물어봅니다.'), (e && e.terminals && e.terminals.length) ? { act: 'automation', label: t('권한 요청') } : null)}
+      <p style="margin-top:6px"><button class="theme-btn" data-act="recheck" style="width:auto;padding:0 10px;font-size:11px">${esc(t('다시 확인'))}</button></p>`;
+  } else {
+    body.innerHTML = `
+      <div class="onboard-step">${esc(t('사용 팁'))}</div>
+      <h1>${esc(t('준비되었습니다'))}</h1>
+      <div class="onboard-tip"><kbd>${esc(t('클릭'))}</kbd><div>${esc(t('세션 카드나 캐릭터를 누르면 채팅 패널이 열려 화면을 읽고 메시지를 보낼 수 있습니다. 종료된 터미널 세션은 claude --resume 으로 다시 엽니다.'))}</div></div>
+      <div class="onboard-tip"><kbd>${esc(t('더블클릭'))}</kbd><div>${esc(t('해당 세션의 터미널로 바로 전환합니다.'))}</div></div>
+      <div class="onboard-tip"><kbd>${esc(t('우클릭'))}</kbd><div>${esc(t('이름 변경, 세션 ID 복사, 인터럽트, 팀 작업 메뉴.'))}</div></div>
+      <div class="onboard-tip"><kbd>${esc(t('드래그'))}</kbd><div>${esc(t('오피스에서 캐릭터를 PM 자리에 놓으면 팀이 만들어지고, 다른 캐릭터를 팀 블록에 넣으면 팀원이 됩니다. PM에게 목표를 주면 브리프와 분담을 제안합니다.'))}</div></div>
+      <div class="onboard-tip"><kbd>🌙 · 한/EN</kbd><div>${esc(t('헤더에서 테마와 언어를 바꿀 수 있습니다. 새로 시작하는 Claude Code 세션부터 훅 이벤트가 기록되니, 세션이 안 보이면 프롬프트를 한 번 보내 보세요.'))}</div></div>`;
+  }
+}
+async function onboardLoadEnv() {
+  onboardEnv = null; onboardRender();
+  try { onboardEnv = await window.orca.envCheck(); } catch { onboardEnv = {}; }
+  try { onboardEnv.autoOk = JSON.parse(localStorage.getItem('roca-automation-ok') || 'false'); } catch { onboardEnv.autoOk = false; }
+  onboardRender();
+}
+function onboardOpen() { $('onboard').hidden = false; onboardRender(); if (onboardStep === 1) onboardLoadEnv(); }
+function onboardClose() { $('onboard').hidden = true; try { localStorage.setItem('roca-onboarded', String(Date.now())); } catch {} fetchData(); }
+$('onboard-next').addEventListener('click', () => { if (onboardStep === 2) return onboardClose(); onboardStep++; onboardRender(); if (onboardStep === 1) onboardLoadEnv(); });
+$('onboard-back').addEventListener('click', () => { if (onboardStep === 0) return; onboardStep--; onboardRender(); if (onboardStep === 1) onboardLoadEnv(); });
+$('onboard-body').addEventListener('click', async (e) => {
+  const lb = e.target.closest('[data-lang]'); if (lb) { setLang(lb.dataset.lang); onboardRender(); return; }
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  if (b.dataset.act === 'hooks') {
+    b.disabled = true; b.textContent = t('설치 중…');
+    const r = await window.orca.hooksInstall();
+    if (r && r.ok === false) { showInAppToast(`${t('훅 설치 실패')}: ${r.error}`, 'error'); }
+    else { hookSessions.clear(); for (const rec of await window.orca.hooksRecent()) applyHookEvent(rec); await refreshHooksStatus(); }
+    onboardLoadEnv();
+  } else if (b.dataset.act === 'automation') {
+    b.disabled = true; b.textContent = t('요청 중…');
+    const r = await window.orca.automationRequest();
+    const ok = Object.values(r || {}).some(Boolean);
+    try { localStorage.setItem('roca-automation-ok', JSON.stringify(ok)); } catch {}
+    if (!ok) showInAppToast(t('권한이 허용되지 않았습니다. 시스템 설정 → 개인정보 보호 및 보안 → 자동화에서 Orca Dashboard를 허용해 주세요.'), 'error');
+    onboardLoadEnv();
+  } else if (b.dataset.act === 'recheck') onboardLoadEnv();
+});
+if (onboardShouldShow()) document.addEventListener('DOMContentLoaded', onboardOpen);
 </script>

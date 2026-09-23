@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld("orca", {
   tmuxPanes: () => ipcRenderer.invoke("roca:tmux-panes"),
   ttyTargets: () => ipcRenderer.invoke("roca:tty-targets"),
   resumeSession: (cwd, sessionId) => ipcRenderer.invoke("roca:resume-session", cwd, sessionId),
+  envCheck: () => ipcRenderer.invoke("roca:env-check"),
+  automationRequest: () => ipcRenderer.invoke("roca:automation-request"),
   tmuxAvailable: () => ipcRenderer.invoke("roca:tmux-available"),
   sessionMeta: (transcriptPath, cwd) => ipcRenderer.invoke("roca:session-meta", transcriptPath, cwd),
   teamsWrite: (data) => ipcRenderer.invoke("orca:teams-write", data),

@@ -468,6 +468,30 @@ async function ttyTargets() {
 }
 ipcMain.handle("roca:tty-targets", () => ttyTargets());
 
+// first-run onboarding: what this Mac has — Claude Code, the widget hooks, the Orca CLI, running terminal apps
+const CLAUDE_PATHS = ["/usr/local/bin/claude", "/opt/homebrew/bin/claude", join(homedir(), ".local", "bin", "claude"), join(homedir(), ".claude", "local", "claude"), join(homedir(), ".npm-global", "bin", "claude")];
+ipcMain.handle("roca:env-check", async () => {
+  await orcaReady;
+  let claudePath = CLAUDE_PATHS.find(p => existsSync(p)) || null;
+  if (!claudePath) { try { claudePath = (await exec("/bin/zsh", ["-lc", "command -v claude"], { timeout: 4000 })).stdout.trim() || null; } catch {} }
+  const claudeDir = existsSync(join(homedir(), ".claude"));
+  let orcaVersion = null;
+  if (orcaBinFound) { try { orcaVersion = (await exec(orcaBin, ["--version"], { timeout: 5000, env: { ...process.env, PATH: EXEC_PATH } })).stdout.trim().split("\n")[0]; } catch {} }
+  const terms = [];
+  for (const n of ["iTerm2", "Terminal"]) if (await appRunning(n)) terms.push(n);
+  return { claude: { found: !!(claudePath || claudeDir), path: claudePath }, hooks: hooksInstalled(), orca: { found: !!orcaBinFound, path: orcaBinFound ? orcaBin : null, version: orcaVersion }, terminals: terms };
+});
+// trigger macOS Automation prompts (System Events + the running terminal apps) so the user grants them up front
+ipcMain.handle("roca:automation-request", async () => {
+  const out = {};
+  try { await osa('tell application "System Events" to count processes'); out.systemEvents = true; } catch (e) { out.systemEvents = false; }
+  for (const n of ["iTerm2", "Terminal"]) {
+    if (!(await appRunning(n))) continue;
+    try { await osa(`tell application "${n}" to count windows`); out[n] = true; } catch { out[n] = false; }
+  }
+  return out;
+});
+
 async function appRunning(name) { try { return (await osa(`tell application "System Events" to (name of processes) contains "${name}"`)) === "true"; } catch { return false; } }
 // reopen an ended Claude Code session in a new terminal tab: cd <cwd> && claude --resume <id>
 const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
