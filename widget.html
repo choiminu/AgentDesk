@@ -2242,6 +2242,10 @@
   @keyframes pxPc { 0% { background-image: url('assets/pixel/pc_on_1.png'); } 33% { background-image: url('assets/pixel/pc_on_2.png'); } 66% { background-image: url('assets/pixel/pc_on_3.png'); } }
   .px-ic.pc-off { background-image: url('assets/pixel/pc_off.png'); }
   .px-ic.coffee { background-image: url('assets/pixel/coffee.png'); }
+  .px-ic.clock { background-image: url('assets/pixel/clock.png'); background-position: 0 -8px; }   /* clock face sits at rows 11-20 of the sheet */
+  .s-icon .px-ic.clock { background-position: 0 -16px; }
+  /* cards show the sprites at 2x for legibility; header pills stay 1x */
+  .s-icon .px-ic { width: 32px; height: 32px; background-size: 32px auto; }
   .px-badge { position: absolute; top: -5px; right: -5px; width: 14px; height: 14px; border-radius: 999px; font-size: 9px; font-weight: 800; line-height: 1; display: flex; align-items: center; justify-content: center; border: 2px solid var(--surface); font-family: var(--sans); }
   .px-badge.q { background: var(--yellow); color: #1a1408; animation: icBounce 2s ease-in-out infinite; }
   .px-badge.x { background: var(--red); color: #fff; }
@@ -2266,7 +2270,7 @@
   .session { align-items: center; padding: 10px 11px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border-subtle); margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
   .session:hover { background: var(--surface-hover); border-color: var(--border); }
   @keyframes statusPulse { 0% { background: var(--accent-dim); } 100% { background: var(--surface); } }
-  .s-icon { width: 30px; height: 30px; border-radius: 9px; background: var(--surface-hover); margin-top: 0; position: relative; }
+  .s-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--surface-hover); margin-top: 0; position: relative; }
   .s-icon.running { background: var(--accent-dim); }
   .s-icon.waiting { background: var(--yellow-dim); }
   .s-icon.done { background: var(--green-dim); opacity: 1; }
@@ -2307,7 +2311,7 @@
   <div class="header">
     <div class="stats" id="stats">
       <span class="stat run" title="작업 중"><span class="px-ic pc-on"></span><span id="nRun">0</span></span>
-      <span class="stat wait" title="대기 중"><span class="px-ic coffee"></span><span id="nWait">0</span></span>
+      <span class="stat wait" title="대기 중"><span class="px-ic clock"></span><span id="nWait">0</span></span>
       <span class="stat done" title="완료"><span class="px-ic pc-off"></span><span id="nDone">0</span></span>
     </div>
     <div class="header-controls">
@@ -3056,7 +3060,7 @@ async function refreshScreenStatuses() {
 function statusIcon(s) {
   switch (s) {
     case 'running': return '<span class="px-ic pc-on"></span>';
-    case 'waiting': return '<span class="px-ic coffee"></span>';
+    case 'waiting': return '<span class="px-ic clock"></span>';
     case 'done':    return '<span class="px-ic pc-off"></span>';
     case 'error':   return '<span class="px-ic pc-off"></span><span class="px-badge x">!</span>';
     default:        return '<span class="px-ic pc-off"></span>';
@@ -3535,7 +3539,7 @@ function renderDashboard() {
       const prev = prevStatuses.get(s.id);
       const changed = prev && prev !== s.status;
       html += `<div class="session${changed ? ' pulse' : ''}" data-id="${esc(s.id)}" data-handle="${esc(h || '')}">
-        <span class="s-icon ${s.status}" title="${s.needsInput ? '선택 필요' : ''}${s.viaHooks ? ' (hooks)' : ''}">${s.needsInput ? '<span class="px-ic coffee"></span><span class="px-badge q">?</span>' : statusIcon(s.status)}</span>
+        <span class="s-icon ${s.status}" title="${s.needsInput ? '선택 필요' : ''}${s.viaHooks ? ' (hooks)' : ''}">${s.needsInput ? '<span class="px-ic clock"></span><span class="px-badge q">?</span>' : statusIcon(s.status)}</span>
         <div class="s-info">
           <div class="s-name">${isPinned ? '📌 ' : ''}${esc(s.name)}</div>
           <div class="s-meta">
