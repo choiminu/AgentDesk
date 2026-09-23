@@ -15,7 +15,7 @@ const usage = `agentdesk-recall <command>
   list [--repo NAME|--all] [--limit N]             newest notes
   summarize <transcript.jsonl> [--cwd DIR] [--agent claude|gemini|codex]   make a note from one transcript now
   backfill [--since 7d] [--project DIR]            summarize past Claude Code transcripts of a project (default: all projects)
-  install                                          register SessionEnd + PreCompact + prompt hooks (Claude Code; Gemini/Codex if present) and the /recall skill
+  install                                          register SessionStart + SessionEnd + PreCompact + prompt hooks (Claude Code; Gemini/Codex if present) and the /recall skill
   ensure-index                                     create MongoDB indexes
 Env: AGENTDESK_MONGO_URL (default mongodb://127.0.0.1:27017), AGENTDESK_MONGO_DB (agentdesk), AGENTDESK_RECALL_MODEL (haiku)`;
 
@@ -86,20 +86,20 @@ function parseDur(s) { const m = String(s).match(/^(\d+)([hdw])$/); if (!m) retu
 async function install() {
   const node = process.execPath;
   const entry = (script, agent) => ({ hooks: [{ type: "command", command: `${agent && agent !== "claude" ? `AGENTDESK_AGENT=${agent} ` : ""}"${node}" "${join(HERE, script)}"`, timeout: agent === "gemini" ? 10000 : 10 }] });
-  const isOurs = (e) => Array.isArray(e?.hooks) && e.hooks.some(h => /agentdesk-recall|\/recall\/on-(session-end|prompt)\.mjs/.test(h.command || ""));
+  const isOurs = (e) => Array.isArray(e?.hooks) && e.hooks.some(h => /agentdesk-recall|\/recall\/on-(session-start|session-end|prompt)\.mjs/.test(h.command || ""));
   // a note is (re)written when a session ends AND right before its context is compacted — compaction is a natural
   // chapter boundary and the only chance to capture long-lived sessions that are never closed
   const targets = [
-    { agent: "claude", file: join(homedir(), ".claude", "settings.json"), end: "SessionEnd", compact: "PreCompact", prompt: "UserPromptSubmit" },
-    { agent: "gemini", file: join(homedir(), ".gemini", "settings.json"), end: "SessionEnd", compact: "PreCompress", prompt: "BeforeAgent" },
-    { agent: "codex", file: join(homedir(), ".codex", "hooks.json"), end: "SessionEnd", compact: "PreCompact", prompt: "UserPromptSubmit" },
+    { agent: "claude", file: join(homedir(), ".claude", "settings.json"), start: "SessionStart", end: "SessionEnd", compact: "PreCompact", prompt: "UserPromptSubmit" },
+    { agent: "gemini", file: join(homedir(), ".gemini", "settings.json"), start: "SessionStart", end: "SessionEnd", compact: "PreCompress", prompt: "BeforeAgent" },
+    { agent: "codex", file: join(homedir(), ".codex", "hooks.json"), start: "SessionStart", end: "SessionEnd", compact: "PreCompact", prompt: "UserPromptSubmit" },
   ];
   for (const t of targets) {
     if (!existsSync(dirname(t.file))) continue;
     let s = {}; try { s = JSON.parse(readFileSync(t.file, "utf-8")); } catch {}
     if (existsSync(t.file)) { mkdirSync(join(homedir(), ".agentdesk", "backups"), { recursive: true }); copyFileSync(t.file, join(homedir(), ".agentdesk", "backups", `${t.agent}-settings-${Date.now()}.json`)); }
     s.hooks = s.hooks || {};
-    for (const [ev, script] of [[t.end, "on-session-end.mjs"], [t.compact, "on-session-end.mjs"], [t.prompt, "on-prompt.mjs"]]) {
+    for (const [ev, script] of [[t.start, "on-session-start.mjs"], [t.end, "on-session-end.mjs"], [t.compact, "on-session-end.mjs"], [t.prompt, "on-prompt.mjs"]]) {
       const arr = (Array.isArray(s.hooks[ev]) ? s.hooks[ev] : []).filter(e => !isOurs(e));
       arr.push(entry(script, t.agent)); s.hooks[ev] = arr;
     }
