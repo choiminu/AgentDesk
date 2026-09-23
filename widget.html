@@ -341,6 +341,7 @@
   .office-ask .ask-opts button:hover { border-color: #F2C037; }
   .office-ask .ask-opts button.sel { border-color: #F2C037; background: rgba(242,192,55,0.12); }
   .office-ask .ask-opts button span { color: #F2C037; margin-right: 6px; }
+  .office-ask .ask-opts button small { display: block; color: var(--text3); margin-top: 2px; margin-left: 14px; white-space: normal; }
   .office-ask .ask-row { display: flex; gap: 4px; }
   .office-ask .ask-row input { flex: 1; min-width: 0; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font: inherit; }
   .office-ask .ask-row button { background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; cursor: pointer; font: inherit; }
@@ -2402,7 +2403,7 @@
       <div class="office-minimap-wrap"><canvas id="office-minimap" hidden></canvas></div>
       <canvas id="office-canvas"></canvas>
       <div class="office-tip" id="office-tip" hidden></div>
-      <div class="office-ask" id="office-ask" hidden></div>
+      <div class="office-ask" id="office-ask" data-verbatim hidden></div>
     </div>
   </div>
 
@@ -2748,6 +2749,7 @@ function i18nApply(root) {
     if (node.nodeType === 3) {
       const pe = node.parentElement;
       if (pe && (pe.tagName === 'SCRIPT' || pe.tagName === 'STYLE' || pe.tagName === 'TEXTAREA')) return;
+      if (pe && pe.closest('[data-verbatim]')) return;   // terminal text shown as-is (inline answer popover)
       if (node.__ko == null) { if (!/[가-힣]/.test(node.nodeValue)) return; node.__ko = node.nodeValue; }
       const v = LANG === 'ko' ? node.__ko : t(node.__ko);
       if (node.nodeValue !== v) node.nodeValue = v;
@@ -4988,7 +4990,7 @@ function officeFrame(now) {
       ch.lastStatus = sess.status; ch.statusSince = Date.now();
     }
     if (!!sess.needsInput !== !!ch.lastNeedsInput) {
-      if (sess.needsInput && ch.lastNeedsInput !== undefined) { ch.alertT = 4; officeBeep('ask'); }
+      if (sess.needsInput && ch.lastNeedsInput !== undefined) { ch.alertT = 4; officeBeep('ask'); officeAskAuto(ch); }
       ch.lastNeedsInput = !!sess.needsInput;
       if (sess.needsInput) { const tm = teamOf(sess.id); if (tm && tm.pm !== sess.id) teamLog(tm, 'needs-input', `${sess.name}: 사용자 입력 대기`, { from: sess.name }); }
     }
@@ -5587,25 +5589,34 @@ function officeDrawAlert(ctx, cx, cy, t) {
 function officeParseChoice(lines) {
   if (!lines || !lines.length) return null;
   const clean = lines.map(l => String(l).replace(/^\s*[│┃]\s?/, '').replace(/\s?[│┃]\s*$/, '').replace(/\s+$/, ''));
+  const isOpt = l => /^\s*❯?\s*\d+\.\s+\S/.test(l);
+  const isNoise = l => !l.trim() || /^[─╭╰╮╯┌└┐┘═\s]+$/.test(l);
   let first = -1, last = -1;
-  for (let i = clean.length - 1; i >= Math.max(0, clean.length - 40); i--) {
-    if (/^\s*❯?\s*\d+\.\s+\S/.test(clean[i])) { if (last < 0) last = i; first = i; }
-    else if (last >= 0) { if (/^\s{3,}\S/.test(clean[i])) continue; break; }
+  for (let i = clean.length - 1; i >= Math.max(0, clean.length - 60); i--) {
+    if (isOpt(clean[i])) { if (last < 0) last = i; first = i; continue; }
+    if (last < 0) continue;
+    // descriptions (indented or not), blank lines and separators belong to the block as long as another option follows within 3 lines above
+    let j = i - 1, hops = 0, more = false;
+    while (j >= 0 && hops < 3) { if (isOpt(clean[j])) { more = true; break; } if (!isNoise(clean[j])) hops++; j--; }
+    if (more) continue;
+    break;
   }
   if (last < 0) return null;
   const options = [];
   for (let i = first; i <= last; i++) {
     const m = clean[i].match(/^\s*(❯)?\s*(\d+)\.\s+(.*)$/);
-    if (m) options.push({ n: +m[2], label: m[3].trim(), selected: !!m[1] });
-    else if (options.length) options[options.length - 1].label += ' ' + clean[i].trim();
+    if (m) options.push({ n: +m[2], label: m[3].trim(), desc: '', selected: !!m[1] });
+    else if (options.length && !isNoise(clean[i])) options[options.length - 1].desc += (options[options.length - 1].desc ? ' ' : '') + clean[i].trim();
   }
+  // a real prompt always marks the highlighted option with ❯; plain numbered lists in the transcript never do
+  if (!options.some(o => o.selected)) return null;
   const q = [];
-  for (let i = first - 1; i >= 0 && q.length < 8; i--) {
+  for (let i = first - 1; i >= 0 && q.length < 12; i--) {
     const tl = clean[i].trim();
     if (!tl || /^[─╭╰╮╯┌└┐┘═]+$/.test(tl)) { if (q.length) break; continue; }
     if (/^(esc to cancel|enter to confirm|↑\/↓|tab to)/i.test(tl)) continue;
     if (/^❯/.test(tl)) break;
-    q.unshift(tl);
+    q.unshift(tl.replace(/^⏺\s*/, ''));
   }
   return { question: q.join('\n'), options };
 }
@@ -5642,7 +5653,7 @@ async function officeAskOpen(ch) {
   if (officeAsk) officeAsk.timer = setInterval(officeAskRefresh, 3000);
 }
 async function officeAskReadLines() {
-  if (OFFICE_DEMO) return ['⏺ 캐시 전략을 결정해야 합니다. 어느 쪽으로 진행할까요?', '', 'Do you want to proceed?', '❯ 1. Yes', '  2. Yes, and don\'t ask again for this session', '  3. No, and tell Claude what to do differently', '', 'esc to cancel'];
+  if (OFFICE_DEMO) return ['⏺ 인라인 답변 테스트입니다. 다음 작업으로 무엇을 진행할까요?', '', '❯ 1. 대기 세션 재알림', '     선택 필요 상태가 오래되면 단계별로 다시 알림', '  2. 일일 리포트', '     세션별 작업 시간·완료 수를 하루 단위로 정리', '  3. 레이아웃 2단계', '     서버실·집중 부스·복도 표지', '', '  4. Type something.', '  5. Chat about this', '', 'esc to cancel'];
   const res = await window.orca.terminalRead(officeAsk.handle, true);
   return extractTail(res);
 }
@@ -5663,7 +5674,7 @@ async function officeAskRefresh() {
     el.innerHTML = head + `<div class="ask-q">${esc(t('선택지를 찾지 못했습니다. 아래에 답을 입력하거나 채팅을 여세요.'))}</div>` + input;
   } else {
     el.innerHTML = head + (parsed.question ? `<div class="ask-q">${esc(parsed.question)}</div>` : '')
-      + `<div class="ask-opts">${parsed.options.map(o => `<button data-act="opt" data-n="${o.n}" class="${o.selected ? 'sel' : ''}"><span>${o.n}</span>${esc(o.label)}</button>`).join('')}</div>` + input;
+      + `<div class="ask-opts">${parsed.options.map(o => `<button data-act="opt" data-n="${o.n}" class="${o.selected ? 'sel' : ''}"><span>${o.n}</span>${esc(o.label)}${o.desc ? `<small>${esc(o.desc)}</small>` : ''}</button>`).join('')}</div>` + input;
   }
   officeAskPlace();
 }
@@ -5691,6 +5702,16 @@ async function officeAnswer(n, text) {
   } catch (e) { say(t('전송 실패: ') + e.message, true); el.querySelectorAll('button').forEach(b => { b.disabled = false; }); }
 }
 document.addEventListener('mousedown', e => { if (officeAsk && !$('office-ask').contains(e.target) && !$('office-canvas').contains(e.target)) officeAskClose(); });
+// a new question opens the popover by itself (no click needed), scrolling the character into view; an open popover is never replaced
+function officeAskAuto(ch) {
+  if (officeAsk || currentPage !== 'office' || ch.sess?.isSub) return;
+  if (!officeHandleFor(ch) && !OFFICE_DEMO) return;
+  const wrap = $('office-wrap'), scale = $('office-canvas').__scale || 2;
+  const cy = (ch.seat ? ch.seat.chairY : ch.y) * scale;
+  if (cy < wrap.scrollTop + 60 || cy > wrap.scrollTop + wrap.clientHeight - 40) wrap.scrollTo({ top: Math.max(0, cy - wrap.clientHeight / 2), behavior: 'smooth' });
+  // give the terminal a moment to finish drawing the dialog before the first read
+  setTimeout(() => { if (!officeAsk && ch.sess && ch.sess.needsInput) officeAskOpen(ch); }, 600);
+}
 // ── reception & company sign ──
 let officeCompany = 'ORCA';
 try { officeCompany = localStorage.getItem('roca-office-company') || 'ORCA'; } catch {}
