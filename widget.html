@@ -2142,6 +2142,8 @@
   .switch.on { background: var(--accent); } .switch.on::after { left: 16px; }
   .set-btn { font-size: 10.5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text2); cursor: pointer; flex-shrink: 0; }
   .set-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .upd-dot { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 999px; background: var(--accent); border: 2px solid var(--bg); }
+  #settings-btn { position: relative; }
   .set-meta { font-size: 10px; color: var(--text3); line-height: 1.6; margin-top: 10px; word-break: break-all; }
   /* ── first-run onboarding ── */
   .onboard { position: fixed; inset: 0; z-index: 200; background: var(--bg); display: flex; flex-direction: column; -webkit-app-region: no-drag; }
@@ -2586,6 +2588,7 @@
   </div>
 </div>
 
+<script src="core/status.js"></script>
 <script>
 // ── Shared utilities ──
 const POLL = 5000;
@@ -2619,6 +2622,8 @@ const I18N = {
   '터미널 제어 (tmux)': 'Terminal control (tmux)', '터미널 제어': 'Terminal control',
   'Linux에서는 tmux 안에서 실행한 세션만 채팅·지시가 됩니다. tmux가 없으면 상태 표시(훅)와 종료 세션 다시 열기만 동작합니다.': 'On Linux only sessions running inside tmux can be chatted with or directed. Without tmux you still get exact states (hooks) and reopening ended sessions.',
   'Windows에서는 세션 상태 표시(훅)와 종료 세션 다시 열기(Windows Terminal)만 지원합니다. 채팅·지시는 아직 지원하지 않습니다.': 'On Windows the widget shows session states (hooks) and reopens ended sessions in Windows Terminal. Chat and directing are not supported yet.',
+  '업데이트': 'Update', '새 버전': 'New version', '사용 가능': 'available', '현재': 'current', '최신 버전입니다': 'You are up to date', '하루에 한 번 GitHub 릴리스를 확인합니다.': 'Checks GitHub Releases once a day.', '받기': 'Get it', '지금 확인': 'Check now',
+  '업데이트 자동 확인': 'Check for updates automatically', '꺼 두면 위젯이 GitHub에 접속하지 않습니다.': 'When off, the widget never contacts GitHub.',
   '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'AgentDesk에 오신 것을 환영합니다': 'Welcome to AgentDesk',
   'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
   '픽셀 오피스': 'Pixel office', '필요할 때만 알림': 'Alerts only when needed',
@@ -2950,92 +2955,8 @@ function status(wt) {
   return 'done';
 }
 
-// Claude Code TUI: [transcript…] [spinner | ✻ done] ─── ❯ ─── [status bar]. Anchor on the last prompt line.
-const SPINNER_RE = /^[·•✢✳✶✻✽✦✧*⠁-⣿]\s*\S[^(]*…\s*(\(|$)/;
-function statusFromScreen(lines) {
-  if (!lines || !lines.length) return null;
-  let p = -1;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (/^❯/.test(lines[i].trim())) { p = i; break; }
-  }
-  if (p < 0) return null;
-  const promptText = lines[p].trim().slice(1).trim();
-  if (/^\d+\.\s/.test(promptText)) return 'waiting';          // numbered choice (permission / question)
-  for (let i = p - 1; i >= 0; i--) {
-    const raw = lines[i];
-    const t = raw.trim();
-    if (!t || /^─+/.test(t)) continue;
-    if (/^\s/.test(raw) || /^[⎿※]/.test(t)) continue;         // continuation / tip / recap lines
-    if (SPINNER_RE.test(t) || /esc to interrupt/i.test(t)) return 'running';
-    if (/^✻/.test(t) && /\bdone\b/i.test(t)) return doneLineStatus(t);
-    if (/^(Do you want|Allow|Would you like)/i.test(t)) return 'waiting';
-    // a ⏺ block with no spinner below it means the turn already finished (Claude Code does not
-    // always print a "✻ … done" line); freshness is decided by the caller from screen changes
-    if (/^⏺/.test(t)) return 'waiting-untimed';
-    return null;
-  }
-  return null;
-}
 
-// "✻ Worked for 22s · done 2:34 PM" → just finished → waiting for input.
-// "✻ … done Thursday 10:28 AM" (a weekday means another day) or finished > 10 min ago → idle/done.
-const DONE_FRESH_MS = 10 * 60 * 1000;
-function doneLineStatus(t) {
-  const after = t.replace(/^.*?\bdone\b/i, '').trim();
-  const tm = after.match(/(오전|오후|AM|PM)?\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*(오전|오후|AM|PM)?/i);
-  if (!tm) return 'waiting';
-  // anything besides the time itself (weekday/date in any language) means it finished on another day
-  const rest = after.replace(tm[0], '').replace(/[·\s]/g, '');
-  if (rest.length) return 'done';
-  let h = parseInt(tm[2], 10); const min = parseInt(tm[3], 10);
-  const ap = (tm[1] || tm[4] || '').toUpperCase();
-  if (ap) { const pm = ap === 'PM' || ap === '오후'; if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
-  const now = new Date();
-  const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, min, 0, 0).getTime();
-  const age = now.getTime() - at;
-  if (age < -60 * 1000) return 'done';
-  return age > DONE_FRESH_MS ? 'done' : 'waiting';
-}
 
-// A choice prompt renders numbered options with a ❯ marker on the selected one ("  ❯ 1. Yes").
-// Plain numbered lists in the transcript never carry the marker.
-function screenHasChoice(lines) {
-  if (!lines) return false;
-  for (let i = lines.length - 1; i >= Math.max(0, lines.length - 40); i--) {
-    if (/^\s*❯\s*\d+\.\s+\S/.test(lines[i])) return true;
-  }
-  return false;
-}
-// Agents panel under the status bar: "  ⏺ main" then one line per subagent:
-//   "  ◯ name  description…      17s · ↓ 30.5k tokens"   (running)
-//   "  ◯ name  description…      idle"                    (finished)
-function parseAgentPanel(lines) {
-  if (!lines) return [];
-  let start = -1;
-  for (let i = lines.length - 1; i >= 0; i--) if (/^\s*⏺\s+main\s*$/.test(lines[i])) { start = i; break; }
-  if (start < 0) return [];
-  const out = [];
-  for (let i = start + 1; i < lines.length; i++) {
-    const m = lines[i].match(/^\s*([◯●◉○◐◑◔◕])\s+(\S+)\s{2,}(.*?)\s*$/);
-    if (!m) { if (out.length) break; else continue; }
-    let rest = m[3];
-    let state = 'running', elapsed = '', tokens = '';
-    if (/\bidle\s*$/.test(rest)) { state = 'idle'; rest = rest.replace(/\s*idle\s*$/, ''); }
-    const tm = rest.match(/\s{2,}((?:\d+m\s*)?\d+s|\d+m)\s*(?:·\s*↓\s*([\d.]+k?)\s*tokens)?\s*$/);
-    if (tm) { elapsed = tm[1]; tokens = tm[2] || ''; rest = rest.slice(0, tm.index); }
-    out.push({ name: m[2], desc: rest.trim().replace(/\.\.\.$|…$/, ''), state, elapsed, tokens });
-  }
-  return out;
-}
-// OMC status line carries "ctx:[#####-----]46%" (context window usage)
-function parseCtxPct(lines) {
-  if (!lines) return null;
-  for (let i = lines.length - 1; i >= Math.max(0, lines.length - 8); i--) {
-    const m = lines[i].match(/ctx:\s*\[[#\-\s]*\]\s*(\d{1,3})%/);
-    if (m) return Math.min(100, parseInt(m[1], 10));
-  }
-  return null;
-}
 const screenCtxCache = new Map();
 const screenAgentsCache = new Map();
 const screenChoiceCache = new Map();
@@ -3195,50 +3116,6 @@ function hooksAgentsSummary() {
 }
 const HOOK_STALE_MS = 2 * 60 * 60 * 1000;
 
-function hookToolInput(tool, input) {
-  if (!input || typeof input !== 'object') return '';
-  return input.file_path || input.path || input.notebook_path || input.command || input.pattern || input.url || input.description || input.prompt || '';
-}
-function applyHookEvent(rec) {
-  const ev = rec.ev || {}; const ts = (rec.ts || 0) * 1000;
-  const sid = ev.session_id; if (!sid) return;
-  let st = hookSessions.get(sid);
-  if (!st) { st = { sid, cwd: ev.cwd, transcript: ev.transcript_path || '', first: ts, status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false }; hookSessions.set(sid, st); }
-  if (ev.cwd) st.cwd = ev.cwd;
-  if (rec.term) st.term = rec.term;   // TERM_PROGRAM of the launching terminal (Orca, iTerm.app, tmux, Apple_Terminal)
-  st.agent = rec.agent || st.agent || 'claude';   // which CLI emitted the event (claude / gemini / codex)
-  if (ev.transcript_path) st.transcript = ev.transcript_path;
-  st.last = Math.max(st.last, ts);
-  const setStatus = (v) => { if (st.status !== v) { st.status = v; st.since = ts; } };
-  const sub = ev.agent_id ? st.subagents.get(ev.agent_id) : null;
-  // Gemini CLI uses its own event names; Codex CLI shares Claude Code's. Normalize to the Claude Code set.
-  const GEMINI_EVENTS = { BeforeAgent: 'UserPromptSubmit', AfterAgent: 'Stop', BeforeTool: 'PreToolUse', AfterTool: 'PostToolUse', PreCompress: 'PostCompact' };
-  const evName = GEMINI_EVENTS[ev.hook_event_name] || ev.hook_event_name;
-  switch (evName) {
-    case 'SessionStart': st.ended = false; break;
-    case 'UserPromptSubmit': setStatus('running'); st.tool = ''; st.toolInput = ''; st.needsInput = false; st.ended = false; break;
-    case 'PreToolUse':
-      if (sub) { sub.tool = ev.tool_name || ''; sub.toolInput = hookToolInput(ev.tool_name, ev.tool_input); sub.last = ts; }
-      else { setStatus('running'); st.tool = ev.tool_name || ''; st.toolInput = hookToolInput(ev.tool_name, ev.tool_input); st.needsInput = ev.tool_name === 'AskUserQuestion'; }
-      break;
-    case 'PostToolUse':
-      if (sub) { sub.tool = ''; sub.last = ts; }
-      else { setStatus('running'); st.needsInput = false; }
-      break;
-    case 'PermissionRequest': setStatus('waiting'); st.needsInput = true; break;
-    case 'Notification': {
-      const nt = ev.notification_type || '';
-      if (/permission_prompt|agent_needs_input|elicitation_dialog|elicitation_url_dialog|ToolPermission|approval/i.test(nt)) { setStatus('waiting'); st.needsInput = true; }   // Claude / Gemini / Codex names
-      else if (nt === 'idle_prompt') setStatus('waiting');
-      break;
-    }
-    case 'Stop': case 'Interrupt': setStatus('waiting'); st.tool = ''; st.toolInput = ''; st.needsInput = false; break;
-    case 'SubagentStart': if (ev.agent_id) st.subagents.set(ev.agent_id, { id: ev.agent_id, type: ev.agent_type || 'agent', since: ts, last: ts, tool: '', toolInput: '' }); break;
-    case 'SubagentStop': if (ev.agent_id) st.subagents.delete(ev.agent_id); break;
-    case 'SessionEnd': st.ended = true; st.status = 'done'; st.since = ts; st.subagents.clear(); break;
-    case 'PostCompact': break;
-  }
-}
 // worktreeId looks like "<uuid>::/abs/path"; pick the freshest hook session whose cwd is inside that path
 function hookStateFor(worktreeId) {
   if (!hooksEnabled) return null;
@@ -3257,11 +3134,6 @@ function hookStateFor(worktreeId) {
   }
   if (!best || Date.now() - best.last > HOOK_STALE_MS) return null;
   return best;
-}
-function hookStatusFor(st) {
-  if (!st) return null;
-  if (st.status === 'waiting' && Date.now() - st.since > DONE_FRESH_MS) return 'done';
-  return st.status;
 }
 function hookSubagentsFor(st) {
   if (!st) return null;
@@ -3343,7 +3215,7 @@ async function hookOnlySession(h) {
   const st = h.st;
   let meta = hookMetaCache.get(st.sid);
   if (!meta || Date.now() - meta.at > 15000) {
-    try { meta = { at: Date.now(), ...((st.agent || 'claude') === 'claude' ? await window.orca.sessionMeta(st.transcript, st.cwd) : await window.orca.sessionMeta('', st.cwd)) }; } catch { meta = { at: Date.now() }; }
+    try { meta = { at: Date.now(), ...(await window.orca.sessionMeta(st.transcript, st.cwd, st.agent || 'claude')) }; } catch { meta = { at: Date.now() }; }
     hookMetaCache.set(st.sid, meta);
   }
   const folder = st.cwd.split('/').filter(Boolean).pop() || st.cwd;
@@ -3392,13 +3264,6 @@ function needsInputFor(id, toolName, status) {
   if (status !== 'waiting' && status !== 'running') return false;
   if (screenChoiceCache.get(id)) return true;
   return toolName === 'AskUserQuestion' || toolName === 'AskUser';
-}
-function resolveStatus(baseStatus, screenSt, hk) {
-  if (baseStatus === 'error') return 'error';
-  const hs = hookStatusFor(hk);
-  if (hs) return hs;                                  // hook events are exact
-  if (screenSt === 'running' || screenSt === 'waiting' || screenSt === 'done') return screenSt;
-  return baseStatus;
 }
 
 const statusSince = new Map();
@@ -7237,10 +7102,12 @@ function settingsRender() {
     <h2>${esc(t('오피스'))}</h2>
     ${row(t('픽셀 배율'), t('자동은 창 크기에 맞춰 정수 배율을 고릅니다.'), seg('zoom', zoom, [['auto', t('자동')], ['2', '2×'], ['3', '3×'], ['4', '4×']]))}
     <h2>${esc(t('기타'))}</h2>
+    ${row(t('업데이트'), updateInfo && updateInfo.newer ? `${t('새 버전')} ${updateInfo.latest} ${t('사용 가능')} (${t('현재')} ${updateInfo.current})` : updateInfo && updateInfo.latest ? `${t('최신 버전입니다')} (${updateInfo.current})` : t('하루에 한 번 GitHub 릴리스를 확인합니다.'), (updateInfo && updateInfo.newer) ? `<button class="set-btn" data-set="update-open">${esc(t('받기'))}</button>` : `<button class="set-btn" data-set="update-check">${esc(t('지금 확인'))}</button>`)}
+    ${row(t('업데이트 자동 확인'), t('꺼 두면 위젯이 GitHub에 접속하지 않습니다.'), sw('update-auto', updateAuto))}
     ${row(t('온보딩 다시 보기'), t('소개, 환경 점검, 사용 팁을 다시 표시합니다.'), `<button class="set-btn" data-set="onboarding">${esc(t('열기'))}</button>`)}
     <div class="set-meta" id="settings-meta"></div>`;
   (async () => {
-    let v = ''; try { v = await window.orca.version(); } catch {}
+    let v = ''; try { v = await window.orca.appVersion(); } catch {}
     let st = null; try { st = await window.orca.hooksStatus(); } catch {}
     const el = $('settings-meta'); if (!el) return;
     el.innerHTML = `AgentDesk ${esc(v || '')}<br>${esc(t('훅 스크립트'))}: ${esc(st?.script || '~/.roca/hook.sh')}<br>${esc(t('이벤트 로그'))}: ${esc(st?.events || '~/.roca/events.jsonl')}`;
@@ -7255,7 +7122,25 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'sound') { $('office-sound').click(); settingsRender(); }
   else if (name === 'zoom' && v) { const sel = $('office-zoom'); sel.value = v; sel.dispatchEvent(new Event('change')); settingsRender(); }
   else if (name === 'onboarding') { onboardStep = 0; onboardOpen(); }
+  else if (name === 'update-open') { if (updateInfo && updateInfo.url) window.orca.openExternal(updateInfo.url); }
+  else if (name === 'update-check') { b.disabled = true; b.textContent = t('확인 중…'); await checkForUpdate(true); settingsRender(); }
+  else if (name === 'update-auto') { updateAuto = !updateAuto; try { localStorage.setItem('roca-update-check', updateAuto ? '1' : '0'); } catch {} settingsRender(); }
 });
+// ── new-version check: badge on the ⚙ button, details in Settings ──
+let updateInfo = null;
+let updateAuto = true; try { updateAuto = localStorage.getItem('roca-update-check') !== '0'; } catch {}
+async function checkForUpdate(force) {
+  if (!force && !updateAuto) return;
+  try { updateInfo = await window.orca.updateCheck(!!force); } catch { return; }
+  const btn = $('settings-btn'); if (!btn) return;
+  let dot = btn.querySelector('.upd-dot');
+  if (updateInfo && updateInfo.newer) {
+    if (!dot) { dot = document.createElement('span'); dot.className = 'upd-dot'; btn.appendChild(dot); }
+    btn.title = `${t('새 버전')} ${updateInfo.latest} ${t('사용 가능')} — ${t('설정')}`;
+  } else if (dot) { dot.remove(); btn.title = t('설정'); }
+}
+setTimeout(() => checkForUpdate(false), 15000);
+setInterval(() => checkForUpdate(false), 6 * 3600 * 1000);
 
 // ═══════════════════════════════════════════════════════════════════
 // FIRST-RUN ONBOARDING — welcome, environment check (Claude Code / hooks / Orca / terminal permission), tips
