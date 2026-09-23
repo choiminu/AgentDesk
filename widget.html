@@ -7243,7 +7243,7 @@ function onboardRender() {
   if (onboardStep === 0) {
     body.innerHTML = `
       <h1>${esc(t('AgentDesk에 오신 것을 환영합니다'))}</h1>
-      <div class="onboard-check" style="margin-bottom:12px"><div class="st ok">🌐</div><div class="tx"><b>${esc(t('언어'))} · Language</b><span>${esc(t('나중에 ⚙ 설정에서 바꿀 수 있습니다.'))}</span></div><div class="onboard-lang" style="margin:0"><button data-lang="en" class="${LANG === 'en' ? 'on' : ''}">English</button><button data-lang="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</button></div></div>
+      <div class="onboard-check" style="margin-bottom:12px"><div class="st ok">🌐</div><div class="tx"><b>${esc(t('언어'))}</b><span>${esc(t('나중에 ⚙ 설정에서 바꿀 수 있습니다.'))}</span></div><div class="onboard-lang" style="margin:0"><button data-lang="en" class="${LANG === 'en' ? 'on' : ''}">English</button><button data-lang="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</button></div></div>
       <p>${esc(t('AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.'))}</p>
       <div class="onboard-feat"><div class="ic">📋</div><div><b>${esc(t('대시보드'))}</b><span>${esc(t('Orca 세션과 터미널(iTerm2·Terminal·tmux)에서 띄운 Claude Code 세션을 한 목록에서. 작업 중 / 대기 / 선택 필요 / 완료 상태를 정확히 표시합니다.'))}</span></div></div>
       <div class="onboard-feat"><div class="ic">🏢</div><div><b>${esc(t('픽셀 오피스'))}</b><span>${esc(t('세션마다 캐릭터가 하나씩. 일하는 에이전트는 책상에서, 쉬는 에이전트는 소파에서. PM 자리에 끌어다 놓으면 팀을 만들어 지시를 내립니다.'))}</span></div></div>
