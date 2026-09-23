@@ -153,6 +153,7 @@ assets/fonts/   Galmuri9 pixel font (OFL)
 
 - **Empty session list** — the widget looks for `orca` in `/usr/local/bin`, `/opt/homebrew/bin` and `/Applications/Orca.app/Contents/Resources/bin`. If the call fails a red banner explains why. Make sure the Orca app is running and `orca --version` works in a terminal; if needed, `sudo ln -s /Applications/Orca.app/Contents/Resources/bin/orca /usr/local/bin/orca`.
 - **Orca older than 1.4** — screen reading and chat need `terminal read --screen` and `--json`; a banner asks you to update.
+- **"Open terminal" or sending a message does nothing** — macOS asks once whether Orca Dashboard may control iTerm2 / Terminal (Automation permission). Allow it under **System Settings → Privacy & Security → Automation**; without it the widget can still read states but cannot switch to or type into terminal tabs.
 - **States look wrong** — turn on Exact detection. Screen reading depends on the Claude Code TUI text; hooks do not.
 
 ## Credits

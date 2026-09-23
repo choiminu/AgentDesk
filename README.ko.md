@@ -149,6 +149,7 @@ assets/fonts/   Galmuri9 픽셀 폰트(OFL)
 
 - **세션 목록이 비어 있음** — 위젯은 `orca`를 `/usr/local/bin`, `/opt/homebrew/bin`, `/Applications/Orca.app/Contents/Resources/bin`에서 찾습니다. 호출이 실패하면 빨간 배너가 원인을 알려 줍니다. Orca 앱이 실행 중인지, 터미널에서 `orca --version`이 되는지 확인하고, 필요하면 `sudo ln -s /Applications/Orca.app/Contents/Resources/bin/orca /usr/local/bin/orca`를 실행하세요.
 - **Orca 1.4 미만** — 화면 판독과 채팅에 `terminal read --screen`과 `--json`이 필요합니다. 배너가 업데이트를 안내합니다.
+- **"터미널 보기"나 메시지 전송이 동작하지 않음** — macOS가 Orca Dashboard의 iTerm2 / Terminal 제어(자동화 권한)를 한 번 묻습니다. **시스템 설정 → 개인정보 보호 및 보안 → 자동화**에서 허용하세요. 허용하지 않아도 상태는 읽지만 터미널 탭 전환과 입력은 되지 않습니다.
 - **상태가 이상해 보임** — 정확 감지를 켜세요. 화면 판독은 Claude Code TUI 문구에 의존하지만 훅은 그렇지 않습니다.
 
 ## 크레딧
