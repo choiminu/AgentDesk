@@ -160,6 +160,7 @@ assets/fonts/   Galmuri9 pixel font (OFL)
 - Office furniture and character sheets from [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) (MIT, Pablo De Lucca)
 - Characters based on the [Metro City Free Topdown Character Pack](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack) by JIK-A-4 (CC0)
 - Pixel font [Galmuri](https://github.com/quiple/galmuri) by quiple (SIL Open Font License 1.1)
+- UI fonts [Manrope](https://github.com/sharanda/manrope) by Mikhail Sharanda and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) by JetBrains (SIL Open Font License 1.1)
 
 ## Contributing
 
