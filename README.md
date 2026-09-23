@@ -30,8 +30,8 @@ A pixel-art office for your AI coding agents. AgentDesk is a lightweight macOS d
 Requirements: macOS and Node.js 18+. [Orca](https://github.com/stablyai/orca) 1.4+ is optional — without it the widget runs in hooks-only mode (Claude Code hooks + [tmux](https://github.com/tmux/tmux) for sending messages).
 
 ```bash
-git clone https://github.com/choiminu/agentdesk.git
-cd agentdesk
+git clone https://github.com/choiminu/AgentDesk.git
+cd AgentDesk
 npm install
 npm start
 ```
