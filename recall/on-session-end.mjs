@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SessionEnd hook: hand the transcript to a detached worker and exit at once (hooks must not block the CLI).
+// SessionEnd / PreCompact hook: hand the transcript to a detached worker and exit at once (hooks must not block the CLI).
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -11,6 +11,6 @@ process.stdin.on("end", () => {
   if (!ev.transcript_path || !ev.session_id) process.exit(0);
   const agent = process.env.AGENTDESK_AGENT || "claude";
   const worker = join(dirname(fileURLToPath(import.meta.url)), "worker.mjs");
-  spawn(process.execPath, [worker, ev.session_id, ev.transcript_path, ev.cwd || process.cwd(), agent], { detached: true, stdio: "ignore", env: process.env }).unref();
+  spawn(process.execPath, [worker, ev.session_id, ev.transcript_path, ev.cwd || process.cwd(), agent, ev.hook_event_name || ""], { detached: true, stdio: "ignore", env: process.env }).unref();
   process.exit(0);
 });
