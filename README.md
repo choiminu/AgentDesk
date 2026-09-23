@@ -147,12 +147,12 @@ Every instruction sent to a member carries the full team brief (goal, scope, dec
 ```bash
 brew tap mongodb/brew && brew install mongodb-community && brew services start mongodb-community
 cd recall && npm install
-node cli.mjs install          # hooks for Claude Code / Gemini CLI / Codex CLI + the /recall skill
+node cli.mjs install          # SessionEnd + PreCompact + prompt hooks for Claude Code / Gemini CLI / Codex CLI, and the /recall skill
 node cli.mjs backfill --since 7d   # optional: notes for last week's transcripts
 node cli.mjs search "iTerm session matching"
 ```
 
-- **SessionEnd** → a detached worker digests the transcript (prompts and answers only, tool output dropped), masks secrets, asks `claude -p` (Haiku) for a JSON note and upserts it into `agentdesk.session_notes` with the git commit and files it relies on.
+- **SessionEnd** and **PreCompact** (a compaction is a natural chapter boundary, and the only chance to capture sessions that stay open for days) → a detached worker digests the transcript (prompts and answers only, tool output dropped), masks secrets, asks `claude -p` (Haiku) for a JSON note and upserts it into `agentdesk.session_notes` with the git commit and files it relies on.
 - **UserPromptSubmit** → the top 3 matching notes for the current repo are added as context, flagged `⚠ N file(s) changed since` when their files changed after the note was written.
 - `/recall` skill and `agentdesk-recall search | show | list` for explicit lookups. Nothing leaves the machine unless you point `AGENTDESK_MONGO_URL` at a remote cluster.
 
