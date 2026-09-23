@@ -2277,17 +2277,19 @@
   .s-icon.done .px-ic { opacity: 0.55; }
   .s-icon.error { background: var(--red-dim); }
   .s-name { font-weight: 700; font-size: 13px; letter-spacing: -0.005em; }
-  .s-meta { margin-top: 4px; gap: 3px 5px; font-size: 9.5px; flex-wrap: wrap; }
+  .s-meta { margin-top: 4px; gap: 5px; font-size: 9.5px; flex-wrap: nowrap; overflow: hidden; }
   .s-meta > * { white-space: nowrap; flex-shrink: 0; }
-  .s-meta > .s-branch, .s-meta > .s-tool { max-width: 140px; }
+  .s-meta > .s-branch, .s-meta > .s-tool { flex-shrink: 1; min-width: 24px; }
   .page-nav { scrollbar-width: none; }
   .page-nav::-webkit-scrollbar { display: none; }
   .s-tool, .s-branch { padding: 1px 6px; border-radius: 5px; background: var(--surface-hover); border: 1px solid var(--border-subtle); opacity: 1; color: var(--text2); font-size: 9.5px; line-height: 1.5; }
   .s-agent { border-radius: 5px; font-size: 9px; padding: 1px 6px; line-height: 1.5; }
   .s-agent.claude { background: var(--accent-dim); color: var(--accent); }
   .s-time { color: var(--text3); }
-  .s-act { border-radius: 8px; }
-  .s-chat { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; align-self: center; font: inherit; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-dim); color: var(--accent); cursor: pointer; transition: background 0.15s, color 0.15s; }
+  .s-act { border-radius: 8px; width: 22px; height: 22px; }
+  .hover-demo .session:nth-child(2) .s-actions { display: flex; }   /* ROCA_START_PAGE=...,hover-demo: show one card's hover state for captures */
+  .s-actions { position: absolute; top: 6px; right: 6px; gap: 2px; padding: 2px 3px; border-radius: 999px; background: var(--surface-raised); border: 1px solid var(--border-subtle); box-shadow: 0 4px 14px rgba(0,0,0,0.28); z-index: 2; }
+  .s-chat { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; align-self: center; font: inherit; margin-right: 2px; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-dim); color: var(--accent); cursor: pointer; transition: background 0.15s, color 0.15s; }
   .s-chat:hover { background: var(--accent); color: #fff; }
   .s-chat svg { flex-shrink: 0; }
 
@@ -3557,8 +3559,8 @@ function renderDashboard() {
           </div>
           ${peek ? `<div class="s-prompt">${esc(trunc(peek, 120))}</div>` : ''}
         </div>
-        ${hasHandle ? `<button class="s-chat" data-act="chat" data-h="${esc(h)}" title="${esc(t('채팅 패널 열기'))}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"></path></svg>${esc(t('채팅'))}</button>` : ''}
         <div class="s-actions">
+          ${hasHandle ? `<button class="s-chat" data-act="chat" data-h="${esc(h)}" title="${esc(t('채팅 패널 열기'))}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"></path></svg>${esc(t('채팅'))}</button>` : ''}
           <button class="s-act ${isPinned ? 'pinned' : ''}" data-act="pin" data-id="${esc(s.id)}" title="${isPinned ? '고정 해제' : '고정'}">📌</button>
           <button class="s-act" data-act="copy-id" data-id="${esc(s.id)}" title="세션 ID 복사">📋</button>
           ${hasHandle ? `<button class="s-act" data-act="interrupt" data-h="${esc(h)}" title="인터럽트">⏸</button>` : ''}
@@ -7236,6 +7238,7 @@ $('settings-body').addEventListener('click', async (e) => {
 // ═══════════════════════════════════════════════════════════════════
 let onboardStep = 0, onboardEnv = null;
 function onboardShouldShow() {
+  if (location.hash.includes('hover-demo')) document.body.classList.add('hover-demo');
   if (location.hash.includes('skip-onboarding') || location.hash.includes('-demo')) return false;   // dev captures / demo mode
   const h = location.hash.replace('#', '').split(',').find(x => /^onboarding(-\d)?$/.test(x));   // ROCA_START_PAGE=onboarding[-2|-3] for dev
   if (h) { onboardStep = Math.min(2, Math.max(0, (parseInt(h.split('-')[1] || '1', 10) - 1))); return true; }
