@@ -14,9 +14,10 @@ process.stdin.on("end", async () => {
     const c = await notes();
     const q = prompt.replace(/[^\p{L}\p{N}_.\-\s]/gu, " ").split(/\s+/).filter(w => w.length >= 2).slice(0, 24).join(" ");
     if (!q) return;
-    const rows = await c.find({ $text: { $search: q }, repo: g.repo }, { projection: { score: { $meta: "textScore" }, title: 1, summary: 1, repo: 1, commit: 1, createdAt: 1, files: 1 } })
-      .sort({ score: { $meta: "textScore" } }).limit(3).toArray();
-    const good = rows.filter(r => r.score >= 1.5);
+    // same repo pool; notes written in this very worktree rank first (shared repos like a catch-all "etc" workspace hold unrelated tasks)
+    const rows = await c.find({ $text: { $search: q }, repo: g.repo }, { projection: { score: { $meta: "textScore" }, title: 1, summary: 1, repo: 1, worktree: 1, commit: 1, createdAt: 1, files: 1 } })
+      .sort({ score: { $meta: "textScore" } }).limit(8).toArray();
+    const good = rows.map(r => ({ ...r, rank: r.score + (r.worktree === g.worktree ? 2 : 0) })).filter(r => r.score >= 1.5).sort((a, b) => b.rank - a.rank).slice(0, 3);
     if (!good.length) return;
     const lines = good.map(n => fmtNote(n, changedSince(g.root, n.commit, n.files)));
     process.stdout.write(`[agentdesk-recall] Past session notes that may match this request (run \`agentdesk-recall show <id>\` for the full note; verify against current code before relying on them):\n${lines.join("\n")}\n`);

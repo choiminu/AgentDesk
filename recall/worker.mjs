@@ -13,7 +13,7 @@ try {
   const s = summarize(d.text, { repo: g.repo, branch: g.branch, commit: g.commit, title: d.title });
   if (s.skip) { log("skip: model judged trivial", sessionId); await close(); process.exit(0); }
   const note = {
-    sessionId, agent, repo: g.repo, root: g.root, cwd, branch: g.branch, commit: g.commit,
+    sessionId, agent, repo: g.repo, worktree: g.worktree, root: g.root, cwd, branch: g.branch, commit: g.commit,
     title: mask(d.title || s.title || "(untitled)").slice(0, 120), summary: mask(s.summary || "").slice(0, 500),
     keywords: Array.isArray(s.keywords) ? s.keywords.map(k => mask(String(k)).slice(0, 40)).slice(0, 16) : [],
     files: Array.isArray(s.files) ? s.files.map(String).slice(0, 20) : [],

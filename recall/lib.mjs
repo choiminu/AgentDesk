@@ -25,6 +25,7 @@ export async function ensureIndexes() {
   const c = await notes();
   await c.createIndex({ title: "text", summary: "text", body: "text", keywords: "text" }, { name: "notes_text", default_language: "none", weights: { title: 10, keywords: 8, summary: 5, body: 1 } });
   await c.createIndex({ repo: 1, createdAt: -1 });
+  await c.createIndex({ worktree: 1, createdAt: -1 });
   await c.createIndex({ sessionId: 1 }, { unique: true });
 }
 
@@ -36,7 +37,8 @@ export function gitInfo(cwd) {
   // repo name from the origin remote so every worktree/clone of the same project shares one note pool
   const origin = run(["remote", "get-url", "origin"]);
   const fromRemote = origin ? origin.replace(/\.git$/, "").split(/[\/:]/).filter(Boolean).pop() : "";
-  return { repo: fromRemote || root.split("/").filter(Boolean).pop(), root, commit: run(["rev-parse", "--short", "HEAD"]), branch: run(["rev-parse", "--abbrev-ref", "HEAD"]) };
+  // worktree = the checkout folder (Orca names one per task); several worktrees of one repo share the repo pool
+  return { repo: fromRemote || root.split("/").filter(Boolean).pop(), worktree: root.split("/").filter(Boolean).pop(), root, commit: run(["rev-parse", "--short", "HEAD"]), branch: run(["rev-parse", "--abbrev-ref", "HEAD"]) };
 }
 // files touched by the note that changed since its commit — a note about changed files may be stale
 export function changedSince(root, commit, files) {
@@ -134,5 +136,6 @@ export function summarize(digestText, hints = {}) {
 
 export function fmtNote(n, changed) {
   const stale = changed && changed.length ? ` ⚠ ${changed.length} file(s) changed since (${changed.slice(0, 3).join(", ")})` : "";
-  return `• ${n.title} — ${n.summary} [${n.repo}@${n.commit || "?"} · ${new Date(n.createdAt).toISOString().slice(0, 10)} · id ${n._id}]${stale}`;
+  const where = n.worktree && n.worktree !== n.repo ? `${n.repo}/${n.worktree}` : n.repo;
+  return `• ${n.title} — ${n.summary} [${where}@${n.commit || "?"} · ${new Date(n.createdAt).toISOString().slice(0, 10)} · id ${n._id}]${stale}`;
 }
