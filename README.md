@@ -21,7 +21,7 @@ A pixel-art office for your AI coding agents. Orca Widget is a lightweight macOS
 - **Chat panel** — click any character or card to read the agent's screen and send it a message without leaving the widget; double-click jumps to its Orca terminal.
 - **Utilities** — clipboard history, listening-port monitor with kill, quick memo, Pomodoro timer.
 - **Works with or without Orca** — with Orca you get session discovery, chat and terminal control through the Orca CLI. Without Orca (any Mac with Claude Code), the widget discovers sessions from Claude Code hooks and transcripts; sessions running inside tmux can still be chatted with and directed. Both kinds of sessions show up side by side; nothing to configure.
-- **English and Korean UI** — English by default, switch from the header.
+- **English and Korean UI** — English by default, switch in ⚙ Settings.
 
 ## Quick start
 
@@ -36,7 +36,7 @@ npm start
 
 The widget opens as an always-on-top window. Install the prebuilt app instead with `npm run dist`, which produces `dist/Orca Dashboard-<version>-arm64.dmg` (Apple Silicon) and `dist/Orca Dashboard-<version>.dmg` (Intel). The app is not code-signed: on first launch allow it under **System Settings → Privacy & Security**.
 
-On first launch a short onboarding checks the machine (Claude Code, the widget hooks, the Orca CLI, terminal Automation permission) and lets you turn on **Exact detection** in one click. This registers Claude Code hooks (see [How it works](#how-it-works)) so states arrive as events instead of being inferred; you can also toggle it later from the **Office** tab. Run with `ROCA_START_PAGE=onboarding` to see the onboarding again.
+On first launch a short onboarding checks the machine (Claude Code, the widget hooks, the Orca CLI, terminal Automation permission) and lets you turn on **Exact detection** in one click. This registers Claude Code hooks (see [How it works](#how-it-works)) so states arrive as events instead of being inferred; you can also toggle it later in ⚙ Settings. Run with `ROCA_START_PAGE=onboarding` to see the onboarding again.
 
 ## Usage
 
@@ -50,7 +50,7 @@ On first launch a short onboarding checks the machine (Claude Code, the widget h
 | Right-click the PM → *Give the team a goal* | Brief → task plan → approval → dispatch |
 | Drag a file onto a card | Inserts the file path into that terminal's prompt |
 | ▾ / ▴ | Collapse to the header bar / restore |
-| 🌙 / 한 · EN in the header | Toggle dark/light theme, switch UI language |
+| ⚙ in the header | Settings: language, theme (system / light / dark), exact detection, chime, pixel zoom, show onboarding again |
 
 ### Reading the office
 
@@ -134,7 +134,7 @@ npm run dist         # build arm64 and x64 DMGs into dist/
 
 | Environment variable | Effect |
 |---|---|
-| `ROCA_START_PAGE=office` | Start on a tab (`onboarding`, `onboarding-2`, `onboarding-3` open the onboarding steps). `office-demo` renders twelve fake sessions (subagents, needs-input, a team). Append `,en` or `,ko` to force a language |
+| `ROCA_START_PAGE=office` | Start on a tab (`settings`, or `onboarding`, `onboarding-2`, `onboarding-3` for the onboarding steps). `office-demo` renders twelve fake sessions (subagents, needs-input, a team). Append `,en` or `,ko` to force a language |
 | `ROCA_SHOT=/path/shot.png` | Capture the window at 8 s, 13.5 s and 24 s as `shot-1.png` … |
 | `ROCA_DEBUG=1` | Print terminal-read and renderer console logs |
 | `ROCA_HOOKS_INSTALL=1` | Register hooks at startup |
