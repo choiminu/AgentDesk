@@ -1,7 +1,7 @@
 {
-  "name": "roca",
+  "name": "agentdesk",
   "version": "0.1.0",
-  "description": "Orca session dashboard",
+  "description": "AgentDesk — a pixel-art office for your AI coding agents",
   "main": "main.mjs",
   "type": "module",
   "scripts": {
@@ -15,8 +15,8 @@
     "electron-builder": "^26.0.0"
   },
   "build": {
-    "appId": "com.roca.app",
-    "productName": "Orca Dashboard",
+    "appId": "com.agentdesk.app",
+    "productName": "AgentDesk",
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
@@ -31,7 +31,7 @@
       "icon": null
     },
     "dmg": {
-      "title": "Roca",
+      "title": "AgentDesk",
       "contents": [
         {
           "x": 130,

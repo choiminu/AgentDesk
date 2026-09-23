@@ -1,4 +1,4 @@
-<title>Orca Dashboard</title>
+<title>AgentDesk</title>
 <meta charset="utf-8">
 
 <style>
@@ -2176,7 +2176,7 @@
   .onboard-tip kbd { font-family: inherit; font-size: 10px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-hover); color: var(--text); white-space: nowrap; height: fit-content; }
 
   /* ═══════════════════════════════════════════════════════════════════
-     MODERN THEME — tokens and component overrides (design canvas "Orca Widget Redesign")
+     MODERN THEME — tokens and component overrides (design canvas "AgentDesk redesign")
      ═══════════════════════════════════════════════════════════════════ */
   :root {
     --bg: #0e1014; --bg-solid: #0e1014;
@@ -2602,7 +2602,7 @@ const I18N = {
   '기타': 'Other', '온보딩 다시 보기': 'Show onboarding again', '소개, 환경 점검, 사용 팁을 다시 표시합니다.': 'Shows the intro, environment check and tips again.', '열기': 'Open',
   '훅 스크립트': 'Hook script', '이벤트 로그': 'Event log', '나중에 ⚙ 설정에서 바꿀 수 있습니다.': 'You can change it later in ⚙ Settings.',
   '헤더의 ⚙ 설정에서 언어, 테마, 정확 감지, 알림음, 픽셀 배율을 바꿀 수 있습니다. 새로 시작하는 Claude Code 세션부터 훅 이벤트가 기록되니, 세션이 안 보이면 프롬프트를 한 번 보내 보세요.': 'The ⚙ Settings in the header hold language, theme, exact detection, chime and pixel zoom. Hook events are recorded from the next Claude Code activity on, so if a session is missing, send it a prompt once.',
-  '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'Orca Widget에 오신 것을 환영합니다': 'Welcome to Orca Widget',
+  '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'AgentDesk에 오신 것을 환영합니다': 'Welcome to AgentDesk',
   'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
   '픽셀 오피스': 'Pixel office', '필요할 때만 알림': 'Alerts only when needed',
   'Orca 세션과 터미널(iTerm2·Terminal·tmux)에서 띄운 Claude Code 세션을 한 목록에서. 작업 중 / 대기 / 선택 필요 / 완료 상태를 정확히 표시합니다.': 'Orca sessions and Claude Code sessions started in a terminal (iTerm2, Terminal, tmux) in one list, with exact working / waiting / needs-input / done states.',
@@ -2618,7 +2618,7 @@ const I18N = {
   '채팅 패널에서 터미널로 메시지를 보내거나 탭을 전환하려면 macOS 자동화 권한이 필요합니다. 버튼을 누르면 권한 창이 뜹니다.': 'Sending messages to a terminal or switching tabs from the chat panel needs the macOS Automation permission. The button opens the prompt.',
   'iTerm2 또는 Terminal이 실행 중일 때 권한을 요청할 수 있습니다. 나중에 첫 사용 시 macOS가 물어봅니다.': 'Can be requested while iTerm2 or Terminal is running. Otherwise macOS asks on first use.',
   '권한 요청': 'Request', '다시 확인': 'Re-check', '설치 중…': 'Installing…', '요청 중…': 'Requesting…', '훅 설치 실패': 'Hook install failed',
-  '권한이 허용되지 않았습니다. 시스템 설정 → 개인정보 보호 및 보안 → 자동화에서 Orca Dashboard를 허용해 주세요.': 'Permission was not granted. Allow Orca Dashboard under System Settings → Privacy & Security → Automation.',
+  '권한이 허용되지 않았습니다. 시스템 설정 → 개인정보 보호 및 보안 → 자동화에서 AgentDesk를 허용해 주세요.': 'Permission was not granted. Allow AgentDesk under System Settings → Privacy & Security → Automation.',
   '사용 팁': 'Tips', '준비되었습니다': 'You are all set', '클릭': 'Click', '더블클릭': 'Double-click', '우클릭': 'Right-click', '드래그': 'Drag',
   '세션 카드나 캐릭터를 누르면 채팅 패널이 열려 화면을 읽고 메시지를 보낼 수 있습니다. 종료된 터미널 세션은 claude --resume 으로 다시 엽니다.': 'Click a session card or character to open the chat panel, read its screen and send a message. Ended terminal sessions reopen with claude --resume.',
   '해당 세션의 터미널로 바로 전환합니다.': 'Jumps to that session\'s terminal.', '이름 변경, 세션 ID 복사, 인터럽트, 팀 작업 메뉴.': 'Rename, copy session ID, interrupt, team actions.',
@@ -7208,7 +7208,7 @@ function settingsRender() {
     let v = ''; try { v = await window.orca.version(); } catch {}
     let st = null; try { st = await window.orca.hooksStatus(); } catch {}
     const el = $('settings-meta'); if (!el) return;
-    el.innerHTML = `Orca Widget ${esc(v || '')}<br>${esc(t('훅 스크립트'))}: ${esc(st?.script || '~/.roca/hook.sh')}<br>${esc(t('이벤트 로그'))}: ${esc(st?.events || '~/.roca/events.jsonl')}`;
+    el.innerHTML = `AgentDesk ${esc(v || '')}<br>${esc(t('훅 스크립트'))}: ${esc(st?.script || '~/.roca/hook.sh')}<br>${esc(t('이벤트 로그'))}: ${esc(st?.events || '~/.roca/events.jsonl')}`;
   })();
 }
 $('settings-body').addEventListener('click', async (e) => {
@@ -7242,7 +7242,7 @@ function onboardRender() {
   $('onboard-next').textContent = onboardStep === 2 ? t('시작하기') : t('다음');
   if (onboardStep === 0) {
     body.innerHTML = `
-      <h1>${esc(t('Orca Widget에 오신 것을 환영합니다'))}</h1>
+      <h1>${esc(t('AgentDesk에 오신 것을 환영합니다'))}</h1>
       <div class="onboard-check" style="margin-bottom:12px"><div class="st ok">🌐</div><div class="tx"><b>${esc(t('언어'))} · Language</b><span>${esc(t('나중에 ⚙ 설정에서 바꿀 수 있습니다.'))}</span></div><div class="onboard-lang" style="margin:0"><button data-lang="en" class="${LANG === 'en' ? 'on' : ''}">English</button><button data-lang="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</button></div></div>
       <p>${esc(t('AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.'))}</p>
       <div class="onboard-feat"><div class="ic">📋</div><div><b>${esc(t('대시보드'))}</b><span>${esc(t('Orca 세션과 터미널(iTerm2·Terminal·tmux)에서 띄운 Claude Code 세션을 한 목록에서. 작업 중 / 대기 / 선택 필요 / 완료 상태를 정확히 표시합니다.'))}</span></div></div>
@@ -7295,7 +7295,7 @@ $('onboard-body').addEventListener('click', async (e) => {
     const r = await window.orca.automationRequest();
     const ok = Object.values(r || {}).some(Boolean);
     try { localStorage.setItem('roca-automation-ok', JSON.stringify(ok)); } catch {}
-    if (!ok) showInAppToast(t('권한이 허용되지 않았습니다. 시스템 설정 → 개인정보 보호 및 보안 → 자동화에서 Orca Dashboard를 허용해 주세요.'), 'error');
+    if (!ok) showInAppToast(t('권한이 허용되지 않았습니다. 시스템 설정 → 개인정보 보호 및 보안 → 자동화에서 AgentDesk를 허용해 주세요.'), 'error');
     onboardLoadEnv();
   } else if (b.dataset.act === 'recheck') onboardLoadEnv();
 });

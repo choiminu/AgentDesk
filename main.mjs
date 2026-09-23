@@ -3,7 +3,7 @@ import { execFile, exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync } from "node:fs";
 import { homedir } from "node:os";
 
 const exec = promisify(execFile);
@@ -20,6 +20,11 @@ let tray = null;
 let prevRunningCount = 0;
 let saveBoundsTimer = null;
 
+// the app was called "roca" before it became AgentDesk: carry the old profile (window bounds, localStorage) over once
+{
+  const nu = app.getPath("userData"); const old = join(dirname(nu), "roca");
+  if (!existsSync(nu) && existsSync(old)) { try { cpSync(old, nu, { recursive: true }); } catch {} }
+}
 const boundsFile = join(app.getPath("userData"), "window-bounds.json");
 
 function loadBounds() {
@@ -109,12 +114,12 @@ function createTray() {
   tray = new Tray(icon.resize({ width: 18, height: 18 }));
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: "Orca Dashboard 열기", click: () => mainWindow.show() },
+    { label: "AgentDesk 열기", click: () => mainWindow.show() },
     { type: "separator" },
     { label: "종료", click: () => { app.isQuitting = true; app.quit(); } },
   ]);
 
-  tray.setToolTip("Orca Dashboard");
+  tray.setToolTip("AgentDesk");
   tray.setContextMenu(contextMenu);
   tray.on("click", () => {
     if (mainWindow.isVisible()) mainWindow.hide();
@@ -704,7 +709,7 @@ ipcMain.on("orca:session-counts", (_e, counts) => {
   }
   if (running > prevRunningCount && prevRunningCount >= 0) {
     new Notification({
-      title: "Orca Dashboard",
+      title: "AgentDesk",
       body: `${running - prevRunningCount}개 세션이 새로 실행을 시작했습니다`,
     }).show();
   }
@@ -811,7 +816,7 @@ const EVENTS_FILE = join(ROCA_DIR, "events.jsonl");
 const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
 const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification", "PermissionRequest", "SubagentStart", "SubagentStop", "SessionEnd", "PostCompact"];
 const HOOK_SH = `#!/bin/bash
-# Orca Widget hook: append the Claude Code hook payload to ~/.roca/events.jsonl and exit immediately.
+# AgentDesk hook: append the Claude Code hook payload to ~/.roca/events.jsonl and exit immediately.
 f="$HOME/.roca/events.jsonl"
 payload=$(cat | tr -d '\n')
 [ -z "$payload" ] && exit 0
