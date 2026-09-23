@@ -3078,7 +3078,7 @@ function useOrca() {
   applyHelp();
   sel.addEventListener('change', () => { dataMode = sel.value; try { localStorage.setItem('roca-mode', dataMode); } catch {} applyHelp(); showOrcaError(null); fetchData(); });
 }
-const HOOK_ONLY_RECENT_MS = 6 * 60 * 60 * 1000;
+const HOOK_ONLY_RECENT_MS = 24 * 60 * 60 * 1000;   // ended terminal sessions stay visible as Done for a day, like Orca ones
 function hookOnlySessions(wts, panes, ttys) {
   if (!hooksEnabled) return [];
   const wtPaths = wts.map(w => String(w.worktreeId || '').split('::').pop()).filter(Boolean);
@@ -3086,13 +3086,13 @@ function hookOnlySessions(wts, panes, ttys) {
   const usedTargets = new Set();
   // newest sessions pick their terminal first
   for (const st of [...hookSessions.values()].sort((a, b) => b.first - a.first)) {
-    if (st.ended || !st.cwd || Date.now() - st.last > HOOK_ONLY_RECENT_MS) continue;
+    if (!st.cwd || Date.now() - st.last > HOOK_ONLY_RECENT_MS) continue;
     if (wtPaths.some(p => st.cwd === p || st.cwd.startsWith(p.replace(/\/$/, '') + '/'))) continue;   // already an Orca session
     // terminal to drive this session: the claude process resumed with this session id, else the claude process
     // in the same folder whose start time is closest to the session's first hook event (tmux / iTerm2 / Terminal.app)
-    const procs = ttys || [];
+    const procs = st.ended ? [] : (ttys || []);
     let target = procs.find(x => x.sessionId === st.sid) || null;
-    if (!target) {
+    if (!target && !st.ended) {
       const same = procs.filter(x => x.cwd === st.cwd && !usedTargets.has(x.handle));
       same.sort((a, b) => Math.abs((a.startedAt || 0) - st.first) - Math.abs((b.startedAt || 0) - st.first));
       target = same[0] || null;
@@ -3112,7 +3112,7 @@ async function hookOnlySession(h) {
   }
   const folder = st.cwd.split('/').filter(Boolean).pop() || st.cwd;
   const screenSt = screenStatusCache.get(h.id);
-  const finalStatus = resolveStatus('done', screenSt, st);
+  const finalStatus = st.ended ? 'done' : resolveStatus('done', screenSt, st);
   return {
     id: h.id, name: displayNameFor(h.id, meta.title || folder), branch: meta.branch || '', repo: st.cwd,
     status: finalStatus, baseStatus: 'done', agent: 'claude', time: st.last,
