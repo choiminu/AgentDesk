@@ -2616,14 +2616,17 @@ const I18N = {
   'claude / gemini / codex 명령을 찾지 못했습니다. 에이전트 CLI를 하나 이상 설치하고 로그인해 주세요.': 'None of claude / gemini / codex was found. Install at least one agent CLI and sign in.',
   '꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, 백업 저장). 세션이 보이려면 반드시 필요합니다.': 'Off. Turning it on adds the widget hooks to each installed agent CLI (existing hooks kept, backup saved). Required for sessions to show up.',
   '설치된 에이전트 CLI(Claude Code · Gemini CLI · Codex CLI)의 설정에 위젯 훅을 등록합니다 (기존 설정은 보존, ~/.roca/에 백업). 이후 새로 시작하는 세션부터 이벤트 기반으로 정확히 감지됩니다. 진행할까요?': 'Registers the widget hooks with each installed agent CLI (Claude Code, Gemini CLI, Codex CLI); existing settings are kept and backed up under ~/.roca/. Sessions started from now on are detected exactly from events. Continue?',
+  '터미널 제어 (tmux)': 'Terminal control (tmux)', '터미널 제어': 'Terminal control',
+  'Linux에서는 tmux 안에서 실행한 세션만 채팅·지시가 됩니다. tmux가 없으면 상태 표시(훅)와 종료 세션 다시 열기만 동작합니다.': 'On Linux only sessions running inside tmux can be chatted with or directed. Without tmux you still get exact states (hooks) and reopening ended sessions.',
+  'Windows에서는 세션 상태 표시(훅)와 종료 세션 다시 열기(Windows Terminal)만 지원합니다. 채팅·지시는 아직 지원하지 않습니다.': 'On Windows the widget shows session states (hooks) and reopens ended sessions in Windows Terminal. Chat and directing are not supported yet.',
   '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'AgentDesk에 오신 것을 환영합니다': 'Welcome to AgentDesk',
   'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
   '픽셀 오피스': 'Pixel office', '필요할 때만 알림': 'Alerts only when needed',
   'Orca 세션과 터미널(iTerm2·Terminal·tmux)에서 띄운 Claude Code 세션을 한 목록에서. 작업 중 / 대기 / 선택 필요 / 완료 상태를 정확히 표시합니다.': 'Orca sessions and Claude Code sessions started in a terminal (iTerm2, Terminal, tmux) in one list, with exact working / waiting / needs-input / done states.',
   '세션마다 캐릭터가 하나씩. 일하는 에이전트는 책상에서, 쉬는 에이전트는 소파에서. PM 자리에 끌어다 놓으면 팀을 만들어 지시를 내립니다.': 'One character per session: working agents at their desks, idle ones on the sofa. Drag one onto the PM seat to form a team and hand out tasks.',
   '권한 확인이나 질문처럼 정말 당신의 선택이 필요할 때만 알림·배지·알림음이 울립니다.': 'Notifications, badge and chime fire only when an agent really needs you — a permission prompt or a question.',
-  '환경 점검': 'Environment check', '이 Mac에서 무엇을 볼 수 있는지 확인합니다': 'Checking what this Mac can show',
-  '위젯은 이 컴퓨터의 Claude Code와 Orca만 읽습니다. 아래 항목이 준비되어야 세션이 나타납니다.': 'The widget only reads Claude Code and Orca on this computer. Sessions appear once the items below are ready.',
+  '환경 점검': 'Environment check', '이 컴퓨터에서 무엇을 볼 수 있는지 확인합니다': 'Checking what this computer can show',
+  '위젯은 이 컴퓨터의 에이전트 CLI(Claude Code · Gemini CLI · Codex CLI)와 Orca만 읽습니다. 아래 항목이 준비되어야 세션이 나타납니다.': 'The widget only reads the agent CLIs on this computer (Claude Code, Gemini CLI, Codex CLI) and Orca. Sessions appear once the items below are ready.',
   '확인 중…': 'Checking…', '설치됨': 'Installed', 'claude 명령을 찾지 못했습니다. Claude Code를 설치하고 로그인해 주세요.': 'The claude command was not found. Install Claude Code and sign in.',
   'Claude Code 훅 (정확 감지)': 'Claude Code hooks (exact detection)', '켜져 있습니다. 세션 상태가 이벤트로 정확히 들어옵니다.': 'On. Session states arrive as events.',
   '꺼져 있습니다. 켜면 ~/.claude/settings.json에 위젯 훅을 추가합니다(기존 훅 보존, 백업 저장). 세션이 보이려면 반드시 필요합니다.': 'Off. Turning it on adds the widget hooks to ~/.claude/settings.json (existing hooks kept, backup saved). Required for sessions to show up.',
@@ -7258,6 +7261,7 @@ $('settings-body').addEventListener('click', async (e) => {
 // FIRST-RUN ONBOARDING — welcome, environment check (Claude Code / hooks / Orca / terminal permission), tips
 // ═══════════════════════════════════════════════════════════════════
 let onboardStep = 0, onboardEnv = null;
+const PLATFORM = (window.orca && window.orca.platform) || 'darwin';
 function onboardShouldShow() {
   if (location.hash.includes('hover-demo')) document.body.classList.add('hover-demo');
   if (location.hash.includes('skip-onboarding') || location.hash.includes('-demo')) return false;   // dev captures / demo mode
@@ -7287,12 +7291,17 @@ function onboardRender() {
     const row = (k, title, ok, okDesc, badDesc, btn) => onboardCheckRow(e ? (ok ? 'ok' : k) : 'wait', title, e ? (ok ? okDesc : badDesc) : t('확인 중…'), e && !ok ? btn : null);
     body.innerHTML = `
       <div class="onboard-step">${esc(t('환경 점검'))}</div>
-      <h1>${esc(t('이 Mac에서 무엇을 볼 수 있는지 확인합니다'))}</h1>
-      <p>${esc(t('위젯은 이 컴퓨터의 Claude Code와 Orca만 읽습니다. 아래 항목이 준비되어야 세션이 나타납니다.'))}</p>
+      <h1>${esc(t('이 컴퓨터에서 무엇을 볼 수 있는지 확인합니다'))}</h1>
+      <p>${esc(t('위젯은 이 컴퓨터의 에이전트 CLI(Claude Code · Gemini CLI · Codex CLI)와 Orca만 읽습니다. 아래 항목이 준비되어야 세션이 나타납니다.'))}</p>
       ${(() => { const ag = e?.agents || {}; const found = Object.entries(ag).filter(([, v]) => v).map(([k]) => AGENT_LABELS[k] || k); return row('warn', t('에이전트 CLI'), found.length, `${t('발견')} · ${found.join(', ')}`, t('claude / gemini / codex 명령을 찾지 못했습니다. 에이전트 CLI를 하나 이상 설치하고 로그인해 주세요.'), null); })()}
       ${(() => { const ha = e?.hookAgents || {}; const on = Object.entries(ha).filter(([, v]) => v === 'on').map(([k]) => AGENT_LABELS[k] || k); const off = Object.entries(ha).filter(([, v]) => v === 'off').map(([k]) => AGENT_LABELS[k] || k); return row('warn', t('에이전트 훅 (정확 감지)'), e?.hooks, `${t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어옵니다.')} · ${on.join(', ')}`, `${t('꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, 백업 저장). 세션이 보이려면 반드시 필요합니다.')}${off.length ? ` · ${t('대상')}: ${off.join(', ')}` : ''}`, { act: 'hooks', label: t('켜기') }); })()}
       ${row('off', 'Orca CLI', e?.orca?.found, `${t('발견')} · ${e?.orca?.version || e?.orca?.path || ''}`, t('선택 사항. Orca를 쓰지 않으면 넘어가세요. Orca 사용자인데 안 잡히면 터미널에서 `orca --version`을 확인하세요.'), null)}
-      ${row('off', t('터미널 제어 권한'), e && e.terminals && e.terminals.length && e.autoOk, e ? `${t('허용됨')} · ${(e.terminals || []).join(', ')}` : '', (e && e.terminals && e.terminals.length) ? t('채팅 패널에서 터미널로 메시지를 보내거나 탭을 전환하려면 macOS 자동화 권한이 필요합니다. 버튼을 누르면 권한 창이 뜹니다.') : t('iTerm2 또는 Terminal이 실행 중일 때 권한을 요청할 수 있습니다. 나중에 첫 사용 시 macOS가 물어봅니다.'), (e && e.terminals && e.terminals.length) ? { act: 'automation', label: t('권한 요청') } : null)}
+      ${(() => {
+        const plat = (e && e.platform) || PLATFORM;
+        if (plat === 'darwin') return row('off', t('터미널 제어 권한'), e && e.terminals && e.terminals.length && e.autoOk, e ? `${t('허용됨')} · ${(e.terminals || []).join(', ')}` : '', (e && e.terminals && e.terminals.length) ? t('채팅 패널에서 터미널로 메시지를 보내거나 탭을 전환하려면 macOS 자동화 권한이 필요합니다. 버튼을 누르면 권한 창이 뜹니다.') : t('iTerm2 또는 Terminal이 실행 중일 때 권한을 요청할 수 있습니다. 나중에 첫 사용 시 macOS가 물어봅니다.'), (e && e.terminals && e.terminals.length) ? { act: 'automation', label: t('권한 요청') } : null);
+        if (plat === 'linux') return row('off', t('터미널 제어 (tmux)'), !!(e && e.tmux), `${t('발견')} · ${e && e.tmux}`, t('Linux에서는 tmux 안에서 실행한 세션만 채팅·지시가 됩니다. tmux가 없으면 상태 표시(훅)와 종료 세션 다시 열기만 동작합니다.'), null);
+        return row('off', t('터미널 제어'), false, '', t('Windows에서는 세션 상태 표시(훅)와 종료 세션 다시 열기(Windows Terminal)만 지원합니다. 채팅·지시는 아직 지원하지 않습니다.'), null);
+      })()}
       <p style="margin-top:6px"><button class="theme-btn" data-act="recheck" style="width:auto;padding:0 10px;font-size:11px">${esc(t('다시 확인'))}</button></p>`;
   } else {
     body.innerHTML = `

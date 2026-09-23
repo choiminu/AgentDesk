@@ -2,12 +2,22 @@ import { app, BrowserWindow, clipboard, ipcMain, screen, Tray, Menu, nativeImage
 import { execFile, exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync } from "node:fs";
+import { dirname, join, delimiter as PATH_DELIM } from "node:path";
+import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 
 const exec = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
+// platform switches: terminal control (AppleScript) and Orca are macOS-only; tmux works on macOS/Linux; hooks work everywhere
+const IS_MAC = process.platform === "darwin", IS_WIN = process.platform === "win32", IS_LINUX = process.platform === "linux";
+// `command -v` (POSIX) / `where` (Windows) with the widget's extended PATH
+async function whichCmd(name) {
+  try {
+    if (IS_WIN) return (await exec("where", [name], { timeout: 4000 })).stdout.split(/\r?\n/)[0].trim() || null;
+    return (await exec("/bin/sh", ["-lc", `command -v ${name}`], { timeout: 4000, env: { ...process.env, PATH: EXEC_PATH } })).stdout.trim() || null;
+  } catch { return null; }
+}
 
 const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 
@@ -60,12 +70,11 @@ function createWindow() {
     maxWidth: 480,
     alwaysOnTop: true,
     frame: false,
-    transparent: true,
+    transparent: IS_MAC,
     hasShadow: true,
     resizable: true,
     skipTaskbar: false,
-    vibrancy: "under-window",
-    visualEffectState: "active",
+    ...(IS_MAC ? { vibrancy: "under-window", visualEffectState: "active" } : { backgroundColor: "#0e1014" }),
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -139,10 +148,11 @@ const ORCA_BIN = [
   join(homedir(), "Applications", "Orca.app", "Contents", "Resources", "bin", "orca"),
   "orca",
 ];
-const EXEC_PATH = `${process.env.PATH || ""}:/usr/local/bin:/opt/homebrew/bin:/Applications/Orca.app/Contents/Resources/bin`;
+const EXEC_PATH = [process.env.PATH || "", ...(IS_WIN ? [] : ["/usr/local/bin", "/opt/homebrew/bin", join(homedir(), ".local", "bin"), "/Applications/Orca.app/Contents/Resources/bin"])].join(PATH_DELIM);
 
 async function findOrca() {
   if (process.env.ROCA_ORCA_BIN) return process.env.ROCA_ORCA_BIN;
+  if (!IS_MAC) return (await whichCmd("orca")) || "orca";   // Orca ships for macOS; elsewhere only an explicit install counts
   for (const bin of ORCA_BIN) {
     try {
       await exec("test", ["-x", bin]);
@@ -366,12 +376,13 @@ ipcMain.handle("orca:orch-send", (_e, handle, text) =>
 
 // ── tmux adapter: handles look like "tmux:%12" (pane id). Lets the widget read and drive Claude Code
 // sessions that run inside tmux when Orca is not installed (or a session is not an Orca terminal). ──
-const TMUX_BIN = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "tmux"];
+const TMUX_BIN = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"];
 let tmuxBin = null;
 async function findTmux() {
   if (tmuxBin !== null) return tmuxBin;
-  for (const b of TMUX_BIN) { try { await exec("test", ["-x", b]); tmuxBin = b; return b; } catch {} }
-  try { const { stdout } = await exec("/usr/bin/which", ["tmux"], { env: { ...process.env, PATH: EXEC_PATH } }); tmuxBin = stdout.trim() || ""; } catch { tmuxBin = ""; }
+  if (IS_WIN) { tmuxBin = ""; return tmuxBin; }
+  for (const b of TMUX_BIN) if (existsSync(b)) { tmuxBin = b; return b; }
+  tmuxBin = (await whichCmd("tmux")) || "";
   return tmuxBin;
 }
 async function tmux(...args) {
@@ -422,7 +433,7 @@ async function tmuxSwitch(pane) {
   try {
     const target = (await tmux("display-message", "-p", "-t", pane, "#{session_name}:#{window_index}.#{pane_index}")).trim();
     await tmux("select-window", "-t", target); await tmux("select-pane", "-t", pane);
-    exec("/usr/bin/osascript", ["-e", 'tell application "System Events" to set frontmost of (first process whose name is in {"iTerm2", "Terminal", "WezTerm", "Ghostty", "kitty", "Alacritty"}) to true'], { timeout: 3000 }).catch(() => {});
+    if (IS_MAC) exec("/usr/bin/osascript", ["-e", 'tell application "System Events" to set frontmost of (first process whose name is in {"iTerm2", "Terminal", "WezTerm", "Ghostty", "kitty", "Alacritty"}) to true'], { timeout: 3000 }).catch(() => {});
     return { ok: true };
   } catch (e) { return { ok: false, error: e.message }; }
 }
@@ -438,31 +449,42 @@ async function tmuxPaneForPid(pid, paneByPid) {
   let cur = pid;
   for (let i = 0; i < 6 && cur > 1; i++) {
     if (paneByPid.has(cur)) return paneByPid.get(cur);
-    try { const { stdout } = await exec("/bin/ps", ["-o", "ppid=", "-p", String(cur)]); cur = Number(stdout.trim()); } catch { break; }
+    try { const { stdout } = await exec("ps", ["-o", "ppid=", "-p", String(cur)]); cur = Number(stdout.trim()); } catch { break; }
   }
   return null;
 }
 async function ttyTargets() {
+  if (IS_WIN) return [];   // no terminal control on Windows yet: sessions come from hooks, read-only
   try {
-    const { stdout } = await exec("/bin/ps", ["-axo", "pid=,tty=,lstart=,command="]);
-    const rows = stdout.split("\n").map(l => l.trim()).filter(l => /^\d+\s+ttys\d+\s+.+?\s(\S*\/)?(claude|gemini|codex|opencode)(\s|$)/.test(l));
+    const { stdout } = await exec("ps", ["-axo", "pid=,tty=,lstart=,command="]);
+    const rows = stdout.split("\n").map(l => l.trim()).filter(l => /^\d+\s+(ttys\d+|pts\/\d+)\s+.+?\s(\S*\/)?(claude|gemini|codex|opencode)(\s|$)/.test(l));
     const panes = await tmuxPanes();
     const paneByPid = new Map(panes.map(p => [p.pid, p]));
     const out = [];
     for (const row of rows) {
-      const m = row.match(/^(\d+)\s+(ttys\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(.*)$/); if (!m) continue;
+      const m = row.match(/^(\d+)\s+(ttys\d+|pts\/\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(.*)$/); if (!m) continue;
       const pid = Number(m[1]), tty = `/dev/${m[2]}`, startedAt = Date.parse(m[3]) || 0, cmd = m[4];
       const agent = (cmd.match(/(?:^|\s)(?:\S*\/)?(claude|gemini|codex|opencode)(?:\s|$)/) || [])[1] || "claude";
       const sessionId = (cmd.match(/(?:--resume|\bresume)\s+([0-9a-zA-Z_-]{8,})/) || [])[1] || null;
       let cwd = "", program = "", itermId = "", inTmux = false;
-      try { const r = await exec("/usr/sbin/lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"], { timeout: 4000 }); cwd = (r.stdout.split("\n").find(l => l.startsWith("n")) || "").slice(1); } catch {}
-      try {
-        const r = await exec("/bin/ps", ["eww", "-o", "command=", "-p", String(pid)], { timeout: 4000 });
-        program = (r.stdout.match(/\bTERM_PROGRAM=(\S+)/) || [])[1] || "";
-        itermId = ((r.stdout.match(/\bITERM_SESSION_ID=(\S+)/) || [])[1] || "").split(":").pop();
-        inTmux = /\bTMUX=/.test(r.stdout);
-      } catch {}
+      if (IS_LINUX) {
+        try { cwd = readlinkSync(`/proc/${pid}/cwd`); } catch {}
+        try {
+          const env = readFileSync(`/proc/${pid}/environ`, "utf-8").split("\0");
+          program = (env.find(l => l.startsWith("TERM_PROGRAM=")) || "").slice(13);
+          inTmux = env.some(l => l.startsWith("TMUX="));
+        } catch {}
+      } else {
+        try { const r = await exec("/usr/sbin/lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"], { timeout: 4000 }); cwd = (r.stdout.split("\n").find(l => l.startsWith("n")) || "").slice(1); } catch {}
+        try {
+          const r = await exec("/bin/ps", ["eww", "-o", "command=", "-p", String(pid)], { timeout: 4000 });
+          program = (r.stdout.match(/\bTERM_PROGRAM=(\S+)/) || [])[1] || "";
+          itermId = ((r.stdout.match(/\bITERM_SESSION_ID=(\S+)/) || [])[1] || "").split(":").pop();
+          inTmux = /\bTMUX=/.test(r.stdout);
+        } catch {}
+      }
       if (/^Orca$/i.test(program)) continue;                                   // Orca terminals are handled by Orca itself
+      if (!IS_MAC && !inTmux) continue;                                        // outside macOS only tmux panes can be driven
       let handle = `term:${pid}`, kind = itermId ? "iterm" : "terminal";
       if (inTmux) { const pane = await tmuxPaneForPid(pid, paneByPid); if (pane) { handle = pane.handle; kind = "tmux"; } }
       const target = { handle, kind, pid, tty, cwd, sessionId, agent, program, itermId, startedAt, cmd };
@@ -479,23 +501,22 @@ const CLAUDE_PATHS = ["/usr/local/bin/claude", "/opt/homebrew/bin/claude", join(
 ipcMain.handle("roca:env-check", async () => {
   await orcaReady;
   let claudePath = CLAUDE_PATHS.find(p => existsSync(p)) || null;
-  if (!claudePath) { try { claudePath = (await exec("/bin/zsh", ["-lc", "command -v claude"], { timeout: 4000 })).stdout.trim() || null; } catch {} }
+  if (!claudePath) claudePath = await whichCmd("claude");
   const claudeDir = existsSync(join(homedir(), ".claude"));
   const agents = {};
-  try {
-    const { stdout } = await exec("/bin/zsh", ["-lc", "for c in claude gemini codex opencode; do printf '%s=%s\\n' $c \"$(command -v $c 2>/dev/null)\"; done"], { timeout: 5000 });
-    for (const l of stdout.split("\n")) { const [k, v] = l.split("="); if (k) agents[k] = v || null; }
-  } catch {}
+  for (const c of ["claude", "gemini", "codex", "opencode"]) agents[c] = await whichCmd(c);
   agents.claude = agents.claude || claudePath || null;
   let orcaVersion = null;
   if (orcaBinFound) { try { orcaVersion = (await exec(orcaBin, ["--version"], { timeout: 5000, env: { ...process.env, PATH: EXEC_PATH } })).stdout.trim().split("\n")[0]; } catch {} }
   const terms = [];
-  for (const n of ["iTerm2", "Terminal"]) if (await appRunning(n)) terms.push(n);
-  return { claude: { found: !!(claudePath || claudeDir), path: claudePath }, agents, hooks: hooksInstalled(), hookAgents: hooksAgents(), orca: { found: !!orcaBinFound, path: orcaBinFound ? orcaBin : null, version: orcaVersion }, terminals: terms };
+  if (IS_MAC) for (const n of ["iTerm2", "Terminal"]) if (await appRunning(n)) terms.push(n);
+  const tmuxPath = await findTmux();
+  return { platform: process.platform, claude: { found: !!(claudePath || claudeDir), path: claudePath }, agents, hooks: hooksInstalled(), hookAgents: hooksAgents(), orca: { found: !!orcaBinFound, path: orcaBinFound ? orcaBin : null, version: orcaVersion }, terminals: terms, tmux: tmuxPath || null };
 });
 // trigger macOS Automation prompts (System Events + the running terminal apps) so the user grants them up front
 ipcMain.handle("roca:automation-request", async () => {
   const out = {};
+  if (!IS_MAC) return out;
   try { await osa('tell application "System Events" to count processes'); out.systemEvents = true; } catch (e) { out.systemEvents = false; }
   for (const n of ["iTerm2", "Terminal"]) {
     if (!(await appRunning(n))) continue;
@@ -504,14 +525,42 @@ ipcMain.handle("roca:automation-request", async () => {
   return out;
 });
 
-async function appRunning(name) { try { return (await osa(`tell application "System Events" to (name of processes) contains "${name}"`)) === "true"; } catch { return false; } }
+async function appRunning(name) { if (!IS_MAC) return false; try { return (await osa(`tell application "System Events" to (name of processes) contains "${name}"`)) === "true"; } catch { return false; } }
 // reopen an ended Claude Code session in a new terminal tab: cd <cwd> && claude --resume <id>
 const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
 const RESUME_CMD = { claude: id => `claude --resume ${id}`, gemini: id => `gemini --resume ${id}`, codex: id => `codex resume ${id}` };
 ipcMain.handle("roca:resume-session", async (_e, cwd, sessionId, agent) => {
   if (!/^[0-9a-zA-Z_-]{8,}$/.test(String(sessionId || ""))) return { ok: false, error: "invalid session id" };
   const mk = RESUME_CMD[agent] || RESUME_CMD.claude;
-  const cmd = `cd ${shq(cwd || homedir())} && ${mk(sessionId)}`;
+  const dir = cwd || homedir();
+  if (IS_WIN) {
+    // Windows Terminal when present, else a plain console window
+    const inner = `cd /d "${dir}" && ${mk(sessionId)}`;
+    try {
+      if (await whichCmd("wt.exe")) spawn("wt.exe", ["-d", dir, "cmd", "/k", mk(sessionId)], { detached: true, stdio: "ignore", windowsHide: false }).unref();
+      else spawn("cmd.exe", ["/c", "start", "", "cmd", "/k", inner], { detached: true, stdio: "ignore", windowsHide: false }).unref();
+      return { ok: true, app: "Windows Terminal" };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+  const cmd = `cd ${shq(dir)} && ${mk(sessionId)}`;
+  if (IS_LINUX) {
+    // first terminal emulator that exists; the shell stays open after the agent exits
+    const sh = `${cmd}; exec bash`;
+    const candidates = [
+      ["x-terminal-emulator", ["-e", `bash -lc ${shq(sh)}`]],
+      ["gnome-terminal", [`--working-directory=${dir}`, "--", "bash", "-lc", sh]],
+      ["konsole", ["--workdir", dir, "-e", "bash", "-lc", sh]],
+      ["xfce4-terminal", [`--working-directory=${dir}`, "-e", `bash -lc ${shq(sh)}`]],
+      ["kitty", ["--directory", dir, "bash", "-lc", sh]],
+      ["alacritty", ["--working-directory", dir, "-e", "bash", "-lc", sh]],
+      ["xterm", ["-e", "bash", "-lc", sh]],
+    ];
+    for (const [bin, args] of candidates) {
+      if (!(await whichCmd(bin))) continue;
+      try { spawn(bin, args, { detached: true, stdio: "ignore" }).unref(); return { ok: true, app: bin }; } catch {}
+    }
+    return { ok: false, error: "no terminal emulator found (install gnome-terminal, konsole, kitty, alacritty or xterm)" };
+  }
   try {
     if (await appRunning("iTerm2")) {
       await osa(`tell application "iTerm2"
@@ -714,7 +763,7 @@ ipcMain.on("orca:session-counts", (_e, counts) => {
     const parts = [];
     if (running > 0) parts.push(`▶${running}`);
     if (asks > 0) parts.push(`?${asks}`);
-    tray.setTitle(parts.length ? ` ${parts.join(" ")}` : "");
+    if (IS_MAC) tray.setTitle(parts.length ? ` ${parts.join(" ")}` : "");
   }
   if (running > prevRunningCount && prevRunningCount >= 0) {
     new Notification({
@@ -780,6 +829,21 @@ ipcMain.handle("orca:clipboard-write", (_e, text) => { clipboard.writeText(text)
 // ── Port Monitor ──
 const execAsync = promisify(execCb);
 ipcMain.handle("orca:scan-ports", async () => {
+  if (IS_WIN) return [];
+  if (IS_LINUX) {
+    try {
+      const { stdout } = await execAsync("ss -ltnpH 2>/dev/null || true", { timeout: 5000 });
+      const ports = []; const seen = new Set();
+      for (const line of stdout.split("\n").filter(Boolean)) {
+        const parts = line.split(/\s+/); const local = parts[3] || ""; const port = Number((local.match(/:(\d+)$/) || [])[1]);
+        if (!port) continue;
+        const pm = line.match(/users:\(\("([^"]+)",pid=(\d+)/); const name = pm ? pm[1] : "?", pid = pm ? pm[2] : "";
+        const key = `${port}-${pid}`; if (seen.has(key)) continue; seen.add(key);
+        ports.push({ port, pid: Number(pid) || 0, name, user: "" });
+      }
+      return ports.sort((a, b) => a.port - b.port);
+    } catch { return []; }
+  }
   try {
     const { stdout } = await execAsync("lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null || true", { timeout: 5000 });
     const lines = stdout.split("\n").slice(1).filter(Boolean);
@@ -820,11 +884,26 @@ ipcMain.on("orca:set-opacity", (_e, val) => {
 
 // ── Claude Code hooks → ~/.roca/events.jsonl → renderer (exact working/waiting/needs-input) ──
 const ROCA_DIR = join(homedir(), ".roca");
-const HOOK_SCRIPT = join(ROCA_DIR, "hook.sh");
+const HOOK_SCRIPT = join(ROCA_DIR, IS_WIN ? "hook.ps1" : "hook.sh");
+// the command string registered in each agent's hook settings; `agent` tags events so the widget knows the CLI
+function hookCommand(agent) {
+  if (IS_WIN) return `powershell -NoProfile -ExecutionPolicy Bypass -File "${HOOK_SCRIPT}"${agent && agent !== "claude" ? ` -Agent ${agent}` : ""}`;
+  return `${agent && agent !== "claude" ? `AGENTDESK_AGENT=${agent} ` : ""}${HOOK_SCRIPT}`;
+}
 const EVENTS_FILE = join(ROCA_DIR, "events.jsonl");
 const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
 const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification", "PermissionRequest", "SubagentStart", "SubagentStop", "SessionEnd", "PostCompact"];
-const HOOK_SH = `#!/bin/bash
+const HOOK_PS1 = `param([string]$Agent = "claude")
+# AgentDesk hook (Windows): append the agent's hook payload to %USERPROFILE%\\.roca\\events.jsonl and exit immediately.
+$f = Join-Path $env:USERPROFILE ".roca\\events.jsonl"
+$payload = ([Console]::In.ReadToEnd()) -replace "\\r?\\n", ""
+if (-not $payload) { exit 0 }
+$ts = [int][double]::Parse((Get-Date -UFormat %s))
+$term = ($env:TERM_PROGRAM -replace "[^A-Za-z0-9._-]", "")
+Add-Content -Path $f -Value ('{"ts":' + $ts + ',"term":"' + $term + '","agent":"' + $Agent + '","ev":' + $payload + '}') -Encoding UTF8
+exit 0
+`;
+const HOOK_SH = IS_WIN ? HOOK_PS1 : `#!/bin/bash
 # AgentDesk hook: append the Claude Code hook payload to ~/.roca/events.jsonl and exit immediately.
 f="$HOME/.roca/events.jsonl"
 payload=$(cat | tr -d '\n')
@@ -844,18 +923,18 @@ exit 0
 //   codex:  ~/.codex/hooks.json      "hooks" (same event names as Claude Code)
 const AGENT_HOOKS = {
   claude: { label: "Claude Code", dir: join(homedir(), ".claude"), settings: CLAUDE_SETTINGS, events: HOOK_EVENTS,
-            entry: () => ({ hooks: [{ type: "command", command: HOOK_SCRIPT, timeout: 5, async: true }] }) },
+            entry: () => ({ hooks: [{ type: "command", command: hookCommand("claude"), timeout: 5, async: true }] }) },
   gemini: { label: "Gemini CLI", dir: join(homedir(), ".gemini"), settings: join(homedir(), ".gemini", "settings.json"),
             events: ["SessionStart", "SessionEnd", "BeforeAgent", "AfterAgent", "BeforeTool", "AfterTool", "Notification", "PreCompress"],
-            entry: () => ({ hooks: [{ type: "command", command: `AGENTDESK_AGENT=gemini ${HOOK_SCRIPT}`, timeout: 10000 }] }) },
+            entry: () => ({ hooks: [{ type: "command", command: hookCommand("gemini"), timeout: 10000 }] }) },
   codex:  { label: "Codex CLI", dir: join(homedir(), ".codex"), settings: join(homedir(), ".codex", "hooks.json"),
             events: ["SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification", "PermissionRequest", "SubagentStart", "SubagentStop", "PostCompact"],
-            entry: () => ({ hooks: [{ type: "command", command: `AGENTDESK_AGENT=codex ${HOOK_SCRIPT}`, timeout: 5 }] }) },
+            entry: () => ({ hooks: [{ type: "command", command: hookCommand("codex"), timeout: 5 }] }) },
 };
 function readJsonFile(p) { try { return JSON.parse(readFileSync(p, "utf-8")); } catch { return {}; } }
 function readSettings() { return readJsonFile(CLAUDE_SETTINGS); }
 function isOurHook(entry) {
-  return Array.isArray(entry?.hooks) && entry.hooks.some(h => typeof h?.command === "string" && h.command.includes("/.roca/hook.sh"));
+  return Array.isArray(entry?.hooks) && entry.hooks.some(h => typeof h?.command === "string" && /[\\/]\.roca[\\/]hook\.(sh|ps1)/.test(h.command));
 }
 function agentPresent(a) { return existsSync(AGENT_HOOKS[a].dir); }
 function agentHooksInstalled(a) {
@@ -897,7 +976,7 @@ function uninstallAgentHooks(a) {
 function installHooks(agents) {
   mkdirSync(ROCA_DIR, { recursive: true });
   writeFileSync(HOOK_SCRIPT, HOOK_SH);
-  chmodSync(HOOK_SCRIPT, 0o755);
+  if (!IS_WIN) chmodSync(HOOK_SCRIPT, 0o755);
   if (!existsSync(EVENTS_FILE)) writeFileSync(EVENTS_FILE, "");
   const list = (agents && agents.length ? agents : Object.keys(AGENT_HOOKS)).filter(a => AGENT_HOOKS[a] && agentPresent(a));
   for (const a of list) installAgentHooks(a);
@@ -927,7 +1006,7 @@ function readNewEvents() {
     const out = [];
     for (const line of buf.toString("utf-8").split("\n")) {
       if (!line.trim()) continue;
-      try { out.push(JSON.parse(line)); } catch {}
+      try { out.push(JSON.parse(line.replace(/^\uFEFF/, ""))); } catch {}   // PowerShell may write a BOM
     }
     return out;
   } catch { return []; }
@@ -972,7 +1051,7 @@ app.on("ready", () => {
   createWindow();
   if (process.env.ROCA_HOOKS_INSTALL) { try { installHooks(); console.log("[hooks] installed"); } catch (e) { console.log("[hooks] install failed", e.message); } }
   // keep an already-installed hook script current after widget updates
-  try { if (existsSync(HOOK_SCRIPT) && readFileSync(HOOK_SCRIPT, "utf-8") !== HOOK_SH) { writeFileSync(HOOK_SCRIPT, HOOK_SH); chmodSync(HOOK_SCRIPT, 0o755); console.log("[hooks] script refreshed"); } } catch (e) { console.log("[hooks] refresh failed", e.message); }
+  try { if (existsSync(HOOK_SCRIPT) && readFileSync(HOOK_SCRIPT, "utf-8") !== HOOK_SH) { writeFileSync(HOOK_SCRIPT, HOOK_SH); if (!IS_WIN) chmodSync(HOOK_SCRIPT, 0o755); console.log("[hooks] script refreshed"); } } catch (e) { console.log("[hooks] refresh failed", e.message); }
   // exact detection already on: extend it to agent CLIs that appeared since (e.g. Gemini CLI installed later)
   try {
     const st = hooksAgents();
