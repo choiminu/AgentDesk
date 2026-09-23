@@ -144,7 +144,8 @@ Every instruction sent to a member carries the full team brief (goal, scope, dec
 
 ```bash
 npm run dev          # run with NODE_ENV=development
-npm run dist         # build arm64 and x64 DMGs into dist/
+npm test             # status-judgement regression tests (core/status.js)
+npm run dist         # macOS DMGs; dist:linux / dist:win for the other platforms
 ```
 
 | Environment variable | Effect |
@@ -156,7 +157,9 @@ npm run dist         # build arm64 and x64 DMGs into dist/
 | `ROCA_ORCA_BIN=/path/orca` | Force the Orca CLI path |
 
 ```
-main.mjs        Electron main process: Orca CLI bridge, hook install/watch, team storage, IPC
+main.mjs        Electron main process: agent CLI hooks, terminal adapters, transcript readers, update check, IPC
+core/status.js  Session-status judgement shared by the renderer and the tests (hook events, screen reading, priority)
+test/           node --test regression tests for core/status.js
 preload.cjs     Context bridge exposed as window.orca
 widget.html     Single-file frontend (HTML + CSS + JS); office renderer and teams live here
 assets/pixel/   Sprites and furniture (see CREDITS.md)

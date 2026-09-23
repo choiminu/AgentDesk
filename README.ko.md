@@ -139,8 +139,9 @@ npm start
 ## 개발
 
 ```bash
-npm run dev          # NODE_ENV=development로 실행
-npm run dist         # dist/에 arm64·x64 DMG 빌드
+npm run dev          # NODE_ENV=development 로 실행
+npm test             # 상태 판정 회귀 테스트 (core/status.js)
+npm run dist         # macOS DMG, dist:linux / dist:win 은 다른 플랫폼
 ```
 
 | 환경 변수 | 효과 |
