@@ -2910,7 +2910,7 @@ async function fetchData() {
     const hookOnly = hookOnlySessions(wts, panes, ttys);
     for (const h of hookOnly) if (h.handle) handles.set(h.id, h.handle);
     showOrcaError(!orcaAvailable ? (hooksEnabled || !viaOrca ? null : ps.error) : (orcaVersionWarning || null));
-    showModeBanner(orcaAvailable, hookOnly.length, panes.length + ttys.length);
+    showModeBanner(orcaAvailable, hookOnly.length, ttys.length);
     $('tokenBars').style.display = orcaAvailable ? '' : 'none';
 
     await refreshScreenStatuses();
@@ -2968,7 +2968,7 @@ function applyHookEvent(rec) {
   const ev = rec.ev || {}; const ts = (rec.ts || 0) * 1000;
   const sid = ev.session_id; if (!sid) return;
   let st = hookSessions.get(sid);
-  if (!st) { st = { sid, cwd: ev.cwd, transcript: ev.transcript_path || '', status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false }; hookSessions.set(sid, st); }
+  if (!st) { st = { sid, cwd: ev.cwd, transcript: ev.transcript_path || '', first: ts, status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false }; hookSessions.set(sid, st); }
   if (ev.cwd) st.cwd = ev.cwd;
   if (ev.transcript_path) st.transcript = ev.transcript_path;
   st.last = Math.max(st.last, ts);
@@ -3083,13 +3083,21 @@ function hookOnlySessions(wts, panes, ttys) {
   if (!hooksEnabled) return [];
   const wtPaths = wts.map(w => String(w.worktreeId || '').split('::').pop()).filter(Boolean);
   const out = [];
-  for (const st of hookSessions.values()) {
+  const usedTargets = new Set();
+  // newest sessions pick their terminal first
+  for (const st of [...hookSessions.values()].sort((a, b) => b.first - a.first)) {
     if (st.ended || !st.cwd || Date.now() - st.last > HOOK_ONLY_RECENT_MS) continue;
     if (wtPaths.some(p => st.cwd === p || st.cwd.startsWith(p.replace(/\/$/, '') + '/'))) continue;   // already an Orca session
-    // terminal to drive this session: tmux pane in the same folder → terminal tab resumed with this session id → tab in the same folder
-    const pane = (panes || []).find(p => p.cwd === st.cwd && /claude|node/i.test(p.cmd || '')) || (panes || []).find(p => p.cwd === st.cwd);
-    const tty = !pane ? ((ttys || []).find(x => x.sessionId === st.sid) || (ttys || []).find(x => x.cwd === st.cwd)) : null;
-    const target = pane || tty;
+    // terminal to drive this session: the claude process resumed with this session id, else the claude process
+    // in the same folder whose start time is closest to the session's first hook event (tmux / iTerm2 / Terminal.app)
+    const procs = ttys || [];
+    let target = procs.find(x => x.sessionId === st.sid) || null;
+    if (!target) {
+      const same = procs.filter(x => x.cwd === st.cwd && !usedTargets.has(x.handle));
+      same.sort((a, b) => Math.abs((a.startedAt || 0) - st.first) - Math.abs((b.startedAt || 0) - st.first));
+      target = same[0] || null;
+    }
+    if (target) usedTargets.add(target.handle);
     out.push({ id: `hook:${st.sid}::${st.cwd}`, st, handle: target ? target.handle : null, pane: target });
   }
   return out;

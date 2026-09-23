@@ -392,25 +392,39 @@ ipcMain.handle("roca:tmux-panes", () => tmuxPanes());
 // claude processes running in ordinary terminal tabs: handle "term:<pid>". iTerm2 sessions are matched by the
 // ITERM_SESSION_ID the process inherited (Claude Code may sit on its own pty, so tty alone is unreliable);
 // Terminal.app tabs are matched by tty.
-const termTargets = new Map();   // pid → { pid, tty, cwd, sessionId, program, itermId }
+const termTargets = new Map();   // pid → { pid, tty, cwd, sessionId, program, itermId, startedAt, handle }
+// walk the parent chain of a pid (up to 6 levels) and return the first ancestor that is a tmux pane shell
+async function tmuxPaneForPid(pid, paneByPid) {
+  let cur = pid;
+  for (let i = 0; i < 6 && cur > 1; i++) {
+    if (paneByPid.has(cur)) return paneByPid.get(cur);
+    try { const { stdout } = await exec("/bin/ps", ["-o", "ppid=", "-p", String(cur)]); cur = Number(stdout.trim()); } catch { break; }
+  }
+  return null;
+}
 async function ttyTargets() {
   try {
-    const { stdout } = await exec("/bin/ps", ["-axo", "pid=,tty=,command="]);
-    const rows = stdout.split("\n").map(l => l.trim()).filter(l => /^\d+\s+ttys\d+\s+(\S*\/)?claude(\s|$)/.test(l));
+    const { stdout } = await exec("/bin/ps", ["-axo", "pid=,tty=,lstart=,command="]);
+    const rows = stdout.split("\n").map(l => l.trim()).filter(l => /^\d+\s+ttys\d+\s+.+?\s(\S*\/)?claude(\s|$)/.test(l));
+    const panes = await tmuxPanes();
+    const paneByPid = new Map(panes.map(p => [p.pid, p]));
     const out = [];
     for (const row of rows) {
-      const m = row.match(/^(\d+)\s+(ttys\d+)\s+(.*)$/); if (!m) continue;
-      const pid = Number(m[1]), tty = `/dev/${m[2]}`, cmd = m[3];
+      const m = row.match(/^(\d+)\s+(ttys\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(.*)$/); if (!m) continue;
+      const pid = Number(m[1]), tty = `/dev/${m[2]}`, startedAt = Date.parse(m[3]) || 0, cmd = m[4];
       const sessionId = (cmd.match(/--resume\s+([0-9a-f-]{8,})/) || [])[1] || null;
-      let cwd = "", program = "", itermId = "";
+      let cwd = "", program = "", itermId = "", inTmux = false;
       try { const r = await exec("/usr/sbin/lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"], { timeout: 4000 }); cwd = (r.stdout.split("\n").find(l => l.startsWith("n")) || "").slice(1); } catch {}
       try {
         const r = await exec("/bin/ps", ["eww", "-o", "command=", "-p", String(pid)], { timeout: 4000 });
         program = (r.stdout.match(/\bTERM_PROGRAM=(\S+)/) || [])[1] || "";
         itermId = ((r.stdout.match(/\bITERM_SESSION_ID=(\S+)/) || [])[1] || "").split(":").pop();
+        inTmux = /\bTMUX=/.test(r.stdout);
       } catch {}
-      if (/^Orca$/i.test(program) || /TMUX=/.test("")) continue;               // Orca terminals are handled by Orca itself
-      const target = { handle: `term:${pid}`, pid, tty, cwd, sessionId, program, itermId, cmd };
+      if (/^Orca$/i.test(program)) continue;                                   // Orca terminals are handled by Orca itself
+      let handle = `term:${pid}`, kind = itermId ? "iterm" : "terminal";
+      if (inTmux) { const pane = await tmuxPaneForPid(pid, paneByPid); if (pane) { handle = pane.handle; kind = "tmux"; } }
+      const target = { handle, kind, pid, tty, cwd, sessionId, program, itermId, startedAt, cmd };
       termTargets.set(pid, target);
       out.push(target);
     }
