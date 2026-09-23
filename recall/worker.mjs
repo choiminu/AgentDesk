@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Detached worker: digest → summarize (claude -p) → mask → upsert into MongoDB.
 import { notes, ensureIndexes, close, digest, summarize, mask, gitInfo, log } from "./lib.mjs";
-const [sessionId, transcriptPath, cwd, agent = "claude"] = process.argv.slice(2);
+const [sessionId, transcriptPath, cwd, agent = "claude", trigger = ""] = process.argv.slice(2);
 try {
   const d = digest(transcriptPath, agent);
   if (!d) { log("skip: no transcript", sessionId); process.exit(0); }
@@ -18,9 +18,9 @@ try {
     keywords: Array.isArray(s.keywords) ? s.keywords.map(k => mask(String(k)).slice(0, 40)).slice(0, 16) : [],
     files: Array.isArray(s.files) ? s.files.map(String).slice(0, 20) : [],
     body: mask(s.body || "").slice(0, 12000), digestLen: d.text.length, turns: d.userCount,
-    createdAt: new Date(), transcriptPath,
+    createdAt: new Date(), transcriptPath, lastTrigger: trigger || "manual",
   };
   await c.updateOne({ sessionId }, { $set: note }, { upsert: true });
-  log("saved", sessionId, g.repo, JSON.stringify(note.title));
+  log("saved", trigger || "manual", sessionId, g.repo, JSON.stringify(note.title));
 } catch (e) { log("error", sessionId, e.message); }
 finally { await close().catch(() => {}); }
