@@ -2125,6 +2125,24 @@
 
   [hidden] { display: none !important; }
 
+  /* ── settings page ── */
+  .settings { flex: 1; overflow-y: auto; padding: 14px 16px 18px; }
+  .settings h2 { font-size: 10px; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin: 14px 0 8px; font-weight: 600; }
+  .settings h2:first-child { margin-top: 0; }
+  .set-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-hover); margin-bottom: 6px; }
+  .set-row .tx { flex: 1; min-width: 0; }
+  .set-row .tx b { display: block; font-size: 11.5px; color: var(--text); font-weight: 600; }
+  .set-row .tx span { display: block; font-size: 10px; color: var(--text3); line-height: 1.4; margin-top: 1px; }
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; flex-shrink: 0; }
+  .seg button { font-size: 10.5px; padding: 3px 9px; border: none; background: none; color: var(--text3); cursor: pointer; border-right: 1px solid var(--border-subtle); }
+  .seg button:last-child { border-right: none; }
+  .seg button.on { background: var(--accent); color: #fff; }
+  .switch { width: 32px; height: 18px; border-radius: 999px; background: var(--border); position: relative; cursor: pointer; flex-shrink: 0; border: none; transition: background 0.15s; }
+  .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+  .switch.on { background: var(--accent); } .switch.on::after { left: 16px; }
+  .set-btn { font-size: 10.5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text2); cursor: pointer; flex-shrink: 0; }
+  .set-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .set-meta { font-size: 10px; color: var(--text3); line-height: 1.6; margin-top: 10px; word-break: break-all; }
   /* ── first-run onboarding ── */
   .onboard { position: fixed; inset: 0; z-index: 200; background: var(--bg); display: flex; flex-direction: column; -webkit-app-region: no-drag; }
   .onboard[hidden] { display: none; }
@@ -2166,8 +2184,7 @@
       <span class="stat">✅<span id="nDone">0</span></span>
     </div>
     <div class="header-controls">
-      <button class="theme-btn" id="theme-btn" title="테마 전환">🌙</button>
-      <button class="theme-btn" id="lang-btn" title="Language / 언어">EN</button>
+      <button class="theme-btn" id="settings-btn" title="설정">⚙</button>
       <button class="minimize-btn" id="minimize-btn" title="최소화">▾</button>
     </div>
   </div>
@@ -2407,6 +2424,11 @@
   <div class="toast-stack" id="toasts"></div>
 
 
+  <!-- PAGE: Settings (opened from the ⚙ header button) -->
+  <div class="page" id="page-settings">
+    <div class="settings" id="settings-body"></div>
+  </div>
+
   <!-- first-run onboarding (shown once; ROCA_START_PAGE=onboarding reopens it) -->
   <div class="onboard" id="onboard" hidden>
     <div class="onboard-body" id="onboard-body"></div>
@@ -2439,6 +2461,16 @@ function trunc(s, n) { return !s ? '' : s.length > n ? s.slice(0, n) + '…' : s
 let LANG = 'en';
 try { LANG = localStorage.getItem('roca-lang') || 'en'; } catch {}
 const I18N = {
+  '설정': 'Settings', '표시': 'Appearance', '언어': 'Language', 'UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.': 'UI language. Also applies to office text and team prompts.',
+  '테마': 'Theme', '시스템 설정을 따르거나 라이트/다크로 고정합니다.': 'Follow the system or force light / dark.', '시스템': 'System', '라이트': 'Light', '다크': 'Dark',
+  '감지와 알림': 'Detection & alerts', '정확 감지 (Claude Code 훅)': 'Exact detection (Claude Code hooks)',
+  '켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 Claude Code 세션도 표시됩니다.': 'On. Session states arrive as events, and Claude Code sessions started in a terminal are shown too.',
+  '꺼져 있습니다. 켜면 ~/.claude/settings.json에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.': 'Off. Turning it on adds the widget hooks to ~/.claude/settings.json (existing hooks kept, backup in ~/.roca/). Needed for sessions to show up.',
+  '알림음': 'Chime', '에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.': 'Plays a short sound when an agent starts waiting for you.',
+  '오피스': 'Office', '픽셀 배율': 'Pixel zoom', '자동은 창 크기에 맞춰 정수 배율을 고릅니다.': 'Auto picks an integer scale that fits the window.',
+  '기타': 'Other', '온보딩 다시 보기': 'Show onboarding again', '소개, 환경 점검, 사용 팁을 다시 표시합니다.': 'Shows the intro, environment check and tips again.', '열기': 'Open',
+  '훅 스크립트': 'Hook script', '이벤트 로그': 'Event log', '나중에 ⚙ 설정에서 바꿀 수 있습니다.': 'You can change it later in ⚙ Settings.',
+  '헤더의 ⚙ 설정에서 언어, 테마, 정확 감지, 알림음, 픽셀 배율을 바꿀 수 있습니다. 새로 시작하는 Claude Code 세션부터 훅 이벤트가 기록되니, 세션이 안 보이면 프롬프트를 한 번 보내 보세요.': 'The ⚙ Settings in the header hold language, theme, exact detection, chime and pixel zoom. Hook events are recorded from the next Claude Code activity on, so if a session is missing, send it a prompt once.',
   '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'Orca Widget에 오신 것을 환영합니다': 'Welcome to Orca Widget',
   'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
   '픽셀 오피스': 'Pixel office', '필요할 때만 알림': 'Alerts only when needed',
@@ -2577,16 +2609,11 @@ function setLang(l) {
   LANG = l; try { localStorage.setItem('roca-lang', l); } catch {}
   document.documentElement.lang = l;
   i18nObserverBusy = true; i18nApply(document.body); i18nObserverBusy = false;
-  const b = document.getElementById('lang-btn'); if (b) b.textContent = l === 'ko' ? 'EN' : '한';
+  if (typeof settingsRender === 'function' && document.querySelector('#page-settings.active')) settingsRender();
 }
 document.addEventListener('DOMContentLoaded', () => {
   i18nObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
   setLang(LANG);
-  document.getElementById('lang-btn').addEventListener('click', () => {
-    setLang(LANG === 'ko' ? 'en' : 'ko');
-    if (typeof renderDashboard === 'function') renderDashboard();
-    if (typeof officeFrame === 'function' && currentPage === 'office') officeFrame(performance.now());
-  });
 });
 function timeAgo(ts) {
   if (!ts) return '';
@@ -2620,35 +2647,19 @@ $('minimize-btn').addEventListener('click', () => {
 });
 
 // ── Theme toggle ──
-const themeBtn = $('theme-btn');
 let currentTheme = 'system';
 try { currentTheme = localStorage.getItem('roca-theme') || 'system'; } catch {}
 
 function applyTheme(theme) {
   currentTheme = theme;
-  if (theme === 'light') {
-    document.documentElement.setAttribute('data-theme', 'light');
-    themeBtn.textContent = '☀️';
-    themeBtn.title = '라이트 모드 (클릭: 다크)';
-  } else if (theme === 'dark') {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    themeBtn.textContent = '🌙';
-    themeBtn.title = '다크 모드 (클릭: 시스템)';
-  } else {
-    document.documentElement.removeAttribute('data-theme');
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    themeBtn.textContent = isDark ? '🌙' : '☀️';
-    themeBtn.title = '시스템 모드 (클릭: 라이트)';
-  }
+  if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+  else document.documentElement.removeAttribute('data-theme');
   try { localStorage.setItem('roca-theme', theme); } catch {}
+  if (typeof settingsRender === 'function' && document.querySelector('#page-settings.active')) settingsRender();
 }
 applyTheme(currentTheme);
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   if (currentTheme === 'system') applyTheme('system');
-});
-themeBtn.addEventListener('click', () => {
-  const next = currentTheme === 'system' ? 'light' : currentTheme === 'light' ? 'dark' : 'system';
-  applyTheme(next);
 });
 
 // ── Opacity removed ──
@@ -2694,6 +2705,7 @@ document.addEventListener('drop', e => e.preventDefault());
 // ── Page navigation ──
 const PAGE_SIZES = {
   dashboard:     { w: 320, h: 480 },
+  settings:      { w: 320, h: 480 },
   office:        { w: 640, h: 720, forceHeight: true },
   sessions:      { w: 320, h: 480 },
   orchestration: { w: 1200, h: 800, forceHeight: true },
@@ -2704,13 +2716,14 @@ const PAGE_SIZES = {
   pomodoro:      { w: 320, h: 420 },
 };
 let currentPage = 'dashboard';
-document.querySelectorAll('.page-nav-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelector('.page-nav-btn.active').classList.remove('active');
-    btn.classList.add('active');
-    document.querySelector('.page.active').classList.remove('active');
-    currentPage = btn.dataset.page;
-    $(`page-${currentPage}`).classList.add('active');
+function showPage(name) {
+  const btn = document.querySelector(`.page-nav-btn[data-page="${name}"]`);
+  const cur = document.querySelector('.page-nav-btn.active'); if (cur) cur.classList.remove('active');
+  if (btn) btn.classList.add('active');
+  document.querySelector('.page.active').classList.remove('active');
+  currentPage = name;
+  $(`page-${currentPage}`).classList.add('active');
+  {
     const size = PAGE_SIZES[currentPage] || PAGE_SIZES.dashboard;
     window.orca.resizeWindow(size.w, size.h, !!size.forceHeight);
     if (currentPage === 'sessions') loadClaudeSessions();
@@ -2719,15 +2732,18 @@ document.querySelectorAll('.page-nav-btn').forEach(btn => {
     if (currentPage === 'collab') { renderDebateSessionList(); renderCollabTree(); }
     if (currentPage === 'clipboard') loadClipboardHistory();
     if (currentPage === 'ports') loadPorts();
-  });
-});
+    if (currentPage === 'settings') settingsRender();
+  }
+}
+document.querySelectorAll('.page-nav-btn').forEach(btn => btn.addEventListener('click', () => showPage(btn.dataset.page)));
+$('settings-btn').addEventListener('click', () => showPage(currentPage === 'settings' ? 'dashboard' : 'settings'));
 {
   const hashParts = location.hash.slice(1).split(',');
   if (hashParts[1] === 'en' || hashParts[1] === 'ko') { try { localStorage.setItem('roca-lang', hashParts[1]); } catch {} LANG = hashParts[1]; document.addEventListener('DOMContentLoaded', () => setLang(hashParts[1])); }
   const startPage = hashParts[0].replace(/-demo$/, '');
-  const startBtn = startPage && document.querySelector(`.page-nav-btn[data-page="${startPage}"]`);
+  const startBtn = startPage && (startPage === 'settings' ? $('settings-btn') : document.querySelector(`.page-nav-btn[data-page="${startPage}"]`));
   if (startBtn) {
-    const tryOpen = () => { if (!startBtn.classList.contains('active')) startBtn.click(); else clearInterval(iv); };
+    const tryOpen = () => { if (currentPage !== startPage) startBtn.click(); else clearInterval(iv); };
     const iv = setInterval(tryOpen, 400);
     setTimeout(() => clearInterval(iv), 6000);
   }
@@ -7036,6 +7052,46 @@ fetchData();
 setInterval(fetchData, POLL);
 
 // ═══════════════════════════════════════════════════════════════════
+// SETTINGS PAGE — language, theme, exact detection (hooks), chime, office zoom, onboarding
+// ═══════════════════════════════════════════════════════════════════
+function settingsRender() {
+  const body = $('settings-body'); if (!body) return;
+  const seg = (name, val, opts) => `<div class="seg" data-set="${name}">${opts.map(([v, l]) => `<button data-v="${v}" class="${String(val) === String(v) ? 'on' : ''}">${esc(l)}</button>`).join('')}</div>`;
+  const sw = (name, on) => `<button class="switch ${on ? 'on' : ''}" data-set="${name}" data-v="${on ? '0' : '1'}"></button>`;
+  const row = (title, desc, ctl) => `<div class="set-row"><div class="tx"><b>${esc(title)}</b>${desc ? `<span>${esc(desc)}</span>` : ''}</div>${ctl}</div>`;
+  let soundOn = false; try { soundOn = localStorage.getItem('roca-office-sound') === '1'; } catch {}
+  const zoom = (() => { try { return localStorage.getItem('roca-office-zoom') || 'auto'; } catch { return 'auto'; } })();
+  body.innerHTML = `
+    <h2>${esc(t('표시'))}</h2>
+    ${row(t('언어'), t('UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.'), seg('lang', LANG, [['en', 'English'], ['ko', '한국어']]))}
+    ${row(t('테마'), t('시스템 설정을 따르거나 라이트/다크로 고정합니다.'), seg('theme', currentTheme, [['system', t('시스템')], ['light', t('라이트')], ['dark', t('다크')]]))}
+    <h2>${esc(t('감지와 알림'))}</h2>
+    ${row(t('정확 감지 (Claude Code 훅)'), hooksEnabled ? t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 Claude Code 세션도 표시됩니다.') : t('꺼져 있습니다. 켜면 ~/.claude/settings.json에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.'), sw('hooks', hooksEnabled))}
+    ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
+    <h2>${esc(t('오피스'))}</h2>
+    ${row(t('픽셀 배율'), t('자동은 창 크기에 맞춰 정수 배율을 고릅니다.'), seg('zoom', zoom, [['auto', t('자동')], ['2', '2×'], ['3', '3×'], ['4', '4×']]))}
+    <h2>${esc(t('기타'))}</h2>
+    ${row(t('온보딩 다시 보기'), t('소개, 환경 점검, 사용 팁을 다시 표시합니다.'), `<button class="set-btn" data-set="onboarding">${esc(t('열기'))}</button>`)}
+    <div class="set-meta" id="settings-meta"></div>`;
+  (async () => {
+    let v = ''; try { v = await window.orca.version(); } catch {}
+    let st = null; try { st = await window.orca.hooksStatus(); } catch {}
+    const el = $('settings-meta'); if (!el) return;
+    el.innerHTML = `Orca Widget ${esc(v || '')}<br>${esc(t('훅 스크립트'))}: ${esc(st?.script || '~/.roca/hook.sh')}<br>${esc(t('이벤트 로그'))}: ${esc(st?.events || '~/.roca/events.jsonl')}`;
+  })();
+}
+$('settings-body').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-set]'); if (!b) return;
+  const name = b.dataset.set, v = (e.target.closest('[data-v]') || b).dataset.v;
+  if (name === 'lang' && v) setLang(v);
+  else if (name === 'theme' && v) applyTheme(v);
+  else if (name === 'hooks') { $('hooks-toggle').click(); setTimeout(settingsRender, 600); }
+  else if (name === 'sound') { $('office-sound').click(); settingsRender(); }
+  else if (name === 'zoom' && v) { const sel = $('office-zoom'); sel.value = v; sel.dispatchEvent(new Event('change')); settingsRender(); }
+  else if (name === 'onboarding') { onboardStep = 0; onboardOpen(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // FIRST-RUN ONBOARDING — welcome, environment check (Claude Code / hooks / Orca / terminal permission), tips
 // ═══════════════════════════════════════════════════════════════════
 let onboardStep = 0, onboardEnv = null;
@@ -7055,8 +7111,8 @@ function onboardRender() {
   $('onboard-next').textContent = onboardStep === 2 ? t('시작하기') : t('다음');
   if (onboardStep === 0) {
     body.innerHTML = `
-      <div class="onboard-lang"><button data-lang="en" class="${LANG === 'en' ? 'on' : ''}">English</button><button data-lang="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</button></div>
       <h1>${esc(t('Orca Widget에 오신 것을 환영합니다'))}</h1>
+      <div class="onboard-check" style="margin-bottom:12px"><div class="st ok">🌐</div><div class="tx"><b>${esc(t('언어'))} · Language</b><span>${esc(t('나중에 ⚙ 설정에서 바꿀 수 있습니다.'))}</span></div><div class="onboard-lang" style="margin:0"><button data-lang="en" class="${LANG === 'en' ? 'on' : ''}">English</button><button data-lang="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</button></div></div>
       <p>${esc(t('AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.'))}</p>
       <div class="onboard-feat"><div class="ic">📋</div><div><b>${esc(t('대시보드'))}</b><span>${esc(t('Orca 세션과 터미널(iTerm2·Terminal·tmux)에서 띄운 Claude Code 세션을 한 목록에서. 작업 중 / 대기 / 선택 필요 / 완료 상태를 정확히 표시합니다.'))}</span></div></div>
       <div class="onboard-feat"><div class="ic">🏢</div><div><b>${esc(t('픽셀 오피스'))}</b><span>${esc(t('세션마다 캐릭터가 하나씩. 일하는 에이전트는 책상에서, 쉬는 에이전트는 소파에서. PM 자리에 끌어다 놓으면 팀을 만들어 지시를 내립니다.'))}</span></div></div>
@@ -7081,7 +7137,7 @@ function onboardRender() {
       <div class="onboard-tip"><kbd>${esc(t('더블클릭'))}</kbd><div>${esc(t('해당 세션의 터미널로 바로 전환합니다.'))}</div></div>
       <div class="onboard-tip"><kbd>${esc(t('우클릭'))}</kbd><div>${esc(t('이름 변경, 세션 ID 복사, 인터럽트, 팀 작업 메뉴.'))}</div></div>
       <div class="onboard-tip"><kbd>${esc(t('드래그'))}</kbd><div>${esc(t('오피스에서 캐릭터를 PM 자리에 놓으면 팀이 만들어지고, 다른 캐릭터를 팀 블록에 넣으면 팀원이 됩니다. PM에게 목표를 주면 브리프와 분담을 제안합니다.'))}</div></div>
-      <div class="onboard-tip"><kbd>🌙 · 한/EN</kbd><div>${esc(t('헤더에서 테마와 언어를 바꿀 수 있습니다. 새로 시작하는 Claude Code 세션부터 훅 이벤트가 기록되니, 세션이 안 보이면 프롬프트를 한 번 보내 보세요.'))}</div></div>`;
+      <div class="onboard-tip"><kbd>⚙</kbd><div>${esc(t('헤더의 ⚙ 설정에서 언어, 테마, 정확 감지, 알림음, 픽셀 배율을 바꿀 수 있습니다. 새로 시작하는 Claude Code 세션부터 훅 이벤트가 기록되니, 세션이 안 보이면 프롬프트를 한 번 보내 보세요.'))}</div></div>`;
   }
 }
 async function onboardLoadEnv() {
