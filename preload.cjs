@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("orca", {
   openPath: (p) => ipcRenderer.invoke("orca:open-path", p),
   notify: (title, body) => ipcRenderer.invoke("orca:notify", title, body),
   version: () => ipcRenderer.invoke("orca:version"),
+  platform: process.platform,
   hooksStatus: () => ipcRenderer.invoke("orca:hooks-status"),
   hooksInstall: (agents) => ipcRenderer.invoke("orca:hooks-install", agents),
   hooksUninstall: (agents) => ipcRenderer.invoke("orca:hooks-uninstall", agents),
