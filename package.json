@@ -7,10 +7,10 @@
   "scripts": {
     "start": "electron .",
     "dev": "NODE_ENV=development electron .",
-    "dist": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux",
-    "dist:win": "electron-builder --win",
-    "dist:all": "electron-builder -mwl"
+    "dist": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:all": "electron-builder -mwl --publish never"
   },
   "dependencies": {},
   "devDependencies": {
@@ -97,5 +97,12 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true
     }
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/choiminu/AgentDesk.git"
+  },
+  "author": "choiminu",
+  "license": "MIT",
+  "homepage": "https://github.com/choiminu/AgentDesk"
 }
