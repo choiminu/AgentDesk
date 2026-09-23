@@ -11,7 +11,7 @@
     "dist:linux": "electron-builder --linux --publish never",
     "dist:win": "electron-builder --win --publish never",
     "dist:all": "electron-builder -mwl --publish never",
-    "test": "node --test \"test/**/*.test.mjs\""
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {},
   "devDependencies": {
