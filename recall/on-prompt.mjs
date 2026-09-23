@@ -19,8 +19,12 @@ process.stdin.on("end", async () => {
       .sort({ score: { $meta: "textScore" } }).limit(8).toArray();
     // same worktree: a modest match is enough; another worktree of the same repo must match strongly (shared "etc"-style
     // workspaces hold unrelated tasks, and a note that merely shares a common word like "session" is noise)
-    const good = rows.map(r => ({ ...r, sameWt: r.worktree === g.worktree, rank: r.score + (r.worktree === g.worktree ? 2 : 0) }))
-      .filter(r => r.sameWt ? r.score >= 1.5 : r.score >= 4).sort((a, b) => b.rank - a.rank).slice(0, 3);
+    // text score alone over-rewards one shared common word ("session"); count how many distinct prompt terms the note
+    // actually contains. Same worktree: 1 term; another worktree of the same repo: at least 2 terms.
+    const terms = [...new Set(q.toLowerCase().split(/\s+/).filter(w => w.length >= 2))];
+    const hits = (n) => { const hay = `${n.title} ${(n.keywords || []).join(" ")} ${n.summary}`.toLowerCase(); return terms.filter(t => hay.includes(t)).length; };
+    const good = rows.map(r => ({ ...r, sameWt: r.worktree === g.worktree, hits: hits(r), rank: r.score + (r.worktree === g.worktree ? 2 : 0) }))
+      .filter(r => r.hits >= (r.sameWt ? 1 : 2) && r.score >= 1.5).sort((a, b) => b.rank - a.rank).slice(0, 3);
     if (!good.length) return;
     const lines = good.map(n => fmtNote(n, changedSince(g.root, n.commit, n.files)));
     process.stdout.write(`[agentdesk-recall] Past session notes that may match this request (run \`agentdesk-recall show <id>\` for the full note; verify against current code before relying on them):\n${lines.join("\n")}\n`);
