@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Syntax check (main, preload, renderer script)
+        run: |
+          node --check main.mjs
+          node --check preload.cjs
+          node --check core/status.js
+          python3 - <<'EOF'
+          import re,subprocess,tempfile,sys
+          html=open('widget.html',encoding='utf-8').read()
+          for s in re.findall(r'<script>(.*?)</script>',html,re.S):
+              p=tempfile.mktemp(suffix='.js'); open(p,'w').write(s)
+              r=subprocess.run(['node','--check',p],capture_output=True,text=True)
+              if r.returncode: print(r.stderr); sys.exit(1)
+          print('renderer OK')
+          EOF
