@@ -1,0 +1,9 @@
+{
+  "name": "agentdesk-recall",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Session notes: summarize finished agent sessions into MongoDB and recall them in later sessions",
+  "type": "module",
+  "bin": { "agentdesk-recall": "./cli.mjs" },
+  "dependencies": { "mongodb": "^6.17.0" }
+}
