@@ -2,7 +2,9 @@
 
 AI 코딩 에이전트를 위한 픽셀 아트 사무실. AgentDesk는 Claude Code 세션을 실시간으로 지켜보고(일반 터미널이든 [Orca](https://github.com/stablyai/orca) 안이든), 각 에이전트가 무엇을 하는지 대시보드와 책상에 앉은 캐릭터로 보여 주는 macOS 데스크톱 위젯입니다.
 
-*이전 이름은 "Orca Widget"입니다. Orca는 선택 사항이며 Claude Code만 있으면 동작합니다.*
+*이전 이름은 "Orca Widget"입니다. Orca는 선택 사항이며 지원하는 에이전트 CLI 하나만 있으면 동작합니다.*
+
+**지원 에이전트:** Claude Code, Gemini CLI, Codex CLI — 각 CLI의 자체 훅 체계를 사용하므로 상태가 정확합니다. [Orca](https://github.com/stablyai/orca) 안의 세션은 Orca CLI를 통한 터미널 제어도 됩니다.
 
 [English README](README.md)
 
@@ -12,7 +14,7 @@ AI 코딩 에이전트를 위한 픽셀 아트 사무실. AgentDesk는 Claude Co
 
 ## 기능
 
-- **실시간 대시보드** — 모든 Orca 워크트리 세션의 실제 상태(작업 중 / 입력 대기 / 선택 필요 / 완료 / 오류). 정확 감지를 켜면 Claude Code 훅 이벤트로, 아니면 터미널 화면을 읽어 판정하므로 Orca의 상태가 지연되어도 정확합니다.
+- **실시간 대시보드** — 터미널·tmux·Orca에서 실행 중인 모든 Claude Code·Gemini CLI·Codex CLI 세션의 실제 상태(작업 중 / 입력 대기 / 선택 필요 / 완료 / 오류). 정확 감지를 켜면 Claude Code 훅 이벤트로, 아니면 터미널 화면을 읽어 판정하므로 Orca의 상태가 지연되어도 정확합니다.
 - **픽셀 오피스** — 최근 세션이 캐릭터로 표시됩니다. 작업 중이면 사용하는 도구에 따라 배정된 스테이션(개발 / 조사 / 실행·테스트 / 문서화) 책상에서 도구 태그와 컨텍스트 게이지를 달고 일하고, 서브에이전트는 부모 옆에 나타나며, 쉬는 에이전트는 휴게실 소파에 앉습니다. 벽의 화이트보드가 현황을 요약합니다.
 - **PM 팀** — 에이전트를 PM 자리에 드래그해 팀을 만들고 다른 에이전트를 팀원으로 끌어 넣습니다. PM에게 목표를 주면 팀 브리프를 쓰고 업무 분배를 제안하며, 승인하면 각 팀원이 브리프와 자기 태스크를 받습니다. 보고는 PM에게 자동으로 돌아갑니다.
 - **선택 필요 알림** — 권한 승인이나 질문처럼 정말 사람이 답해야 할 때만 알림·토스트·트레이 배지·알림음이 뜹니다.
@@ -23,7 +25,7 @@ AI 코딩 에이전트를 위한 픽셀 아트 사무실. AgentDesk는 Claude Co
 
 ## 빠른 시작
 
-요구 사항: macOS, Node.js 18 이상. [Orca](https://github.com/stablyai/orca) 1.4 이상은 선택 사항이며, 없으면 훅 전용 모드(Claude Code 훅 + 메시지 전송용 [tmux](https://github.com/tmux/tmux))로 동작합니다.
+요구 사항: macOS, Node.js 18 이상, 에이전트 CLI 하나 이상(Claude Code, Gemini CLI 또는 Codex CLI). [Orca](https://github.com/stablyai/orca) 1.4 이상은 선택 사항이며, 없으면 훅 전용 모드(Claude Code 훅 + 메시지 전송용 [tmux](https://github.com/tmux/tmux))로 동작합니다.
 
 ```bash
 git clone https://github.com/choiminu/AgentDesk.git
@@ -88,7 +90,7 @@ npm start
 <details>
 <summary>훅 기반 정확 감지</summary>
 
-정확 감지를 켜면 `~/.claude/settings.json`에 위젯 훅이 추가됩니다(기존 훅 보존, 이전 파일은 `~/.roca/`에 백업). 훅 스크립트 `~/.roca/hook.sh`는 이벤트를 `~/.roca/events.jsonl`에 한 줄씩 덧붙이고 즉시 종료하며, 위젯이 이 파일을 감시합니다. Claude Code는 훅 설정을 즉시 다시 읽으므로 실행 중인 세션에도 적용됩니다. 끄면 위젯 항목만 제거됩니다.
+정확 감지를 켜면 이 Mac에 설치된 모든 에이전트 CLI에 위젯 훅이 추가됩니다: `~/.claude/settings.json`(Claude Code), `~/.gemini/settings.json`(Gemini CLI), `~/.codex/hooks.json`(Codex CLI). 기존 훅은 보존되고 이전 파일은 `~/.roca/`에 백업됩니다. 나중에 설치한 CLI는 다음 위젯 시작 때 자동으로 포함됩니다. 훅 스크립트 `~/.roca/hook.sh`는 이벤트를 `~/.roca/events.jsonl`에 한 줄씩 덧붙이고 즉시 종료하며, 위젯이 이 파일을 감시합니다. Claude Code는 훅 설정을 즉시 다시 읽으므로 실행 중인 세션에도 적용됩니다. 끄면 위젯 항목만 제거됩니다.
 
 | 훅 이벤트 | 위젯 상태 |
 |---|---|
