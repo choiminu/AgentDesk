@@ -44,8 +44,9 @@ On first launch a short onboarding checks the machine (Claude Code, the widget h
 
 | Action | Result |
 |---|---|
-| Click a session card or character | Opens the chat panel for that agent |
-| Double-click | Switches to the agent's Orca terminal |
+| Click a session card | Brings that agent's terminal forward (Orca, tmux, iTerm2 or Terminal); ended sessions reopen with `claude --resume` |
+| *Chat* button on a card, or click a character | Opens the chat panel for that agent |
+| Double-click a character | Switches to the agent's terminal |
 | Right-click | Menu: open chat, show terminal, copy session ID, interrupt, close, team actions |
 | Drag a character onto the PM seat | Creates a team with that agent as PM (the template appears while dragging) |
 | Drag a character into a team block | Adds it as a member; drop it outside to remove |
