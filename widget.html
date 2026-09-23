@@ -141,8 +141,9 @@
     opacity: 0.35;
   }
   .header * { -webkit-app-region: no-drag; }
+  .header-controls { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .header-controls .theme-btn { width: 22px; height: 22px; font-size: 11px; background: none; }
   .minimize-btn {
-    margin-left: auto;
     background: none;
     border: 1px solid var(--border-subtle);
     color: var(--text3);
@@ -262,7 +263,6 @@
   .mode-banner { margin: 6px 10px; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-dim); border-radius: var(--radius-md); font-size: var(--fs-xs); color: var(--text); display: flex; flex-direction: column; gap: 2px; }
   .mode-banner b { color: var(--accent); }
   .mode-banner button { align-self: flex-start; margin-top: 4px; background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; font-size: var(--fs-xs); }
-  .mode-sel { font-size: 10px; padding: 0 4px; height: 24px; width: 120px; cursor: pointer; }
   .mode-banner span { color: var(--text2); }
   .orca-error span { color: var(--text2); word-break: break-all; }
   .orca-error code { font-family: var(--mono); background: var(--surface); padding: 0 4px; border-radius: 3px; }
@@ -2133,7 +2133,11 @@
       <span class="stat">💤<span id="nWait">0</span></span>
       <span class="stat">✅<span id="nDone">0</span></span>
     </div>
-    <button class="minimize-btn" id="minimize-btn" title="최소화">▾</button>
+    <div class="header-controls">
+      <button class="theme-btn" id="theme-btn" title="테마 전환">🌙</button>
+      <button class="theme-btn" id="lang-btn" title="Language / 언어">EN</button>
+      <button class="minimize-btn" id="minimize-btn" title="최소화">▾</button>
+    </div>
   </div>
 
   <!-- Page navigation -->
@@ -2376,11 +2380,6 @@
       <div class="spinner"></div>
       <span id="updatedAt">--</span>
     </div>
-    <div class="footer-controls">
-      <button class="theme-btn" id="theme-btn" title="테마 전환">🌙</button>
-      <button class="theme-btn" id="lang-btn" title="Language / 언어">EN</button>
-      <select class="theme-btn mode-sel" id="mode-sel" title="데이터 소스 모드: 세션을 어디서 읽고 어떻게 제어할지 선택합니다"><option value="auto">자동 (Orca → 훅)</option><option value="orca">Orca 사용</option><option value="hooks">훅 전용 (Orca 없음)</option></select>
-    </div>
   </div>
 </div>
 
@@ -2444,11 +2443,10 @@ const I18N = {
   '클릭하면 터미널에서 claude --resume 으로 다시 엽니다': 'Click to reopen in a terminal with claude --resume', '읽기 전용 (터미널 없음)': 'read-only (no terminal found)', '터미널로 연결됨': 'Connected to its terminal', '터미널': 'terminal', '연결 가능한 터미널': 'controllable terminals',
   '터미널 보기': 'Open terminal', '터미널 탭으로 전환': 'Switch to the terminal tab', '터미널 탭 보기': 'Show terminal tab', '이름 변경': 'Rename', '위젯에 표시할 이름 (비우면 원래 이름)': 'Name shown in the widget (leave empty to reset)', '읽기 전용': 'read-only', 'tmux 보기': 'Open in tmux', 'tmux 터미널로 전환': 'Switch to the tmux terminal', 'tmux 터미널 보기': 'Show tmux terminal', 'tmux 터미널로 연결됨': 'Connected via tmux', '훅 전용 모드': 'Hooks-only mode', 'Claude Code 훅이 꺼져 있습니다': 'Claude Code hooks are off',
   '훅을 켜면 Claude Code 세션이 이벤트로 표시됩니다. tmux 안에서 실행 중인 세션은 채팅과 지시도 가능합니다.': 'Turn hooks on to show Claude Code sessions from events. Sessions running inside tmux can also be chatted with and directed.',
-  '정확 감지 켜기': 'Turn on exact detection', '데이터 소스 모드: 세션을 어디서 읽고 어떻게 제어할지 선택합니다': 'Data source: where sessions are read from and how agents are controlled',
-  '자동 (Orca → 훅)': 'Auto (Orca → hooks)',
+  '정확 감지 켜기': 'Turn on exact detection',
   'Orca CLI가 응답하면 Orca, 아니면 Claude Code 훅으로 세션을 찾습니다': 'Uses Orca when its CLI answers, otherwise finds sessions via Claude Code hooks',
   '항상 Orca CLI로 세션을 읽고 Orca 터미널로 제어합니다': 'Always reads sessions with the Orca CLI and controls them through Orca terminals',
-  'Orca를 쓰지 않고 Claude Code 훅으로 세션을 찾습니다. tmux 안의 세션만 채팅·지시 가능': 'Never calls Orca; finds sessions via Claude Code hooks. Only sessions inside tmux can be chatted with or directed', 'Orca 사용': 'Use Orca', '훅 전용 (Orca 없음)': 'Hooks only (no Orca)', '자동': 'Auto', '훅 전용': 'Hooks only', '⚠ 문맥 갱신 필요': '⚠ stale brief', '⚠ 브리프가 갱신되어 문맥이 오래되었습니다': '⚠ Brief was updated; this member has stale context', '(응답 없음)': '(no reply)', '● 작업 중': '● Working',
+  'Orca를 쓰지 않고 Claude Code 훅으로 세션을 찾습니다. tmux 안의 세션만 채팅·지시 가능': 'Never calls Orca; finds sessions via Claude Code hooks. Only sessions inside tmux can be chatted with or directed', '자동': 'Auto', '훅 전용': 'Hooks only', '⚠ 문맥 갱신 필요': '⚠ stale brief', '⚠ 브리프가 갱신되어 문맥이 오래되었습니다': '⚠ Brief was updated; this member has stale context', '(응답 없음)': '(no reply)', '● 작업 중': '● Working',
   'Orca 버전': 'Orca version', '은(는) 지원 범위 밖입니다. 1.4 이상으로 업데이트하면 화면 기반 상태 판독과 채팅이 동작합니다.': ' is not supported. Update to 1.4 or newer for screen-based status and chat.',
 };
 Object.assign(I18N, {
@@ -3064,22 +3062,11 @@ const hooksReady = refreshHooksStatus().then(async () => {
 
 let orcaAvailable = true;
 // data-source mode: 'auto' picks Orca when its CLI answers, otherwise hooks; 'orca' / 'hooks' force one
-let dataMode = 'auto';
-try { dataMode = localStorage.getItem('roca-mode') || 'auto'; } catch {}
+// data source is decided automatically: Orca worktrees via the Orca CLI when it answers, plus every Claude Code
+// session found through hooks (terminal / tmux); with no Orca at all, hooks are the only source
+const dataMode = 'auto';
 let orcaProbe = null;   // null = not probed yet, true/false after version check
-function useOrca() {
-  if (dataMode === 'hooks') return false;
-  if (dataMode === 'orca') return true;
-  return orcaProbe !== false;
-}
-{
-  const sel = $('mode-sel');
-  sel.value = dataMode;
-  const modeHelp = { auto: 'Orca CLI가 응답하면 Orca, 아니면 Claude Code 훅으로 세션을 찾습니다', orca: '항상 Orca CLI로 세션을 읽고 Orca 터미널로 제어합니다', hooks: 'Orca를 쓰지 않고 Claude Code 훅으로 세션을 찾습니다. tmux 안의 세션만 채팅·지시 가능' };
-  const applyHelp = () => { sel.title = t(modeHelp[dataMode] || ''); };
-  applyHelp();
-  sel.addEventListener('change', () => { dataMode = sel.value; try { localStorage.setItem('roca-mode', dataMode); } catch {} applyHelp(); showOrcaError(null); fetchData(); });
-}
+function useOrca() { return orcaProbe !== false; }
 const HOOK_ONLY_RECENT_MS = 24 * 60 * 60 * 1000;   // ended terminal sessions stay visible as Done for a day, like Orca ones
 function hookOnlySessions(wts, panes, ttys) {
   if (!hooksEnabled) return [];
@@ -3138,7 +3125,7 @@ function showModeBanner(orcaOk, hookOnlyCount, paneCount) {
     el = document.createElement('div'); el.id = 'mode-banner'; el.className = 'mode-banner';
     $('page-dashboard').insertBefore(el, $('list'));
   }
-  const modeLabel = dataMode === 'hooks' ? t('훅 전용 모드') : t('Orca 없이 훅 모드로 동작 중');
+  const modeLabel = t('Orca 없이 훅 모드로 동작 중');
   el.innerHTML = hooksEnabled
     ? `<b>${esc(modeLabel)}</b><span>${esc(t('Claude Code 세션'))} ${hookOnlyCount} · ${esc(t('연결 가능한 터미널'))} ${paneCount}</span>`
     : `<b>${esc(t('Claude Code 훅이 꺼져 있습니다'))}</b><span>${esc(t('훅을 켜면 Claude Code 세션이 이벤트로 표시됩니다. tmux 안에서 실행 중인 세션은 채팅과 지시도 가능합니다.'))}</span><button id="mode-enable-hooks">${esc(t('정확 감지 켜기'))}</button>`;
