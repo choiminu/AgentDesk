@@ -136,6 +136,22 @@ npm start
 팀원에게 가는 모든 지시에는 팀 브리프 전체(목표, 범위, 결정 사항, 팀원별 산출물, 완료 조건, 금지 사항)가 동봉되어, 세션이 길어지거나 컨텍스트가 압축돼도 PM의 문맥이 유지됩니다. 팀원은 `REPORT_START … REPORT_END` 블록으로 보고하도록 요청받고, 팀원이 끝나면 위젯이 보고를 모아 PM에게 다음 단계를 묻습니다(기본은 승인 창, 자동 진행 가능, 라운드 상한 12). 팀 배치와 로그는 `~/.roca/teams.json`에 저장됩니다.
 </details>
 
+## 세션 노트 (recall)
+
+`recall/` 은 끝난 에이전트 세션마다 짧은 엔지니어링 노트(`파일:줄` 근거가 있는 결론, 결정, 실패한 시도, 남은 의문)를 만들어 로컬 MongoDB에 저장하고, 이후 세션이 같은 분석을 반복하지 않게 합니다.
+
+```bash
+brew tap mongodb/brew && brew install mongodb-community && brew services start mongodb-community
+cd recall && npm install
+node cli.mjs install          # Claude Code / Gemini CLI / Codex CLI 훅 + /recall 스킬 등록
+node cli.mjs backfill --since 7d   # 선택: 지난 일주일 트랜스크립트 노트 생성
+node cli.mjs search "iTerm 세션 매칭"
+```
+
+- **SessionEnd** → 분리된 워커가 트랜스크립트를 요약 입력(프롬프트·응답만, 도구 출력 제외)으로 만들고 비밀 값을 마스킹한 뒤 `claude -p`(Haiku)로 JSON 노트를 받아 `agentdesk.session_notes` 에 git 커밋·관련 파일과 함께 저장합니다.
+- **UserPromptSubmit** → 현재 저장소에서 가장 잘 맞는 노트 3개를 컨텍스트로 덧붙이고, 노트가 의존한 파일이 그 뒤 바뀌었으면 `⚠ N file(s) changed since` 로 표시합니다.
+- `/recall` 스킬과 `agentdesk-recall search | show | list` 로 직접 찾아볼 수 있습니다. `AGENTDESK_MONGO_URL` 을 원격으로 바꾸지 않는 한 데이터는 이 컴퓨터를 떠나지 않습니다.
+
 ## 개발
 
 ```bash

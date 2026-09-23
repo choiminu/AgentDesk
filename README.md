@@ -140,6 +140,22 @@ Times are parsed in English and Korean formats. The same screen also yields the 
 Every instruction sent to a member carries the full team brief (goal, scope, decisions, per-member deliverables, done criteria, forbidden), so members keep the PM's context even after long sessions or compaction. Members are asked to end with a `REPORT_START … REPORT_END` block; when a member finishes, the widget collects the report and asks the PM for the next step (approval dialog by default, or auto-dispatch, capped at 12 rounds). Team layout and logs live in `~/.roca/teams.json`.
 </details>
 
+## Session notes (recall)
+
+`recall/` turns every finished agent session into a short engineering note (findings with `file:line`, decisions, dead ends, open questions) and stores it in a local MongoDB so later sessions can skip re-analysis.
+
+```bash
+brew tap mongodb/brew && brew install mongodb-community && brew services start mongodb-community
+cd recall && npm install
+node cli.mjs install          # hooks for Claude Code / Gemini CLI / Codex CLI + the /recall skill
+node cli.mjs backfill --since 7d   # optional: notes for last week's transcripts
+node cli.mjs search "iTerm session matching"
+```
+
+- **SessionEnd** → a detached worker digests the transcript (prompts and answers only, tool output dropped), masks secrets, asks `claude -p` (Haiku) for a JSON note and upserts it into `agentdesk.session_notes` with the git commit and files it relies on.
+- **UserPromptSubmit** → the top 3 matching notes for the current repo are added as context, flagged `⚠ N file(s) changed since` when their files changed after the note was written.
+- `/recall` skill and `agentdesk-recall search | show | list` for explicit lookups. Nothing leaves the machine unless you point `AGENTDESK_MONGO_URL` at a remote cluster.
+
 ## Development
 
 ```bash
