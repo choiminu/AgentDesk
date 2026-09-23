@@ -2,7 +2,9 @@
 
 A pixel-art office for your AI coding agents. AgentDesk is a lightweight macOS desktop widget that watches your Claude Code sessions in real time — in any terminal, or inside [Orca](https://github.com/stablyai/orca) — and shows what each agent is doing: as a dashboard, and as characters at their desks.
 
-*Formerly "Orca Widget". Orca is optional; only Claude Code is required.*
+*Formerly "Orca Widget". Orca is optional; any supported agent CLI is enough.*
+
+**Supported agents:** Claude Code, Gemini CLI, Codex CLI — all through their native hook systems, so states are exact. Sessions inside [Orca](https://github.com/stablyai/orca) get terminal control through the Orca CLI as well.
 
 [한국어 README](README.ko.md)
 
@@ -16,7 +18,7 @@ A pixel-art office for your AI coding agents. AgentDesk is a lightweight macOS d
 
 ## Features
 
-- **Live dashboard** — every Orca worktree session with its real state: working, waiting for input, needs a choice, done, error. State comes from Claude Code hooks when enabled, otherwise from the terminal screen itself, so it stays correct even when Orca's own agent state lags.
+- **Live dashboard** — every Claude Code, Gemini CLI and Codex CLI session (in a terminal, tmux or Orca) with its real state: working, waiting for input, needs a choice, done, error. State comes from Claude Code hooks when enabled, otherwise from the terminal screen itself, so it stays correct even when Orca's own agent state lags.
 - **Pixel office** — each recent session is a character. Working agents sit at station desks (Dev / Research / Exec / Docs, picked from the tools they use) with a live tool tag and a context-window gauge; subagents appear next to their parent; idle agents rest on the lounge sofa; a whiteboard on the wall summarizes the room.
 - **PM teams** — drag an agent onto the PM seat to form a team and drag others in as members. Give the PM a goal: it writes a team brief, proposes a task split, and after your approval each member receives the brief plus its task. Reports flow back to the PM automatically.
 - **Needs-input alerts** — notifications, toast, tray badge and an optional chime fire only when an agent is really waiting on you (permission prompt or a question), not on every finished turn.
@@ -27,7 +29,7 @@ A pixel-art office for your AI coding agents. AgentDesk is a lightweight macOS d
 
 ## Quick start
 
-Requirements: macOS and Node.js 18+. [Orca](https://github.com/stablyai/orca) 1.4+ is optional — without it the widget runs in hooks-only mode (Claude Code hooks + [tmux](https://github.com/tmux/tmux) for sending messages).
+Requirements: macOS, Node.js 18+ and at least one agent CLI (Claude Code, Gemini CLI or Codex CLI). [Orca](https://github.com/stablyai/orca) 1.4+ is optional — without it the widget runs in hooks-only mode (Claude Code hooks + [tmux](https://github.com/tmux/tmux) for sending messages).
 
 ```bash
 git clone https://github.com/choiminu/AgentDesk.git
@@ -92,13 +94,13 @@ The two kinds are told apart by the `TERM_PROGRAM` the hook script records (`Orc
 <details>
 <summary>Exact detection via Claude Code hooks</summary>
 
-Turning on Exact detection adds widget hooks to `~/.claude/settings.json` (existing hooks are kept, the previous file is backed up under `~/.roca/`). The hook script `~/.roca/hook.sh` appends each event as one JSON line to `~/.roca/events.jsonl` and exits immediately; the widget tails that file. Claude Code reloads hook settings live, so running sessions are covered too. Turning it off removes only the widget's entries.
+Turning on Exact detection adds widget hooks to every agent CLI installed on the Mac: `~/.claude/settings.json` (Claude Code), `~/.gemini/settings.json` (Gemini CLI) and `~/.codex/hooks.json` (Codex CLI). Existing hooks are kept and the previous files are backed up under `~/.roca/`. A CLI installed later is picked up on the next widget start. The hook script `~/.roca/hook.sh` appends each event as one JSON line to `~/.roca/events.jsonl` and exits immediately; the widget tails that file. Claude Code reloads hook settings live, so running sessions are covered too. Turning it off removes only the widget's entries.
 
-| Hook event | Widget state |
+| Hook event (Claude Code / Codex CLI; Gemini CLI name in parentheses) | Widget state |
 |---|---|
-| `UserPromptSubmit`, `PreToolUse` (tool name and target recorded), `PostToolUse` | Working |
-| `Stop` | Waiting (Done after 10 minutes) |
-| `PermissionRequest`, `Notification` (`permission_prompt`, `agent_needs_input`, `elicitation_*`), `PreToolUse(AskUserQuestion)` | Needs input |
+| `UserPromptSubmit` (`BeforeAgent`), `PreToolUse` (`BeforeTool`; tool name and target recorded), `PostToolUse` (`AfterTool`) | Working |
+| `Stop` (`AfterAgent`), `Interrupt` | Waiting (Done after 10 minutes) |
+| `PermissionRequest`, `Notification` (`permission_prompt`, `agent_needs_input`, `elicitation_*`, Gemini `ToolPermission`), `PreToolUse(AskUserQuestion)` | Needs input |
 | `SubagentStart` / `SubagentStop`, `PreToolUse` inside a subagent | Subagent appears, shows its tool, leaves |
 | `SessionEnd` | Done |
 
