@@ -16,11 +16,12 @@ AI 코딩 에이전트를 위한 픽셀 아트 사무실. Orca Widget은 [Orca](
 - **선택 필요 알림** — 권한 승인이나 질문처럼 정말 사람이 답해야 할 때만 알림·토스트·트레이 배지·알림음이 뜹니다.
 - **채팅 패널** — 캐릭터나 카드를 클릭하면 에이전트 화면을 읽고 메시지를 보낼 수 있고, 더블클릭하면 Orca 터미널로 전환됩니다.
 - **유틸리티** — 클립보드 히스토리, 리스닝 포트 모니터(프로세스 종료), 메모, 뽀모도로 타이머.
+- **Orca 유무와 무관하게 동작** — Orca가 있으면 Orca CLI로 세션 발견·채팅·터미널 제어를 하고, 없으면(Claude Code가 있는 어느 Mac이든) Claude Code 훅과 트랜스크립트로 세션을 발견합니다. tmux 안에서 실행 중인 세션은 채팅과 지시도 가능합니다. 푸터에서 *자동 / Orca / 훅 전용*을 선택합니다.
 - **영어·한국어 UI** — 기본은 영어, 푸터 버튼으로 전환.
 
 ## 빠른 시작
 
-요구 사항: macOS, [Orca](https://github.com/stablyai/orca) 1.4 이상(`orca --version`), Node.js 18 이상.
+요구 사항: macOS, Node.js 18 이상. [Orca](https://github.com/stablyai/orca) 1.4 이상은 선택 사항이며, 없으면 훅 전용 모드(Claude Code 훅 + 메시지 전송용 [tmux](https://github.com/tmux/tmux))로 동작합니다.
 
 ```bash
 git clone https://github.com/choiminu/orca-widget.git
@@ -69,6 +70,18 @@ npm start
 1. **훅 이벤트**(정확, 정확 감지가 켜진 경우)
 2. **터미널 화면**(추정)
 3. **Orca 에이전트 상태**(대체)
+
+<details>
+<summary>데이터 소스 모드 (Orca / 훅 전용)</summary>
+
+| 모드 | 세션 출처 | 채팅·PM 팀·인터럽트 |
+|---|---|---|
+| **Orca** | `orca worktree ps` + 터미널 목록, 훅 이벤트로 보강 | Orca 터미널 |
+| **훅 전용** | Claude Code 훅 이벤트(`~/.roca/events.jsonl`) + 트랜스크립트 메타(제목·마지막 메시지·컨텍스트·브랜치) | 같은 디렉터리의 tmux 패널(`send-keys` / `capture-pane`), 없으면 읽기 전용 |
+| **자동**(기본) | Orca CLI가 응답하면 Orca, 아니면 훅 전용 | — |
+
+훅 전용 모드는 정확 감지가 켜져 있어야 하며, 꺼져 있으면 대시보드 배너의 버튼으로 바로 켤 수 있습니다.
+</details>
 
 <details>
 <summary>훅 기반 정확 감지</summary>
