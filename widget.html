@@ -4990,7 +4990,7 @@ function officeFrame(now) {
       ch.lastStatus = sess.status; ch.statusSince = Date.now();
     }
     if (!!sess.needsInput !== !!ch.lastNeedsInput) {
-      if (sess.needsInput && ch.lastNeedsInput !== undefined) { ch.alertT = 4; officeBeep('ask'); }
+      if (sess.needsInput && ch.lastNeedsInput !== undefined) { ch.alertT = 4; officeBeep('ask'); officeAskAuto(ch); }
       ch.lastNeedsInput = !!sess.needsInput;
       if (sess.needsInput) { const tm = teamOf(sess.id); if (tm && tm.pm !== sess.id) teamLog(tm, 'needs-input', `${sess.name}: 사용자 입력 대기`, { from: sess.name }); }
     }
@@ -5589,16 +5589,16 @@ function officeDrawAlert(ctx, cx, cy, t) {
 function officeParseChoice(lines) {
   if (!lines || !lines.length) return null;
   const clean = lines.map(l => String(l).replace(/^\s*[│┃]\s?/, '').replace(/\s?[│┃]\s*$/, '').replace(/\s+$/, ''));
-  const isOpt = l => /^\s*❯?\s*\d+\.\s+\S/.test(l), isDesc = l => /^\s{3,}\S/.test(l);
+  const isOpt = l => /^\s*❯?\s*\d+\.\s+\S/.test(l);
+  const isNoise = l => !l.trim() || /^[─╭╰╮╯┌└┐┘═\s]+$/.test(l);
   let first = -1, last = -1;
   for (let i = clean.length - 1; i >= Math.max(0, clean.length - 60); i--) {
     if (isOpt(clean[i])) { if (last < 0) last = i; first = i; continue; }
     if (last < 0) continue;
-    if (isDesc(clean[i])) continue;                       // wrapped description under an option
-    if (!clean[i].trim()) {                               // blank line inside the block only if more options follow above
-      let j = i - 1; while (j >= 0 && !clean[j].trim()) j--;
-      if (j >= 0 && (isOpt(clean[j]) || isDesc(clean[j]))) continue;
-    }
+    // descriptions (indented or not), blank lines and separators belong to the block as long as another option follows within 3 lines above
+    let j = i - 1, hops = 0, more = false;
+    while (j >= 0 && hops < 3) { if (isOpt(clean[j])) { more = true; break; } if (!isNoise(clean[j])) hops++; j--; }
+    if (more) continue;
     break;
   }
   if (last < 0) return null;
@@ -5606,8 +5606,10 @@ function officeParseChoice(lines) {
   for (let i = first; i <= last; i++) {
     const m = clean[i].match(/^\s*(❯)?\s*(\d+)\.\s+(.*)$/);
     if (m) options.push({ n: +m[2], label: m[3].trim(), desc: '', selected: !!m[1] });
-    else if (options.length && clean[i].trim()) options[options.length - 1].desc += (options[options.length - 1].desc ? ' ' : '') + clean[i].trim();
+    else if (options.length && !isNoise(clean[i])) options[options.length - 1].desc += (options[options.length - 1].desc ? ' ' : '') + clean[i].trim();
   }
+  // a real prompt always marks the highlighted option with ❯; plain numbered lists in the transcript never do
+  if (!options.some(o => o.selected)) return null;
   const q = [];
   for (let i = first - 1; i >= 0 && q.length < 12; i--) {
     const tl = clean[i].trim();
@@ -5700,6 +5702,16 @@ async function officeAnswer(n, text) {
   } catch (e) { say(t('전송 실패: ') + e.message, true); el.querySelectorAll('button').forEach(b => { b.disabled = false; }); }
 }
 document.addEventListener('mousedown', e => { if (officeAsk && !$('office-ask').contains(e.target) && !$('office-canvas').contains(e.target)) officeAskClose(); });
+// a new question opens the popover by itself (no click needed), scrolling the character into view; an open popover is never replaced
+function officeAskAuto(ch) {
+  if (officeAsk || currentPage !== 'office' || ch.sess?.isSub) return;
+  if (!officeHandleFor(ch) && !OFFICE_DEMO) return;
+  const wrap = $('office-wrap'), scale = $('office-canvas').__scale || 2;
+  const cy = (ch.seat ? ch.seat.chairY : ch.y) * scale;
+  if (cy < wrap.scrollTop + 60 || cy > wrap.scrollTop + wrap.clientHeight - 40) wrap.scrollTo({ top: Math.max(0, cy - wrap.clientHeight / 2), behavior: 'smooth' });
+  // give the terminal a moment to finish drawing the dialog before the first read
+  setTimeout(() => { if (!officeAsk && ch.sess && ch.sess.needsInput) officeAskOpen(ch); }, 600);
+}
 // ── reception & company sign ──
 let officeCompany = 'ORCA';
 try { officeCompany = localStorage.getItem('roca-office-company') || 'ORCA'; } catch {}
