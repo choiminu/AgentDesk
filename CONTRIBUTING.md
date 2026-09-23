@@ -5,8 +5,8 @@ Thank you for your interest in contributing! Here's how you can help.
 ## Getting Started
 
 ```bash
-git clone https://github.com/choiminu/agentdesk.git
-cd agentdesk
+git clone https://github.com/choiminu/AgentDesk.git
+cd AgentDesk
 npm install
 npm start
 ```

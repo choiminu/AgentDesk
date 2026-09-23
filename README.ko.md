@@ -26,8 +26,8 @@ AI 코딩 에이전트를 위한 픽셀 아트 사무실. AgentDesk는 Claude Co
 요구 사항: macOS, Node.js 18 이상. [Orca](https://github.com/stablyai/orca) 1.4 이상은 선택 사항이며, 없으면 훅 전용 모드(Claude Code 훅 + 메시지 전송용 [tmux](https://github.com/tmux/tmux))로 동작합니다.
 
 ```bash
-git clone https://github.com/choiminu/agentdesk.git
-cd agentdesk
+git clone https://github.com/choiminu/AgentDesk.git
+cd AgentDesk
 npm install
 npm start
 ```
