@@ -832,9 +832,9 @@ ipcMain.handle("orca:hooks-recent", () => {
   // replay the last ~30 minutes so state is right immediately after launch
   try {
     if (!existsSync(EVENTS_FILE)) return [];
-    const lines = readFileSync(EVENTS_FILE, "utf-8").split("\n").filter(Boolean).slice(-2000);
+    const lines = readFileSync(EVENTS_FILE, "utf-8").split("\n").filter(Boolean);
     eventsOffset = statSync(EVENTS_FILE).size;
-    const cutoff = Math.floor(Date.now() / 1000) - 1800;
+    const cutoff = Math.floor(Date.now() / 1000) - 24 * 3600;
     const out = [];
     for (const l of lines) { try { const o = JSON.parse(l); if (o.ts >= cutoff) out.push(o); } catch {} }
     return out;
