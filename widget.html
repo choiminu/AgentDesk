@@ -2971,6 +2971,7 @@ function applyHookEvent(rec) {
   let st = hookSessions.get(sid);
   if (!st) { st = { sid, cwd: ev.cwd, transcript: ev.transcript_path || '', first: ts, status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false }; hookSessions.set(sid, st); }
   if (ev.cwd) st.cwd = ev.cwd;
+  if (rec.term) st.term = rec.term;   // TERM_PROGRAM of the launching terminal (Orca, iTerm.app, tmux, Apple_Terminal)
   if (ev.transcript_path) st.transcript = ev.transcript_path;
   st.last = Math.max(st.last, ts);
   const setStatus = (v) => { if (st.status !== v) { st.status = v; st.since = ts; } };
@@ -3082,13 +3083,19 @@ function useOrca() {
 const HOOK_ONLY_RECENT_MS = 24 * 60 * 60 * 1000;   // ended terminal sessions stay visible as Done for a day, like Orca ones
 function hookOnlySessions(wts, panes, ttys) {
   if (!hooksEnabled) return [];
-  const wtPaths = wts.map(w => String(w.worktreeId || '').split('::').pop()).filter(Boolean);
+  // Orca worktrees with a live Orca terminal, by exact path. Prefix matching is wrong here: the home folder
+  // itself can be an Orca worktree, which would swallow every terminal session under it.
+  const liveWt = new Set(wts.filter(w => (w.liveTerminalCount || 0) > 0 || w.hasAttachedPty)
+    .map(w => (w.path || String(w.worktreeId || '').split('::').pop() || '').replace(/\/$/, '')).filter(Boolean));
   const out = [];
   const usedTargets = new Set();
   // newest sessions pick their terminal first
   for (const st of [...hookSessions.values()].sort((a, b) => b.first - a.first)) {
     if (!st.cwd || Date.now() - st.last > HOOK_ONLY_RECENT_MS) continue;
-    if (wtPaths.some(p => st.cwd === p || st.cwd.startsWith(p.replace(/\/$/, '') + '/'))) continue;   // already an Orca session
+    const resumedHere = (ttys || []).some(x => x.sessionId === st.sid);   // a plain-terminal claude --resume <sid>
+    // Orca session? exact when the hook recorded TERM_PROGRAM; otherwise a live Orca terminal in the same folder
+    const isOrca = st.term ? st.term === 'Orca' : (!st.ended && liveWt.has(st.cwd.replace(/\/$/, '')));
+    if (isOrca && !resumedHere) continue;
     // terminal to drive this session: the claude process resumed with this session id, else the claude process
     // in the same folder whose start time is closest to the session's first hook event (tmux / iTerm2 / Terminal.app)
     const procs = st.ended ? [] : (ttys || []);

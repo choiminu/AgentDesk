@@ -387,6 +387,41 @@ async function tmuxPanes() {
     });
   } catch { return []; }
 }
+// spinner / "esc to interrupt" line of the Claude Code TUI — a turn is in progress
+const SPINNER_LINE = /^[·•✢✳✶✻✽✦✧*⠁-⣿]\s*\S[^(]*…\s*(\(|$)|esc to interrupt/;
+async function tmuxCapture(pane, lines = 80) {
+  const out = await tmux("capture-pane", "-p", "-t", pane, "-S", `-${lines}`);
+  const tail = out.replace(/\n+$/, "").split("\n");
+  return { ok: true, result: { terminal: { handle: `tmux:${pane}`, tail } } };
+}
+async function tmuxSend(pane, text, enter) {
+  await tmux("send-keys", "-t", pane, "-l", text);
+  if (enter !== false) { await new Promise(r => setTimeout(r, 120)); await tmux("send-keys", "-t", pane, "Enter"); }
+  // mirror Orca's --wait-submit: report whether the TUI started a turn within ~4s
+  let started = false;
+  for (let i = 0; i < 8 && !started; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    try { const { result } = await tmuxCapture(pane, 25); started = result.terminal.tail.some(l => SPINNER_LINE.test(l.trim())); } catch {}
+  }
+  return { ok: true, result: { send: { accepted: true, prompt: { stages: started ? ["submitted", "turn_started"] : ["submitted"] } } } };
+}
+async function tmuxWaitIdle(pane, timeoutMs) {
+  const until = Date.now() + (timeoutMs || 180000);
+  while (Date.now() < until) {
+    try { const { result } = await tmuxCapture(pane, 25); if (!result.terminal.tail.some(l => SPINNER_LINE.test(l.trim()))) return { ok: true, result: { state: "tui-idle" } }; } catch {}
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  return { ok: false, error: "timeout" };
+}
+async function tmuxSwitch(pane) {
+  try {
+    const target = (await tmux("display-message", "-p", "-t", pane, "#{session_name}:#{window_index}.#{pane_index}")).trim();
+    await tmux("select-window", "-t", target); await tmux("select-pane", "-t", pane);
+    exec("/usr/bin/osascript", ["-e", 'tell application "System Events" to set frontmost of (first process whose name is in {"iTerm2", "Terminal", "WezTerm", "Ghostty", "kitty", "Alacritty"}) to true'], { timeout: 3000 }).catch(() => {});
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
 ipcMain.handle("roca:tmux-panes", () => tmuxPanes());
 
 // claude processes running in ordinary terminal tabs: handle "term:<pid>". iTerm2 sessions are matched by the
@@ -756,7 +791,8 @@ const HOOK_SH = `#!/bin/bash
 f="$HOME/.roca/events.jsonl"
 payload=$(cat | tr -d '\n')
 [ -z "$payload" ] && exit 0
-printf '{"ts":%s,"ev":%s}\n' "$(date +%s)" "$payload" >> "$f" 2>/dev/null
+# term: which terminal app launched this claude (Orca / iTerm.app / tmux / Apple_Terminal) — lets the widget tell Orca sessions apart
+printf '{"ts":%s,"term":"%s","ev":%s}\n' "$(date +%s)" "\${TERM_PROGRAM//[^A-Za-z0-9._-]/}" "$payload" >> "$f" 2>/dev/null
 # keep the log bounded (~5000 lines)
 if [ $(( $(date +%s) % 50 )) -eq 0 ] && [ -f "$f" ] && [ "$(wc -l < "$f")" -gt 6000 ]; then
   tail -n 4000 "$f" > "$f.tmp" && mv "$f.tmp" "$f"
@@ -867,6 +903,8 @@ ipcMain.handle("orca:hooks-recent", () => {
 app.on("ready", () => {
   createWindow();
   if (process.env.ROCA_HOOKS_INSTALL) { try { installHooks(); console.log("[hooks] installed"); } catch (e) { console.log("[hooks] install failed", e.message); } }
+  // keep an already-installed hook script current after widget updates
+  try { if (existsSync(HOOK_SCRIPT) && readFileSync(HOOK_SCRIPT, "utf-8") !== HOOK_SH) { writeFileSync(HOOK_SCRIPT, HOOK_SH); chmodSync(HOOK_SCRIPT, 0o755); console.log("[hooks] script refreshed"); } } catch (e) { console.log("[hooks] refresh failed", e.message); }
   startEventsWatch();
   createTray();
 });
