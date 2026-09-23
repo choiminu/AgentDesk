@@ -867,6 +867,9 @@ ipcMain.on("orca:resize-window", (_e, w, h, forceHeight) => {
 ipcMain.on("orca:done-notify", (_e, name) => {
   new Notification({ title: "작업 완료", body: name }).show();
 });
+ipcMain.handle("orca:notify", (_e, title, body) => {
+  try { new Notification({ title: String(title || ""), body: String(body || "") }).show(); return true; } catch { return false; }
+});
 
 // ── Clipboard ──
 ipcMain.handle("orca:clipboard-read", () => clipboard.readText());
