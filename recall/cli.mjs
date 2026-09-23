@@ -10,7 +10,7 @@ const [cmd, ...rest] = process.argv.slice(2);
 const flag = (n) => { const i = rest.indexOf(n); return i >= 0 ? (rest.splice(i, 2)[1]) : null; };
 const has = (n) => { const i = rest.indexOf(n); if (i >= 0) { rest.splice(i, 1); return true; } return false; };
 const usage = `agentdesk-recall <command>
-  search <query> [--repo NAME|--all] [--limit N]   full-text search over session notes (current repo by default)
+  search <query> [--repo NAME|--worktree NAME|--all] [--limit N]   full-text search over session notes (current repo by default)
   show <id>                                        print one note in full
   list [--repo NAME|--all] [--limit N]             newest notes
   summarize <transcript.jsonl> [--cwd DIR] [--agent claude|gemini|codex]   make a note from one transcript now
@@ -23,8 +23,8 @@ async function main() {
   if (!cmd || cmd === "help") { console.log(usage); return; }
   if (cmd === "ensure-index") { await ensureIndexes(); console.log("indexes ok"); return; }
   if (cmd === "search" || cmd === "list") {
-    const all = has("--all"); const repo = flag("--repo"); const limit = Number(flag("--limit") || 10);
-    const g = gitInfo(process.cwd()); const scope = all ? {} : { repo: repo || g.repo };
+    const all = has("--all"); const repo = flag("--repo"); const wt = flag("--worktree"); const limit = Number(flag("--limit") || 10);
+    const g = gitInfo(process.cwd()); const scope = all ? {} : wt ? { worktree: wt } : { repo: repo || g.repo };
     const c = await notes(); await ensureIndexes();
     let rows;
     if (cmd === "search") {
