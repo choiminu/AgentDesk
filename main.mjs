@@ -942,6 +942,7 @@ const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostTool
 const HOOK_PS1 = `param([string]$Agent = "claude")
 # AgentDesk hook (Windows): append the agent's hook payload to %USERPROFILE%\\.roca\\events.jsonl and exit immediately.
 $f = Join-Path $env:USERPROFILE ".roca\\events.jsonl"
+if ($env:AGENTDESK_RECALL) { exit 0 }
 $payload = ([Console]::In.ReadToEnd()) -replace "\\r?\\n", ""
 if (-not $payload) { exit 0 }
 $ts = [int][double]::Parse((Get-Date -UFormat %s))
@@ -952,6 +953,7 @@ exit 0
 const HOOK_SH = IS_WIN ? HOOK_PS1 : `#!/bin/bash
 # AgentDesk hook: append the Claude Code hook payload to ~/.roca/events.jsonl and exit immediately.
 f="$HOME/.roca/events.jsonl"
+[ -n "$AGENTDESK_RECALL" ] && exit 0   # headless summarizer sessions (agentdesk-recall) are not shown as sessions
 payload=$(cat | tr -d '\n')
 [ -z "$payload" ] && exit 0
 # term: which terminal app launched this claude (Orca / iTerm.app / tmux / Apple_Terminal) — lets the widget tell Orca sessions apart
