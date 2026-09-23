@@ -12,3 +12,6 @@ https://jik-a-4.itch.io/metrocity-free-topdown-character-pack
 
 Pixel font: Galmuri9 by quiple (SIL Open Font License 1.1) — see ../fonts/LICENSE-Galmuri.txt
 https://github.com/quiple/galmuri
+
+UI fonts (../fonts): Manrope by Mikhail Sharanda and JetBrains Mono by JetBrains — both SIL Open Font License 1.1
+https://github.com/sharanda/manrope · https://github.com/JetBrains/JetBrainsMono

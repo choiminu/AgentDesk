@@ -1,10 +1,10 @@
 <title>Orca Dashboard</title>
 <meta charset="utf-8">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap">
 
 <style>
+  /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
+  @font-face { font-family: 'Manrope'; src: url('assets/fonts/Manrope.woff2') format('woff2'); font-weight: 400 800; font-display: swap; }
+  @font-face { font-family: 'JetBrains Mono'; src: url('assets/fonts/JetBrainsMono.woff2') format('woff2'); font-weight: 400 600; font-display: swap; }
   :root {
     --bg: rgb(10 12 18);
     --bg-solid: #0a0c12;
@@ -2174,14 +2174,141 @@
   .onboard-lang button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
   .onboard-tip { display: flex; gap: 8px; font-size: 11px; color: var(--text2); line-height: 1.5; margin-bottom: 8px; }
   .onboard-tip kbd { font-family: inherit; font-size: 10px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-hover); color: var(--text); white-space: nowrap; height: fit-content; }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     MODERN THEME — tokens and component overrides (design canvas "Orca Widget Redesign")
+     ═══════════════════════════════════════════════════════════════════ */
+  :root {
+    --bg: #0e1014; --bg-solid: #0e1014;
+    --surface: #151820; --surface-hover: #1b1f29; --surface-raised: #20252f;
+    --border: rgba(255,255,255,0.12); --border-subtle: rgba(255,255,255,0.07);
+    --text: #eef1f6; --text2: #9aa3b2; --text3: #6b7484;
+    --accent: #f0845c; --accent-dim: rgba(240,132,92,0.14);
+    --green: #6fbf9a; --green-dim: rgba(111,191,154,0.14);
+    --yellow: #e5b54b; --yellow-dim: rgba(229,181,75,0.14);
+    --red: #ef6a62; --red-dim: rgba(239,106,98,0.14);
+    --purple: #a99cf2; --purple-dim: rgba(169,156,242,0.14);
+    --sans: 'Manrope', -apple-system, 'Apple SD Gothic Neo', sans-serif;
+    --mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px;
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.12), 0 0 0 1px var(--border-subtle);
+    --shadow-float: 0 8px 30px rgba(0,0,0,0.45), 0 0 0 1px var(--border);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f4f3ef; --bg-solid: #f4f3ef;
+      --surface: #ffffff; --surface-hover: #f7f6f2; --surface-raised: #ffffff;
+      --border: rgba(20,20,25,0.14); --border-subtle: rgba(20,20,25,0.08);
+      --text: #17181c; --text2: #565d6b; --text3: #7f8794;
+      --accent: #d9663e; --accent-dim: rgba(217,102,62,0.12);
+      --green: #2e8f63; --green-dim: rgba(46,143,99,0.12);
+      --yellow: #b8891e; --yellow-dim: rgba(184,137,30,0.14);
+      --red: #d4473f; --red-dim: rgba(212,71,63,0.12);
+      --purple: #6f5fd6; --purple-dim: rgba(111,95,214,0.12);
+      --shadow-card: 0 1px 2px rgba(0,0,0,0.06), 0 0 0 1px var(--border-subtle);
+      --shadow-float: 0 8px 30px rgba(0,0,0,0.14), 0 0 0 1px var(--border);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f3ef; --bg-solid: #f4f3ef;
+    --surface: #ffffff; --surface-hover: #f7f6f2; --surface-raised: #ffffff;
+    --border: rgba(20,20,25,0.14); --border-subtle: rgba(20,20,25,0.08);
+    --text: #17181c; --text2: #565d6b; --text3: #7f8794;
+    --accent: #d9663e; --accent-dim: rgba(217,102,62,0.12);
+    --green: #2e8f63; --green-dim: rgba(46,143,99,0.12);
+    --yellow: #b8891e; --yellow-dim: rgba(184,137,30,0.14);
+    --red: #d4473f; --red-dim: rgba(212,71,63,0.12);
+    --purple: #6f5fd6; --purple-dim: rgba(111,95,214,0.12);
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.06), 0 0 0 1px var(--border-subtle);
+    --shadow-float: 0 8px 30px rgba(0,0,0,0.14), 0 0 0 1px var(--border);
+  }
+  html, body { font-size: 12.5px; }
+  .widget { border-radius: 16px; border-color: var(--border); box-shadow: 0 12px 48px rgba(0,0,0,0.5); backdrop-filter: blur(28px) saturate(1.3); -webkit-backdrop-filter: blur(28px) saturate(1.3); }
+
+  /* header: pixel status counters + round controls */
+  .header { padding: 9px 12px 8px; background: none; gap: 6px; }
+  .header::after { display: none; }
+  .stats { gap: 6px; margin-left: 0; font-family: var(--sans); }
+  .stat { display: flex; align-items: center; gap: 6px; padding: 3px 9px 3px 6px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text2); }
+  .stat.run { background: var(--accent-dim); color: var(--accent); }
+  .stat.wait { background: var(--yellow-dim); color: var(--yellow); }
+  .stat.done { background: var(--green-dim); color: var(--green); }
+  .minimize-btn, .header-controls .theme-btn { width: 26px; height: 26px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border-subtle); color: var(--text2); font-size: 12px; }
+  .minimize-btn:hover, .header-controls .theme-btn:hover { background: var(--surface-hover); border-color: var(--border); color: var(--text); }
+
+  /* pixel status icons (Pixel Agents sprites, 1x, top 16px of the 16x32 pc sheets) */
+  .px-ic { display: inline-block; width: 16px; height: 16px; background-repeat: no-repeat; background-position: 0 0; background-size: 16px auto; image-rendering: pixelated; flex-shrink: 0; }
+  .px-ic.pc-on { background-image: url('assets/pixel/pc_on_1.png'); animation: pxPc 1.2s steps(1) infinite; }
+  @keyframes pxPc { 0% { background-image: url('assets/pixel/pc_on_1.png'); } 33% { background-image: url('assets/pixel/pc_on_2.png'); } 66% { background-image: url('assets/pixel/pc_on_3.png'); } }
+  .px-ic.pc-off { background-image: url('assets/pixel/pc_off.png'); }
+  .px-ic.coffee { background-image: url('assets/pixel/coffee.png'); }
+  .px-badge { position: absolute; top: -5px; right: -5px; width: 14px; height: 14px; border-radius: 999px; font-size: 9px; font-weight: 800; line-height: 1; display: flex; align-items: center; justify-content: center; border: 2px solid var(--surface); font-family: var(--sans); }
+  .px-badge.q { background: var(--yellow); color: #1a1408; animation: icBounce 2s ease-in-out infinite; }
+  .px-badge.x { background: var(--red); color: #fff; }
+
+  /* navigation */
+  .page-nav { padding: 8px 10px 0; background: none; border-bottom: none; gap: 2px; }
+  .page-nav-btn { font-size: 11.5px; padding: 5px 10px; border-radius: 8px; font-weight: 500; }
+  .page-nav-btn.active { background: var(--surface-hover); box-shadow: none; font-weight: 700; color: var(--text); }
+  .tabs { padding: 8px 10px 0; border-bottom: none; gap: 2px; }
+  .tab { flex: 0 0 auto; padding: 5px 11px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid transparent; }
+  .tab.active { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+  .tab-badge { background: transparent; margin-left: 4px; font-size: 9.5px; height: auto; min-width: 0; padding: 0; }
+  .tab.active .tab-badge { background: transparent; color: var(--accent); opacity: 0.85; }
+  .search-wrap { padding: 10px 10px 2px; }
+  .search-input { border-radius: 10px; padding: 7px 11px 7px 30px; font-size: 12px; border-color: var(--border-subtle);
+    background: var(--surface) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%236b7484' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><line x1='20' y1='20' x2='16.5' y2='16.5'/></svg>") no-repeat 10px center; }
+
+  /* session cards */
+  .list { padding: 4px 10px 8px; }
+  .group-header { padding: 10px 4px 4px; font-size: 10px; letter-spacing: 0.08em; font-weight: 700; gap: 8px; }
+  .group-header .gh-count { font-family: var(--mono); opacity: 1; }
+  .session { align-items: center; padding: 10px 11px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border-subtle); margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
+  .session:hover { background: var(--surface-hover); border-color: var(--border); }
+  @keyframes statusPulse { 0% { background: var(--accent-dim); } 100% { background: var(--surface); } }
+  .s-icon { width: 30px; height: 30px; border-radius: 9px; background: var(--surface-hover); margin-top: 0; position: relative; }
+  .s-icon.running { background: var(--accent-dim); }
+  .s-icon.waiting { background: var(--yellow-dim); }
+  .s-icon.done { background: var(--green-dim); opacity: 1; }
+  .s-icon.done .px-ic { opacity: 0.55; }
+  .s-icon.error { background: var(--red-dim); }
+  .s-name { font-weight: 700; font-size: 13px; letter-spacing: -0.005em; }
+  .s-meta { margin-top: 4px; gap: 5px; font-size: 9.5px; flex-wrap: nowrap; overflow: hidden; }
+  .s-meta > * { white-space: nowrap; flex-shrink: 0; }
+  .s-meta > .s-branch, .s-meta > .s-tool { flex-shrink: 1; min-width: 0; }
+  .page-nav { scrollbar-width: none; }
+  .page-nav::-webkit-scrollbar { display: none; }
+  .s-tool, .s-branch { padding: 1px 6px; border-radius: 5px; background: var(--surface-hover); border: 1px solid var(--border-subtle); opacity: 1; color: var(--text2); font-size: 9.5px; line-height: 1.5; }
+  .s-agent { border-radius: 5px; font-size: 9px; padding: 1px 6px; line-height: 1.5; }
+  .s-agent.claude { background: var(--accent-dim); color: var(--accent); }
+  .s-time { color: var(--text3); }
+  .s-act { border-radius: 8px; }
+
+  /* footer, banners, chat, menus, toasts */
+  .footer { padding: 9px 14px 10px; gap: 5px; border-top-color: var(--border-subtle); }
+  .token-bar .bar-bg { height: 4px; border-radius: 999px; background: var(--surface-hover); }
+  .token-bar .bar-fill { border-radius: 999px; }
+  .mode-banner, .orca-error { border-radius: 12px; padding: 10px 12px; }
+  .mode-banner button { border-radius: 999px; padding: 4px 11px; font-weight: 700; }
+  .chat-panel { border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,0.35); border-top-color: var(--border-subtle); }
+  .chat-input { border-radius: 10px; font-family: var(--sans); font-size: 11.5px; background: var(--surface-hover); }
+  .chat-send-btn, .chat-orca-btn { border-radius: 999px; }
+  .ctx-menu { border-radius: 12px; padding: 5px; box-shadow: var(--shadow-float); }
+  .ctx-menu button { border-radius: 8px; }
+  .toast { border-radius: 12px; }
+  .empty { opacity: 1; }
+  .theme-btn { border-radius: 8px; }
+  .office-sound-btn, .office-zoom { border-radius: 999px; padding: 0 7px; }
+  .set-row, .onboard-check, .onboard-feat { border-radius: 12px; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
+  .settings h2, .onboard-step { letter-spacing: 0.08em; font-weight: 700; }
 </style>
 
 <div class="widget">
   <div class="header">
     <div class="stats" id="stats">
-      <span class="stat"><span class="typing-bubble" style="padding:2px 4px;height:14px"><span class="dot" style="width:3px;height:3px"></span><span class="dot" style="width:3px;height:3px"></span><span class="dot" style="width:3px;height:3px"></span></span><span id="nRun">0</span></span>
-      <span class="stat">💤<span id="nWait">0</span></span>
-      <span class="stat">✅<span id="nDone">0</span></span>
+      <span class="stat run" title="작업 중"><span class="px-ic pc-on"></span><span id="nRun">0</span></span>
+      <span class="stat wait" title="대기 중"><span class="px-ic coffee"></span><span id="nWait">0</span></span>
+      <span class="stat done" title="완료"><span class="px-ic pc-off"></span><span id="nDone">0</span></span>
     </div>
     <div class="header-controls">
       <button class="theme-btn" id="settings-btn" title="설정">⚙</button>
@@ -2928,11 +3055,11 @@ async function refreshScreenStatuses() {
 
 function statusIcon(s) {
   switch (s) {
-    case 'running': return '<span class="typing-bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
-    case 'waiting': return '<span class="ic-bounce">💤</span>';
-    case 'done':    return '✅';
-    case 'error':   return '<span class="ic-shake">⚠️</span>';
-    default:        return '·';
+    case 'running': return '<span class="px-ic pc-on"></span>';
+    case 'waiting': return '<span class="px-ic coffee"></span>';
+    case 'done':    return '<span class="px-ic pc-off"></span>';
+    case 'error':   return '<span class="px-ic pc-off"></span><span class="px-badge x">!</span>';
+    default:        return '<span class="px-ic pc-off"></span>';
   }
 }
 
@@ -3408,7 +3535,7 @@ function renderDashboard() {
       const prev = prevStatuses.get(s.id);
       const changed = prev && prev !== s.status;
       html += `<div class="session${changed ? ' pulse' : ''}" data-id="${esc(s.id)}" data-handle="${esc(h || '')}">
-        <span class="s-icon ${s.status}" title="${s.needsInput ? '선택 필요' : ''}${s.viaHooks ? ' (hooks)' : ''}">${s.needsInput ? '<span class="ic-bounce">❓</span>' : statusIcon(s.status)}</span>
+        <span class="s-icon ${s.status}" title="${s.needsInput ? '선택 필요' : ''}${s.viaHooks ? ' (hooks)' : ''}">${s.needsInput ? '<span class="px-ic coffee"></span><span class="px-badge q">?</span>' : statusIcon(s.status)}</span>
         <div class="s-info">
           <div class="s-name">${isPinned ? '📌 ' : ''}${esc(s.name)}</div>
           <div class="s-meta">
