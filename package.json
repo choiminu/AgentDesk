@@ -1,6 +1,6 @@
 {
   "name": "agentdesk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AgentDesk — a pixel-art office for your AI coding agents",
   "main": "main.mjs",
   "type": "module",
@@ -31,7 +31,10 @@
           ]
         }
       ],
-      "icon": null
+      "icon": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "identity": null
     },
     "dmg": {
       "title": "AgentDesk",
@@ -96,7 +99,8 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true
-    }
+    },
+    "afterPack": "scripts/adhoc-sign.cjs"
   },
   "repository": {
     "type": "git",
