@@ -259,6 +259,11 @@
 
   .orca-error { margin: 6px 10px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--red) 50%, transparent); background: var(--red-dim); border-radius: var(--radius-md); font-size: var(--fs-xs); color: var(--text); display: flex; flex-direction: column; gap: 3px; }
   .orca-error b { color: var(--red); }
+  .mode-banner { margin: 6px 10px; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-dim); border-radius: var(--radius-md); font-size: var(--fs-xs); color: var(--text); display: flex; flex-direction: column; gap: 2px; }
+  .mode-banner b { color: var(--accent); }
+  .mode-banner button { align-self: flex-start; margin-top: 4px; background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; font-size: var(--fs-xs); }
+  .mode-sel { font-size: 10px; padding: 0 4px; height: 24px; width: 72px; cursor: pointer; }
+  .mode-banner span { color: var(--text2); }
   .orca-error span { color: var(--text2); word-break: break-all; }
   .orca-error code { font-family: var(--mono); background: var(--surface); padding: 0 4px; border-radius: 3px; }
 
@@ -318,11 +323,6 @@
   }
   #office-canvas { display: block; image-rendering: pixelated; cursor: default; }
   #office-canvas.hit { cursor: pointer; }
-  /* minimap floats at the top-right of the scroll area (sticky wrapper keeps it out of the flow) */
-  .office-minimap-wrap { position: sticky; top: 6px; height: 0; z-index: 5; pointer-events: none; }
-  #office-minimap { position: absolute; right: 10px; top: 0; pointer-events: auto; cursor: pointer; image-rendering: pixelated;
-    border: 1px solid rgba(255,255,255,0.28); border-radius: 3px; background: rgba(12,14,22,0.78); box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
-  #office-minimap[hidden] { display: none; }
   .office-tip {
     position: absolute;
     pointer-events: none;
@@ -2182,7 +2182,6 @@
       <span class="office-hint">클릭: 채팅 · 더블클릭: 터미널 · 드래그: 팀 배치(PM 자리/팀 블록) · 우클릭: 메뉴</span>
     </div>
     <div class="office-wrap" id="office-wrap">
-      <div class="office-minimap-wrap"><canvas id="office-minimap" hidden></canvas></div>
       <canvas id="office-canvas"></canvas>
       <div class="office-tip" id="office-tip" hidden></div>
     </div>
@@ -2374,6 +2373,7 @@
     <div class="footer-controls">
       <button class="theme-btn" id="theme-btn" title="테마 전환">🌙</button>
       <button class="theme-btn" id="lang-btn" title="Language / 언어">EN</button>
+      <select class="theme-btn mode-sel" id="mode-sel" title="데이터 소스 모드"><option value="auto">자동</option><option value="orca">Orca</option><option value="hooks">훅 전용</option></select>
     </div>
   </div>
 </div>
@@ -2432,19 +2432,13 @@ const I18N = {
   '세션': 'Session', '주간': 'Weekly',
   '정확 감지를 끌까요? ~/.claude/settings.json에서 위젯 훅만 제거합니다.': 'Turn off exact detection? Only the widget hooks are removed from ~/.claude/settings.json.',
   'Claude Code 훅을 ~/.claude/settings.json에 등록합니다 (기존 설정은 보존, ~/.roca/에 백업). 이후 새로 시작하는 Claude 세션부터 이벤트 기반으로 정확히 감지됩니다. 진행할까요?': 'Register Claude Code hooks in ~/.claude/settings.json (existing settings kept, backup in ~/.roca/). Sessions are then detected exactly from events. Continue?',
-  '훅 설치 실패: ': 'Hook install failed: ', '⚠ 문맥 갱신 필요': '⚠ stale brief', '⚠ 브리프가 갱신되어 문맥이 오래되었습니다': '⚠ Brief was updated; this member has stale context', '(응답 없음)': '(no reply)', '● 작업 중': '● Working',
+  '훅 설치 실패: ': 'Hook install failed: ', 'Orca 없이 훅 모드로 동작 중': 'Running in hook mode (no Orca)', 'Claude Code 세션': 'Claude Code sessions', '연결됨': 'connected', '없음': 'none',
+  'Orca가 없습니다': 'Orca is not available', '오피스 탭에서 정확 감지를 켜면 Claude Code 세션을 훅으로 표시합니다.': 'Turn on Exact detection in the Office tab to show Claude Code sessions via hooks.',
+  '읽기 전용 (tmux 없음)': 'read-only (no tmux)', '훅 전용 모드': 'Hooks-only mode', 'Claude Code 훅이 꺼져 있습니다': 'Claude Code hooks are off',
+  '훅을 켜면 Claude Code 세션이 이벤트로 표시됩니다. tmux 안에서 실행 중인 세션은 채팅과 지시도 가능합니다.': 'Turn hooks on to show Claude Code sessions from events. Sessions running inside tmux can also be chatted with and directed.',
+  '정확 감지 켜기': 'Turn on exact detection', '데이터 소스 모드': 'Data source mode', '자동': 'Auto', '훅 전용': 'Hooks only', '⚠ 문맥 갱신 필요': '⚠ stale brief', '⚠ 브리프가 갱신되어 문맥이 오래되었습니다': '⚠ Brief was updated; this member has stale context', '(응답 없음)': '(no reply)', '● 작업 중': '● Working',
   'Orca 버전': 'Orca version', '은(는) 지원 범위 밖입니다. 1.4 이상으로 업데이트하면 화면 기반 상태 판독과 채팅이 동작합니다.': ' is not supported. Update to 1.4 or newer for screen-based status and chat.',
 };
-Object.assign(I18N, {
-  '프롬프트 존': 'Prompt zones', '존 프롬프트 보내기': 'Send zone prompt', '이 내용으로 보내기': 'Send this', '다음부터 이 존은 확인 없이 바로 보내기': 'Skip this confirmation for this zone from now on',
-  '존 편집': 'Edit zone', '새 존 추가…': 'New zone…', '이 존 삭제': 'Delete this zone', '존에서 해제': 'Release from zone', '프롬프트 편집…': 'Edit prompt…',
-  '이름': 'Name', '아이콘': 'Icon', '프롬프트 템플릿': 'Prompt template', '확인 없이 바로 보내기': 'Send without confirmation', '저장': 'Save', '취소': 'Cancel',
-  '드래그해 놓으면 이 프롬프트를 보냅니다': 'Drop an agent here to send this prompt', '존 작업 응답 완료': 'zone task answered', '여기에 놓기': 'drop here',
-  '배포 문서': 'Deploy docs', '릴리스 노트': 'Release notes', '테스트 보강': 'More tests', '프롬프트 보내기': 'send prompt',
-  '존 기록 보기': 'Zone history', '존 기록': 'Zone history', '기록이 없습니다': 'No records yet', '닫기': 'Close', '캐릭터 바꾸기': 'Change character',
-  '화이트보드': 'Whiteboard', '클릭: 가장 오래 기다리는 세션으로 이동해 채팅 열기': 'Click: jump to the longest-waiting session and open chat', '대기 중인 세션이 없습니다': 'No session is waiting',
-  '휴게실 펫 · 클릭하면 좋아합니다': 'Lounge pet · click to pet', '회사 이름': 'Company name', '회사 간판 · 클릭해서 이름 변경': 'Company sign · click to rename',
-});
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
   if (LANG === 'ko' || !str || !/[가-힣]/.test(str)) return str;
@@ -2868,8 +2862,16 @@ function clearWaitingToast(sessionId) {
 async function fetchData() {
   $('footer').classList.add('loading');
   try {
-    const [ps, terms, rl] = await Promise.all([api.ps(), api.terminals(), window.orca.rateLimits()]);
-    showOrcaError(ps && ps.ok === false ? ps.error : (orcaVersionWarning || null));
+    await hooksReady;
+    const viaOrca = useOrca();
+    const [ps, terms, rl, panes] = await Promise.all([
+      viaOrca ? api.ps() : Promise.resolve({ ok: false, skipped: true }),
+      viaOrca ? api.terminals() : Promise.resolve({ ok: false, skipped: true }),
+      viaOrca ? window.orca.rateLimits() : Promise.resolve({ ok: false, skipped: true }),
+      window.orca.tmuxPanes().catch(() => []),
+    ]);
+    orcaAvailable = viaOrca && !(ps && ps.ok === false);
+    if (viaOrca && dataMode === 'auto') orcaProbe = orcaAvailable;   // auto mode: fall back to hooks once Orca fails
     const wts = ps?.result?.worktrees || [];
     const ts = terms?.result?.terminals || [];
     const rateLimits = rl?.result?.rateLimits || {};
@@ -2880,6 +2882,14 @@ async function fetchData() {
       if (!tMap.has(t.worktreeId)) tMap.set(t.worktreeId, t);
       handles.set(t.worktreeId, t.handle);
     }
+
+    // Claude Code sessions known only from hooks (not an Orca worktree) — e.g. no Orca installed, or a
+    // plain terminal / tmux session. They get a tmux pane as handle when one runs in the same directory.
+    const hookOnly = hookOnlySessions(wts, panes);
+    for (const h of hookOnly) if (h.handle) handles.set(h.id, h.handle);
+    showOrcaError(!orcaAvailable ? (hooksEnabled || !viaOrca ? null : ps.error) : (orcaVersionWarning || null));
+    showModeBanner(orcaAvailable, hookOnly.length, panes.length);
+    $('tokenBars').style.display = orcaAvailable ? '' : 'none';
 
     await refreshScreenStatuses();
 
@@ -2910,6 +2920,7 @@ async function fetchData() {
         connected: term?.connected || false,
       };
     });
+    for (const h of hookOnly) sessions.push(await hookOnlySession(h));
 
     applyStatusTransitions();
     updateCounters();
@@ -2935,12 +2946,14 @@ function applyHookEvent(rec) {
   const ev = rec.ev || {}; const ts = (rec.ts || 0) * 1000;
   const sid = ev.session_id; if (!sid) return;
   let st = hookSessions.get(sid);
-  if (!st) { st = { sid, cwd: ev.cwd, status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false }; hookSessions.set(sid, st); }
+  if (!st) { st = { sid, cwd: ev.cwd, transcript: ev.transcript_path || '', status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false }; hookSessions.set(sid, st); }
   if (ev.cwd) st.cwd = ev.cwd;
+  if (ev.transcript_path) st.transcript = ev.transcript_path;
   st.last = Math.max(st.last, ts);
   const setStatus = (v) => { if (st.status !== v) { st.status = v; st.since = ts; } };
   const sub = ev.agent_id ? st.subagents.get(ev.agent_id) : null;
   switch (ev.hook_event_name) {
+    case 'SessionStart': st.ended = false; break;
     case 'UserPromptSubmit': setStatus('running'); st.tool = ''; st.toolInput = ''; st.needsInput = false; st.ended = false; break;
     case 'PreToolUse':
       if (sub) { sub.tool = ev.tool_name || ''; sub.toolInput = hookToolInput(ev.tool_name, ev.tool_input); sub.last = ts; }
@@ -2967,6 +2980,10 @@ function applyHookEvent(rec) {
 // worktreeId looks like "<uuid>::/abs/path"; pick the freshest hook session whose cwd is inside that path
 function hookStateFor(worktreeId) {
   if (!hooksEnabled) return null;
+  if (String(worktreeId || '').startsWith('hook:')) {
+    const st = hookSessions.get(String(worktreeId).slice(5).split('::')[0]);
+    return st && !st.ended && Date.now() - st.last <= HOOK_STALE_MS ? st : null;
+  }
   const path = String(worktreeId || '').split('::').pop();
   if (!path) return null;
   let best = null;
@@ -3015,11 +3032,75 @@ window.orca.onHookEvents(evts => {
   for (const rec of evts) applyHookEvent(rec);
   if (hooksEnabled) screenTick();
 });
-refreshHooksStatus().then(async () => {
+// replay recent hook events before the first session fetch so hook-only sessions appear immediately
+const hooksReady = refreshHooksStatus().then(async () => {
   if (!hooksEnabled) return;
   for (const rec of await window.orca.hooksRecent()) applyHookEvent(rec);
-});
+}).catch(() => {});
 
+let orcaAvailable = true;
+// data-source mode: 'auto' picks Orca when its CLI answers, otherwise hooks; 'orca' / 'hooks' force one
+let dataMode = 'auto';
+try { dataMode = localStorage.getItem('roca-mode') || 'auto'; } catch {}
+let orcaProbe = null;   // null = not probed yet, true/false after version check
+function useOrca() {
+  if (dataMode === 'hooks') return false;
+  if (dataMode === 'orca') return true;
+  return orcaProbe !== false;
+}
+{
+  const sel = $('mode-sel');
+  sel.value = dataMode;
+  sel.addEventListener('change', () => { dataMode = sel.value; try { localStorage.setItem('roca-mode', dataMode); } catch {} showOrcaError(null); fetchData(); });
+}
+const HOOK_ONLY_RECENT_MS = 6 * 60 * 60 * 1000;
+function hookOnlySessions(wts, panes) {
+  if (!hooksEnabled) return [];
+  const wtPaths = wts.map(w => String(w.worktreeId || '').split('::').pop()).filter(Boolean);
+  const out = [];
+  for (const st of hookSessions.values()) {
+    if (st.ended || !st.cwd || Date.now() - st.last > HOOK_ONLY_RECENT_MS) continue;
+    if (wtPaths.some(p => st.cwd === p || st.cwd.startsWith(p.replace(/\/$/, '') + '/'))) continue;   // already an Orca session
+    const pane = (panes || []).find(p => p.cwd === st.cwd && /claude|node/i.test(p.cmd || '')) || (panes || []).find(p => p.cwd === st.cwd);
+    out.push({ id: `hook:${st.sid}::${st.cwd}`, st, handle: pane ? pane.handle : null, pane });
+  }
+  return out;
+}
+const hookMetaCache = new Map();
+async function hookOnlySession(h) {
+  const st = h.st;
+  let meta = hookMetaCache.get(st.sid);
+  if (!meta || Date.now() - meta.at > 15000) {
+    try { meta = { at: Date.now(), ...(await window.orca.sessionMeta(st.transcript, st.cwd)) }; } catch { meta = { at: Date.now() }; }
+    hookMetaCache.set(st.sid, meta);
+  }
+  const folder = st.cwd.split('/').filter(Boolean).pop() || st.cwd;
+  const screenSt = screenStatusCache.get(h.id);
+  const finalStatus = resolveStatus('done', screenSt, st);
+  return {
+    id: h.id, name: meta.title || folder, branch: meta.branch || '', repo: st.cwd,
+    status: finalStatus, baseStatus: 'done', agent: 'claude', time: st.last,
+    tool: st.tool || '', toolInput: st.toolInput || '', viaHooks: true, hookOnly: true,
+    prompt: '', lastMsg: meta.lastMsg || '', connected: !!h.handle,
+    needsInput: st.needsInput && finalStatus !== 'done',
+    subagents: hookSubagentsFor(st).length ? hookSubagentsFor(st) : (screenAgentsCache.get(h.id) || []),
+    ctxPct: screenCtxCache.get(h.id) ?? meta.ctxPct ?? null,
+  };
+}
+function showModeBanner(orcaOk, hookOnlyCount, paneCount) {
+  let el = $('mode-banner');
+  if (orcaOk) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div'); el.id = 'mode-banner'; el.className = 'mode-banner';
+    $('page-dashboard').insertBefore(el, $('list'));
+  }
+  const modeLabel = dataMode === 'hooks' ? t('훅 전용 모드') : t('Orca 없이 훅 모드로 동작 중');
+  el.innerHTML = hooksEnabled
+    ? `<b>${esc(modeLabel)}</b><span>${esc(t('Claude Code 세션'))} ${hookOnlyCount} · tmux ${paneCount ? esc(t('연결됨')) + ' ' + paneCount : esc(t('없음'))}</span>`
+    : `<b>${esc(t('Claude Code 훅이 꺼져 있습니다'))}</b><span>${esc(t('훅을 켜면 Claude Code 세션이 이벤트로 표시됩니다. tmux 안에서 실행 중인 세션은 채팅과 지시도 가능합니다.'))}</span><button id="mode-enable-hooks">${esc(t('정확 감지 켜기'))}</button>`;
+  const btn = el.querySelector('#mode-enable-hooks');
+  if (btn) btn.onclick = () => $('hooks-toggle').click();
+}
 function needsInputFor(id, toolName, status) {
   if (status !== 'waiting' && status !== 'running') return false;
   if (screenChoiceCache.get(id)) return true;
@@ -4445,19 +4526,12 @@ function openSessionMenu(x, y, sess) {
   if (handle) items.push(['💬', '채팅 열기', () => openChat(handle)]);
   if (handle) items.push(['🖥', 'Orca 터미널 보기', () => api.switchTo(handle)]);
   items.push(['📋', '세션 ID 복사', () => { window.orca.clipboardWrite(sess.id); showInAppToast('세션 ID 복사됨'); }]);
-  if (officeChars.has(sess.id)) items.push(['🎨', '캐릭터 바꾸기', () => { officeSetSkin(sess.id, officeSkin(sess.id) + 1); const c = officeChars.get(sess.id); if (c) c.reactT = 1.2; }]);
   if (handle && (sess.status === 'running' || sess.status === 'waiting')) items.push(['⏸', '인터럽트 (Esc)', () => api.interrupt(handle)]);
   for (const it of (typeof teamMenuItems === 'function' ? teamMenuItems(sess) : [])) items.push(it);
-  for (const it of (typeof zoneMenuItems === 'function' ? zoneMenuItems(sess) : [])) items.push(it);
   if (handle) items.push(['✕', '세션 종료', async () => { if (confirm(`${sess.name} ${t('세션을 종료할까요?')}`)) { await api.close(handle); fetchData(); } }, 'danger']);
-  openItemsMenu(x, y, sess.name, items);
-}
-// items: [icon, label, onClick, cssClass?]
-function openItemsMenu(x, y, title, items) {
-  closeCtxMenu();
   const el = document.createElement('div');
   el.className = 'ctx-menu';
-  el.innerHTML = `<div class="ctx-title">${esc(title)}</div>` + items.map((it, i) => `<button data-i="${i}" class="${it[3] || ''}"><span>${it[0]}</span>${esc(t(it[1]))}</button>`).join('');
+  el.innerHTML = `<div class="ctx-title">${esc(sess.name)}</div>` + items.map((it, i) => `<button data-i="${i}" class="${it[3] || ''}"><span>${it[0]}</span>${esc(t(it[1]))}</button>`).join('');
   el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; closeCtxMenu(); items[+b.dataset.i][2](); });
   document.body.appendChild(el);
   const r = el.getBoundingClientRect();
@@ -4493,13 +4567,6 @@ const OFFICE = {
 };
 const officeImgs = {};
 let officeReady = false;
-// Kenney (CC0) props cut from Roguelike Indoors / Modern City — see assets/pixel/CREDITS.md
-const OFFICE_KENNEY = ['k_table_round', 'k_chair_a', 'k_chair_b', 'k_shelf_orange', 'k_shelf_green', 'k_shelf_tall_orange', 'k_shelf_tall_green', 'k_cabinet_beige',
-  'k_plant_a', 'k_plant_b', 'k_vase_a', 'k_vase_b', 'k_vase_c', 'k_stool_teal', 'k_stool_brown', 'k_piano', 'k_rack_a', 'k_rack_b',
-  'k_painting_green', 'k_painting_map', 'k_painting_beige', 'k_painting_orange', 'k_painting_doc', 'k_mirror', 'k_candelabra',
-  'k_counter', 'k_counter_drawer', 'k_counter_tray', 'k_counter_food', 'k_counter_bottles', 'k_counter_plates', 'k_fridge_small', 'k_stove', 'k_painting_wide_teal', 'k_painting_wide_orange',
-  'k_vending_orange', 'k_vending_green', 'k_atm_teal', 'k_ac_unit', 'k_tree_tall_green', 'k_tree_tall_orange', 'k_tree_round', 'k_tree_round_dark',
-  'k_locker_brown', 'k_locker_green', 'k_locker_orange', 'k_cafe_table', 'k_bin_grey', 'k_bucket', 'k_box_a', 'k_box_b', 'k_bench', 'k_wood_chair'];
 let officeRaf = null;
 let officeHover = null;
 let officeSeats = [];
@@ -4511,9 +4578,8 @@ function officeLoadImages() {
   try { document.fonts.load(`9px 'Galmuri9'`).then(fs => { if (!fs.length) { officeFontPx = 7; } }); } catch { officeFontPx = 7; }
   const names = ['desk', 'pc_on_1', 'pc_on_2', 'pc_on_3', 'pc_off', 'chair_back', 'plant', 'coffee', 'floor', 'carpet', 'sofa_front', 'coffee_table', 'large_plant',
     'floor_plank', 'floor_tiles', 'floor_checker', 'floor_grid', 'floor_brick',
-    'bookshelf', 'double_bookshelf', 'whiteboard', 'large_painting', 'small_painting', 'small_painting_2', 'hanging_plant', 'clock', 'cactus', 'plant_2', 'bin', 'pot', 'pet_gitcat', 'pet_claudio'];
+    'bookshelf', 'double_bookshelf', 'whiteboard', 'large_painting', 'small_painting', 'small_painting_2', 'hanging_plant', 'clock', 'cactus', 'plant_2', 'bin', 'pot', 'pet_gitcat'];
   for (let i = 0; i < OFFICE.CHAR_COUNT; i++) names.push(`char_${i}`);
-  names.push(...OFFICE_KENNEY);
   return Promise.all(names.map(n => new Promise(res => {
     const img = new Image();
     img.onload = () => { officeImgs[n] = img; res(); };
@@ -4567,39 +4633,6 @@ function officeHash(str) {
   for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
   return h >>> 0;
 }
-// sprite sheet per session: hashed by default, overridable from the context menu and remembered per session id
-let officeSkins = {};
-try { officeSkins = JSON.parse(localStorage.getItem('roca-office-skins') || '{}') || {}; } catch {}
-function officeSkin(sid) { const v = officeSkins[sid]; return Number.isInteger(v) ? v % OFFICE.CHAR_COUNT : officeHash(sid) % OFFICE.CHAR_COUNT; }
-function officeSetSkin(sid, idx) {
-  officeSkins[sid] = ((idx % OFFICE.CHAR_COUNT) + OFFICE.CHAR_COUNT) % OFFICE.CHAR_COUNT;
-  try { localStorage.setItem('roca-office-skins', JSON.stringify(officeSkins)); } catch {}
-}
-// confetti burst above a desk when a session finishes its work
-const officeParticles = [];
-function officeBurst(x, y, n = 18) {
-  const colors = ['#ffd98a', '#5fc7b3', '#9cc4ff', '#ff9a95', '#c7a8ff', '#f2f3f6'];
-  for (let i = 0; i < n; i++) {
-    const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6, sp = 40 + Math.random() * 50;
-    officeParticles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, color: colors[i % colors.length], t: 0, life: 0.9 + Math.random() * 0.5, spin: Math.random() < 0.5 });
-  }
-}
-function officeParticlesTick(dt) {
-  for (let i = officeParticles.length - 1; i >= 0; i--) {
-    const p = officeParticles[i]; p.t += dt;
-    if (p.t >= p.life) { officeParticles.splice(i, 1); continue; }
-    p.vy += 120 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.98;
-  }
-}
-function officeDrawParticles(ctx) {
-  for (const p of officeParticles) {
-    ctx.globalAlpha = Math.max(0, 1 - p.t / p.life);
-    ctx.fillStyle = p.color;
-    const w = p.spin && Math.floor(p.t * 12) % 2 ? 1 : 2;
-    ctx.fillRect(Math.round(p.x), Math.round(p.y), w, 2);
-  }
-  ctx.globalAlpha = 1;
-}
 
 const OFFICE_DEMO = location.hash.split(',')[0] === '#office-demo' ? [
   { id: 'demo-1', name: 'auth-refactor', branch: 'feat/auth', status: 'running', tool: 'Edit', ctxPct: 82 },
@@ -4614,9 +4647,6 @@ const OFFICE_DEMO = location.hash.split(',')[0] === '#office-demo' ? [
   { id: 'demo-10', name: 'session-reporter', branch: 'main', status: 'done', tool: '' },
   { id: 'demo-11', name: '매입', branch: 'main', status: 'done', tool: '' },
   { id: 'demo-1::explorer', parentId: 'demo-1', isSub: true, name: '↳ explorer', branch: 'auth-refactor', status: 'running', tool: 'Agent', toolInput: '코드베이스 탐색', subElapsed: '42s', subTokens: '12.3k' },
-  { id: 'demo-12', name: 'api-gateway', branch: 'feat/gateway', status: 'running', tool: 'Edit', toolInput: '/repo/src/gateway.ts', ctxPct: 41 },
-  { id: 'demo-13', name: 'billing-fix', branch: 'fix/billing', status: 'running', tool: 'Write', toolInput: '/repo/src/billing.ts', ctxPct: 55 },
-  { id: 'demo-14', name: 'ui-polish', branch: 'feat/ui', status: 'running', tool: 'Edit', toolInput: '/repo/src/App.tsx', ctxPct: 23 },
 ] : null;
 if (OFFICE_DEMO) {
   setTimeout(() => { document.querySelector('.page-nav').style.pointerEvents = 'none'; const mb = $('minimize-btn'); if (mb) mb.style.pointerEvents = 'none'; }, 2000);
@@ -4624,10 +4654,7 @@ if (OFFICE_DEMO) {
   const demoHover = setInterval(() => { const c = officeChars.get('demo-8'); if (c) { officeHover = c; clearInterval(demoHover); } }, 500);
   setTimeout(() => { officeHover = null; }, 15000);
   // renderer timers start ~3s after the main-process screenshot timers, so the lounge shot (24s) is prepared from 17.5s
-  setTimeout(() => { const c = officeChars.get('demo-3'); if (c) officeBurst(c.x, c.y - 30, 28); }, 9300);
-  for (const ms of [2500, 4500]) setTimeout(() => { $('office-wrap').scrollTo({ top: 0, behavior: 'instant' }); }, ms);
-  setTimeout(() => { $('office-wrap').scrollTo({ top: 215 * ($("office-canvas").__scale || 2), behavior: "instant" }); }, 9000);
-  for (const ms of [17500, 19500]) setTimeout(() => { for (const p of officePets) p.heartT = 4; const w = $('office-wrap'); w.scrollTo({ top: w.scrollHeight, behavior: 'instant' }); }, ms);
+  for (const ms of [17500, 19500]) setTimeout(() => { officePet.heartT = 4; const w = $('office-wrap'); w.scrollTo({ top: w.scrollHeight, behavior: 'instant' }); }, ms);
   setTimeout(() => { const w = $('office-wrap'); w.scrollTop = w.scrollHeight; }, 12000);
   setTimeout(() => {
     Object.assign(debateState, { running: true, groupA: ['demo-1', 'demo-2'], groupB: ['demo-3'], master: 'demo-4', mode: 'master-worker', round: 2, maxRounds: 3, topic: '캐시 전략 결정', currentHandle: 'demo-2' });
@@ -4713,7 +4740,7 @@ function officeFrame(now) {
     }
     ch.sess = sess; ch.fading = false;
     if (ch.lastStatus !== sess.status) {
-      if (ch.lastStatus === 'running' && sess.status === 'done' && !sess.isSub) { officeBeep('done'); officeBurst(ch.x, ch.y - 30); }
+      if (ch.lastStatus === 'running' && sess.status === 'done' && !sess.isSub) officeBeep('done');
       ch.lastStatus = sess.status; ch.statusSince = Date.now();
     }
     if (!!sess.needsInput !== !!ch.lastNeedsInput) {
@@ -4756,15 +4783,10 @@ function officeFrame(now) {
   const aisleY = [];
   const blocks = [];
   let y = originY;
-  // reception: company sign, front counter and a waiting bench — the first thing past the wall
-  const reception = { y, h: 64 };
-  y += reception.h;
   // team blocks (PM + pinned members) come first
   const teamBlocks = officeBuildTeams(y, originX, cols, SEAT_PX, SEAT_PY, aisleY);
   for (const tb of teamBlocks) y += tb.h;
   const pinned = new Set(teamBlocks.flatMap(tb => tb.seats.filter(st => st.ch).map(st => st.ch.sid)));
-  zoneTick();
-  for (const sid of Object.keys(zoneState.assign)) if (zonePinned(sid)) pinned.add(sid);
   for (const st of OFFICE_STATIONS) {
     const occ = [...officeChars.values()]
       .filter(c => !c.fading && !c.meeting && !pinned.has(c.sid) && c.station === st.id && c.sess.status !== 'done')
@@ -4775,27 +4797,21 @@ function officeFrame(now) {
     for (let i = 0; i < nDesks; i++) {
       const col = i % cols, row = Math.floor(i / cols);
       const sx = originX + col * SEAT_PX, sy = y + row * SEAT_PY;
-      // desks pair up into islands: an even row that has a partner below sits with the chair above the desk (facing down),
-      // the odd row below faces up; the two desks meet in the middle behind a low divider. A lone last row is a normal row.
-      const flip = row % 2 === 0 && row + 1 < rowsN;
-      const lower = row % 2 === 1;
-      const seat = flip
-        ? { sx, sy, flip: true, deskX: sx + 16, deskY: sy + 58, chairX: sx + 40, chairY: sy + 36, aisleY: sy - 8, ch: occ[i] || null, st }
-        : { sx, sy, deskX: sx + 16, deskY: sy + (lower ? 8 : 18), chairX: sx + 40, chairY: sy + (lower ? 54 : 62), aisleY: sy + SEAT_PY - 8, ch: occ[i] || null, st };
+      const seat = { sx, sy, deskX: sx + 16, deskY: sy + 18, chairX: sx + 40, chairY: sy + 62, aisleY: sy + SEAT_PY - 8, ch: occ[i] || null, st };
       if (occ[i]) occ[i].seat = seat;
       block.seats.push(seat);
     }
-    // no aisle runs between the two halves of an island
-    for (let r = 0; r < rowsN; r++) if (r % 2 === 0) aisleY.push(y + r * SEAT_PY - 8);
+    for (let r = 0; r < rowsN; r++) aisleY.push(y + r * SEAT_PY - 8);
     y += rowsN * SEAT_PY;
     blocks.push(block);
   }
   // meeting room: agents taking part in a running debate gather around a table
   const meeting = officeBuildMeeting(y, originX, usableW0(cols, SEAT_PX), aisleY);
   if (meeting) y += meeting.h;
-  // prompt zones: drop an agent on a zone desk to send that zone's prompt
-  const zoneBlock = officeBuildZones(y, originX, cols, SEAT_PX, SEAT_PY, aisleY);
-  if (zoneBlock) y += zoneBlock.h;
+  // "new team" drop template (only while dragging)
+  const templateBlocks = officeBuildTeams(y, originX, cols, SEAT_PX, SEAT_PY, aisleY, 'template');
+  for (const tb of templateBlocks) y += tb.h;
+  const allTeamBlocks = [...teamBlocks, ...templateBlocks];
 
   // lounge: idle agents rest on sofas (finished subagents just fade out)
   for (const c of officeChars.values()) if (c.sess && c.sess.isSub && c.sess.status === 'done') { c.fading = true; c.alpha = Math.min(c.alpha, 0.99); }
@@ -4821,10 +4837,6 @@ function officeFrame(now) {
   }
   for (let r = 0; r < loungeRows; r++) aisleY.push(y + r * LOUNGE_ROW_H - 8);
   y += lounge.h;
-  // "new team" drop template (only while dragging) goes below the lounge so its appearance never shifts existing seats
-  const templateBlocks = officeBuildTeams(y, originX, cols, SEAT_PX, SEAT_PY, aisleY, 'template');
-  for (const tb of templateBlocks) y += tb.h;
-  const allTeamBlocks = [...teamBlocks, ...templateBlocks];
   aisleY.push(y - 8);
   const worldH = y + OFFICE.PAD * T;
   const graph = { xs: aisleX, ys: aisleY };
@@ -4844,7 +4856,6 @@ function officeFrame(now) {
       else { ch.x = graph.xs[Math.floor(Math.random() * graph.xs.length)]; ch.y = graph.ys[graph.ys.length - 1]; ch.state = 'pause'; ch.pauseT = 0.5; }
     }
     if (seat) {
-      ch.lastAisleY = seat.aisleY;
       const atSeat = Math.abs(ch.x - seat.chairX) < 0.5 && Math.abs(ch.y - seat.chairY) < 0.5;
       const settling = now - officeStartedAt < 1500;
       if (settling && ch.state === 'sit' && !atSeat) { ch.x = seat.chairX; ch.y = seat.chairY; }
@@ -4855,7 +4866,7 @@ function officeFrame(now) {
         if (!last || last.x !== seat.chairX || last.y !== seat.chairY) ch.path = officeRouteToSeat(ch, seat, graph);
       }
     } else if (ch.state === 'sit' || ch.state === 'toSeat') {
-      const outY = ch.lastAisleY != null ? ch.lastAisleY : officeNearest(graph.ys, ch.y + 30);
+      const outY = officeNearest(graph.ys, ch.y + 30);
       ch.path = [{ x: ch.x, y: outY }, { x: officeNearest(graph.xs, ch.x), y: outY }];
       ch.state = 'leave';
     }
@@ -4877,8 +4888,7 @@ function officeFrame(now) {
     ch.animT += dt;
   }
   for (let i = teamFlights.length - 1; i >= 0; i--) { teamFlights[i].t += dt; if (teamFlights[i].t >= teamFlights[i].dur) teamFlights.splice(i, 1); }
-  for (const p of officePets) officePetTick(p, dt, lounge, originX, usableW);
-  officeParticlesTick(dt);
+  officePetTick(dt, lounge, originX, usableW);
 
   // 4) draw: floors — corridor planks everywhere, then each station paints its own tile + tint
   const floorTop = OFFICE.WALL_H * T;
@@ -4895,16 +4905,11 @@ function officeFrame(now) {
     ctx.fillStyle = officeRgba(block.st.color, 0.85); ctx.fillRect(4, by + 2, worldW - 8, 1);
   }
   if (meeting) officeTileArea(ctx, im, 'floor_checker', '#d6c3e6', 4, meeting.y - 12, worldW - 8, meeting.h);
-  officeTileArea(ctx, im, 'floor_plank', '#d9c6a4', 4, reception.y - 12, worldW - 8, reception.h);
-  if (zoneBlock) {
-    officeTileArea(ctx, im, 'floor_grid', '#b9d9d0', 4, zoneBlock.y - 12, worldW - 8, zoneBlock.h);
-    ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, zoneBlock.y - 12, worldW - 8, 2);
-    ctx.fillStyle = 'rgba(95,199,179,0.85)'; ctx.fillRect(4, zoneBlock.y - 10, worldW - 8, 1);
-  }
   officeTileArea(ctx, im, 'floor_brick', '#d9c2b4', 4, lounge.y - 12, worldW - 8, lounge.h);
   ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, lounge.y - 12, worldW - 8, 2);
   // low partition walls along the top of every room, with doorways where the vertical aisles pass
-  const partitionTops = [...allTeamBlocks.map(b => b.y), ...blocks.map(b => b.y), lounge.y].concat(meeting ? [meeting.y] : []).concat(zoneBlock ? [zoneBlock.y] : []);
+  const partitionTops = [...allTeamBlocks.map(b => b.y), ...blocks.map(b => b.y), lounge.y].concat(meeting ? [meeting.y] : []);
+  for (const py of partitionTops) officeDrawPartition(ctx, py, worldW, graph.xs);
   // runner carpets along the vertical aisles (where characters walk)
   for (const ax of graph.xs) {
     if (ax < 8 || ax > worldW - 8) continue;
@@ -4938,79 +4943,57 @@ function officeFrame(now) {
   officeDrawWindows(ctx, worldW);
   const boardW = officeDrawBoard(ctx, shown, worldW, floorTop);
   officeDrawWallDecor(ctx, im, worldW, floorTop, boardW);
-  officeDrawSafety(ctx, worldW, floorTop, originX);
 
-  officeSeats = []; officeSignQueue = [];
+  officeSeats = [];
   // everything that stands on the floor is collected with its base y (zY) and drawn back-to-front,
   // so a character walking past a desk is hidden behind it instead of riding on top
   const zItems = [];
-  // partitions sort by their base so a character on the aisle above a room is hidden behind the wall
-  for (const py of partitionTops) zItems.push({ z: py + 6, draw: () => officeDrawPartition(ctx, py, worldW, graph.xs) });
-  officeDrawReception(ctx, im, reception, worldW, originX, usableW, zItems);
   for (const tb of allTeamBlocks) officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame, zItems);
   // station blocks
   for (const block of blocks) {
     // station banner (right end of the top aisle) in the station color
-    officeQueueSign(ctx, `${block.st.label} · ${block.count}`, block.st.color, block.y - 11, worldW, originX);
+    const signText = `${t(block.st.label)} · ${block.count}`;
+    ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    const sw = Math.round(ctx.measureText(signText).width + 12);
+    const signY = block.y - 11, signX = worldW - originX - sw - 2;
+    ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(signX - 1, signY - 1, sw + 2, 13);
+    ctx.fillStyle = block.st.color; ctx.fillRect(signX, signY, sw, 11);
+    ctx.fillStyle = '#12141c'; ctx.fillText(signText, signX + 6, signY + 1);
     // props in the first free desk slot of the last row (right of the last desk)
     {
       const n = block.seats.length, lastRowCount = n % cols === 0 ? cols : n % cols;
       if (lastRowCount < cols) {
         const px = originX + lastRowCount * SEAT_PX + 12, py = block.y + (block.rowsN - 1) * SEAT_PY + 20;
-        // props stand on a common baseline and fill the free slot left to right while they fit
-        let cx = px; const baseY = py + 32, maxX = originX + (lastRowCount + 1) * SEAT_PX - 8;
-        for (const key of block.st.props) {
-          const img = im[key]; if (!img) continue;
-          if (cx + img.width > maxX) break;
-          ctx.drawImage(img, cx, baseY - img.height);
-          cx += img.width + 6;
-        }
+        const [a, b] = block.st.props;
+        if (im[a]) ctx.drawImage(im[a], px, py);
+        if (im[b]) ctx.drawImage(im[b], px + (im[a] ? im[a].width : 0) + 8, py + (im[a] ? im[a].height : 32) - (im[b] ? im[b].height : 16));
       }
     }
 
-    for (const seat of block.seats) {
-      zItems.push({ z: seat.chairY, draw: () => officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SEAT_PY) });
-      // low divider between the two desks of an island
-      if (seat.flip) zItems.push({ z: seat.sy + 95, draw: () => {
-        const dx = seat.sx + 8, dy = seat.sy + 91;
-        ctx.fillStyle = '#5d5a70'; ctx.fillRect(dx, dy, 64, 6);
-        ctx.fillStyle = '#8e8aa8'; ctx.fillRect(dx, dy, 64, 2);
-        ctx.fillStyle = '#3b384c'; ctx.fillRect(dx, dy + 5, 64, 1);
-        ctx.fillStyle = '#8a7a63'; ctx.fillRect(dx - 1, dy - 1, 2, 8); ctx.fillRect(dx + 63, dy - 1, 2, 8);
-      } });
-    }
+    for (const seat of block.seats) zItems.push({ z: seat.chairY, draw: () => officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SEAT_PY) });
   }
 
   if (meeting) zItems.push({ z: meeting.tableY + meeting.tableH, draw: () => officeDrawMeeting(ctx, im, meeting, worldW, originX, now, bob) });
-  if (zoneBlock) officeDrawZoneBlock(ctx, im, zoneBlock, worldW, originX, now, bob, pulse, pcFrame, zItems);
 
   // lounge
   {
-    officeQueueSign(ctx, `휴게실 · ${lounge.count}`, '#c9b3e0', lounge.y - 11, worldW, originX);
+    const signText = `${t('휴게실')} · ${lounge.count}`;
+    ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    const sw = Math.round(ctx.measureText(signText).width + 12);
+    const signY = lounge.y - 11, signX = worldW - originX - sw - 2;
+    ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(signX - 1, signY - 1, sw + 2, 13);
+    ctx.fillStyle = '#c9b3e0'; ctx.fillRect(signX, signY, sw, 11);
+    ctx.fillStyle = '#12141c'; ctx.fillText(signText, signX + 6, signY + 1);
     const lastSofa = lounge.sofas[Math.min(lounge.sofas.length, sofasPerRow) - 1];
-    // break-room corner right of the sofas: cafe table, vending machines, mini fridge and a drinks counter, then a plant
-    if (lastSofa) {
-      let cx = lastSofa.x + SOFA_STEP + 4; const baseY = lounge.y + 52, maxX = originX + usableW - 2;
-      for (const key of ['k_cafe_table', 'k_vending_orange', 'k_vending_green', 'k_fridge_small', 'k_counter_bottles', 'k_counter_food', 'k_counter_plates', 'k_stove', 'k_tree_round_dark']) {
-        const img = im[key]; if (!img) continue;
-        if (cx + img.width > maxX) break;
-        ctx.drawImage(img, cx, baseY - img.height);
-        cx += img.width + 4;
-      }
-      // a piano fills the empty end of a second sofa row
-      if (lounge.rows > 1 && im.k_piano) {
-        const lastRowCount = lounge.sofas.length % sofasPerRow || sofasPerRow;
-        const px2 = originX + 4 + lastRowCount * SOFA_STEP + 8, py2 = lounge.y + (lounge.rows - 1) * LOUNGE_ROW_H + 14;
-        if (px2 + 32 <= originX + usableW) ctx.drawImage(im.k_piano, px2, py2);
-      }
-    }
+    if (im.coffee_table && lastSofa && lastSofa.x + SOFA_STEP + 32 <= originX + usableW) ctx.drawImage(im.coffee_table, lastSofa.x + SOFA_STEP + 2, lounge.y + 10);
+    if (im.large_plant && lastSofa && lastSofa.x + SOFA_STEP + 68 <= originX + usableW) ctx.drawImage(im.large_plant, lastSofa.x + SOFA_STEP + 38, lounge.y - 8);
     for (const sofa of lounge.sofas) zItems.push({ z: sofa.y + 16, draw: () => {
       officeShadow(ctx, sofa.x + 16, sofa.y + 16, 17, 3);
       if (im.sofa_front) ctx.drawImage(im.sofa_front, sofa.x, sofa.y);
       const seated = sofa.seats.filter(st => st.ch && st.ch.state === 'sit');
       for (const seat of seated) {
         const ch = seat.ch;
-        const sheet = im[`char_${officeSkin(ch.sid)}`];
+        const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
         ch.drawn = [0, 0, seat.chairX, seat.chairY];
         if (sheet) officeDrawChar(ctx, sheet, 0, 0, seat.chairX, seat.chairY, ch.alpha);
       }
@@ -5029,7 +5012,7 @@ function officeFrame(now) {
   // walking / standing / fading characters
   officeMovers = [...officeChars.values()].filter(c => c.state !== 'sit' || c.fading);
   for (const ch of officeMovers) zItems.push({ z: ch.y, draw: () => {
-    const sheet = im[`char_${officeSkin(ch.sid)}`];
+    const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
     if (!sheet) return;
     const walking = ch.state === 'toSeat' || ch.state === 'leave' || ch.state === 'wander';
     const frameCol = walking ? [0, 1, 2, 1][Math.floor(ch.animT / 0.13) % 4] : 0;
@@ -5040,33 +5023,22 @@ function officeFrame(now) {
     else if (!walking && !ch.fading && ch.sess && ch.sess.status === 'done') drawBubble(ctx, ch.x + 2, ch.y - 44 - bob, 1, 'zz');
     if (ch.sess) officeDrawName(ctx, ch.sess, ch.x, ch.y + 3, ch.alpha);
   } });
-  for (const p of officePets) zItems.push({ z: p.y, draw: () => officeDrawPet(ctx, im, p) });
+  zItems.push({ z: officePet.y, draw: () => officeDrawPet(ctx, im, officePet) });
   zItems.sort((a, b) => a.z - b.z);
   for (const it of zItems) it.draw();
-  for (const drawSign of officeSignQueue) drawSign();
   officeDrawTeamFlights(ctx);
-  officeDrawParticles(ctx);
 
   if (!shown.length) {
     ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.fillStyle = '#9aa0b4';
     ctx.fillText(t('최근 24시간 내 활동한 세션이 없습니다'), worldW / 2, worldH / 2);
   }
 
-  officeAisleXs = graph.xs.filter(ax => ax >= 8 && ax <= worldW - 8);
   officeDrawLighting(ctx, worldW, worldH, floorTop, shown);
   officeDrawDrag(ctx, im, allTeamBlocks, worldW);
-  officeDrawMinimap(canvas, worldW, worldH, floorTop, L.scale, [
-    { y: reception.y - 12, h: reception.h, color: '#a8926e' },
-    ...allTeamBlocks.map(b => ({ y: b.y - 12, h: b.h, color: '#efb041' })),
-    ...blocks.map(b => ({ y: b.y - 12, h: b.rowsN * SEAT_PY, color: b.st.color })),
-    ...(meeting ? [{ y: meeting.y - 12, h: meeting.h, color: '#c9b3e0' }] : []),
-    ...(zoneBlock ? [{ y: zoneBlock.y - 12, h: zoneBlock.h, color: '#5fc7b3' }] : []),
-    { y: lounge.y - 12, h: lounge.h, color: '#a89bb8' },
-  ], now);
 
   if (officeHover) {
     const h = officeHover;
-    const idx = officeSkin(h.sid);
+    const idx = officeHash(h.sid) % OFFICE.CHAR_COUNT;
     const [col, dir, hx, hy] = h.drawn || [0, 0, h.x, h.y];
     const ol = im[`char_${idx}`] ? officeOutlineFor(idx, im[`char_${idx}`], col, dir) : null;
     if (ol) { ctx.globalAlpha = 0.9; ctx.drawImage(ol, Math.round(hx - 9), Math.round(hy - 25)); ctx.globalAlpha = 1; }
@@ -5075,11 +5047,10 @@ function officeFrame(now) {
 }
 
 const OFFICE_STATIONS = [
-  // one carpet through the whole work floor; departments differ only by a light tint, their banner and their props
-  { id: 'dev',      label: '개발',       color: '#6f8fd8', floor: 'floor_tiles',   tint: '#c8cfe0', props: ['k_shelf_orange', 'k_locker_brown', 'k_bin_grey', 'k_plant_b'] },
-  { id: 'research', label: '조사',       color: '#b08ae8', floor: 'floor_tiles',   tint: '#d2cadf', props: ['k_shelf_tall_green', 'k_shelf_tall_orange', 'k_tree_round', 'k_box_a'] },
-  { id: 'exec',     label: '실행·테스트', color: '#6fc79a', floor: 'floor_tiles',   tint: '#c6d8cf', props: ['k_rack_a', 'k_rack_b', 'k_ac_unit', 'cactus'] },
-  { id: 'docs',     label: '문서화',     color: '#e0b060', floor: 'floor_tiles',   tint: '#dad2c4', props: ['k_shelf_green', 'k_cabinet_beige', 'k_plant_a', 'k_stool_brown'] },
+  { id: 'dev',      label: '개발',       color: '#6f8fd8', floor: 'floor_tiles',   tint: '#aebfe8', props: ['double_bookshelf', 'bin'] },
+  { id: 'research', label: '조사',       color: '#b08ae8', floor: 'floor_checker', tint: '#cbb8ea', props: ['bookshelf', 'pot'] },
+  { id: 'exec',     label: '실행·테스트', color: '#6fc79a', floor: 'floor_grid',    tint: '#b6dcc4', props: ['cactus', 'bin'] },
+  { id: 'docs',     label: '문서화',     color: '#e0b060', floor: 'floor_plank',   tint: '#e6c99c', props: ['double_bookshelf', 'plant_2'] },
 ];
 function officeTileArea(ctx, im, key, tint, x0, y0, w, h) {
   const T = OFFICE.T;
@@ -5138,25 +5109,6 @@ function officeDrawName(ctx, sess, cx, y, alpha = 1, opts = {}) {
   ctx.restore();
 }
 let officeMovers = [];
-let officeSignQueue = [];
-// room banners are wall signs: queued and drawn after the depth-sorted pass so partitions never cover them
-function officeQueueSign(ctx, rawText, color, signY, worldW, originX, dark = false) {
-  const text = t(rawText);
-  officeSignQueue.push(() => {
-    ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    const sw = Math.round(ctx.measureText(text).width + (dark ? 8 : 12));
-    const signX = worldW - originX - sw - 2;
-    if (dark) {
-      ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(signX, signY, sw, 11);
-      ctx.fillStyle = color; ctx.fillRect(signX, signY, 2, 11);
-      ctx.fillStyle = '#e8ecf5'; ctx.fillText(text, signX + 5, signY + 1);
-    } else {
-      ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(signX - 1, signY - 1, sw + 2, 13);
-      ctx.fillStyle = color; ctx.fillRect(signX, signY, sw, 11);
-      ctx.fillStyle = '#12141c'; ctx.fillText(text, signX + 6, signY + 1);
-    }
-  });
-}
 
 function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SEAT_PY) {
       const { sx, sy, deskX, deskY, ch } = seat;
@@ -5164,41 +5116,29 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
   const st = sess ? sess.status : 'empty';
   const sitting = ch && ch.state === 'sit';
 
-  const rugY = seat.flip ? sy + 12 : (seat.deskY < sy + 12 ? sy + 4 : sy + 12);
-  officeDrawRug(ctx, sx + 8, rugY, 64, 64, st === 'running' ? (sess && sess.isSub ? '#8fb3e8' : '#6f8fd8') : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : st === 'empty' ? '#b9b6c2' : '#bdbac4', st === 'empty');
+  officeDrawRug(ctx, sx + 8, sy + 12, 64, 64, st === 'running' ? (sess && sess.isSub ? '#8fb3e8' : '#6f8fd8') : st === 'waiting' ? '#e6c86a' : st === 'error' ? '#d87a76' : st === 'empty' ? '#b9b6c2' : '#bdbac4', st === 'empty');
   if (st === 'running' && sitting) {
   ctx.strokeStyle = `rgba(120,170,255,${0.35 + 0.55 * pulse})`; ctx.lineWidth = 1;
-  ctx.strokeRect(sx + 7.5, rugY - 0.5, 65, 65);
+  ctx.strokeRect(sx + 7.5, sy + 11.5, 65, 65);
   }
-  const drawDesk = () => {
-    if (im.desk) ctx.drawImage(im.desk, deskX, deskY);
-    const pcImg = sitting && st === 'running' ? im[`pc_on_${pcFrame + 1}`] : sitting && (st === 'waiting' || st === 'error') ? im.pc_on_1 : im.pc_off;
-    if (pcImg) ctx.drawImage(pcImg, deskX + 16, deskY - 5);
-    if (sess && officeNightAmount(officeHourNow()) > 0.35) {
-      // small desk lamp: post, shade, lit bulb
-      ctx.fillStyle = '#2a2836'; ctx.fillRect(deskX + 43, deskY - 4, 1, 8); ctx.fillRect(deskX + 41, deskY + 4, 5, 1);
-      ctx.fillStyle = '#c9743a'; ctx.fillRect(deskX + 40, deskY - 7, 7, 3);
-      ctx.fillStyle = '#ffe9a8'; ctx.fillRect(deskX + 41, deskY - 4, 5, 1);
-    }
-    if (sess) {
-      const k = officeHash(sess.id) % 7;
-      if (k >= 4) { const vase = im[['k_vase_a', 'k_vase_b', 'k_vase_c'][k - 4]]; if (vase) ctx.drawImage(vase, deskX + 34, deskY - 2); }
-      if (k === 0 && im.coffee) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
-      else if (k === 1 && im.pot) ctx.drawImage(im.pot, deskX + 2, deskY + 2);
-      else if (k === 2) { ctx.fillStyle = '#f1efe6'; ctx.fillRect(deskX + 36, deskY + 14, 9, 7); ctx.fillStyle = '#b9b6ad'; ctx.fillRect(deskX + 38, deskY + 16, 5, 1); ctx.fillRect(deskX + 38, deskY + 18, 5, 1); }
-    }
-    if (sitting && st === 'running') {
-      ctx.fillStyle = `rgba(140,200,255,${0.10 + 0.12 * pulse})`; ctx.fillRect(deskX + 12, deskY - 2, 24, 22);
-    }
-  };
-  // a flipped seat (chair above the desk) draws the desk after the character so it sits in front of them
-  if (!seat.flip) drawDesk();
+  if (im.desk) ctx.drawImage(im.desk, deskX, deskY);
+  const pcImg = sitting && st === 'running' ? im[`pc_on_${pcFrame + 1}`] : sitting && (st === 'waiting' || st === 'error') ? im.pc_on_1 : im.pc_off;
+  if (pcImg) ctx.drawImage(pcImg, deskX + 16, deskY - 5);
+  if (sess) {
+  const k = officeHash(sess.id) % 4;
+  if (k === 0 && im.coffee) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
+  else if (k === 1 && im.pot) ctx.drawImage(im.pot, deskX + 2, deskY + 2);
+  else if (k === 2) { ctx.fillStyle = '#f1efe6'; ctx.fillRect(deskX + 36, deskY + 14, 9, 7); ctx.fillStyle = '#b9b6ad'; ctx.fillRect(deskX + 38, deskY + 16, 5, 1); ctx.fillRect(deskX + 38, deskY + 18, 5, 1); }
+  }
+  if (sitting && st === 'running') {
+  ctx.fillStyle = `rgba(140,200,255,${0.10 + 0.12 * pulse})`; ctx.fillRect(deskX + 12, deskY - 2, 24, 22);
+  }
   if (im.chair_back) ctx.drawImage(im.chair_back, seat.chairX - 8, seat.chairY - 12);
   if (sitting) officeShadow(ctx, seat.chairX, seat.chairY + 2, 8, 2.5);
 
   if (sitting) {
-  const sheet = im[`char_${officeSkin(ch.sid)}`];
-  let frameCol = 0, dir = seat.flip ? 0 : 1;
+  const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
+  let frameCol = 0, dir = 1;
   if (st === 'running') {
     const reading = officeIsReadingTool(sess.tool);
     frameCol = (reading ? 5 : 3) + (Math.floor(ch.animT / (reading ? 0.45 : 0.22)) % 2);
@@ -5208,7 +5148,6 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
   } else if (st === 'error') { dir = 0; frameCol = 0; }
   ch.drawn = [frameCol, dir, seat.chairX, seat.chairY];
   if (sheet) officeDrawChar(ctx, sheet, frameCol, dir, seat.chairX, seat.chairY, ch.alpha);
-  if (seat.flip) drawDesk();
   const headY = seat.chairY - 24;
   if (ch.reactT > 0) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'dots');
   else if (st === 'running') {
@@ -5231,56 +5170,28 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
   }
   officeDrawName(ctx, sess, seat.chairX, seat.chairY + 10);
   if (ch.alertT > 0) officeDrawAlert(ctx, seat.chairX, seat.chairY - 12, ch.alertT);
-  } else if (seat.flip) drawDesk();
+  }
   officeSeats.push({ x: sx, y: sy, w: SEAT_PX, h: SEAT_PY, ch });
 
 }
 // ambient light by local time: warm at dusk, dim blue at night, monitors glow in the dark
-// wall-clock hour (0–24, fractional). The demo fast-forwards a full day in ~30s so every phase is visible.
-function officeHourNow() {
-  if (OFFICE_DEMO) return (12 + (performance.now() - officeStartedAt) / 1000 * 0.8) % 24;
-  const d = new Date(); return d.getHours() + d.getMinutes() / 60;
-}
-// 0 = full day, 1 = deep night, with smooth dawn (5–8h) and dusk (17–21h) ramps
-function officeNightAmount(hr) {
-  if (hr >= 8 && hr < 17) return 0;
-  if (hr >= 21 || hr < 5) return 1;
-  if (hr >= 17) return (hr - 17) / 4;
-  return 1 - (hr - 5) / 3;
-}
 function officeDrawLighting(ctx, worldW, worldH, floorTop, shown) {
-  const hr = officeHourNow();
-  const night = officeNightAmount(hr);
-  const dusk = hr >= 17 && hr < 21 ? 1 - Math.abs(hr - 19) / 2 : 0;     // warm peak around 19h
-  const dawn = hr >= 5 && hr < 8 ? 1 - Math.abs(hr - 6.5) / 1.5 : 0;   // soft gold around 6:30
-  if (dusk > 0) { ctx.fillStyle = `rgba(255,140,60,${0.20 * dusk})`; ctx.fillRect(0, floorTop, worldW, worldH - floorTop); }
-  if (dawn > 0) { ctx.fillStyle = `rgba(255,205,130,${0.14 * dawn})`; ctx.fillRect(0, floorTop, worldW, worldH - floorTop); }
-  if (night <= 0) return;
-  ctx.fillStyle = `rgba(16,20,56,${0.48 * night})`; ctx.fillRect(0, floorTop, worldW, worldH - floorTop);
-  ctx.fillStyle = `rgba(8,10,30,${0.35 * night})`; ctx.fillRect(0, 0, worldW, floorTop);   // wall darkens too
-  // desk lamps and monitors carve warm/cool pools out of the dark; the lamp only burns where someone sits
-  for (const st of officeSeats) {
-    if (!st.ch || st.w < 60) continue;
-    const lx = st.x + 58, ly = st.y - 2;
-    const g = ctx.createRadialGradient(lx, ly + 6, 2, lx, ly + 6, 40);
-    g.addColorStop(0, `rgba(255,200,110,${0.42 * night})`); g.addColorStop(0.5, `rgba(255,180,90,${0.16 * night})`); g.addColorStop(1, 'rgba(255,170,80,0)');
-    ctx.fillStyle = g; ctx.fillRect(lx - 40, ly - 34, 80, 80);
-    if (st.ch.sess.status === 'running') {
-      const m = ctx.createRadialGradient(st.x + 40, st.y + 30, 4, st.x + 40, st.y + 30, 34);
-      m.addColorStop(0, `rgba(150,200,255,${0.30 * night})`); m.addColorStop(1, 'rgba(150,200,255,0)');
-      ctx.fillStyle = m; ctx.fillRect(st.x, st.y, st.w, st.h);
-    }
-  }
-  // corridor downlights along the vertical aisles so walkers stay readable
-  if (officeAisleXs) for (const ax of officeAisleXs) {
-    for (let yy = floorTop + 40; yy < worldH; yy += 96) {
-      const g = ctx.createRadialGradient(ax, yy, 2, ax, yy, 26);
-      g.addColorStop(0, `rgba(255,240,200,${0.16 * night})`); g.addColorStop(1, 'rgba(255,240,200,0)');
-      ctx.fillStyle = g; ctx.fillRect(ax - 26, yy - 26, 52, 52);
+  const hr = new Date().getHours() + new Date().getMinutes() / 60;
+  let tint = null;
+  if (hr >= 21 || hr < 6) tint = 'rgba(20,26,60,0.42)';
+  else if (hr >= 18) tint = `rgba(255,140,60,${0.10 + (hr - 18) / 3 * 0.12})`;
+  else if (hr < 8) tint = 'rgba(255,200,120,0.10)';
+  if (!tint) return;
+  ctx.fillStyle = tint; ctx.fillRect(0, floorTop, worldW, worldH - floorTop);
+  if (hr >= 21 || hr < 6) {
+    for (const st of officeSeats) {
+      if (!st.ch || st.ch.sess.status !== 'running' || st.w < 60) continue;
+      const g = ctx.createRadialGradient(st.x + 40, st.y + 30, 4, st.x + 40, st.y + 30, 34);
+      g.addColorStop(0, 'rgba(150,200,255,0.30)'); g.addColorStop(1, 'rgba(150,200,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(st.x, st.y, st.w, st.h);
     }
   }
 }
-let officeAisleXs = null;
 function officeVoteStation(hist) {
   if (!hist || !hist.length) return null;
   const recent = hist.slice(-4).filter(h => h.station);
@@ -5310,130 +5221,6 @@ function officeDrawAlert(ctx, cx, cy, t) {
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
   }
 }
-// ── reception & company sign ──
-let officeCompany = 'ORCA';
-try { officeCompany = localStorage.getItem('roca-office-company') || 'ORCA'; } catch {}
-let officeSignRect = null;
-function officeSignHit(evt) {
-  const r = officeSignRect; if (!r) return false;
-  const p = officeWorldPos(evt);
-  return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
-}
-function officeCompanyEdit() {
-  const m = teamModal(`<h3>${t('회사 이름')}</h3><input id="company-name" value="${esc(officeCompany)}" maxlength="24" style="width:100%;box-sizing:border-box;padding:8px;font:inherit;background:var(--bg-solid);color:var(--text);border:1px solid var(--border);border-radius:6px">
-    <div class="row"><button id="company-cancel">${t('취소')}</button><span style="margin-left:auto"></span><button class="primary" id="company-save">${t('저장')}</button></div>`);
-  const input = m.querySelector('#company-name'); input.focus(); input.select();
-  const save = () => { officeCompany = input.value.trim() || 'ORCA'; try { localStorage.setItem('roca-office-company', officeCompany); } catch {} closeTeamModal(); };
-  m.querySelector('#company-cancel').onclick = closeTeamModal;
-  m.querySelector('#company-save').onclick = save;
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
-}
-function officeDrawReception(ctx, im, rc, worldW, originX, usableW, zItems) {
-  const y = rc.y;
-  // welcome mat in front of the counter
-  officeDrawRug(ctx, originX + 4, y + 30, 56, 18, '#8a5a3c', false);
-  zItems.push({ z: y + 44, draw: () => {
-    // front counter with a vase on top, then the waiting bench and a plant on the right
-    let cx = originX + 6;
-    for (const key of ['k_counter_drawer', 'k_counter', 'k_counter_drawer']) { if (im[key]) ctx.drawImage(im[key], cx, y + 12); cx += 16; }
-    if (im.k_vase_b) ctx.drawImage(im.k_vase_b, originX + 22, y);
-    if (im.k_bench && im.k_wood_chair) {
-      const bx = originX + usableW - 56;
-      if (bx > cx + 40) { ctx.drawImage(im.k_wood_chair, bx, y + 22); ctx.drawImage(im.k_bench, bx + 16, y + 22); ctx.drawImage(im.k_wood_chair, bx + 32, y + 22); }
-    }
-    if (im.k_tree_tall_green && originX + usableW - 16 > cx + 20) ctx.drawImage(im.k_tree_tall_green, originX + usableW - 14, y - 4);
-  } });
-  // company sign: dark plate with the name, drawn late so nothing covers it; clicking opens the editor
-  officeSignQueue.push(() => {
-    ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    const label = officeCompany;
-    const w = Math.max(48, Math.round(ctx.measureText(label).width + 22)), h = 16;
-    const x = Math.round((worldW - w) / 2), sy = y - 6;
-    officeSignRect = { x, y: sy, w, h };
-    ctx.fillStyle = '#1c1b26'; ctx.fillRect(x - 1, sy - 1, w + 2, h + 2);
-    ctx.fillStyle = '#2f2d3e'; ctx.fillRect(x, sy, w, h);
-    ctx.fillStyle = '#efb041'; ctx.fillRect(x + 3, sy + h - 3, w - 6, 1);
-    ctx.fillStyle = '#f6d98a'; ctx.fillText(label, x + w / 2, sy + 3);
-    ctx.fillStyle = '#efb041'; ctx.fillRect(x + 3, sy + 3, 3, 3); ctx.fillRect(x + w - 6, sy + 3, 3, 3);
-  });
-}
-// exit sign and a fire extinguisher on the top wall — small things that make it read as a workplace
-function officeDrawSafety(ctx, worldW, floorTop, originX) {
-  const ex = worldW - originX - 30, ey = floorTop - 20;
-  ctx.fillStyle = '#1f6b3a'; ctx.fillRect(ex, ey, 26, 9);
-  ctx.fillStyle = '#7fe0b0'; ctx.fillRect(ex + 1, ey + 1, 24, 7);
-  ctx.fillStyle = '#0e3a20'; ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText('EXIT', ex + 13, ey);
-  const fx = originX + 4, fy = floorTop - 14;
-  ctx.fillStyle = '#c23c36'; ctx.fillRect(fx, fy + 2, 4, 9);
-  ctx.fillStyle = '#2a2836'; ctx.fillRect(fx, fy, 4, 2); ctx.fillRect(fx + 4, fy + 3, 1, 5);
-  ctx.fillStyle = '#f2f3f6'; ctx.fillRect(fx + 1, fy + 5, 2, 2);
-}
-// ── minimap: rooms as colour bands, sessions as dots, viewport as a frame; visible only when the office overflows ──
-let officeMinimapScale = 0;
-function officeDrawMinimap(canvas, worldW, worldH, floorTop, scale, bands, now) {
-  const mm = $('office-minimap'), wrap = $('office-wrap');
-  const overflow = worldH * scale > wrap.clientHeight + 4;
-  if (!overflow) { if (!mm.hidden) mm.hidden = true; return; }
-  if (mm.hidden) mm.hidden = false;
-  const cssH = Math.min(220, Math.max(80, Math.round(wrap.clientHeight * 0.42)));
-  const k = cssH / worldH, cssW = Math.max(28, Math.round(worldW * k));
-  const dpr = window.devicePixelRatio || 1;
-  if (mm.__w !== cssW || mm.__h !== cssH || mm.__dpr !== dpr) {
-    mm.style.width = cssW + 'px'; mm.style.height = cssH + 'px'; mm.width = Math.round(cssW * dpr); mm.height = Math.round(cssH * dpr);
-    mm.__w = cssW; mm.__h = cssH; mm.__dpr = dpr;
-  }
-  officeMinimapScale = k;
-  const c = mm.getContext('2d');
-  c.setTransform(dpr, 0, 0, dpr, 0, 0);
-  c.clearRect(0, 0, cssW, cssH);
-  c.fillStyle = '#2b2a36'; c.fillRect(0, 0, cssW, floorTop * k);
-  for (const b of bands) { c.fillStyle = officeRgba(b.color, 0.45); c.fillRect(1, Math.round(b.y * k), cssW - 2, Math.max(1, Math.round(b.h * k))); }
-  const blink = Math.floor(now / 350) % 2 === 0;
-  for (const ch of officeChars.values()) {
-    if (ch.fading || !ch.sess) continue;
-    const s = ch.sess.status;
-    const x = Math.round(ch.x * k), y = Math.round(ch.y * k);
-    if (ch.sess.needsInput) { c.fillStyle = blink ? '#fff4c2' : '#F2C037'; c.fillRect(x - 2, y - 2, 4, 4); continue; }
-    c.fillStyle = s === 'running' ? '#7fb2ff' : s === 'waiting' ? '#e6c86a' : s === 'error' ? '#ff7a75' : '#9a97a8';
-    c.fillRect(x - 1, y - 1, 2, 2);
-  }
-  const vy = wrap.scrollTop / scale * k, vh = wrap.clientHeight / scale * k;
-  c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = 1;
-  c.strokeRect(0.5, Math.round(vy) + 0.5, cssW - 1, Math.max(4, Math.round(vh)) - 1);
-}
-{
-  const mm = $('office-minimap');
-  let dragging = false;
-  const jump = e => {
-    const wrap = $('office-wrap'), scale = $('office-canvas').__scale || 2;
-    const r = mm.getBoundingClientRect();
-    const worldY = (e.clientY - r.top) / officeMinimapScale;
-    wrap.scrollTo({ top: Math.max(0, worldY * scale - wrap.clientHeight / 2), behavior: dragging ? 'instant' : 'smooth' });
-  };
-  mm.addEventListener('mousedown', e => { dragging = true; jump(e); e.preventDefault(); });
-  window.addEventListener('mousemove', e => { if (dragging) jump(e); });
-  window.addEventListener('mouseup', () => { dragging = false; });
-}
-let officeBoardRect = null;
-let officeJumpIdx = 0;
-function officeBoardHit(evt) {
-  const r = officeBoardRect; if (!r) return false;
-  const p = officeWorldPos(evt);
-  return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
-}
-// clicking the whiteboard jumps to the longest-waiting session; repeated clicks cycle through everyone who needs input
-function officeJumpToWaiting() {
-  const waiting = [...officeChars.values()].filter(c => !c.fading && c.sess && (c.sess.needsInput || c.sess.status === 'waiting') && !c.sess.isSub)
-    .sort((a, b) => (b.sess.needsInput ? 1 : 0) - (a.sess.needsInput ? 1 : 0) || a.statusSince - b.statusSince);
-  if (!waiting.length) { showInAppToast(t('대기 중인 세션이 없습니다')); return; }
-  const target = waiting[officeJumpIdx % waiting.length]; officeJumpIdx++;
-  const wrap = $('office-wrap'), scale = $('office-canvas').__scale || 2;
-  const cy = (target.seat ? target.seat.chairY : target.y) * scale;
-  wrap.scrollTo({ top: Math.max(0, cy - wrap.clientHeight / 2), behavior: 'smooth' });
-  target.alertT = 3; target.reactT = 1.2; officeHover = target;
-  const handle = officeHandleFor(target);
-  if (handle) openChat(handle);
-}
 function officeDrawBoard(ctx, shown, worldW, floorTop) {
   const run = shown.filter(s => s.status === 'running').length;
   const wait = shown.filter(s => s.status === 'waiting').length;
@@ -5448,17 +5235,9 @@ function officeDrawBoard(ctx, shown, worldW, floorTop) {
   const subs = shown.filter(s => s.isSub && s.status === 'running').length;
   const line1 = t(`작업 ${run - subs}${subs ? ' +서브 ' + subs : ''} · 대기 ${wait}${ask ? ' (선택 필요 ' + ask + ')' : ''}${err ? ' · 오류 ' + err : ''} · 휴식 ${done}`);
   const hot = shown.filter(s => s.ctxPct != null && !s.isSub).sort((a, b) => b.ctxPct - a.ctxPct)[0];
-  // team status when nothing more urgent is going on: first team that has a PM and tasks
-  let teamLine = '';
-  for (const tm of Object.values(teamState.teams)) {
-    const all = Object.values(tm.tasks || {}); if (!tm.pm || !all.length) continue;
-    const pending = all.filter(k => !k.reported).length, stale = all.filter(k => k.briefVersion != null && k.briefVersion < tm.briefVersion).length;
-    teamLine = `팀 ${(officeChars.get(tm.pm)?.sess?.name || 'PM').slice(0, 10)}: R${tm.rounds || 0} · 진행 ${pending} · 보고 ${all.length - pending}${stale ? ' · 갱신 필요 ' + stale : ''}`;
-    break;
-  }
   const line2 = t(longest ? `가장 오래 대기: ${(longest.sess.name || '').slice(0, 12)} ${officeFmtSince(longest.statusSince)}`
     : (hot && hot.ctxPct >= 75) ? `컨텍스트 주의: ${(hot.name || '').slice(0, 12)} ${hot.ctxPct}%`
-    : teamLine || (run ? '모두 응답 중입니다' : '대기 중인 요청이 없습니다'));
+    : (run ? '모두 응답 중입니다' : '대기 중인 요청이 없습니다'));
   ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
   // shrink the copy until the board fits the room
   const maxW = worldW - 16;
@@ -5473,7 +5252,6 @@ function officeDrawBoard(ctx, shown, worldW, floorTop) {
     if (w <= maxW) break;
   }
   const h = 24, x = Math.max(4, Math.round((worldW - w) / 2)), y = floorTop - h - 7;
-  officeBoardRect = { x, y, w: Math.round(w), h, target: longest };
   ctx.fillStyle = '#6b5a48'; ctx.fillRect(x - 2, y - 2, Math.round(w) + 4, h + 4);
   ctx.fillStyle = '#f2f3f6'; ctx.fillRect(x, y, Math.round(w), h);
   ctx.fillStyle = '#2b2f3a'; ctx.fillText(l1, x + 6, y + 2);
@@ -5529,7 +5307,7 @@ function officeWindowXs(worldW) {
 }
 // daylight falling through the windows onto the floor below the wall
 function officeDrawWindowLight(ctx, worldW, floorTop) {
-  const hr = officeHourNow();
+  const hr = new Date().getHours() + new Date().getMinutes() / 60;
   if (hr >= 20 || hr < 6) return;
   const dusk = hr >= 17 || hr < 8;
   const a = dusk ? 0.16 : 0.13;
@@ -5544,7 +5322,7 @@ function officeDrawWindowLight(ctx, worldW, floorTop) {
   }
 }
 function officeDrawWindows(ctx, worldW) {
-  const hr = officeHourNow();
+  const hr = new Date().getHours() + new Date().getMinutes() / 60;
   const night = hr >= 20 || hr < 6, dusk = !night && (hr >= 17 || hr < 8);
   const sky = night ? ['#0f1630', '#1b2447'] : dusk ? ['#f0a56a', '#7b6fa8'] : ['#8fd0ff', '#d8f0ff'];
   const xs = officeWindowXs(worldW);
@@ -5564,7 +5342,7 @@ function officeDrawWallDecor(ctx, im, worldW, floorTop, board) {
   const y = 2;
   const n = Math.max(2, Math.floor((worldW - 60) / 110));
   const winXs = []; for (let i = 0; i < n; i++) winXs.push(Math.round(30 + i * ((worldW - 60 - 36) / Math.max(1, n - 1))));
-  const items = [['large_painting', 32], ['k_painting_green', 16], ['clock', 16], ['k_painting_wide_teal', 48], ['small_painting', 16], ['k_painting_orange', 16], ['whiteboard', 32], ['k_painting_map', 16], ['small_painting_2', 16], ['k_painting_wide_orange', 48], ['k_painting_doc', 16]];
+  const items = [['large_painting', 32], ['whiteboard', 32], ['clock', 16], ['small_painting', 16], ['small_painting_2', 16]];
   let k = 0;
   const slots = [[8, winXs[0] - 4]];
   for (let i = 0; i < winXs.length - 1; i++) slots.push([winXs[i] + 40, winXs[i + 1] - 4]);
@@ -5628,26 +5406,19 @@ function officeDrawHelper(ctx, im, ch, seat, now) {
 }
 // lounge pet (Gitcat). Sheet 96×96: row 0 = facing down (walk cols 0-2, idle cols 3-5, 16×32), row 1 = facing up (same),
 // row 2 = walking right (3 frames, 32×32); left is the right row flipped. Anchor is bottom-centre of the frame.
-const officePets = [
-  { sheet: 'pet_gitcat', name: 'Gitcat', home: 0.72, x: 0, y: 0, tx: 0, ty: 0, dir: 0, state: 'idle', animT: 0, pauseT: 2, heartT: 0, init: false },
-  { sheet: 'pet_claudio', name: 'Claudio', home: 0.3, x: 0, y: 0, tx: 0, ty: 0, dir: 0, state: 'idle', animT: 0, pauseT: 5, heartT: 0, init: false },
-];
+const officePet = { x: 0, y: 0, tx: 0, ty: 0, dir: 0, state: 'idle', animT: 0, pauseT: 2, heartT: 0, init: false };
 const OFFICE_PET_SPEED = 32;
-function officePetTick(p, dt, lounge, originX, usableW) {
+function officePetTick(dt, lounge, originX, usableW) {
+  const p = officePet;
   const x0 = originX + 12, x1 = originX + usableW - 12;
   // the strip between the lounge partition and the sofa backs
   const yMin = lounge.y + 10, yMax = lounge.y + 16;
-  if (!p.init || Math.abs(p.y - yMin) > 48) { p.x = Math.round(x0 + (x1 - x0) * p.home); p.y = yMin + 2; p.tx = p.x; p.ty = p.y; p.state = 'idle'; p.pauseT = 2; p.init = true; }
+  if (!p.init || Math.abs(p.y - yMin) > 48) { p.x = Math.round(x0 + (x1 - x0) * 0.72); p.y = yMin + 2; p.tx = p.x; p.ty = p.y; p.state = 'idle'; p.pauseT = 2; p.init = true; }
   p.y = Math.max(yMin, Math.min(yMax, p.y)); p.ty = Math.max(yMin, Math.min(yMax, p.ty)); p.tx = Math.max(x0, Math.min(x1, p.tx));
   p.animT += dt; if (p.heartT > 0) p.heartT -= dt;
   if (p.state === 'idle') {
     p.pauseT -= dt;
-    if (p.pauseT <= 0) {
-      // a third of the time the cat trots over to whoever is passing through the lounge
-      const near = Math.random() < 0.34 ? [...officeChars.values()].find(c => !c.fading && c.state !== 'sit' && c.y >= lounge.y - 24 && c.y <= lounge.y + lounge.h) : null;
-      p.tx = near ? Math.round(near.x + (near.x > p.x ? -14 : 14)) : Math.round(x0 + Math.random() * (x1 - x0));
-      p.ty = Math.round(yMin + Math.random() * (yMax - yMin)); p.state = 'walk'; p.animT = 0;
-    }
+    if (p.pauseT <= 0) { p.tx = Math.round(x0 + Math.random() * (x1 - x0)); p.ty = Math.round(yMin + Math.random() * (yMax - yMin)); p.state = 'walk'; p.animT = 0; }
   } else {
     const ddx = p.tx - p.x, ddy = p.ty - p.y, dist = Math.hypot(ddx, ddy), step = OFFICE_PET_SPEED * dt;
     if (dist <= step) { p.x = p.tx; p.y = p.ty; p.state = 'idle'; p.pauseT = 3 + Math.random() * 9; p.animT = 0; }
@@ -5655,7 +5426,7 @@ function officePetTick(p, dt, lounge, originX, usableW) {
   }
 }
 function officeDrawPet(ctx, im, p) {
-  const sheet = im[p.sheet]; if (!sheet || !p.init) return;
+  const sheet = im.pet_gitcat; if (!sheet || !p.init) return;
   const x = Math.round(p.x), y = Math.round(p.y);
   officeShadow(ctx, x, y + 1, 6, 2);
   const walking = p.state === 'walk';
@@ -5672,8 +5443,9 @@ function officeDrawPet(ctx, im, p) {
   if (p.heartT > 0) { ctx.save(); ctx.globalAlpha = Math.min(1, p.heartT / 0.4); drawBubble(ctx, x - 5, y - 31, 1, 'heart'); ctx.restore(); }
 }
 function officePetHit(evt) {
+  const p = officePet; if (!p.init) return false;
   const pos = officeWorldPos(evt);
-  return officePets.find(p => p.init && pos.x >= p.x - 9 && pos.x <= p.x + 9 && pos.y >= p.y - 18 && pos.y <= p.y + 2) || null;
+  return pos.x >= p.x - 9 && pos.x <= p.x + 9 && pos.y >= p.y - 18 && pos.y <= p.y + 2;
 }
 function officeMeetingHandles() {
   const set = new Set();
@@ -5708,16 +5480,15 @@ function officeBuildMeeting(y, originX, usableW, aisleY) {
 }
 function officeDrawMeeting(ctx, im, m, worldW, originX, now, bob) {
   ctx.fillStyle = 'rgba(190,170,210,0.16)'; ctx.fillRect(0, m.y - 4, worldW, m.h);
-  // glass walls: translucent panes with a light frame along the top and both sides, plus a wall screen
-  ctx.fillStyle = 'rgba(160,210,245,0.22)'; ctx.fillRect(4, m.y - 8, worldW - 8, 9); ctx.fillRect(4, m.y - 8, 6, m.h - 4); ctx.fillRect(worldW - 10, m.y - 8, 6, m.h - 4);
-  ctx.fillStyle = 'rgba(230,245,255,0.55)'; ctx.fillRect(4, m.y - 8, worldW - 8, 1); ctx.fillRect(4, m.y, worldW - 8, 1);
-  ctx.fillStyle = '#7f8ba6'; for (let x = 4; x < worldW - 4; x += 40) ctx.fillRect(x, m.y - 9, 2, 11);
-  ctx.fillStyle = '#2a2836'; ctx.fillRect(worldW - originX - 44, m.y + 4, 30, 18);
-  ctx.fillStyle = '#4f7fc9'; ctx.fillRect(worldW - originX - 42, m.y + 6, 26, 12);
-  ctx.fillStyle = '#9cc4ff'; ctx.fillRect(worldW - originX - 40, m.y + 8, 14, 1); ctx.fillRect(worldW - originX - 40, m.y + 11, 20, 1); ctx.fillRect(worldW - originX - 40, m.y + 14, 10, 1);
+  ctx.fillStyle = 'rgba(201,179,224,0.95)'; ctx.fillRect(0, m.y - 4, 3, m.h);
   const modeLabel = { debate: '토론', brainstorm: '브레인스톰', review: '코드리뷰', 'master-worker': '마스터-워커' }[debateState.mode] || '토론';
-  officeQueueSign(ctx, `회의실 · ${modeLabel} ${debateState.round}/${debateState.maxRounds}`, '#c9b3e0', m.y - 14, worldW, originX, true);
+  const signText = `회의실 · ${modeLabel} ${debateState.round}/${debateState.maxRounds}`;
   ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  const sw = ctx.measureText(signText).width + 8;
+  const signY = m.y - 14, signX = worldW - originX - sw - 2;
+  ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(signX, signY, sw, 11);
+  ctx.fillStyle = '#c9b3e0'; ctx.fillRect(signX, signY, 2, 11);
+  ctx.fillStyle = '#e8ecf5'; ctx.fillText(signText, signX + 5, signY + 1);
   // table
   ctx.fillStyle = '#5a3a22'; ctx.fillRect(m.tableX - 1, m.tableY - 1, m.tableW + 2, m.tableH + 2);
   ctx.fillStyle = '#a06b3d'; ctx.fillRect(m.tableX, m.tableY, m.tableW, m.tableH);
@@ -5727,7 +5498,7 @@ function officeDrawMeeting(ctx, im, m, worldW, originX, now, bob) {
   const seated = m.seats.filter(st => st.ch.state === 'sit').sort((a, b) => a.chairY - b.chairY);
   for (const st of seated) {
     const ch = st.ch;
-    const sheet = im[`char_${officeSkin(ch.sid)}`];
+    const sheet = im[`char_${officeHash(ch.sid) % OFFICE.CHAR_COUNT}`];
     const speaking = debateState.currentHandle && (handles.get(ch.sid) === debateState.currentHandle || ch.sid === debateState.currentHandle);
     const frame = speaking ? 3 + (Math.floor(now / 250) % 2) : 0;
     ch.drawn = [frame, st.dir, st.chairX, st.chairY];
@@ -5923,17 +5694,11 @@ $('office-canvas').addEventListener('mousemove', e => {
   const tip = $('office-tip');
   const canvas = $('office-canvas');
   officeHover = ch;
-  const onPet = !ch ? officePetHit(e) : null;
-  const zs = !ch && !onPet ? officeZoneSeatAt(officeWorldPos(e).x, officeWorldPos(e).y) : null;
-  const onBoard = !ch && !onPet && !zs && officeBoardHit(e);
-  const onSign = !ch && !onPet && !zs && !onBoard && officeSignHit(e);
-  canvas.classList.toggle('hit', !!ch || !!onPet || onBoard || onSign);
+  const onPet = !ch && officePetHit(e);
+  canvas.classList.toggle('hit', !!ch || onPet);
   if (!ch) {
-    if (!onPet && !zs && !onBoard && !onSign) { tip.hidden = true; return; }
-    tip.innerHTML = onSign ? '<b>' + esc(officeCompany) + '</b><span>' + t('회사 간판 · 클릭해서 이름 변경') + '</span>'
-      : zs ?`<b>${esc(zs.zone.icon)} ${esc(t(zs.zone.name))}</b><span style="display:block;max-width:260px;white-space:normal;color:var(--text2)">${esc(zs.zone.prompt.slice(0, 140))}${zs.zone.prompt.length > 140 ? '…' : ''}</span><span style="display:block;color:#5fc7b3;margin-top:2px">${t('드래그해 놓으면 이 프롬프트를 보냅니다')}${zs.zone.auto ? ' · ' + t('확인 없이 바로 보내기') : ''}</span>`
-      : onBoard ? '<b>' + t('화이트보드') + '</b><span>' + t('클릭: 가장 오래 기다리는 세션으로 이동해 채팅 열기') + '</span>'
-      : `<b>${esc(onPet.name)}</b><span>` + t('휴게실 펫 · 클릭하면 좋아합니다') + '</span>';
+    if (!onPet) { tip.hidden = true; return; }
+    tip.innerHTML = '<b>Gitcat</b><span>휴게실 고양이 · 클릭하면 좋아합니다</span>';
     const wr0 = $('office-wrap').getBoundingClientRect();
     tip.style.left = (e.clientX - wr0.left + 12) + 'px'; tip.style.top = (e.clientY - wr0.top + $('office-wrap').scrollTop + 12) + 'px';
     tip.hidden = false; return;
@@ -5947,17 +5712,8 @@ $('office-canvas').addEventListener('mousemove', e => {
   const msg = s.lastMsg ? `<span style="display:block;max-width:220px;white-space:normal;color:var(--text2);margin-top:2px">${esc(String(s.lastMsg).replace(/\s+/g, ' ').slice(0, 90))}</span>` : '';
   const tm = teamOf(ch.sid);
   const tmTask = tm?.tasks?.[ch.sid];
-  const briefWarn = tmTask && tmTask.briefVersion != null && tmTask.briefVersion < tm.briefVersion ? '<span style="display:block;color:#F2C037;margin-top:2px">' + t('⚠ 브리프가 갱신되어 문맥이 오래되었습니다 · 우클릭 → 브리프 다시 전달') + '</span>' : '';
-  const zn = zoneOf(ch.sid);
-  const zoneTxt = zn ? `<span style="display:block;color:#5fc7b3;margin-top:2px">${esc(zn.icon)} ${esc(zn.name)} (${officeFmtSince(zoneState.assign[ch.sid].sentAt)})</span>` : '';
-  let teamTxt = '';
-  if (tm && tm.pm === ch.sid) {
-    const all = Object.values(tm.tasks || {}), pending = all.filter(k => !k.reported).length;
-    teamTxt = `<span style="display:block;color:#efb041;margin-top:2px">` + t(`👑 PM · 브리프 v${tm.briefVersion} · 라운드 ${tm.rounds || 0} · 진행 ${pending} / 보고 ${all.length - pending}${tm.autoDispatch ? ' · 자동 진행' : ''}`) + `</span>`;
-  } else if (tmTask) {
-    teamTxt = `<span style="display:block;max-width:240px;white-space:normal;color:#ffd98a;margin-top:2px">${tmTask.reported ? t('✓ 보고 완료') : '▶ ' + esc(String(tmTask.task).replace(/\s+/g, ' ').slice(0, 80))}${tmTask.done_when && !tmTask.reported ? t(' · 완료 조건: ') + esc(String(tmTask.done_when).slice(0, 40)) : ''}${tmTask.sentAt ? ' (' + officeFmtSince(tmTask.sentAt) + ')' : ''}</span>`;
-  }
-  tip.innerHTML = `<b>${esc(s.name)}</b><span>${esc(s.branch || '')} · ${stLabel}${since}${s.tool ? ' · ' + esc(s.tool) : ''}${target ? ' ' + esc(target) : ''}${station && s.status !== 'done' ? ' · ' + t(station.label) : ''}${ctxTxt}</span>${msg}${zoneTxt}${teamTxt}${briefWarn}`;
+  const briefWarn = tmTask && tmTask.briefVersion != null && tmTask.briefVersion < tm.briefVersion ? '<span style="display:block;color:#F2C037;margin-top:2px">' + t('⚠ 브리프가 갱신되어 문맥이 오래되었습니다') + '</span>' : '';
+  tip.innerHTML = `<b>${esc(s.name)}</b><span>${esc(s.branch || '')} · ${stLabel}${since}${s.tool ? ' · ' + esc(s.tool) : ''}${target ? ' ' + esc(target) : ''}${station && s.status !== 'done' ? ' · ' + t(station.label) : ''}${ctxTxt}</span>${msg}${briefWarn}`;
   const wrap = $('office-wrap');
   const wr = wrap.getBoundingClientRect();
   tip.style.left = (e.clientX - wr.left + 12) + 'px';
@@ -5969,28 +5725,20 @@ let officeClickTimer = null;
 $('office-canvas').addEventListener('click', e => {
   if (officeSuppressClick) return;
   const ch = officeCharAt(e);
-  if (!ch) {
-    const pet = officePetHit(e); if (pet) { pet.heartT = 1.6; return; }
-    if (officeSignHit(e)) { officeCompanyEdit(); return; }
-    if (officeBoardHit(e)) officeJumpToWaiting();
-    return;
-  }
+  if (!ch) { if (officePetHit(e)) officePet.heartT = 1.6; return; }
   ch.reactT = 1.2;
   if (officeClickTimer) return;           // second click of a double-click is handled below
   officeClickTimer = setTimeout(() => {
     officeClickTimer = null;
     const handle = officeHandleFor(ch);
     if (handle) openChat(handle);
-    else if (!String(ch.sid).startsWith('demo-')) showInAppToast('터미널 핸들을 찾을 수 없습니다', 'error');
+    else if (ch.sess && ch.sess.hookOnly) showInAppToast(t('읽기 전용 (tmux 없음)'), 'error');
+    else if (!String(ch.sid).startsWith('demo-')) showInAppToast(t('터미널 핸들을 찾을 수 없습니다'), 'error');
   }, 220);
 });
 $('office-canvas').addEventListener('contextmenu', e => {
   const ch = officeCharAt(e);
-  if (!ch || !ch.sess) {
-    const p = officeWorldPos(e); const zs = officeZoneSeatAt(p.x, p.y);
-    if (zs) { e.preventDefault(); openItemsMenu(e.clientX, e.clientY, `${zs.zone.icon} ${zs.zone.name}`, zoneCellMenuItems(zs.zone)); }
-    return;
-  }
+  if (!ch || !ch.sess) return;
   e.preventDefault(); ch.reactT = 1.2;
   openSessionMenu(e.clientX, e.clientY, ch.sess.isSub ? (sessions.find(x => x.id === ch.sess.parentId) || ch.sess) : ch.sess);
 });
@@ -6059,8 +5807,8 @@ function officeBuildTeams(y0, originX, cols, SEAT_PX, SEAT_PY, aisleY, mode = 't
   const showTemplate = mode === 'template' && officeDrag && officeDrag.moved && !officeDrag.ch.sess.isSub && !teams.some(t => !t.pm);
   const list = mode === 'template' ? (showTemplate ? [{ id: '__template', pm: null, members: {}, template: true }] : []) : teams;
   for (const t of list) {
-    const pmCh = t.pm && !zonePinned(t.pm) ? officeChars.get(t.pm) : null;
-    const memberChs = Object.keys(t.members).filter(sid => !zonePinned(sid)).map(sid => officeChars.get(sid)).filter(Boolean);
+    const pmCh = t.pm ? officeChars.get(t.pm) : null;
+    const memberChs = Object.keys(t.members).map(sid => officeChars.get(sid)).filter(Boolean);
     const n = 1 + Math.max(memberChs.length, t.template ? 1 : 0);
     const rowsN = Math.max(1, Math.ceil(n / cols));
     const tb = { team: t, template: !!t.template, y, rowsN, h: rowsN * SEAT_PY, seats: [], pmSeat: null, rect: { x: 4, y: y - 12, w: 0, h: rowsN * SEAT_PY } };
@@ -6084,8 +5832,13 @@ function officeBuildTeams(y0, originX, cols, SEAT_PX, SEAT_PY, aisleY, mode = 't
 function officeDrawTeamBlock(ctx, im, tb, worldW, originX, now, bob, pulse, pcFrame, zItems) {
   const team = tb.team;
   const pmName = team.pm ? (officeChars.get(team.pm)?.sess?.name || 'PM') : '';
-  const label = tb.template ? '새 팀 · PM 자리에 놓으세요' : `팀 · ${pmName || 'PM 없음'} · ${Object.keys(team.members).length}명`;
-  officeQueueSign(ctx, label, tb.template ? '#9a97a8' : '#efb041', tb.y - 11, worldW, originX);
+  const label = tb.template ? t('새 팀 · PM 자리에 놓으세요') : `${t('팀')} · ${pmName || t('PM 없음')} · ${Object.keys(team.members).length}${t('명')}`;
+  ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  const sw = Math.round(ctx.measureText(label).width + 12);
+  const signY = tb.y - 11, signX = worldW - originX - sw - 2;
+  ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(signX - 1, signY - 1, sw + 2, 13);
+  ctx.fillStyle = tb.template ? '#9a97a8' : '#efb041'; ctx.fillRect(signX, signY, sw, 11);
+  ctx.fillStyle = '#12141c'; ctx.fillText(label, signX + 6, signY + 1);
   // dotted command lines PM → members
   const pm = tb.pmSeat;
   if (pm && pm.ch) {
@@ -6168,18 +5921,13 @@ function officeDrawTeamFlights(ctx) {
 // drag ghost + drop-zone highlights
 function officeDrawDrag(ctx, im, teamBlocks, worldW) {
   if (!officeDrag || !officeDrag.moved) return;
-  if (zoneBlockCache) {
-    ctx.fillStyle = 'rgba(95,199,179,0.10)'; ctx.fillRect(4, zoneBlockCache.y - 12, worldW - 8, zoneBlockCache.h);
-    ctx.strokeStyle = 'rgba(95,199,179,0.95)'; ctx.lineWidth = 1;
-    for (const st of zoneBlockCache.seats) ctx.strokeRect(st.sx + 7.5, st.sy + 11.5, 65, 65);
-  }
   for (const tb of teamBlocks) {
     ctx.fillStyle = 'rgba(239,176,65,0.10)'; ctx.fillRect(4, tb.y - 12, worldW - 8, tb.h);
     const pm = tb.pmSeat;
     if (pm && !pm.ch) { ctx.strokeStyle = 'rgba(239,176,65,0.95)'; ctx.lineWidth = 1; ctx.strokeRect(pm.sx + 7.5, pm.sy + 11.5, 65, 65); }
     else if (pm) { ctx.strokeStyle = 'rgba(120,170,255,0.9)'; ctx.lineWidth = 1; ctx.strokeRect(4.5, tb.y - 11.5, worldW - 9, tb.h - 1); }
   }
-  const sheet = im[`char_${officeSkin(officeDrag.ch.sid)}`];
+  const sheet = im[`char_${officeHash(officeDrag.ch.sid) % OFFICE.CHAR_COUNT}`];
   if (sheet) { ctx.globalAlpha = 0.85; officeDrawChar(ctx, sheet, 0, 0, officeDrag.x, officeDrag.y, 1); ctx.globalAlpha = 1; }
   ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(Math.round(officeDrag.x) - 60, Math.round(officeDrag.y) + 12, 120, 10);
@@ -6191,8 +5939,6 @@ function officeWorldPos(evt) {
   return { x: (evt.clientX - rect.left) / scale, y: (evt.clientY - rect.top) / scale };
 }
 function officeDropAt(ch, x, y) {
-  const zs = officeZoneSeatAt(x, y);
-  if (zs) { zoneDrop(ch, zs.zone); return; }
   for (const tb of teamBlocksCache) {
     if (y < tb.y - 12 || y >= tb.y - 12 + tb.h) continue;
     let t = tb.team;
@@ -6222,7 +5968,7 @@ window.addEventListener('mousemove', e => {
   if (!officeDrag) return;
   const p = officeWorldPos(e);
   officeDrag.x = p.x; officeDrag.y = p.y;
-  if (!officeDrag.moved && Math.hypot(p.x - officeDrag.startX, p.y - officeDrag.startY) > 7) { officeDrag.moved = true; $('office-tip').hidden = true; }
+  if (!officeDrag.moved && Math.hypot(p.x - officeDrag.startX, p.y - officeDrag.startY) > 4) { officeDrag.moved = true; $('office-tip').hidden = true; }
 });
 window.addEventListener('mouseup', e => {
   if (!officeDrag) return;
@@ -6233,171 +5979,6 @@ window.addEventListener('mouseup', e => {
   officeDropAt(d.ch, p.x, p.y);
 });
 let officeSuppressClick = false;
-
-// ══════════════════════════════════════════
-// PROMPT ZONES: drop an agent on a zone desk → its prompt template (filled with session context) is sent to that terminal
-// ══════════════════════════════════════════
-const ZONE_DEFAULTS = [
-  { id: 'deploy', icon: '📦', name: '배포 문서', auto: false, prompt: '현재 브랜치 {branch}의 변경 사항을 기준으로 배포 문서를 작성해 주세요. 포함할 항목: 배포 대상과 순서, 사전 조건(환경 변수·마이그레이션·의존성), 배포 절차(실행 명령 포함), 배포 후 검증 방법, 롤백 절차. 결과는 docs/deploy/ 아래 마크다운 파일로 저장하고 파일 경로를 알려 주세요.' },
-  { id: 'release', icon: '📝', name: '릴리스 노트', auto: false, prompt: '최근 커밋과 변경 파일을 바탕으로 사용자 관점의 릴리스 노트를 작성해 주세요. 새 기능 / 개선 / 버그 수정 / 주의 사항으로 나누고 각 항목은 한 줄로 정리합니다. CHANGELOG.md 맨 위에 오늘 날짜({date})로 추가해 주세요.' },
-  { id: 'tests', icon: '🧪', name: '테스트 보강', auto: false, prompt: '방금 변경한 코드({file})에 대해 누락된 테스트를 찾아 추가해 주세요. 경계값과 실패 경로를 우선하고, 기존 테스트 러너로 실행해 통과를 확인한 뒤 추가한 테스트와 결과를 요약해 주세요.' },
-];
-let zoneState = { zones: ZONE_DEFAULTS.map(z => ({ ...z })), assign: {} };   // assign: sid → { zoneId, sentAt }
-let zoneBlockCache = null;
-async function zonesLoad() {
-  if (OFFICE_DEMO) { zoneState.assign = { 'demo-2': { zoneId: 'deploy', sentAt: Date.now() } }; return; }
-  try { const d = await window.orca.zonesRead(); if (d && Array.isArray(d.zones)) zoneState = { zones: d.zones, assign: d.assign || {} }; } catch {}
-}
-let zonesSaveTimer = null;
-function zonesSave() {
-  if (OFFICE_DEMO) return;
-  clearTimeout(zonesSaveTimer);
-  zonesSaveTimer = setTimeout(() => window.orca.zonesWrite(zoneState).catch(() => {}), 300);
-}
-zonesLoad();
-function zoneById(id) { return zoneState.zones.find(z => z.id === id) || null; }
-// assigned AND currently able to sit at the zone desk (present, not fading, not in a meeting)
-function zonePinned(sid) { const c = zoneState.assign[sid] ? officeChars.get(sid) : null; return !!(c && !c.fading && !c.meeting); }
-function zoneOf(sid) { const a = zoneState.assign[sid]; return a ? zoneById(a.zoneId) : null; }
-function zoneFill(tpl, sess) {
-  const file = sess.toolInput ? String(sess.toolInput).split(/\s+/)[0] : '';
-  const vars = { name: sess.name || '', branch: sess.branch || '', repo: sess.repo || '', tool: sess.tool || '', file: file || '변경한 파일', date: new Date().toISOString().slice(0, 10) };
-  return tpl.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
-}
-// an assignment ends once the session has answered (left running for 5s+) or the character is gone
-function zoneTick() {
-  for (const [sid, a] of Object.entries(zoneState.assign)) {
-    const ch = officeChars.get(sid); const z = zoneById(a.zoneId);
-    const answered = ch && ch.sess && ch.sess.status !== 'running' && Date.now() - a.sentAt > 5000;
-    if (!z || !ch || ch.fading || answered) {
-      delete zoneState.assign[sid]; zonesSave();
-      if (answered && z) { showInAppToast(`${ch.sess.name}: ${z.icon} ${z.name} ${t('존 작업 응답 완료')}`); zoneCapture(ch, z, a); }
-    }
-  }
-}
-// keep the terminal's last answer so the zone's output can be reviewed later (newest first, capped)
-async function zoneCapture(ch, zone, a) {
-  const handle = officeHandleFor(ch); if (!handle) return;
-  try {
-    const res = await window.orca.terminalRead(handle, true);
-    const text = (extractLastResponse(extractTail(res)) || '').trim().slice(0, 2000);
-    zoneState.history = zoneState.history || [];
-    zoneState.history.unshift({ t: Date.now(), sentAt: a.sentAt, sid: ch.sid, name: ch.sess.name, branch: ch.sess.branch || '', zoneId: zone.id, text });
-    zoneState.history = zoneState.history.slice(0, 40);
-    zonesSave();
-  } catch {}
-}
-function zoneShowHistory(zone) {
-  const rows = (zoneState.history || []).filter(h => !zone || h.zoneId === zone.id);
-  const body = rows.length ? rows.map(h => { const z = zoneById(h.zoneId); return `<div class="assign"><b>${z ? esc(z.icon + ' ' + t(z.name)) : ''} · ${esc(h.name)}</b>${h.branch ? ' <span style="color:var(--text3)">' + esc(h.branch) + '</span>' : ''} <span style="color:var(--text3);float:right">${new Date(h.t).toLocaleString('ko-KR')}</span><div class="log" style="margin-top:4px;white-space:pre-wrap">${esc(h.text || '(응답을 읽지 못했습니다)')}</div></div>`; }).join('')
-    : `<p style="color:var(--text3)">${t('기록이 없습니다')}</p>`;
-  teamModal(`<h3>${t('존 기록')}${zone ? ' · ' + esc(zone.icon + ' ' + t(zone.name)) : ''}</h3>${body}<div class="row"><button id="zone-hist-close">${t('닫기')}</button></div>`)
-    .querySelector('#zone-hist-close').onclick = closeTeamModal;
-}
-function officeBuildZones(y, originX, cols, SEAT_PX, SEAT_PY, aisleY) {
-  const zones = zoneState.zones;
-  if (!zones.length) { zoneBlockCache = null; return null; }
-  const rowsN = Math.ceil(zones.length / cols);
-  const zb = { y, rowsN, h: rowsN * SEAT_PY, seats: [] };
-  zones.forEach((zone, i) => {
-    const col = i % cols, row = Math.floor(i / cols);
-    const sx = originX + col * SEAT_PX, sy = y + row * SEAT_PY;
-    const sid = Object.keys(zoneState.assign).find(s => zoneState.assign[s].zoneId === zone.id);
-    let ch = sid ? officeChars.get(sid) : null;
-    if (ch && (ch.fading || ch.meeting)) ch = null;
-    const seat = { sx, sy, deskX: sx + 16, deskY: sy + 18, chairX: sx + 40, chairY: sy + 62, aisleY: sy + SEAT_PY - 8, ch, st: null, zone };
-    if (ch) ch.seat = seat;
-    zb.seats.push(seat);
-  });
-  for (let r = 0; r < rowsN; r++) aisleY.push(y + r * SEAT_PY - 8);
-  zoneBlockCache = zb;
-  return zb;
-}
-function officeDrawZoneBlock(ctx, im, zb, worldW, originX, now, bob, pulse, pcFrame, zItems) {
-  officeQueueSign(ctx, `프롬프트 존 · ${zb.seats.length}`, '#5fc7b3', zb.y - 11, worldW, originX);
-  for (const seat of zb.seats) {
-    const z = seat.zone;
-    if (seat.ch) zItems.push({ z: seat.chairY, draw: () => officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, OFFICE.SEAT_W * OFFICE.T, OFFICE.SEAT_H * OFFICE.T) });
-    else {
-      officeDrawRug(ctx, seat.sx + 8, seat.sy + 12, 64, 64, '#7fcfbd', true);
-      if (im.desk) { ctx.globalAlpha = 0.6; ctx.drawImage(im.desk, seat.deskX, seat.deskY); ctx.globalAlpha = 1; }
-      ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillStyle = 'rgba(20,20,30,0.7)'; ctx.fillText(t('여기에 놓기'), seat.sx + 40, seat.sy + 58);
-    }
-    // zone label on the rug corner (drawn after the seat so it stays readable)
-    zItems.push({ z: seat.chairY + 1, draw: () => {
-      const badge = `${z.icon} ${t(z.name)}`.slice(0, 18);
-      ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      const bw = Math.min(72, Math.round(ctx.measureText(badge).width + 6));
-      ctx.fillStyle = '#5fc7b3'; ctx.fillRect(seat.sx + 8, seat.sy + 12, bw, 10);
-      ctx.fillStyle = '#12141c'; ctx.fillText(badge, seat.sx + 11, seat.sy + 12);
-      if (z.auto) { ctx.fillStyle = '#12141c'; ctx.fillRect(seat.sx + 8 + bw + 2, seat.sy + 12, 10, 10); ctx.fillStyle = '#ffd98a'; ctx.fillText('⚡', seat.sx + 9 + bw + 2, seat.sy + 12); }
-    } });
-  }
-}
-function officeZoneSeatAt(x, y) {
-  const zb = zoneBlockCache; if (!zb) return null;
-  if (y < zb.y - 12 || y >= zb.y - 12 + zb.h) return null;
-  return zb.seats.find(st => x >= st.sx && x < st.sx + OFFICE.SEAT_W * OFFICE.T && y >= st.sy - 12 && y < st.sy - 12 + OFFICE.SEAT_H * OFFICE.T) || null;
-}
-async function zoneSend(ch, zone, text) {
-  const handle = officeHandleFor(ch); const name = ch.sess.name;
-  if (!handle) { showInAppToast(t('터미널 핸들을 찾을 수 없습니다'), 'error'); return; }
-  try {
-    const r = await window.orca.terminalSend(handle, text.replace(/\r?\n+/g, ' ').trim(), true, 15);
-    if (!r?.result?.send?.accepted) throw new Error(t('전송이 거부되었습니다 (세션이 입력 대기 상태인지 확인)'));
-    for (const sid of Object.keys(zoneState.assign)) if (zoneState.assign[sid].zoneId === zone.id) delete zoneState.assign[sid];
-    zoneState.assign[ch.sid] = { zoneId: zone.id, sentAt: Date.now() };
-    ch.reactT = 1.5; zonesSave();
-    showInAppToast(`${name} → ${zone.icon} ${zone.name}`);
-  } catch (e) { showInAppToast(`${name}: ${e.message}`, 'error'); }
-}
-function zoneDrop(ch, zone) {
-  const text = zoneFill(zone.prompt, ch.sess);
-  if (zone.auto) { zoneSend(ch, zone, text); return; }
-  const m = teamModal(`<h3>${esc(zone.icon)} ${esc(zone.name)} · ${t('존 프롬프트 보내기')}</h3>
-    <p style="color:var(--text3)">→ <b>${esc(ch.sess.name)}</b>${ch.sess.branch ? ' · ' + esc(ch.sess.branch) : ''}</p>
-    <textarea id="zone-text" style="min-height:140px">${esc(text)}</textarea>
-    <label style="display:block;margin-top:8px"><input type="checkbox" id="zone-auto"> ${t('다음부터 이 존은 확인 없이 바로 보내기')}</label>
-    <div class="row"><button id="zone-cancel">${t('취소')}</button><span style="margin-left:auto"></span><button class="primary" id="zone-send">${t('이 내용으로 보내기')}</button></div>`);
-  m.querySelector('#zone-cancel').onclick = closeTeamModal;
-  m.querySelector('#zone-send').onclick = () => {
-    if (m.querySelector('#zone-auto').checked) { zone.auto = true; zonesSave(); }
-    const txt = m.querySelector('#zone-text').value; closeTeamModal(); zoneSend(ch, zone, txt);
-  };
-}
-function zoneEdit(zone) {
-  const isNew = !zone;
-  const z = zone || { id: 'z' + Date.now().toString(36), icon: '✨', name: '', prompt: '', auto: false };
-  const m = teamModal(`<h3>${t(isNew ? '새 존 추가…' : '존 편집')}</h3>
-    <div class="row" style="gap:8px"><label>${t('아이콘')} <input id="zone-icon" value="${esc(z.icon)}" style="width:3em"></label><label style="flex:1">${t('이름')} <input id="zone-name" value="${esc(z.name)}" style="width:100%"></label></div>
-    <label style="display:block;margin-top:8px">${t('프롬프트 템플릿')} <span style="color:var(--text3)">{name} {branch} {repo} {tool} {file} {date}</span></label>
-    <textarea id="zone-prompt" style="min-height:140px">${esc(z.prompt)}</textarea>
-    <label style="display:block;margin-top:8px"><input type="checkbox" id="zone-auto2" ${z.auto ? 'checked' : ''}> ${t('확인 없이 바로 보내기')}</label>
-    <div class="row"><button id="zone-cancel">${t('취소')}</button><span style="margin-left:auto"></span><button class="primary" id="zone-save">${t('저장')}</button></div>`);
-  m.querySelector('#zone-cancel').onclick = closeTeamModal;
-  m.querySelector('#zone-save').onclick = () => {
-    z.icon = m.querySelector('#zone-icon').value.trim() || '✨'; z.name = m.querySelector('#zone-name').value.trim() || z.id;
-    z.prompt = m.querySelector('#zone-prompt').value.trim(); z.auto = m.querySelector('#zone-auto2').checked;
-    if (isNew) zoneState.zones.push(z);
-    zonesSave(); closeTeamModal();
-  };
-}
-function zoneCellMenuItems(zone) {
-  const items = [['✎', '프롬프트 편집…', () => zoneEdit(zone)], ['📜', '존 기록 보기', () => zoneShowHistory(zone)], ['＋', '새 존 추가…', () => zoneEdit(null)]];
-  const sid = Object.keys(zoneState.assign).find(s => zoneState.assign[s].zoneId === zone.id);
-  if (sid) items.push(['↩', '존에서 해제', () => { delete zoneState.assign[sid]; zonesSave(); }]);
-  items.push(['🗑', '이 존 삭제', () => { zoneState.zones = zoneState.zones.filter(z => z.id !== zone.id); for (const s of Object.keys(zoneState.assign)) if (zoneState.assign[s].zoneId === zone.id) delete zoneState.assign[s]; zonesSave(); }, 'danger']);
-  return items;
-}
-function zoneMenuItems(sess) {
-  const items = [];
-  const cur = zoneOf(sess.id);
-  if (cur) items.push(['↩', `존에서 해제 (${cur.icon} ${cur.name})`, () => { delete zoneState.assign[sess.id]; zonesSave(); }]);
-  const ch = officeChars.get(sess.id);
-  if (ch && !sess.isSub) for (const z of zoneState.zones) if (!cur || cur.id !== z.id) items.push([z.icon, `${z.name} 프롬프트 보내기`, () => zoneDrop(ch, z)]);
-  return items;
-}
 
 // ── PM actions ──
 function teamModal(html) {
@@ -6516,20 +6097,6 @@ async function teamDispatch(t, items) {
   }
   teamsSave();
 }
-// a member whose task was handed out under an older brief gets the current brief again, keeping the same task
-async function teamResendBrief(team, sid) {
-  const h = handles.get(sid); const task = team.tasks && team.tasks[sid]; const name = officeChars.get(sid)?.sess?.name || sid;
-  if (!h || !task) { showInAppToast(t('전달할 터미널 또는 과제가 없습니다'), 'error'); return; }
-  try {
-    const msg = `[브리프 갱신 v${team.briefVersion}] 팀 브리프가 바뀌었습니다. 아래 최신 브리프를 기준으로 진행 중인 과제를 이어서 수행하세요. ` + teamMemberPrompt(team, team.members[sid], task);
-    const r = await window.orca.terminalSend(h, msg.replace(/\r?\n+/g, ' '), true, 15);
-    if (!r?.result?.send?.accepted) throw new Error('전송 거부');
-    task.briefVersion = team.briefVersion; teamLog(team, 'brief-resend', `브리프 v${team.briefVersion} 재전달`, { to: name });
-    if (team.pm) teamFlights.push({ fromSid: team.pm, toSid: sid, t: 0, dur: 1.0, kind: 'dispatch' });
-    const ch = officeChars.get(sid); if (ch) ch.reactT = 1.5;
-    teamsSave(); showInAppToast(t(`${name}에게 브리프 v${team.briefVersion} 전달`));
-  } catch (e) { teamLog(team, 'error', `${name}: ${e.message}`); showInAppToast(t(`${name} 전달 실패: ${e.message}`), 'error'); }
-}
 // report loop: a member with a pending task goes running → waiting ⇒ collect its report and ask the PM for the next step
 const teamPrevStatus = new Map();
 let teamLoopBusy = false;
@@ -6547,7 +6114,6 @@ async function teamTick() {
         const report = teamParseReport(extractLastResponse(extractTail(res)) || '');
         task.reported = true; task.report = report; teamLog(t, 'report', report, { from: sess.name });
         teamFlights.push({ fromSid: sid, toSid: t.pm, t: 0, dur: 1.0, kind: 'report' });
-        showInAppToast(`${sess.name} 보고 도착 → PM 검토 중`);
         if ((t.rounds || 0) >= 12) { teamLog(t, 'stop', '라운드 상한(12)에 도달해 자동 진행을 멈춥니다'); showInAppToast('팀 라운드 상한 도달', 'error'); continue; }
         const pmHandle = handles.get(t.pm); if (!pmHandle) continue;
         const ctxTxt = `팀원 "${sess.name}"의 보고: ${report.replace(/\s+/g, ' ').slice(0, 1500)}. 아직 진행 중인 팀원: ${Object.entries(t.tasks).filter(([s, k]) => !k.reported).map(([s]) => officeChars.get(s)?.sess?.name || s).join(', ') || '없음'}.`;
@@ -6576,8 +6142,6 @@ function teamMenuItems(sess) {
     items.push(['📜', '팀 브리프·로그 보기', () => teamShowLog(t)]);
     items.push(['⏹', '자동 진행 ' + (t.autoDispatch ? '끄기' : '켜기'), () => { t.autoDispatch = !t.autoDispatch; teamsSave(); }]);
   } else {
-    const task = t.tasks && t.tasks[sess.id];
-    if (task && task.briefVersion != null && task.briefVersion < t.briefVersion) items.push(['⚠', `브리프 v${t.briefVersion} 다시 전달`, () => teamResendBrief(t, sess.id)]);
     for (const [role, label] of Object.entries(TEAM_ROLES)) if (t.members[sess.id] !== role) items.push(['🏷', `역할: ${label}`, () => { t.members[sess.id] = role; teamsSave(); }]);
     items.push(['📜', '팀 브리프·로그 보기', () => teamShowLog(t)]);
   }

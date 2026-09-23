@@ -359,17 +359,85 @@ ipcMain.handle("orca:orch-send", (_e, handle, text) =>
   orca("terminal", "send", "--terminal", handle, "--text", text, "--enter")
 );
 
+// ── tmux adapter: handles look like "tmux:%12" (pane id). Lets the widget read and drive Claude Code
+// sessions that run inside tmux when Orca is not installed (or a session is not an Orca terminal). ──
+const TMUX_BIN = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "tmux"];
+let tmuxBin = null;
+async function findTmux() {
+  if (tmuxBin !== null) return tmuxBin;
+  for (const b of TMUX_BIN) { try { await exec("test", ["-x", b]); tmuxBin = b; return b; } catch {} }
+  try { const { stdout } = await exec("/usr/bin/which", ["tmux"], { env: { ...process.env, PATH: EXEC_PATH } }); tmuxBin = stdout.trim() || ""; } catch { tmuxBin = ""; }
+  return tmuxBin;
+}
+async function tmux(...args) {
+  const bin = await findTmux();
+  if (!bin) throw new Error("tmux not installed");
+  const { stdout } = await exec(bin, args, { timeout: 8000, env: { ...process.env, PATH: EXEC_PATH } });
+  return stdout;
+}
+const isTmux = h => typeof h === "string" && h.startsWith("tmux:");
+const paneOf = h => h.slice(5);
+// panes running a Claude Code process: [{ handle, cwd, cmd, target, pid }]
+async function tmuxPanes() {
+  try {
+    const out = await tmux("list-panes", "-a", "-F", "#{pane_id}\t#{pane_current_path}\t#{pane_current_command}\t#{session_name}:#{window_index}.#{pane_index}\t#{pane_pid}\t#{pane_title}");
+    return out.split("\n").filter(Boolean).map(l => {
+      const [id, cwd, cmd, target, pid, title] = l.split("\t");
+      return { handle: `tmux:${id}`, cwd, cmd, target, pid: Number(pid), title: title || "" };
+    });
+  } catch { return []; }
+}
+ipcMain.handle("roca:tmux-panes", () => tmuxPanes());
+ipcMain.handle("roca:tmux-available", async () => !!(await findTmux()));
+
+const SPINNER_LINE = /^[·•✢✳✶✻✽✦✧*⠁-⣿]\s*\S[^(]*…\s*(\(|$)|esc to interrupt/;
+async function tmuxCapture(pane, lines = 80) {
+  const out = await tmux("capture-pane", "-p", "-t", pane, "-S", `-${lines}`);
+  const tail = out.replace(/\n+$/, "").split("\n");
+  return { ok: true, result: { terminal: { handle: `tmux:${pane}`, tail } } };
+}
+async function tmuxSend(pane, text, enter) {
+  await tmux("send-keys", "-t", pane, "-l", text);
+  if (enter !== false) { await new Promise(r => setTimeout(r, 120)); await tmux("send-keys", "-t", pane, "Enter"); }
+  // mirror Orca's --wait-submit: report whether the TUI started a turn within ~4s
+  let started = false;
+  for (let i = 0; i < 8 && !started; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    try { const { result } = await tmuxCapture(pane, 25); started = result.terminal.tail.some(l => SPINNER_LINE.test(l.trim())); } catch {}
+  }
+  return { ok: true, result: { send: { accepted: true, prompt: { stages: started ? ["submitted", "turn_started"] : ["submitted"] } } } };
+}
+async function tmuxWaitIdle(pane, timeoutMs) {
+  const until = Date.now() + (timeoutMs || 180000);
+  while (Date.now() < until) {
+    try { const { result } = await tmuxCapture(pane, 25); if (!result.terminal.tail.some(l => SPINNER_LINE.test(l.trim()))) return { ok: true, result: { state: "tui-idle" } }; } catch {}
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  return { ok: false, error: "timeout" };
+}
+async function tmuxSwitch(pane) {
+  try {
+    const target = (await tmux("display-message", "-p", "-t", pane, "#{session_name}:#{window_index}.#{pane_index}")).trim();
+    await tmux("select-window", "-t", target); await tmux("select-pane", "-t", pane);
+    exec("/usr/bin/osascript", ["-e", 'tell application "System Events" to set frontmost of (first process whose name is in {"iTerm2", "Terminal", "WezTerm", "Ghostty", "kitty", "Alacritty"}) to true'], { timeout: 3000 }).catch(() => {});
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
 ipcMain.handle("orca:terminal-switch", async (_e, handle) => {
+  if (isTmux(handle)) return tmuxSwitch(paneOf(handle));
   const result = await orca("terminal", "switch", "--terminal", handle);
   exec("/usr/bin/osascript", ["-e", 'tell application "Orca" to activate'], { timeout: 3000 }).catch(() => {});
   return result;
 });
 
-ipcMain.handle("orca:terminal-interrupt", (_e, handle) =>
-  orca("terminal", "send", "--terminal", handle, "--interrupt")
-);
+ipcMain.handle("orca:terminal-interrupt", async (_e, handle) => {
+  if (isTmux(handle)) { try { await tmux("send-keys", "-t", paneOf(handle), "Escape"); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } }
+  return orca("terminal", "send", "--terminal", handle, "--interrupt");
+});
 
 ipcMain.handle("orca:terminal-send", (_e, handle, text, enter, waitSubmit) => {
+  if (isTmux(handle)) return tmuxSend(paneOf(handle), text, enter).catch(err => ({ ok: false, error: err.message }));
   const args = ["terminal", "send", "--terminal", handle, "--text", text];
   if (enter) args.push("--enter");
   if (waitSubmit) args.push("--wait-submit", String(waitSubmit));
@@ -381,6 +449,7 @@ ipcMain.handle("orca:terminal-send", (_e, handle, text, enter, waitSubmit) => {
 });
 
 ipcMain.handle("orca:terminal-wait", (_e, handle, condition, timeoutMs) => {
+  if (isTmux(handle)) return tmuxWaitIdle(paneOf(handle), timeoutMs);
   const args = ["terminal", "wait", "--terminal", handle, "--for", condition];
   if (timeoutMs) args.push("--timeout-ms", String(timeoutMs));
   return exec(orcaBin, [...args, "--json"], {
@@ -390,6 +459,7 @@ ipcMain.handle("orca:terminal-wait", (_e, handle, condition, timeoutMs) => {
 });
 
 ipcMain.handle("orca:terminal-read", async (_e, handle, screen, cursor, limit) => {
+  if (isTmux(handle)) return tmuxCapture(paneOf(handle)).catch(err => ({ ok: false, error: err.message }));
   const args = ["terminal", "read", "--terminal", handle];
   if (screen) args.push("--screen");
   if (cursor != null) args.push("--cursor", String(cursor));
@@ -400,9 +470,47 @@ ipcMain.handle("orca:terminal-read", async (_e, handle, screen, cursor, limit) =
   return res;
 });
 
-ipcMain.handle("orca:terminal-close", (_e, handle) =>
-  orca("terminal", "close", "--terminal", handle)
-);
+ipcMain.handle("orca:terminal-close", async (_e, handle) => {
+  if (isTmux(handle)) { try { await tmux("kill-pane", "-t", paneOf(handle)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } }
+  return orca("terminal", "close", "--terminal", handle);
+});
+
+// ── transcript metadata for hook-discovered sessions (no Orca): last assistant text, context usage, git branch ──
+const transcriptMetaCache = new Map();
+ipcMain.handle("roca:session-meta", async (_e, transcriptPath, cwd) => {
+  const out = { title: null, lastMsg: "", ctxPct: null, branch: "", model: null };
+  try {
+    if (transcriptPath && existsSync(transcriptPath)) {
+      const st = statSync(transcriptPath);
+      const cached = transcriptMetaCache.get(transcriptPath);
+      if (cached && cached.mtimeMs === st.mtimeMs) Object.assign(out, cached.meta);
+      else {
+        const size = st.size, from = Math.max(0, size - 400000);
+        const fd = openSync(transcriptPath, "r"); const buf = Buffer.alloc(size - from); readSync(fd, buf, 0, buf.length, from); closeSync(fd);
+        let usage = null, model = null, lastText = "", title = null;
+        for (const line of buf.toString("utf-8").split("\n")) {
+          if (!line.startsWith("{")) continue;
+          let rec; try { rec = JSON.parse(line); } catch { continue; }
+          if (rec.type === "ai-title") title = rec.aiTitle || title;
+          if (rec.type === "custom-title") title = rec.customTitle || title;
+          if (rec.type !== "assistant") continue;
+          const m = rec.message || {};
+          if (m.usage) { usage = m.usage; model = m.model || model; }
+          for (const c of (m.content || [])) if (c && c.type === "text" && c.text) lastText = c.text;
+        }
+        if (usage) {
+          const used = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
+          const window = /1m|fable/i.test(model || "") ? 1000000 : 200000;
+          out.ctxPct = Math.min(100, Math.round(used / window * 100));
+        }
+        out.lastMsg = lastText.slice(0, 300); out.model = model; out.title = title;
+        transcriptMetaCache.set(transcriptPath, { mtimeMs: st.mtimeMs, meta: { ...out } });
+      }
+    }
+    if (cwd) { try { const { stdout } = await exec("git", ["-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"], { timeout: 3000, env: { ...process.env, PATH: EXEC_PATH } }); out.branch = stdout.trim(); } catch {} }
+  } catch {}
+  return out;
+});
 
 ipcMain.on("orca:session-counts", (_e, counts) => {
   const { running, asks } = counts;
@@ -519,7 +627,7 @@ const ROCA_DIR = join(homedir(), ".roca");
 const HOOK_SCRIPT = join(ROCA_DIR, "hook.sh");
 const EVENTS_FILE = join(ROCA_DIR, "events.jsonl");
 const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
-const HOOK_EVENTS = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification", "PermissionRequest", "SubagentStart", "SubagentStop", "SessionEnd", "PostCompact"];
+const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification", "PermissionRequest", "SubagentStart", "SubagentStop", "SessionEnd", "PostCompact"];
 const HOOK_SH = `#!/bin/bash
 # Orca Widget hook: append the Claude Code hook payload to ~/.roca/events.jsonl and exit immediately.
 f="$HOME/.roca/events.jsonl"
@@ -617,9 +725,6 @@ ipcMain.handle("orca:hooks-uninstall", () => { try { return uninstallHooks(); } 
 const TEAMS_FILE = join(ROCA_DIR, "teams.json");
 ipcMain.handle("orca:teams-read", () => { try { return JSON.parse(readFileSync(TEAMS_FILE, "utf-8")); } catch { return null; } });
 ipcMain.handle("orca:teams-write", (_e, data) => { try { mkdirSync(ROCA_DIR, { recursive: true }); writeFileSync(TEAMS_FILE, JSON.stringify(data, null, 2)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
-const ZONES_FILE = join(ROCA_DIR, "zones.json");
-ipcMain.handle("orca:zones-read", () => { try { return JSON.parse(readFileSync(ZONES_FILE, "utf-8")); } catch { return null; } });
-ipcMain.handle("orca:zones-write", (_e, data) => { try { mkdirSync(ROCA_DIR, { recursive: true }); writeFileSync(ZONES_FILE, JSON.stringify(data, null, 2)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
 ipcMain.handle("orca:hooks-recent", () => {
   // replay the last ~30 minutes so state is right immediately after launch
   try {
