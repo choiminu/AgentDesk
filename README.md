@@ -38,7 +38,11 @@ npm install
 npm start
 ```
 
-The widget opens as an always-on-top window. Prebuilt installers are attached to each [GitHub release](https://github.com/choiminu/AgentDesk/releases) (macOS DMG for Apple Silicon and Intel, Linux AppImage and .deb, Windows installer and portable .exe); build them yourself with `npm run dist` (macOS), `npm run dist:linux` or `npm run dist:win`. The macOS app is not code-signed: on first launch allow it under **System Settings → Privacy & Security**.
+The widget opens as an always-on-top window. Prebuilt installers are attached to each [GitHub release](https://github.com/choiminu/AgentDesk/releases) (macOS DMG for Apple Silicon and Intel, Linux AppImage and .deb, Windows installer and portable .exe); build them yourself with `npm run dist` (macOS), `npm run dist:linux` or `npm run dist:win`. The builds are not signed with a paid certificate, so each OS asks once on first launch:
+
+- **macOS** — the app is ad-hoc signed. Open it once (it is blocked), then go to **System Settings → Privacy & Security** and click **Open Anyway**. If you see "damaged and can't be opened" instead, run `xattr -cr /Applications/AgentDesk.app` and open it again.
+- **Windows** — SmartScreen shows "Windows protected your PC": click **More info → Run anyway**.
+- **Linux** — `chmod +x AgentDesk-*.AppImage` and run it, or `sudo apt install ./agentdesk_*_amd64.deb`.
 
 | Platform | Session states (hooks) | Chat, direct, interrupt | Switch to terminal | Reopen ended session |
 |---|---|---|---|---|

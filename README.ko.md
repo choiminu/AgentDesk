@@ -40,7 +40,11 @@ npm start
 |---|---|---|---|---|
 | macOS | ✓ | Orca, tmux, iTerm2, Terminal.app | ✓ | iTerm2 / Terminal |
 | Linux | ✓ | tmux만 | tmux 창 | gnome-terminal, konsole, kitty, alacritty, xterm… |
-| Windows | ✓ | — | — | Windows Terminal / cmd | 코드 서명이 없으므로 첫 실행 시 **시스템 설정 → 개인정보 보호 및 보안**에서 열기를 허용해야 합니다.
+| Windows | ✓ | — | — | Windows Terminal / cmd | 유료 인증서로 서명되어 있지 않아 OS마다 첫 실행 때 한 번 확인을 요구합니다.
+
+- **macOS** — 앱은 ad-hoc 서명되어 있습니다. 한 번 열어 보면 차단되는데, 그다음 **시스템 설정 → 개인정보 보호 및 보안**에서 **확인 없이 열기**를 누르면 됩니다. "손상되어 열 수 없음"이 나오면 터미널에서 `xattr -cr /Applications/AgentDesk.app` 을 실행한 뒤 다시 여세요.
+- **Windows** — SmartScreen의 "Windows의 PC 보호" 창에서 **추가 정보 → 실행**을 누릅니다.
+- **Linux** — `chmod +x AgentDesk-*.AppImage` 후 실행하거나 `sudo apt install ./agentdesk_*_amd64.deb` 로 설치합니다.
 
 처음 실행하면 짧은 온보딩이 이 Mac의 환경(Claude Code, 위젯 훅, Orca CLI, 터미널 자동화 권한)을 점검하고 **정확 감지**를 버튼 하나로 켤 수 있게 안내합니다. 정확 감지는 Claude Code 훅을 등록해([동작 원리](#동작-원리) 참고) 상태를 추정이 아닌 이벤트로 받게 하며, 이후에도 ⚙ 설정에서 켜고 끌 수 있습니다. 온보딩을 다시 보려면 `ROCA_START_PAGE=onboarding` 으로 실행합니다.
 
