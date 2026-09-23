@@ -1,6 +1,8 @@
-# Orca Widget
+# AgentDesk
 
-A pixel-art office for your AI coding agents. Orca Widget is a lightweight macOS desktop widget that watches every [Orca](https://github.com/stablyai/orca) session in real time and shows what each agent is doing — as a dashboard, and as characters at their desks.
+A pixel-art office for your AI coding agents. AgentDesk is a lightweight macOS desktop widget that watches your Claude Code sessions in real time — in any terminal, or inside [Orca](https://github.com/stablyai/orca) — and shows what each agent is doing: as a dashboard, and as characters at their desks.
+
+*Formerly "Orca Widget". Orca is optional; only Claude Code is required.*
 
 [한국어 README](README.ko.md)
 
@@ -28,13 +30,13 @@ A pixel-art office for your AI coding agents. Orca Widget is a lightweight macOS
 Requirements: macOS and Node.js 18+. [Orca](https://github.com/stablyai/orca) 1.4+ is optional — without it the widget runs in hooks-only mode (Claude Code hooks + [tmux](https://github.com/tmux/tmux) for sending messages).
 
 ```bash
-git clone https://github.com/choiminu/orca-widget.git
-cd orca-widget
+git clone https://github.com/choiminu/agentdesk.git
+cd agentdesk
 npm install
 npm start
 ```
 
-The widget opens as an always-on-top window. Install the prebuilt app instead with `npm run dist`, which produces `dist/Orca Dashboard-<version>-arm64.dmg` (Apple Silicon) and `dist/Orca Dashboard-<version>.dmg` (Intel). The app is not code-signed: on first launch allow it under **System Settings → Privacy & Security**.
+The widget opens as an always-on-top window. Install the prebuilt app instead with `npm run dist`, which produces `dist/AgentDesk-<version>-arm64.dmg` (Apple Silicon) and `dist/AgentDesk-<version>.dmg` (Intel). The app is not code-signed: on first launch allow it under **System Settings → Privacy & Security**.
 
 On first launch a short onboarding checks the machine (Claude Code, the widget hooks, the Orca CLI, terminal Automation permission) and lets you turn on **Exact detection** in one click. This registers Claude Code hooks (see [How it works](#how-it-works)) so states arrive as events instead of being inferred; you can also toggle it later in ⚙ Settings. Run with `ROCA_START_PAGE=onboarding` to see the onboarding again.
 
@@ -152,7 +154,7 @@ assets/fonts/   Galmuri9 pixel font (OFL)
 
 - **Empty session list** — the widget looks for `orca` in `/usr/local/bin`, `/opt/homebrew/bin` and `/Applications/Orca.app/Contents/Resources/bin`. If the call fails a red banner explains why. Make sure the Orca app is running and `orca --version` works in a terminal; if needed, `sudo ln -s /Applications/Orca.app/Contents/Resources/bin/orca /usr/local/bin/orca`.
 - **Orca older than 1.4** — screen reading and chat need `terminal read --screen` and `--json`; a banner asks you to update.
-- **"Open terminal" or sending a message does nothing** — macOS asks once whether Orca Dashboard may control iTerm2 / Terminal (Automation permission). Allow it under **System Settings → Privacy & Security → Automation**; without it the widget can still read states but cannot switch to or type into terminal tabs.
+- **"Open terminal" or sending a message does nothing** — macOS asks once whether AgentDesk may control iTerm2 / Terminal (Automation permission). Allow it under **System Settings → Privacy & Security → Automation**; without it the widget can still read states but cannot switch to or type into terminal tabs.
 - **States look wrong** — turn on Exact detection. Screen reading depends on the Claude Code TUI text; hooks do not.
 
 ## Credits

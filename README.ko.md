@@ -1,6 +1,8 @@
-# Orca Widget
+# AgentDesk
 
-AI 코딩 에이전트를 위한 픽셀 아트 사무실. Orca Widget은 [Orca](https://github.com/stablyai/orca)의 모든 세션을 실시간으로 지켜보고, 각 에이전트가 무엇을 하는지 대시보드와 책상에 앉은 캐릭터로 보여 주는 macOS 데스크톱 위젯입니다.
+AI 코딩 에이전트를 위한 픽셀 아트 사무실. AgentDesk는 Claude Code 세션을 실시간으로 지켜보고(일반 터미널이든 [Orca](https://github.com/stablyai/orca) 안이든), 각 에이전트가 무엇을 하는지 대시보드와 책상에 앉은 캐릭터로 보여 주는 macOS 데스크톱 위젯입니다.
+
+*이전 이름은 "Orca Widget"입니다. Orca는 선택 사항이며 Claude Code만 있으면 동작합니다.*
 
 [English README](README.md)
 
@@ -24,13 +26,13 @@ AI 코딩 에이전트를 위한 픽셀 아트 사무실. Orca Widget은 [Orca](
 요구 사항: macOS, Node.js 18 이상. [Orca](https://github.com/stablyai/orca) 1.4 이상은 선택 사항이며, 없으면 훅 전용 모드(Claude Code 훅 + 메시지 전송용 [tmux](https://github.com/tmux/tmux))로 동작합니다.
 
 ```bash
-git clone https://github.com/choiminu/orca-widget.git
-cd orca-widget
+git clone https://github.com/choiminu/agentdesk.git
+cd agentdesk
 npm install
 npm start
 ```
 
-설치형 앱은 `npm run dist`로 빌드합니다. `dist/Orca Dashboard-<버전>-arm64.dmg`(Apple Silicon)와 `dist/Orca Dashboard-<버전>.dmg`(Intel)가 생성됩니다. 코드 서명이 없으므로 첫 실행 시 **시스템 설정 → 개인정보 보호 및 보안**에서 열기를 허용해야 합니다.
+설치형 앱은 `npm run dist`로 빌드합니다. `dist/AgentDesk-<버전>-arm64.dmg`(Apple Silicon)와 `dist/AgentDesk-<버전>.dmg`(Intel)가 생성됩니다. 코드 서명이 없으므로 첫 실행 시 **시스템 설정 → 개인정보 보호 및 보안**에서 열기를 허용해야 합니다.
 
 처음 실행하면 짧은 온보딩이 이 Mac의 환경(Claude Code, 위젯 훅, Orca CLI, 터미널 자동화 권한)을 점검하고 **정확 감지**를 버튼 하나로 켤 수 있게 안내합니다. 정확 감지는 Claude Code 훅을 등록해([동작 원리](#동작-원리) 참고) 상태를 추정이 아닌 이벤트로 받게 하며, 이후에도 ⚙ 설정에서 켜고 끌 수 있습니다. 온보딩을 다시 보려면 `ROCA_START_PAGE=onboarding` 으로 실행합니다.
 
@@ -148,7 +150,7 @@ assets/fonts/   Galmuri9 픽셀 폰트(OFL)
 
 - **세션 목록이 비어 있음** — 위젯은 `orca`를 `/usr/local/bin`, `/opt/homebrew/bin`, `/Applications/Orca.app/Contents/Resources/bin`에서 찾습니다. 호출이 실패하면 빨간 배너가 원인을 알려 줍니다. Orca 앱이 실행 중인지, 터미널에서 `orca --version`이 되는지 확인하고, 필요하면 `sudo ln -s /Applications/Orca.app/Contents/Resources/bin/orca /usr/local/bin/orca`를 실행하세요.
 - **Orca 1.4 미만** — 화면 판독과 채팅에 `terminal read --screen`과 `--json`이 필요합니다. 배너가 업데이트를 안내합니다.
-- **"터미널 보기"나 메시지 전송이 동작하지 않음** — macOS가 Orca Dashboard의 iTerm2 / Terminal 제어(자동화 권한)를 한 번 묻습니다. **시스템 설정 → 개인정보 보호 및 보안 → 자동화**에서 허용하세요. 허용하지 않아도 상태는 읽지만 터미널 탭 전환과 입력은 되지 않습니다.
+- **"터미널 보기"나 메시지 전송이 동작하지 않음** — macOS가 AgentDesk의 iTerm2 / Terminal 제어(자동화 권한)를 한 번 묻습니다. **시스템 설정 → 개인정보 보호 및 보안 → 자동화**에서 허용하세요. 허용하지 않아도 상태는 읽지만 터미널 탭 전환과 입력은 되지 않습니다.
 - **상태가 이상해 보임** — 정확 감지를 켜세요. 화면 판독은 Claude Code TUI 문구에 의존하지만 훅은 그렇지 않습니다.
 
 ## 크레딧
