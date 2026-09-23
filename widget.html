@@ -318,6 +318,11 @@
   }
   #office-canvas { display: block; image-rendering: pixelated; cursor: default; }
   #office-canvas.hit { cursor: pointer; }
+  /* minimap floats at the top-right of the scroll area (sticky wrapper keeps it out of the flow) */
+  .office-minimap-wrap { position: sticky; top: 6px; height: 0; z-index: 5; pointer-events: none; }
+  #office-minimap { position: absolute; right: 10px; top: 0; pointer-events: auto; cursor: pointer; image-rendering: pixelated;
+    border: 1px solid rgba(255,255,255,0.28); border-radius: 3px; background: rgba(12,14,22,0.78); box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
+  #office-minimap[hidden] { display: none; }
   .office-tip {
     position: absolute;
     pointer-events: none;
@@ -2177,6 +2182,7 @@
       <span class="office-hint">클릭: 채팅 · 더블클릭: 터미널 · 드래그: 팀 배치(PM 자리/팀 블록) · 우클릭: 메뉴</span>
     </div>
     <div class="office-wrap" id="office-wrap">
+      <div class="office-minimap-wrap"><canvas id="office-minimap" hidden></canvas></div>
       <canvas id="office-canvas"></canvas>
       <div class="office-tip" id="office-tip" hidden></div>
     </div>
@@ -4990,8 +4996,16 @@ function officeFrame(now) {
     ctx.fillText(t('최근 24시간 내 활동한 세션이 없습니다'), worldW / 2, worldH / 2);
   }
 
+  officeAisleXs = graph.xs.filter(ax => ax >= 8 && ax <= worldW - 8);
   officeDrawLighting(ctx, worldW, worldH, floorTop, shown);
   officeDrawDrag(ctx, im, allTeamBlocks, worldW);
+  officeDrawMinimap(canvas, worldW, worldH, floorTop, L.scale, [
+    ...allTeamBlocks.map(b => ({ y: b.y - 12, h: b.h, color: '#efb041' })),
+    ...blocks.map(b => ({ y: b.y - 12, h: b.rowsN * SEAT_PY, color: b.st.color })),
+    ...(meeting ? [{ y: meeting.y - 12, h: meeting.h, color: '#c9b3e0' }] : []),
+    ...(zoneBlock ? [{ y: zoneBlock.y - 12, h: zoneBlock.h, color: '#5fc7b3' }] : []),
+    { y: lounge.y - 12, h: lounge.h, color: '#a89bb8' },
+  ], now);
 
   if (officeHover) {
     const h = officeHover;
@@ -5100,6 +5114,12 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
   if (im.desk) ctx.drawImage(im.desk, deskX, deskY);
   const pcImg = sitting && st === 'running' ? im[`pc_on_${pcFrame + 1}`] : sitting && (st === 'waiting' || st === 'error') ? im.pc_on_1 : im.pc_off;
   if (pcImg) ctx.drawImage(pcImg, deskX + 16, deskY - 5);
+  if (sess && officeNightAmount(officeHourNow()) > 0.35) {
+    // small desk lamp: post, shade, lit bulb
+    ctx.fillStyle = '#2a2836'; ctx.fillRect(deskX + 43, deskY - 4, 1, 8); ctx.fillRect(deskX + 41, deskY + 4, 5, 1);
+    ctx.fillStyle = '#c9743a'; ctx.fillRect(deskX + 40, deskY - 7, 7, 3);
+    ctx.fillStyle = '#ffe9a8'; ctx.fillRect(deskX + 41, deskY - 4, 5, 1);
+  }
   if (sess) {
   const k = officeHash(sess.id) % 4;
   if (k === 0 && im.coffee) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
@@ -5151,23 +5171,51 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
 
 }
 // ambient light by local time: warm at dusk, dim blue at night, monitors glow in the dark
+// wall-clock hour (0–24, fractional). The demo fast-forwards a full day in ~30s so every phase is visible.
+function officeHourNow() {
+  if (OFFICE_DEMO) return (12 + (performance.now() - officeStartedAt) / 1000 * 0.8) % 24;
+  const d = new Date(); return d.getHours() + d.getMinutes() / 60;
+}
+// 0 = full day, 1 = deep night, with smooth dawn (5–8h) and dusk (17–21h) ramps
+function officeNightAmount(hr) {
+  if (hr >= 8 && hr < 17) return 0;
+  if (hr >= 21 || hr < 5) return 1;
+  if (hr >= 17) return (hr - 17) / 4;
+  return 1 - (hr - 5) / 3;
+}
 function officeDrawLighting(ctx, worldW, worldH, floorTop, shown) {
-  const hr = new Date().getHours() + new Date().getMinutes() / 60;
-  let tint = null;
-  if (hr >= 21 || hr < 6) tint = 'rgba(20,26,60,0.42)';
-  else if (hr >= 18) tint = `rgba(255,140,60,${0.10 + (hr - 18) / 3 * 0.12})`;
-  else if (hr < 8) tint = 'rgba(255,200,120,0.10)';
-  if (!tint) return;
-  ctx.fillStyle = tint; ctx.fillRect(0, floorTop, worldW, worldH - floorTop);
-  if (hr >= 21 || hr < 6) {
-    for (const st of officeSeats) {
-      if (!st.ch || st.ch.sess.status !== 'running' || st.w < 60) continue;
-      const g = ctx.createRadialGradient(st.x + 40, st.y + 30, 4, st.x + 40, st.y + 30, 34);
-      g.addColorStop(0, 'rgba(150,200,255,0.30)'); g.addColorStop(1, 'rgba(150,200,255,0)');
-      ctx.fillStyle = g; ctx.fillRect(st.x, st.y, st.w, st.h);
+  const hr = officeHourNow();
+  const night = officeNightAmount(hr);
+  const dusk = hr >= 17 && hr < 21 ? 1 - Math.abs(hr - 19) / 2 : 0;     // warm peak around 19h
+  const dawn = hr >= 5 && hr < 8 ? 1 - Math.abs(hr - 6.5) / 1.5 : 0;   // soft gold around 6:30
+  if (dusk > 0) { ctx.fillStyle = `rgba(255,140,60,${0.20 * dusk})`; ctx.fillRect(0, floorTop, worldW, worldH - floorTop); }
+  if (dawn > 0) { ctx.fillStyle = `rgba(255,205,130,${0.14 * dawn})`; ctx.fillRect(0, floorTop, worldW, worldH - floorTop); }
+  if (night <= 0) return;
+  ctx.fillStyle = `rgba(16,20,56,${0.48 * night})`; ctx.fillRect(0, floorTop, worldW, worldH - floorTop);
+  ctx.fillStyle = `rgba(8,10,30,${0.35 * night})`; ctx.fillRect(0, 0, worldW, floorTop);   // wall darkens too
+  // desk lamps and monitors carve warm/cool pools out of the dark; the lamp only burns where someone sits
+  for (const st of officeSeats) {
+    if (!st.ch || st.w < 60) continue;
+    const lx = st.x + 58, ly = st.y - 2;
+    const g = ctx.createRadialGradient(lx, ly + 6, 2, lx, ly + 6, 40);
+    g.addColorStop(0, `rgba(255,200,110,${0.42 * night})`); g.addColorStop(0.5, `rgba(255,180,90,${0.16 * night})`); g.addColorStop(1, 'rgba(255,170,80,0)');
+    ctx.fillStyle = g; ctx.fillRect(lx - 40, ly - 34, 80, 80);
+    if (st.ch.sess.status === 'running') {
+      const m = ctx.createRadialGradient(st.x + 40, st.y + 30, 4, st.x + 40, st.y + 30, 34);
+      m.addColorStop(0, `rgba(150,200,255,${0.30 * night})`); m.addColorStop(1, 'rgba(150,200,255,0)');
+      ctx.fillStyle = m; ctx.fillRect(st.x, st.y, st.w, st.h);
+    }
+  }
+  // corridor downlights along the vertical aisles so walkers stay readable
+  if (officeAisleXs) for (const ax of officeAisleXs) {
+    for (let yy = floorTop + 40; yy < worldH; yy += 96) {
+      const g = ctx.createRadialGradient(ax, yy, 2, ax, yy, 26);
+      g.addColorStop(0, `rgba(255,240,200,${0.16 * night})`); g.addColorStop(1, 'rgba(255,240,200,0)');
+      ctx.fillStyle = g; ctx.fillRect(ax - 26, yy - 26, 52, 52);
     }
   }
 }
+let officeAisleXs = null;
 function officeVoteStation(hist) {
   if (!hist || !hist.length) return null;
   const recent = hist.slice(-4).filter(h => h.station);
@@ -5196,6 +5244,52 @@ function officeDrawAlert(ctx, cx, cy, t) {
     ctx.lineWidth = 2 - q;
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
   }
+}
+// ── minimap: rooms as colour bands, sessions as dots, viewport as a frame; visible only when the office overflows ──
+let officeMinimapScale = 0;
+function officeDrawMinimap(canvas, worldW, worldH, floorTop, scale, bands, now) {
+  const mm = $('office-minimap'), wrap = $('office-wrap');
+  const overflow = worldH * scale > wrap.clientHeight + 4;
+  if (!overflow) { if (!mm.hidden) mm.hidden = true; return; }
+  if (mm.hidden) mm.hidden = false;
+  const cssH = Math.min(220, Math.max(80, Math.round(wrap.clientHeight * 0.42)));
+  const k = cssH / worldH, cssW = Math.max(28, Math.round(worldW * k));
+  const dpr = window.devicePixelRatio || 1;
+  if (mm.__w !== cssW || mm.__h !== cssH || mm.__dpr !== dpr) {
+    mm.style.width = cssW + 'px'; mm.style.height = cssH + 'px'; mm.width = Math.round(cssW * dpr); mm.height = Math.round(cssH * dpr);
+    mm.__w = cssW; mm.__h = cssH; mm.__dpr = dpr;
+  }
+  officeMinimapScale = k;
+  const c = mm.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, cssW, cssH);
+  c.fillStyle = '#2b2a36'; c.fillRect(0, 0, cssW, floorTop * k);
+  for (const b of bands) { c.fillStyle = officeRgba(b.color, 0.45); c.fillRect(1, Math.round(b.y * k), cssW - 2, Math.max(1, Math.round(b.h * k))); }
+  const blink = Math.floor(now / 350) % 2 === 0;
+  for (const ch of officeChars.values()) {
+    if (ch.fading || !ch.sess) continue;
+    const s = ch.sess.status;
+    const x = Math.round(ch.x * k), y = Math.round(ch.y * k);
+    if (ch.sess.needsInput) { c.fillStyle = blink ? '#fff4c2' : '#F2C037'; c.fillRect(x - 2, y - 2, 4, 4); continue; }
+    c.fillStyle = s === 'running' ? '#7fb2ff' : s === 'waiting' ? '#e6c86a' : s === 'error' ? '#ff7a75' : '#9a97a8';
+    c.fillRect(x - 1, y - 1, 2, 2);
+  }
+  const vy = wrap.scrollTop / scale * k, vh = wrap.clientHeight / scale * k;
+  c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = 1;
+  c.strokeRect(0.5, Math.round(vy) + 0.5, cssW - 1, Math.max(4, Math.round(vh)) - 1);
+}
+{
+  const mm = $('office-minimap');
+  let dragging = false;
+  const jump = e => {
+    const wrap = $('office-wrap'), scale = $('office-canvas').__scale || 2;
+    const r = mm.getBoundingClientRect();
+    const worldY = (e.clientY - r.top) / officeMinimapScale;
+    wrap.scrollTo({ top: Math.max(0, worldY * scale - wrap.clientHeight / 2), behavior: dragging ? 'instant' : 'smooth' });
+  };
+  mm.addEventListener('mousedown', e => { dragging = true; jump(e); e.preventDefault(); });
+  window.addEventListener('mousemove', e => { if (dragging) jump(e); });
+  window.addEventListener('mouseup', () => { dragging = false; });
 }
 let officeBoardRect = null;
 let officeJumpIdx = 0;
@@ -5312,7 +5406,7 @@ function officeWindowXs(worldW) {
 }
 // daylight falling through the windows onto the floor below the wall
 function officeDrawWindowLight(ctx, worldW, floorTop) {
-  const hr = new Date().getHours() + new Date().getMinutes() / 60;
+  const hr = officeHourNow();
   if (hr >= 20 || hr < 6) return;
   const dusk = hr >= 17 || hr < 8;
   const a = dusk ? 0.16 : 0.13;
@@ -5327,7 +5421,7 @@ function officeDrawWindowLight(ctx, worldW, floorTop) {
   }
 }
 function officeDrawWindows(ctx, worldW) {
-  const hr = new Date().getHours() + new Date().getMinutes() / 60;
+  const hr = officeHourNow();
   const night = hr >= 20 || hr < 6, dusk = !night && (hr >= 17 || hr < 8);
   const sky = night ? ['#0f1630', '#1b2447'] : dusk ? ['#f0a56a', '#7b6fa8'] : ['#8fd0ff', '#d8f0ff'];
   const xs = officeWindowXs(worldW);
