@@ -4493,6 +4493,13 @@ const OFFICE = {
 };
 const officeImgs = {};
 let officeReady = false;
+// Kenney (CC0) props cut from Roguelike Indoors / Modern City — see assets/pixel/CREDITS.md
+const OFFICE_KENNEY = ['k_table_round', 'k_chair_a', 'k_chair_b', 'k_shelf_orange', 'k_shelf_green', 'k_shelf_tall_orange', 'k_shelf_tall_green', 'k_cabinet_beige',
+  'k_plant_a', 'k_plant_b', 'k_vase_a', 'k_vase_b', 'k_vase_c', 'k_stool_teal', 'k_stool_brown', 'k_piano', 'k_rack_a', 'k_rack_b',
+  'k_painting_green', 'k_painting_map', 'k_painting_beige', 'k_painting_orange', 'k_painting_doc', 'k_mirror', 'k_candelabra',
+  'k_counter', 'k_counter_drawer', 'k_counter_tray', 'k_counter_food', 'k_counter_bottles', 'k_counter_plates', 'k_fridge_small', 'k_stove', 'k_painting_wide_teal', 'k_painting_wide_orange',
+  'k_vending_orange', 'k_vending_green', 'k_atm_teal', 'k_ac_unit', 'k_tree_tall_green', 'k_tree_tall_orange', 'k_tree_round', 'k_tree_round_dark',
+  'k_locker_brown', 'k_locker_green', 'k_locker_orange', 'k_cafe_table', 'k_bin_grey', 'k_bucket', 'k_box_a', 'k_box_b', 'k_bench', 'k_wood_chair'];
 let officeRaf = null;
 let officeHover = null;
 let officeSeats = [];
@@ -4506,6 +4513,7 @@ function officeLoadImages() {
     'floor_plank', 'floor_tiles', 'floor_checker', 'floor_grid', 'floor_brick',
     'bookshelf', 'double_bookshelf', 'whiteboard', 'large_painting', 'small_painting', 'small_painting_2', 'hanging_plant', 'clock', 'cactus', 'plant_2', 'bin', 'pot', 'pet_gitcat', 'pet_claudio'];
   for (let i = 0; i < OFFICE.CHAR_COUNT; i++) names.push(`char_${i}`);
+  names.push(...OFFICE_KENNEY);
   return Promise.all(names.map(n => new Promise(res => {
     const img = new Image();
     img.onload = () => { officeImgs[n] = img; res(); };
@@ -4930,9 +4938,14 @@ function officeFrame(now) {
       const n = block.seats.length, lastRowCount = n % cols === 0 ? cols : n % cols;
       if (lastRowCount < cols) {
         const px = originX + lastRowCount * SEAT_PX + 12, py = block.y + (block.rowsN - 1) * SEAT_PY + 20;
-        const [a, b] = block.st.props;
-        if (im[a]) ctx.drawImage(im[a], px, py);
-        if (im[b]) ctx.drawImage(im[b], px + (im[a] ? im[a].width : 0) + 8, py + (im[a] ? im[a].height : 32) - (im[b] ? im[b].height : 16));
+        // props stand on a common baseline and fill the free slot left to right while they fit
+        let cx = px; const baseY = py + 32, maxX = originX + (lastRowCount + 1) * SEAT_PX - 8;
+        for (const key of block.st.props) {
+          const img = im[key]; if (!img) continue;
+          if (cx + img.width > maxX) break;
+          ctx.drawImage(img, cx, baseY - img.height);
+          cx += img.width + 6;
+        }
       }
     }
 
@@ -4946,8 +4959,22 @@ function officeFrame(now) {
   {
     officeQueueSign(ctx, `휴게실 · ${lounge.count}`, '#c9b3e0', lounge.y - 11, worldW, originX);
     const lastSofa = lounge.sofas[Math.min(lounge.sofas.length, sofasPerRow) - 1];
-    if (im.coffee_table && lastSofa && lastSofa.x + SOFA_STEP + 32 <= originX + usableW) ctx.drawImage(im.coffee_table, lastSofa.x + SOFA_STEP + 2, lounge.y + 10);
-    if (im.large_plant && lastSofa && lastSofa.x + SOFA_STEP + 68 <= originX + usableW) ctx.drawImage(im.large_plant, lastSofa.x + SOFA_STEP + 38, lounge.y - 8);
+    // break-room corner right of the sofas: cafe table, vending machines, mini fridge and a drinks counter, then a plant
+    if (lastSofa) {
+      let cx = lastSofa.x + SOFA_STEP + 4; const baseY = lounge.y + 52, maxX = originX + usableW - 2;
+      for (const key of ['k_cafe_table', 'k_vending_orange', 'k_vending_green', 'k_fridge_small', 'k_counter_bottles', 'k_counter_food', 'k_tree_round_dark']) {
+        const img = im[key]; if (!img) continue;
+        if (cx + img.width > maxX) break;
+        ctx.drawImage(img, cx, baseY - img.height);
+        cx += img.width + 4;
+      }
+      // a piano fills the empty end of a second sofa row
+      if (lounge.rows > 1 && im.k_piano) {
+        const lastRowCount = lounge.sofas.length % sofasPerRow || sofasPerRow;
+        const px2 = originX + 4 + lastRowCount * SOFA_STEP + 8, py2 = lounge.y + (lounge.rows - 1) * LOUNGE_ROW_H + 14;
+        if (px2 + 32 <= originX + usableW) ctx.drawImage(im.k_piano, px2, py2);
+      }
+    }
     for (const sofa of lounge.sofas) zItems.push({ z: sofa.y + 16, draw: () => {
       officeShadow(ctx, sofa.x + 16, sofa.y + 16, 17, 3);
       if (im.sofa_front) ctx.drawImage(im.sofa_front, sofa.x, sofa.y);
@@ -5018,10 +5045,10 @@ function officeFrame(now) {
 }
 
 const OFFICE_STATIONS = [
-  { id: 'dev',      label: '개발',       color: '#6f8fd8', floor: 'floor_tiles',   tint: '#aebfe8', props: ['double_bookshelf', 'bin'] },
-  { id: 'research', label: '조사',       color: '#b08ae8', floor: 'floor_checker', tint: '#cbb8ea', props: ['bookshelf', 'pot'] },
-  { id: 'exec',     label: '실행·테스트', color: '#6fc79a', floor: 'floor_grid',    tint: '#b6dcc4', props: ['cactus', 'bin'] },
-  { id: 'docs',     label: '문서화',     color: '#e0b060', floor: 'floor_plank',   tint: '#e6c99c', props: ['double_bookshelf', 'plant_2'] },
+  { id: 'dev',      label: '개발',       color: '#6f8fd8', floor: 'floor_tiles',   tint: '#aebfe8', props: ['k_shelf_orange', 'k_locker_brown', 'k_bin_grey', 'k_plant_b'] },
+  { id: 'research', label: '조사',       color: '#b08ae8', floor: 'floor_checker', tint: '#cbb8ea', props: ['k_shelf_tall_green', 'k_shelf_tall_orange', 'k_tree_round', 'k_box_a'] },
+  { id: 'exec',     label: '실행·테스트', color: '#6fc79a', floor: 'floor_grid',    tint: '#b6dcc4', props: ['k_rack_a', 'k_rack_b', 'k_ac_unit', 'cactus'] },
+  { id: 'docs',     label: '문서화',     color: '#e0b060', floor: 'floor_plank',   tint: '#e6c99c', props: ['k_shelf_green', 'k_cabinet_beige', 'k_plant_a', 'k_stool_brown'] },
 ];
 function officeTileArea(ctx, im, key, tint, x0, y0, w, h) {
   const T = OFFICE.T;
@@ -5121,7 +5148,8 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
     ctx.fillStyle = '#ffe9a8'; ctx.fillRect(deskX + 41, deskY - 4, 5, 1);
   }
   if (sess) {
-  const k = officeHash(sess.id) % 4;
+  const k = officeHash(sess.id) % 7;
+  if (k >= 4) { const vase = im[['k_vase_a', 'k_vase_b', 'k_vase_c'][k - 4]]; if (vase) ctx.drawImage(vase, deskX + 34, deskY - 2); }
   if (k === 0 && im.coffee) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
   else if (k === 1 && im.pot) ctx.drawImage(im.pot, deskX + 2, deskY + 2);
   else if (k === 2) { ctx.fillStyle = '#f1efe6'; ctx.fillRect(deskX + 36, deskY + 14, 9, 7); ctx.fillStyle = '#b9b6ad'; ctx.fillRect(deskX + 38, deskY + 16, 5, 1); ctx.fillRect(deskX + 38, deskY + 18, 5, 1); }
@@ -5441,7 +5469,7 @@ function officeDrawWallDecor(ctx, im, worldW, floorTop, board) {
   const y = 2;
   const n = Math.max(2, Math.floor((worldW - 60) / 110));
   const winXs = []; for (let i = 0; i < n; i++) winXs.push(Math.round(30 + i * ((worldW - 60 - 36) / Math.max(1, n - 1))));
-  const items = [['large_painting', 32], ['whiteboard', 32], ['clock', 16], ['small_painting', 16], ['small_painting_2', 16]];
+  const items = [['large_painting', 32], ['k_painting_green', 16], ['clock', 16], ['k_painting_wide_teal', 48], ['small_painting', 16], ['k_painting_orange', 16], ['whiteboard', 32], ['k_painting_map', 16], ['small_painting_2', 16], ['k_painting_wide_orange', 48], ['k_painting_doc', 16]];
   let k = 0;
   const slots = [[8, winXs[0] - 4]];
   for (let i = 0; i < winXs.length - 1; i++) slots.push([winXs[i] + 40, winXs[i + 1] - 4]);
