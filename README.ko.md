@@ -143,12 +143,12 @@ npm start
 ```bash
 brew tap mongodb/brew && brew install mongodb-community && brew services start mongodb-community
 cd recall && npm install
-node cli.mjs install          # Claude Code / Gemini CLI / Codex CLI 훅 + /recall 스킬 등록
+node cli.mjs install          # Claude Code / Gemini CLI / Codex CLI 에 SessionEnd·PreCompact·프롬프트 훅 + /recall 스킬 등록
 node cli.mjs backfill --since 7d   # 선택: 지난 일주일 트랜스크립트 노트 생성
 node cli.mjs search "iTerm 세션 매칭"
 ```
 
-- **SessionEnd** → 분리된 워커가 트랜스크립트를 요약 입력(프롬프트·응답만, 도구 출력 제외)으로 만들고 비밀 값을 마스킹한 뒤 `claude -p`(Haiku)로 JSON 노트를 받아 `agentdesk.session_notes` 에 git 커밋·관련 파일과 함께 저장합니다.
+- **SessionEnd** 와 **PreCompact**(컨텍스트 압축은 대화의 자연스러운 장 경계이고, 며칠씩 열어 두는 세션을 잡을 유일한 시점) → 분리된 워커가 트랜스크립트를 요약 입력(프롬프트·응답만, 도구 출력 제외)으로 만들고 비밀 값을 마스킹한 뒤 `claude -p`(Haiku)로 JSON 노트를 받아 `agentdesk.session_notes` 에 git 커밋·관련 파일과 함께 저장합니다.
 - **UserPromptSubmit** → 현재 저장소에서 가장 잘 맞는 노트 3개를 컨텍스트로 덧붙이고, 노트가 의존한 파일이 그 뒤 바뀌었으면 `⚠ N file(s) changed since` 로 표시합니다.
 - `/recall` 스킬과 `agentdesk-recall search | show | list` 로 직접 찾아볼 수 있습니다. `AGENTDESK_MONGO_URL` 을 원격으로 바꾸지 않는 한 데이터는 이 컴퓨터를 떠나지 않습니다.
 
