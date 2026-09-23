@@ -433,6 +433,29 @@ async function ttyTargets() {
 }
 ipcMain.handle("roca:tty-targets", () => ttyTargets());
 
+async function appRunning(name) { try { return (await osa(`tell application "System Events" to (name of processes) contains "${name}"`)) === "true"; } catch { return false; } }
+// reopen an ended Claude Code session in a new terminal tab: cd <cwd> && claude --resume <id>
+const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
+ipcMain.handle("roca:resume-session", async (_e, cwd, sessionId) => {
+  if (!/^[0-9a-f-]{8,}$/i.test(String(sessionId || ""))) return { ok: false, error: "invalid session id" };
+  const cmd = `cd ${shq(cwd || homedir())} && claude --resume ${sessionId}`;
+  try {
+    if (await appRunning("iTerm2")) {
+      await osa(`tell application "iTerm2"
+  set w to (create window with default profile)
+  tell current session of current tab of w to write text "${q(cmd)}"
+  activate
+end tell`);
+      return { ok: true, app: "iTerm2" };
+    }
+    await osa(`tell application "Terminal"
+  activate
+  do script "${q(cmd)}"
+end tell`);
+    return { ok: true, app: "Terminal" };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
 const isTerm = h => typeof h === "string" && h.startsWith("term:");
 const targetOf = h => termTargets.get(Number(h.slice(5)));
 async function osa(script) { const { stdout } = await exec("/usr/bin/osascript", ["-e", script], { timeout: 10000 }); return stdout.replace(/\n$/, ""); }
