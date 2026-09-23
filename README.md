@@ -20,7 +20,7 @@ A pixel-art office for your AI coding agents. Orca Widget is a lightweight macOS
 - **Needs-input alerts** — notifications, toast, tray badge and an optional chime fire only when an agent is really waiting on you (permission prompt or a question), not on every finished turn.
 - **Chat panel** — click any character or card to read the agent's screen and send it a message without leaving the widget; double-click jumps to its Orca terminal.
 - **Utilities** — clipboard history, listening-port monitor with kill, quick memo, Pomodoro timer.
-- **Works with or without Orca** — with Orca you get session discovery, chat and terminal control through the Orca CLI. Without Orca (any Mac with Claude Code), the widget discovers sessions from Claude Code hooks and transcripts; sessions running inside tmux can still be chatted with and directed. Pick *Auto / Orca / Hooks only* in the footer.
+- **Works with or without Orca** — with Orca you get session discovery, chat and terminal control through the Orca CLI. Without Orca (any Mac with Claude Code), the widget discovers sessions from Claude Code hooks and transcripts; sessions running inside tmux can still be chatted with and directed. Both kinds of sessions show up side by side; nothing to configure.
 - **English and Korean UI** — English by default, switch from the footer.
 
 ## Quick start
@@ -50,7 +50,7 @@ Recommended after installing: open the **Office** tab and turn on **Exact detect
 | Right-click the PM → *Give the team a goal* | Brief → task plan → approval → dispatch |
 | Drag a file onto a card | Inserts the file path into that terminal's prompt |
 | ▾ / ▴ | Collapse to the header bar / restore |
-| Footer 한 / EN | Switch UI language |
+| 🌙 / 한 · EN in the header | Toggle dark/light theme, switch UI language |
 
 ### Reading the office
 
@@ -76,15 +76,14 @@ The widget polls `orca worktree ps` and `orca terminal list` every 5 seconds for
 3. **Orca's own agent state** (fallback)
 
 <details>
-<summary>Data-source modes (Orca / hooks only)</summary>
+<summary>Where sessions come from (Orca and plain terminals)</summary>
 
-| Mode | Sessions come from | Chat, PM teams, interrupt |
+| Session kind | Discovered through | Chat, PM teams, interrupt |
 |---|---|---|
-| **Orca** | `orca worktree ps` + terminal list; hook events enrich them | Orca terminals |
-| **Hooks only** | Claude Code hook events (`~/.roca/events.jsonl`) + transcript metadata (title from `/rename` or the AI title, last message, context usage, git branch) | tmux panes (`send-keys` / `capture-pane`), or iTerm2 / Terminal.app tabs found through the `claude` process (AppleScript); read-only otherwise |
-| **Auto** (default) | Orca when its CLI answers, otherwise hooks only | — |
+| **Orca session** | `orca worktree ps` + terminal list; hook events enrich them | Orca terminals |
+| **Terminal session** (Claude Code started in iTerm2, Terminal.app or tmux) | Claude Code hook events (`~/.roca/events.jsonl`) + transcript metadata (title from `/rename` or the AI title, last message, context usage, git branch) | tmux panes (`send-keys` / `capture-pane`), or iTerm2 / Terminal.app tabs found through the `claude` process (AppleScript); ended sessions reopen with `claude --resume` |
 
-Hooks-only mode needs Exact detection turned on; the dashboard shows a banner with a one-click button when it is off.
+The two kinds are told apart by the `TERM_PROGRAM` the hook script records (`Orca` vs `iTerm.app`, `tmux`, `Apple_Terminal`), so both appear in one list. Without Orca installed, hooks are the only source; the dashboard then shows a banner, with a one-click button when Exact detection is off.
 </details>
 
 <details>
