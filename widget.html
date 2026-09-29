@@ -329,7 +329,7 @@
     border: 1px solid rgba(255,255,255,0.28); border-radius: 3px; background: rgba(12,14,22,0.78); box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
   #office-minimap[hidden] { display: none; }
   /* inline answer popover next to a character that is waiting for a choice */
-  .office-ask { position: absolute; z-index: 6; width: 260px; background: var(--surface); border: 1px solid #F2C037; border-radius: var(--radius-sm);
+  .office-ask { position: fixed; z-index: 260; width: 260px; background: var(--surface); border: 1px solid #F2C037; border-radius: var(--radius-sm);
     box-shadow: 0 6px 24px rgba(0,0,0,0.45); padding: 8px 10px; font-size: var(--fs-xs); color: var(--text); }
   .office-ask[hidden] { display: none; }
   .office-ask .ask-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
@@ -2403,7 +2403,6 @@
       <div class="office-minimap-wrap"><canvas id="office-minimap" hidden></canvas></div>
       <canvas id="office-canvas"></canvas>
       <div class="office-tip" id="office-tip" hidden></div>
-      <div class="office-ask" id="office-ask" data-verbatim hidden></div>
     </div>
   </div>
 
@@ -2599,6 +2598,7 @@
       <button class="primary" id="onboard-next">다음</button>
     </div>
   </div>
+  <div class="office-ask" id="office-ask" data-verbatim hidden></div>
   <div class="footer" id="footer">
     <div id="tokenBars"></div>
     <div class="footer-row">
@@ -2729,7 +2729,7 @@ Object.assign(I18N, {
   '화이트보드': 'Whiteboard', '클릭: 가장 오래 기다리는 세션으로 이동해 채팅 열기': 'Click: jump to the longest-waiting session and open chat', '대기 중인 세션이 없습니다': 'No session is waiting',
   '휴게실 펫 · 클릭하면 좋아합니다': 'Lounge pet · click to pet', '회사 이름': 'Company name', '회사 간판 · 클릭해서 이름 변경': 'Company sign · click to rename',
   '화면을 읽는 중…': 'Reading the screen…', '입력 대기가 끝났습니다': 'no longer waiting for input', '화면 읽기 실패: ': 'Could not read the screen: ', '직접 입력해서 답하기': 'Type an answer',
-  '보내기': 'Send', '선택지를 찾지 못했습니다. 아래에 답을 입력하거나 채팅을 여세요.': 'No choices found on screen. Type an answer below or open the chat.', '전송됨: ': 'Sent: ', '전송 실패: ': 'Send failed: ', '전송 거부': 'send rejected',
+  '보내기': 'Send', '선택지를 찾지 못했습니다. 아래에 답을 입력하거나 채팅을 여세요.': 'No choices found on screen. Type an answer below or open the chat.', '전송됨: ': 'Sent: ', '전송 실패: ': 'Send failed: ', '전송 거부': 'send rejected', '바로 답하기': 'Answer here', '템플릿 프롬프트 보내기': 'Send a template prompt', '존이 없습니다 — 오피스 탭에서 추가': 'No zones yet — add one in the Office tab',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -3317,6 +3317,12 @@ function applyStatusTransitions() {
           notifiedWaiting.add(s.id);
           window.orca.notify(t('선택 필요'), `${s.name}: ${t('질문 또는 권한 승인이 기다리고 있습니다')}`);
           showInAppToast(s.name, 'waiting', s.id);
+          // on the dashboard the question opens by itself under the session row (the office has its own auto-open)
+          if (currentPage === 'dashboard' && handles.get(s.id)) setTimeout(() => {
+            const row = $('list').querySelector(`.session[data-id="${CSS.escape(s.id)}"]`);
+            const live = sessions.find(x => x.id === s.id);
+            if (row && !officeAsk && live && live.needsInput) dashAskOpen(live, row);
+          }, 500);
         }
         if (!s.needsInput && notifiedWaiting.has(s.id)) {
           notifiedWaiting.delete(s.id);
@@ -3473,6 +3479,8 @@ function renderDashboard() {
         </div>
         <div class="s-actions">
           ${hasHandle ? `<button class="s-chat" data-act="chat" data-h="${esc(h)}" title="${esc(t('채팅 패널 열기'))}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"></path></svg>${esc(t('채팅'))}</button>` : ''}
+          ${s.needsInput && hasHandle ? `<button class="s-act" data-act="ask" data-id="${esc(s.id)}" title="${esc(t('바로 답하기'))}">❓</button>` : ''}
+          ${hasHandle ? `<button class="s-act" data-act="tpl" data-id="${esc(s.id)}" title="${esc(t('템플릿 프롬프트 보내기'))}">🧩</button>` : ''}
           <button class="s-act ${isPinned ? 'pinned' : ''}" data-act="pin" data-id="${esc(s.id)}" title="${isPinned ? '고정 해제' : '고정'}">📌</button>
           <button class="s-act" data-act="copy-id" data-id="${esc(s.id)}" title="세션 ID 복사">📋</button>
           ${hasHandle ? `<button class="s-act" data-act="interrupt" data-h="${esc(h)}" title="인터럽트">⏸</button>` : ''}
@@ -3482,6 +3490,7 @@ function renderDashboard() {
     }
   }
   $('list').innerHTML = html;
+  if (officeAsk && officeAsk.anchor) officeAskPlace();
 }
 
 // ── File drag & drop onto session cards ──
@@ -3517,11 +3526,28 @@ $('list').addEventListener('drop', async e => {
 });
 
 $('list').addEventListener('click', async e => {
+  // the "?" status icon of a waiting session opens the inline answer popover
+  const icon = e.target.closest('.s-icon');
+  if (icon) {
+    const row = icon.closest('.session'); const s = row && sessions.find(ss => ss.id === row.dataset.id);
+    if (s && s.needsInput && row.dataset.handle) { e.stopPropagation(); dashAskOpen(s, row); return; }
+  }
   const actBtn = e.target.closest('[data-act]');
   if (actBtn) {
     e.stopPropagation();
     const act = actBtn.dataset.act;
-    if (act === 'pin') {
+    if (act === 'ask') {
+      const row = actBtn.closest('.session'); const s = sessions.find(ss => ss.id === actBtn.dataset.id);
+      if (s && row) dashAskOpen(s, row);
+    } else if (act === 'tpl') {
+      // template zones as a submenu; picking one sends that zone's prompt to the session right away (no confirm step)
+      const s = sessions.find(ss => ss.id === actBtn.dataset.id); if (!s) return;
+      const ch = officeChars.get(s.id) || { sid: s.id, sess: s, x: 0, y: 0 };
+      const items = zoneState.zones.map(z => [z.icon, zoneLabel(z), () => zoneSend(ch, z, zoneFill(z.prompt, s))]);
+      if (!items.length) items.push(['✎', '존이 없습니다 — 오피스 탭에서 추가', () => {}]);
+      const r = actBtn.getBoundingClientRect();
+      openItemsMenu(r.left, r.bottom + 4, `🧩 ${s.name}`, items);
+    } else if (act === 'pin') {
       const id = actBtn.dataset.id;
       if (pinnedSessions.has(id)) pinnedSessions.delete(id);
       else pinnedSessions.add(id);
@@ -4971,6 +4997,8 @@ function officeFrame(now) {
   const im = officeImgs;
   const SEAT_PX = OFFICE.SEAT_W * T, SEAT_PY = OFFICE.SEAT_H * T;
   const dt = Math.min(0.1, officeLastT ? (now - officeLastT) / 1000 : 0.016);
+  // after a pause (window minimized / tab hidden) everyone snaps into place instead of walking across the office
+  if (officeLastT && now - officeLastT > 800) officeStartedAt = now;
   officeLastT = now;
   const pcFrame = Math.floor(now / 320) % 3;
   const bob = Math.floor(now / 700) % 2;
@@ -5022,6 +5050,8 @@ function officeFrame(now) {
 
   // 2) layout: one block per station, desks on demand
   const cols = officeCols();
+  // a width change (minimize/restore, resize) relays out every desk: snap to the new seats rather than walking
+  if (cols !== officeLastCols) { if (officeLastCols) officeStartedAt = now; officeLastCols = cols; }
   const meetingHandles = officeMeetingHandles();
   for (const c of officeChars.values()) { c.meeting = meetingHandles.has(handles.get(c.sid)) || (OFFICE_DEMO && meetingHandles.has(c.sid)); c.seat = null; }
   const originX = OFFICE.PAD * T;
@@ -5641,18 +5671,32 @@ function officeAskClose() {
   officeAsk = null;
   const el = $('office-ask'); el.hidden = true; el.innerHTML = '';
 }
+// fixed-position popover: next to the character on the office canvas, or under a dashboard row (anchor)
 function officeAskPlace() {
   if (!officeAsk) return;
-  const el = $('office-ask'), wrap = $('office-wrap'), scale = $('office-canvas').__scale || 2;
-  const ch = officeAsk.ch, x = ch.x * scale, y = (ch.y - 44) * scale;
-  const w = el.offsetWidth || 260, h = el.offsetHeight || 120;
-  el.style.left = Math.max(4, Math.min(wrap.clientWidth - w - 4, Math.round(x + 14))) + 'px';
-  el.style.top = Math.max(4, Math.round(y - h)) + 'px';
+  const el = $('office-ask'); const w = el.offsetWidth || 260, h = el.offsetHeight || 120;
+  let left, top;
+  if (officeAsk.anchor) {
+    if (!officeAsk.anchor.isConnected) officeAsk.anchor = $('list').querySelector(`.session[data-id="${CSS.escape(officeAsk.ch.sid)}"]`);
+    if (!officeAsk.anchor) return;
+    const r = officeAsk.anchor.getBoundingClientRect();
+    left = r.right - w - 8; top = r.bottom + 4;
+    if (top + h > innerHeight - 8) top = r.top - h - 4;
+  } else {
+    const canvas = $('office-canvas'), cr = canvas.getBoundingClientRect(), scale = canvas.__scale || 2;
+    left = cr.left + officeAsk.ch.x * scale + 14; top = cr.top + (officeAsk.ch.y - 44) * scale - h;
+  }
+  el.style.left = Math.max(4, Math.min(innerWidth - w - 4, Math.round(left))) + 'px';
+  el.style.top = Math.max(4, Math.min(innerHeight - h - 4, Math.round(top))) + 'px';
 }
-async function officeAskOpen(ch) {
+window.addEventListener('scroll', () => { if (officeAsk) officeAskPlace(); }, true);
+window.addEventListener('resize', () => { if (officeAsk) officeAskPlace(); });
+// dashboard entry point: the session row is the anchor and the live session object is looked up on every refresh
+function dashAskOpen(s, row) { officeAskOpen({ sid: s.id, sess: s, x: 0, y: 0 }, row); }
+async function officeAskOpen(ch, anchor = null) {
   officeAskClose();
   const handle = officeHandleFor(ch);
-  officeAsk = { ch, handle, timer: null, lastSig: '' };
+  officeAsk = { ch, handle, timer: null, lastSig: '', anchor };
   const el = $('office-ask'); el.hidden = false;
   el.innerHTML = `<div class="ask-head"><b>${esc(ch.sess.name)}</b><button data-act="chat" title="${t('채팅 열기')}">💬</button><button data-act="close">✕</button></div><div class="ask-status">${t('화면을 읽는 중…')}</div>`;
   el.onclick = e => {
@@ -5675,6 +5719,7 @@ async function officeAskReadLines() {
 async function officeAskRefresh() {
   const a = officeAsk; if (!a) return;
   const el = $('office-ask');
+  if (a.anchor) { const live = sessions.find(x => x.id === a.ch.sid); if (live) a.ch.sess = live; }
   if (!a.ch.sess || (!a.ch.sess.needsInput && !OFFICE_DEMO)) { officeAskClose(); showInAppToast(`${a.ch.sess?.name || ''}: ${t('입력 대기가 끝났습니다')}`); return; }
   let lines = [];
   try { lines = await officeAskReadLines(); } catch (e) { el.querySelector('.ask-status')?.classList.add('err'); const s = el.querySelector('.ask-status'); if (s) s.textContent = t('화면 읽기 실패: ') + e.message; return; }
@@ -6162,6 +6207,7 @@ function officeDrawMeeting(ctx, im, m, worldW, originX, now, bob) {
 
 // ── office character helpers ──
 let officeLastT = 0;
+let officeLastCols = 0;
 let officeStartedAt = 0;
 const officeChars = new Map();
 const OFFICE_WALK_SPEED = 44; // world px / s
