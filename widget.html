@@ -2733,8 +2733,8 @@ Object.assign(I18N, {
   '화면을 읽는 중…': 'Reading the screen…', '입력 대기가 끝났습니다': 'no longer waiting for input', '화면 읽기 실패: ': 'Could not read the screen: ', '직접 입력해서 답하기': 'Type an answer',
   '보내기': 'Send', '선택지를 찾지 못했습니다. 아래에 답을 입력하거나 채팅을 여세요.': 'No choices found on screen. Type an answer below or open the chat.', '전송됨: ': 'Sent: ', '전송 실패: ': 'Send failed: ', '전송 거부': 'send rejected', '바로 답하기': 'Answer here', '템플릿 프롬프트 보내기': 'Send a template prompt', '존이 없습니다 — 오피스 탭에서 추가': 'No zones yet — add one in the Office tab',
   '지침서 저장소 경로': 'Guidelines folder', '찾음': 'Found', 'agentdesk/zones.json 존 세트 사용 중': 'using its agentdesk/zones.json zone set', '폴더를 찾지 못했습니다': 'Folder not found',
-  '프롬프트 존의 {kb}로 치환되는 폴더. 안에 agentdesk/zones.json이 있으면 팀 공용 존 세트로 불러옵니다.': 'Folder substituted for {kb} in zone prompts. If it contains agentdesk/zones.json, that becomes the shared zone set.',
-  '지침서 저장소 연결됨': 'Guidelines folder connected', '지침서 저장소 경로가 없습니다 — 설정에서 지정하세요': 'No guidelines folder — set it in Settings',
+  '프롬프트 존의 {kb}로 치환되는 폴더. 안에 agentdesk/zones.json이 있으면 팀 공용 존 세트로 불러옵니다.': 'Folder substituted for {kb} in zone prompts. If it contains agentdesk/zones.json, that becomes the shared zone set.', '개 존': ' zones', '카테고리 폴더에서 생성': 'generated from category folders',
+  '지침서 저장소 연결됨': 'Guidelines folder connected', 'README.md가 있는 카테고리 폴더마다 프롬프트 존이 생기고, 프롬프트의 {kb}가 이 경로로 치환됩니다. agentdesk/zones.json이 있으면 그 파일을 우선 사용합니다.': 'Each category folder with a README.md becomes a prompt zone, and {kb} in prompts resolves to this folder. agentdesk/zones.json, if present, takes precedence.', '지침서 저장소 경로가 없습니다 — 설정에서 지정하세요': 'No guidelines folder — set it in Settings',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -6729,20 +6729,26 @@ async function kbRefresh() {
   try { officeKbInfo = await window.orca.kbCheck(officeKbPath); } catch { return; }
   if (!officeKbInfo.ok) return;
   officeKb = officeKbInfo.path;
-  if (!officeKbInfo.zones) return;
   try {
     const repo = await window.orca.kbZones(officeKbPath);
-    if (repo && Array.isArray(repo.zones)) {
-      let changed = false;
-      for (const z of repo.zones) {
-        if (!z || !z.id) continue;
-        const i = zoneState.zones.findIndex(x => x.id === z.id);
-        const merged = { ...z, auto: i >= 0 ? !!zoneState.zones[i].auto : !!z.auto };   // "send without confirm" stays a personal choice
-        if (i >= 0) { if (JSON.stringify(zoneState.zones[i]) !== JSON.stringify(merged)) { zoneState.zones[i] = merged; changed = true; } }
-        else { zoneState.zones.push(merged); changed = true; }
-      }
-      if (changed) zonesSave();
+    if (!repo || !Array.isArray(repo.zones)) return;
+    officeKbInfo.generated = !!repo.generated; officeKbInfo.count = repo.zones.length;
+    let changed = false;
+    // zones that came from the knowledge base earlier but are gone now are dropped; hand-made zones are left alone
+    const keep = new Set(repo.zones.map(z => z.id));
+    const before = zoneState.zones.length;
+    zoneState.zones = zoneState.zones.filter(z => z.source !== 'kb' || keep.has(z.id));
+    if (zoneState.zones.length !== before) changed = true;
+    for (const z of repo.zones) {
+      if (!z || !z.id) continue;
+      const i = zoneState.zones.findIndex(x => x.id === z.id);
+      const merged = { ...z, source: 'kb', auto: i >= 0 ? !!zoneState.zones[i].auto : !!z.auto };   // "send without confirm" stays a personal choice
+      if (i >= 0) { if (JSON.stringify(zoneState.zones[i]) !== JSON.stringify(merged)) { zoneState.zones[i] = merged; changed = true; } }
+      else { zoneState.zones.push(merged); changed = true; }
     }
+    // knowledge-base zones go first, then whatever the user added by hand
+    zoneState.zones.sort((a, b) => (a.source === 'kb' ? 0 : 1) - (b.source === 'kb' ? 0 : 1));
+    if (changed) zonesSave();
   } catch {}
 }
 function kbSetPath(p) { officeKbPath = (p || '').trim(); try { localStorage.setItem('roca-kb-path', officeKbPath); } catch {} return kbRefresh(); }
@@ -7358,7 +7364,7 @@ function settingsRender() {
     ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
     <h2>${esc(t('오피스'))}</h2>
     ${row(t('픽셀 배율'), t('자동은 창 크기에 맞춰 정수 배율을 고릅니다.'), seg('zoom', zoom, [['auto', t('자동')], ['2', '2×'], ['3', '3×'], ['4', '4×']]))}
-    ${row(t('지침서 저장소 경로'), (officeKbPath ? (officeKbInfo.ok ? `${t('찾음')}: ${officeKb}${officeKbInfo.zones ? ' · ' + t('agentdesk/zones.json 존 세트 사용 중') : ''}` : t('폴더를 찾지 못했습니다')) : t('프롬프트 존의 {kb}로 치환되는 폴더. 안에 agentdesk/zones.json이 있으면 팀 공용 존 세트로 불러옵니다.')),
+    ${row(t('지침서 저장소 경로'), (officeKbPath ? (officeKbInfo.ok ? `${t('찾음')}: ${officeKb} · ${officeKbInfo.count || 0}${t('개 존')}${officeKbInfo.generated ? ' (' + t('카테고리 폴더에서 생성') + ')' : ' (agentdesk/zones.json)'}` : t('폴더를 찾지 못했습니다')) : t('README.md가 있는 카테고리 폴더마다 프롬프트 존이 생기고, 프롬프트의 {kb}가 이 경로로 치환됩니다. agentdesk/zones.json이 있으면 그 파일을 우선 사용합니다.')),
       `<div class="set-inline"><input id="set-kb" value="${esc(officeKbPath)}" placeholder="~/team-guides" spellcheck="false"><button class="set-btn" data-set="kb-save">${esc(t('저장'))}</button></div>`)}
     <h2>${esc(t('기타'))}</h2>
     ${row(t('업데이트'), updateInfo && updateInfo.newer ? `${t('새 버전')} ${updateInfo.latest} ${t('사용 가능')} (${t('현재')} ${updateInfo.current})` : updateInfo && updateInfo.latest ? `${t('최신 버전입니다')} (${updateInfo.current})` : t('하루에 한 번 GitHub 릴리스를 확인합니다.'), (updateInfo && updateInfo.newer) ? `<button class="set-btn" data-set="update-open">${esc(t('받기'))}</button>` : `<button class="set-btn" data-set="update-check">${esc(t('지금 확인'))}</button>`)}

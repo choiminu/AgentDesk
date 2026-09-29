@@ -1114,9 +1114,42 @@ ipcMain.handle("orca:kb-check", (_e, p) => {
   let ok = false; try { ok = statSync(dir).isDirectory(); } catch {}
   return { ok, path: dir, zones: ok && existsSync(join(dir, "agentdesk", "zones.json")) };
 });
+// zone set for a knowledge base: agentdesk/zones.json if the team keeps one, otherwise one zone per top-level
+// category folder that has a README.md (name from its first heading). Both are generic — no repo-specific logic.
+const KB_SKIP_DIRS = new Set(["node_modules", "common", "scripts", "docs", "dist", "build", "agentdesk", "records", "templates", "procedures", "guides"]);
+const KB_ICONS = [[/jira|ticket|issue/i, "🎫"], [/db|sql|data/i, "🗄"], [/settle|fin|pay|account/i, "💰"], [/slack|chat/i, "💬"], [/mail|email/i, "✉"], [/quer/i, "🧮"], [/deploy|ops|infra/i, "🚀"], [/test|qa/i, "🧪"], [/doc|wiki|guide/i, "📄"]];
+function kbHeading(file) {
+  try { const m = readFileSync(file, "utf-8").match(/^#\s+(.+)$/m); return m ? m[1].replace(/[`*_]/g, "").trim() : ""; } catch { return ""; }
+}
+function kbGenerateZones(dir) {
+  const zones = [];
+  const hasSafety = existsSync(join(dir, "common", "safety-rules.md"));
+  let entries = []; try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return zones; }
+  for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!e.isDirectory() || e.name.startsWith(".") || KB_SKIP_DIRS.has(e.name)) continue;
+    const readme = join(dir, e.name, "README.md"); if (!existsSync(readme)) continue;
+    const heading = kbHeading(readme) || e.name;
+    const name = heading.split(/\s+[—–-]\s+/).pop().slice(0, 12);
+    const icon = (KB_ICONS.find(([re]) => re.test(e.name + " " + heading)) || [null, "📁"])[1];
+    const has = sub => existsSync(join(dir, e.name, sub));
+    const prompt = `[${name}] ` +
+      (hasSafety ? "먼저 `{kb}/common/safety-rules.md`를 읽고 그 규칙을 최우선으로 지켜. " : "") +
+      "`{kb}/README.md`의 사용 흐름을 따르고, 이번 요청의 카테고리 문서 `{kb}/" + e.name + "/README.md`를 읽어 절차대로 진행해. " +
+      (has("procedures") ? "`{kb}/" + e.name + "/procedures/`에 같은 주제의 문서가 있으면 그대로 따르고, " : "") +
+      (has("guides") ? "`guides/`의 규칙·배경을 확인하고, " : "") +
+      (has("templates") ? "`templates/`의 양식으로 결과물을 만들어. " : "") +
+      "무엇을 할지는 이 대화의 맥락과 현재 저장소({repo}, 브랜치 {branch})의 최근 작업(git status·log·diff)에서 파악하고, 정해지지 않은 선택지는 작업 전에 AskUserQuestion으로 한 번만 물어봐. " +
+      "생성·발송·수정 같은 쓰기 동작은 초안(대상·본문 전문)을 보여주고 확인받기 전에는 하지 마." +
+      (has("records") ? " 반복될 만한 처리였으면 `{kb}/" + e.name + "/records/YYYYMMDD_주제.md` 기록을 제안해(날짜는 `date` 결과)." : "") +
+      "\n\n마지막에 REPORT_START 로 시작해 [한 일] [변경 파일] [막힌 점] [다음 제안] 네 항목을 각 1~3줄로 쓰고 REPORT_END 로 끝내줘.";
+    zones.push({ id: "kb-" + e.name, icon, name, auto: false, prompt, source: "kb" });
+  }
+  return zones;
+}
 ipcMain.handle("orca:kb-zones", (_e, p) => {
   const dir = kbResolve(p); if (!dir) return null;
-  try { return JSON.parse(readFileSync(join(dir, "agentdesk", "zones.json"), "utf-8")); } catch { return null; }
+  try { const d = JSON.parse(readFileSync(join(dir, "agentdesk", "zones.json"), "utf-8")); if (d && Array.isArray(d.zones)) return { zones: d.zones.map(z => ({ ...z, source: "kb" })), generated: false }; } catch {}
+  return { zones: kbGenerateZones(dir), generated: true };
 });
 const ZONES_FILE = join(ROCA_DIR, "zones.json");
 ipcMain.handle("orca:zones-read", () => { try { return JSON.parse(readFileSync(ZONES_FILE, "utf-8")); } catch { return null; } });
