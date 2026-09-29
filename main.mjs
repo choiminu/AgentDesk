@@ -1102,27 +1102,21 @@ ipcMain.handle("orca:hooks-uninstall", (_e, agents) => { try { return uninstallH
 const TEAMS_FILE = join(ROCA_DIR, "teams.json");
 ipcMain.handle("orca:teams-read", () => { try { return JSON.parse(readFileSync(TEAMS_FILE, "utf-8")); } catch { return null; } });
 ipcMain.handle("orca:teams-write", (_e, data) => { try { mkdirSync(ROCA_DIR, { recursive: true }); writeFileSync(TEAMS_FILE, JSON.stringify(data, null, 2)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
-// knowledge repo ("fin-management"): found by name under the usual places so nobody has to type a path.
-// A folder counts only if it carries common/safety-rules.md. FIN_MANAGEMENT_DIR overrides the search.
-const KB_NAME = "fin-management";
-let kbCache = { path: null, at: 0 };
-function kbFind() {
-  const ok = p => { try { return !!p && existsSync(join(p, "common", "safety-rules.md")); } catch { return false; } };
-  if (kbCache.path && Date.now() - kbCache.at < 300000 && ok(kbCache.path)) return kbCache.path;
-  const home = homedir(), cands = [];
-  if (process.env.FIN_MANAGEMENT_DIR) cands.push(process.env.FIN_MANAGEMENT_DIR);
-  cands.push(join(home, KB_NAME));
-  const roots = ["project", "projects", "work", "workspace", "workspaces", "repos", "repo", "src", "dev", "code", "git", "Desktop", "Documents"];
-  for (const d of roots) cands.push(join(home, d, KB_NAME));
-  for (const d of roots) { try { for (const sub of readdirSync(join(home, d))) if (!sub.startsWith(".")) cands.push(join(home, d, sub, KB_NAME)); } catch {} }
-  const found = cands.find(ok) || null;
-  kbCache = { path: found, at: Date.now() };
-  return found;
+// knowledge base: a folder the user points the widget at (Settings → 지침서 저장소). Prompts see it as {kb};
+// if it carries agentdesk/zones.json that file becomes the shared zone set. Nothing here assumes a specific repo.
+function kbResolve(p) {
+  if (!p || typeof p !== "string") return null;
+  const t = p.trim(); if (!t) return null;
+  return t.startsWith("~") ? join(homedir(), t.slice(1)) : t;
 }
-ipcMain.handle("orca:kb-find", () => kbFind());
-ipcMain.handle("orca:kb-zones", () => {
-  const p = kbFind(); if (!p) return null;
-  try { return JSON.parse(readFileSync(join(p, "agentdesk", "zones.json"), "utf-8")); } catch { return null; }
+ipcMain.handle("orca:kb-check", (_e, p) => {
+  const dir = kbResolve(p); if (!dir) return { ok: false, path: null, zones: false };
+  let ok = false; try { ok = statSync(dir).isDirectory(); } catch {}
+  return { ok, path: dir, zones: ok && existsSync(join(dir, "agentdesk", "zones.json")) };
+});
+ipcMain.handle("orca:kb-zones", (_e, p) => {
+  const dir = kbResolve(p); if (!dir) return null;
+  try { return JSON.parse(readFileSync(join(dir, "agentdesk", "zones.json"), "utf-8")); } catch { return null; }
 });
 const ZONES_FILE = join(ROCA_DIR, "zones.json");
 ipcMain.handle("orca:zones-read", () => { try { return JSON.parse(readFileSync(ZONES_FILE, "utf-8")); } catch { return null; } });
