@@ -3543,7 +3543,7 @@ $('list').addEventListener('click', async e => {
       // template zones as a submenu; picking one sends that zone's prompt to the session right away (no confirm step)
       const s = sessions.find(ss => ss.id === actBtn.dataset.id); if (!s) return;
       const ch = officeChars.get(s.id) || { sid: s.id, sess: s, x: 0, y: 0 };
-      const items = zoneState.zones.map(z => [z.icon, zoneLabel(z), () => zoneSend(ch, z, zoneFill(z.prompt, s))]);
+      const items = zoneState.zones.map(z => [z.icon, zoneLabel(z), () => { if (zoneReady(z)) zoneSend(ch, z, zoneFill(z.prompt, s)); }]);
       if (!items.length) items.push(['✎', '존이 없습니다 — 오피스 탭에서 추가', () => {}]);
       const r = actBtn.getBoundingClientRect();
       openItemsMenu(r.left, r.bottom + 4, `🧩 ${s.name}`, items);
@@ -6712,7 +6712,33 @@ let zoneState = { zones: ZONE_DEFAULTS.map(z => ({ ...z })), assign: {} };   // 
 let zoneBlockCache = null;
 async function zonesLoad() {
   if (OFFICE_DEMO) { zoneState.assign = { 'demo-2': { zoneId: 'deploy', sentAt: Date.now() } }; return; }
-  try { const d = await window.orca.zonesRead(); if (d && Array.isArray(d.zones)) zoneState = { zones: d.zones, assign: d.assign || {} }; } catch {}
+  try { const d = await window.orca.zonesRead(); if (d && Array.isArray(d.zones)) zoneState = { zones: d.zones, assign: d.assign || {}, history: d.history || [] }; } catch {}
+  await kbRefresh();
+}
+// knowledge repo: located by the main process (see kbFind), exposed to prompts as {kb}; its agentdesk/zones.json is the team's zone set
+let officeKb = null;
+async function kbRefresh() {
+  try { officeKb = await window.orca.kbFind(); } catch { officeKb = null; }
+  if (!officeKb) return;
+  try {
+    const repo = await window.orca.kbZones();
+    if (repo && Array.isArray(repo.zones)) {
+      let changed = false;
+      for (const z of repo.zones) {
+        if (!z || !z.id) continue;
+        const i = zoneState.zones.findIndex(x => x.id === z.id);
+        const merged = { ...z, auto: i >= 0 ? !!zoneState.zones[i].auto : !!z.auto };   // "send without confirm" stays a personal choice
+        if (i >= 0) { if (JSON.stringify(zoneState.zones[i]) !== JSON.stringify(merged)) { zoneState.zones[i] = merged; changed = true; } }
+        else { zoneState.zones.push(merged); changed = true; }
+      }
+      if (changed) zonesSave();
+    }
+  } catch {}
+}
+setInterval(kbRefresh, 5 * 60 * 1000);
+function zoneReady(zone) {
+  if (zone.prompt.includes('{kb}') && !officeKb) { showInAppToast(t('fin-management 저장소를 찾지 못했습니다 (~ 아래에 클론하거나 FIN_MANAGEMENT_DIR 설정)'), 'error'); return false; }
+  return true;
 }
 let zonesSaveTimer = null;
 function zonesSave() {
@@ -6729,7 +6755,7 @@ function zonePinned(sid) { const c = zoneState.assign[sid] ? officeChars.get(sid
 function zoneOf(sid) { const a = zoneState.assign[sid]; return a ? zoneById(a.zoneId) : null; }
 function zoneFill(tpl, sess) {
   const file = sess.toolInput ? String(sess.toolInput).split(/\s+/)[0] : '';
-  const vars = { name: sess.name || '', branch: sess.branch || '', repo: sess.repo || '', tool: sess.tool || '', file: file || '변경한 파일', date: new Date().toISOString().slice(0, 10) };
+  const vars = { name: sess.name || '', branch: sess.branch || '', repo: sess.repo || '', tool: sess.tool || '', file: file || '변경한 파일', date: new Date().toISOString().slice(0, 10), kb: officeKb || '~/fin-management' };
   return tpl.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
 }
 // an assignment ends once the session has answered (left running for 5s+) or the character is gone
@@ -6821,6 +6847,7 @@ async function zoneSend(ch, zone, text) {
   } catch (e) { showInAppToast(`${name}: ${e.message}`, 'error'); }
 }
 function zoneDrop(ch, zone) {
+  if (!zoneReady(zone)) return;
   const text = zoneFill(zone.prompt, ch.sess);
   if (zone.auto) { zoneSend(ch, zone, text); return; }
   const m = teamModal(`<h3>${esc(zone.icon)} ${esc(zone.name)} · ${t('존 프롬프트 보내기')}</h3>
