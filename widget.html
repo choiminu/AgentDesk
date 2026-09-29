@@ -4990,7 +4990,8 @@ function officeFrame(now) {
       ch.lastStatus = sess.status; ch.statusSince = Date.now();
     }
     if (!!sess.needsInput !== !!ch.lastNeedsInput) {
-      if (sess.needsInput && ch.lastNeedsInput !== undefined) { ch.alertT = 4; officeBeep('ask'); officeAskAuto(ch); }
+      // a question that is already pending when the office first sees the session opens the popover too, just without the beep
+      if (sess.needsInput) { if (ch.lastNeedsInput !== undefined) { ch.alertT = 4; officeBeep('ask'); } officeAskAuto(ch); }
       ch.lastNeedsInput = !!sess.needsInput;
       if (sess.needsInput) { const tm = teamOf(sess.id); if (tm && tm.pm !== sess.id) teamLog(tm, 'needs-input', `${sess.name}: 사용자 입력 대기`, { from: sess.name }); }
     }
@@ -6333,7 +6334,7 @@ $('office-canvas').addEventListener('mousemove', e => {
   if (!ch) {
     if (!onPet && !zs && !onBoard && !onSign) { tip.hidden = true; return; }
     tip.innerHTML = onSign ? '<b>' + esc(officeCompany) + '</b><span>' + t('회사 간판 · 클릭해서 이름 변경') + '</span>'
-      : zs ?`<b>${esc(zs.zone.icon)} ${esc(t(zs.zone.name))}</b><span style="display:block;max-width:260px;white-space:normal;color:var(--text2)">${esc(zs.zone.prompt.slice(0, 140))}${zs.zone.prompt.length > 140 ? '…' : ''}</span><span style="display:block;color:#5fc7b3;margin-top:2px">${t('드래그해 놓으면 이 프롬프트를 보냅니다')}${zs.zone.auto ? ' · ' + t('확인 없이 바로 보내기') : ''}</span>`
+      : zs ?`<b data-verbatim>${esc(zs.zone.icon)} ${esc(zoneLabel(zs.zone))}</b><span data-verbatim style="display:block;max-width:260px;white-space:normal;color:var(--text2)">${esc(zs.zone.prompt.slice(0, 140))}${zs.zone.prompt.length > 140 ? '…' : ''}</span><span style="display:block;color:#5fc7b3;margin-top:2px">${t('드래그해 놓으면 이 프롬프트를 보냅니다')}${zs.zone.auto ? ' · ' + t('확인 없이 바로 보내기') : ''}</span>`
       : onBoard ? '<b>' + t('화이트보드') + '</b><span>' + t('클릭: 가장 오래 기다리는 세션으로 이동해 채팅 열기') + '</span>'
       : `<b>${esc(onPet.name)}</b><span>` + t('휴게실 펫 · 클릭하면 좋아합니다') + '</span>';
     const wr0 = $('office-wrap').getBoundingClientRect();
@@ -6393,7 +6394,7 @@ $('office-canvas').addEventListener('contextmenu', e => {
   const ch = officeCharAt(e);
   if (!ch || !ch.sess) {
     const p = officeWorldPos(e); const zs = officeZoneSeatAt(p.x, p.y);
-    if (zs) { e.preventDefault(); openItemsMenu(e.clientX, e.clientY, `${zs.zone.icon} ${zs.zone.name}`, zoneCellMenuItems(zs.zone)); }
+    if (zs) { e.preventDefault(); openItemsMenu(e.clientX, e.clientY, `${zs.zone.icon} ${zoneLabel(zs.zone)}`, zoneCellMenuItems(zs.zone)); }
     return;
   }
   e.preventDefault(); ch.reactT = 1.2;
@@ -6661,6 +6662,8 @@ function zonesSave() {
 }
 zonesLoad();
 function zoneById(id) { return zoneState.zones.find(z => z.id === id) || null; }
+// only the bundled default zones have dictionary translations; user-defined names are shown verbatim
+function zoneLabel(z) { return ZONE_DEFAULTS.some(d => d.id === z.id) ? t(z.name) : z.name; }
 // assigned AND currently able to sit at the zone desk (present, not fading, not in a meeting)
 function zonePinned(sid) { const c = zoneState.assign[sid] ? officeChars.get(sid) : null; return !!(c && !c.fading && !c.meeting); }
 function zoneOf(sid) { const a = zoneState.assign[sid]; return a ? zoneById(a.zoneId) : null; }
@@ -6731,7 +6734,7 @@ function officeDrawZoneBlock(ctx, im, zb, worldW, originX, now, bob, pulse, pcFr
     }
     // zone label on the rug corner (drawn after the seat so it stays readable)
     zItems.push({ z: seat.chairY + 1, draw: () => {
-      const badge = `${z.icon} ${t(z.name)}`.slice(0, 18);
+      const badge = `${z.icon} ${zoneLabel(z)}`.slice(0, 18);
       ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       const bw = Math.min(72, Math.round(ctx.measureText(badge).width + 6));
       ctx.fillStyle = '#5fc7b3'; ctx.fillRect(seat.sx + 8, seat.sy + 12, bw, 10);
