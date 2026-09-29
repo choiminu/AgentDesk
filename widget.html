@@ -5329,6 +5329,18 @@ function officeFrame(now) {
   officeAisleXs = graph.xs.filter(ax => ax >= 8 && ax <= worldW - 8);
   if (officeAsk) officeAskPlace();
   officeDrawLighting(ctx, worldW, worldH, floorTop, shown);
+  // dragging near the top/bottom edge scrolls the office so far-away drop targets can be reached
+  if (officeDrag && officeDrag.moved && officeDrag.clientY != null) {
+    const wrap = $('office-wrap'), r = wrap.getBoundingClientRect(), edge = 56;
+    let dy = 0;
+    if (officeDrag.clientY < r.top + edge) dy = -Math.ceil((r.top + edge - officeDrag.clientY) / 4);
+    else if (officeDrag.clientY > r.bottom - edge) dy = Math.ceil((officeDrag.clientY - (r.bottom - edge)) / 4);
+    if (dy) {
+      wrap.scrollTop += dy;
+      const p = officeWorldPos({ clientX: officeDrag.clientX, clientY: officeDrag.clientY });
+      officeDrag.x = p.x; officeDrag.y = p.y;
+    }
+  }
   officeDrawDrag(ctx, im, allTeamBlocks, worldW);
   officeDrawMinimap(canvas, worldW, worldH, floorTop, L.scale, [
     { y: reception.y - 12, h: reception.h, color: '#a8926e' },
@@ -6622,12 +6634,12 @@ $('office-canvas').addEventListener('mousedown', e => {
   const ch = officeCharAt(e);
   if (!ch || !ch.sess || ch.sess.isSub) return;
   const p = officeWorldPos(e);
-  officeDrag = { ch, x: p.x, y: p.y, startX: p.x, startY: p.y, moved: false };
+  officeDrag = { ch, x: p.x, y: p.y, startX: p.x, startY: p.y, moved: false, clientX: e.clientX, clientY: e.clientY };
 });
 window.addEventListener('mousemove', e => {
   if (!officeDrag) return;
   const p = officeWorldPos(e);
-  officeDrag.x = p.x; officeDrag.y = p.y;
+  officeDrag.x = p.x; officeDrag.y = p.y; officeDrag.clientX = e.clientX; officeDrag.clientY = e.clientY;
   if (!officeDrag.moved && Math.hypot(p.x - officeDrag.startX, p.y - officeDrag.startY) > 7) { officeDrag.moved = true; $('office-tip').hidden = true; }
 });
 window.addEventListener('mouseup', e => {
