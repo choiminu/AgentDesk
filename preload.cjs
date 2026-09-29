@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld("orca", {
   tmuxAvailable: () => ipcRenderer.invoke("roca:tmux-available"),
   sessionMeta: (transcriptPath, cwd, agent) => ipcRenderer.invoke("roca:session-meta", transcriptPath, cwd, agent),
   teamsWrite: (data) => ipcRenderer.invoke("orca:teams-write", data),
+  kbCheck: (p) => ipcRenderer.invoke("orca:kb-check", p),
+  kbZones: (p) => ipcRenderer.invoke("orca:kb-zones", p),
   zonesRead: () => ipcRenderer.invoke("orca:zones-read"),
   zonesWrite: (data) => ipcRenderer.invoke("orca:zones-write", data),
   onHookEvents: (cb) => ipcRenderer.on("roca:hook-events", (_e, evts) => cb(evts)),

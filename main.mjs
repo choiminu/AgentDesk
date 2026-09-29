@@ -1102,6 +1102,22 @@ ipcMain.handle("orca:hooks-uninstall", (_e, agents) => { try { return uninstallH
 const TEAMS_FILE = join(ROCA_DIR, "teams.json");
 ipcMain.handle("orca:teams-read", () => { try { return JSON.parse(readFileSync(TEAMS_FILE, "utf-8")); } catch { return null; } });
 ipcMain.handle("orca:teams-write", (_e, data) => { try { mkdirSync(ROCA_DIR, { recursive: true }); writeFileSync(TEAMS_FILE, JSON.stringify(data, null, 2)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
+// knowledge base: a folder the user points the widget at (Settings → 지침서 저장소). Prompts see it as {kb};
+// if it carries agentdesk/zones.json that file becomes the shared zone set. Nothing here assumes a specific repo.
+function kbResolve(p) {
+  if (!p || typeof p !== "string") return null;
+  const t = p.trim(); if (!t) return null;
+  return t.startsWith("~") ? join(homedir(), t.slice(1)) : t;
+}
+ipcMain.handle("orca:kb-check", (_e, p) => {
+  const dir = kbResolve(p); if (!dir) return { ok: false, path: null, zones: false };
+  let ok = false; try { ok = statSync(dir).isDirectory(); } catch {}
+  return { ok, path: dir, zones: ok && existsSync(join(dir, "agentdesk", "zones.json")) };
+});
+ipcMain.handle("orca:kb-zones", (_e, p) => {
+  const dir = kbResolve(p); if (!dir) return null;
+  try { return JSON.parse(readFileSync(join(dir, "agentdesk", "zones.json"), "utf-8")); } catch { return null; }
+});
 const ZONES_FILE = join(ROCA_DIR, "zones.json");
 ipcMain.handle("orca:zones-read", () => { try { return JSON.parse(readFileSync(ZONES_FILE, "utf-8")); } catch { return null; } });
 ipcMain.handle("orca:zones-write", (_e, data) => { try { mkdirSync(ROCA_DIR, { recursive: true }); writeFileSync(ZONES_FILE, JSON.stringify(data, null, 2)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
