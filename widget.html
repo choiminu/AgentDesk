@@ -5331,10 +5331,12 @@ function officeFrame(now) {
   officeDrawLighting(ctx, worldW, worldH, floorTop, shown);
   // dragging near the top/bottom edge scrolls the office so far-away drop targets can be reached
   if (officeDrag && officeDrag.moved && officeDrag.clientY != null) {
-    const wrap = $('office-wrap'), r = wrap.getBoundingClientRect(), edge = 56;
+    const wrap = $('office-wrap'), r = wrap.getBoundingClientRect(), edge = 64;
+    // speed grows with how far past the edge line the cursor is (keeps accelerating outside the area), capped per frame
+    const speed = over => Math.min(64, 4 + over * 0.7);
     let dy = 0;
-    if (officeDrag.clientY < r.top + edge) dy = -Math.ceil((r.top + edge - officeDrag.clientY) / 4);
-    else if (officeDrag.clientY > r.bottom - edge) dy = Math.ceil((officeDrag.clientY - (r.bottom - edge)) / 4);
+    if (officeDrag.clientY < r.top + edge) dy = -Math.ceil(speed(r.top + edge - officeDrag.clientY));
+    else if (officeDrag.clientY > r.bottom - edge) dy = Math.ceil(speed(officeDrag.clientY - (r.bottom - edge)));
     if (dy) {
       wrap.scrollTop += dy;
       const p = officeWorldPos({ clientX: officeDrag.clientX, clientY: officeDrag.clientY });
