@@ -2152,6 +2152,8 @@
   .set-row .tx { flex: 1; min-width: 0; }
   .set-row .tx b { display: block; font-size: 11.5px; color: var(--text); font-weight: 600; }
   .set-row .tx span { display: block; font-size: 10px; color: var(--text3); line-height: 1.4; margin-top: 1px; }
+  .set-inline { display: flex; gap: 4px; align-items: center; }
+  .set-inline input { width: 150px; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 10.5px; }
   .seg { display: flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; flex-shrink: 0; }
   .seg button { font-size: 10.5px; padding: 3px 9px; border: none; background: none; color: var(--text3); cursor: pointer; border-right: 1px solid var(--border-subtle); }
   .seg button:last-child { border-right: none; }
@@ -2730,6 +2732,9 @@ Object.assign(I18N, {
   '휴게실 펫 · 클릭하면 좋아합니다': 'Lounge pet · click to pet', '회사 이름': 'Company name', '회사 간판 · 클릭해서 이름 변경': 'Company sign · click to rename',
   '화면을 읽는 중…': 'Reading the screen…', '입력 대기가 끝났습니다': 'no longer waiting for input', '화면 읽기 실패: ': 'Could not read the screen: ', '직접 입력해서 답하기': 'Type an answer',
   '보내기': 'Send', '선택지를 찾지 못했습니다. 아래에 답을 입력하거나 채팅을 여세요.': 'No choices found on screen. Type an answer below or open the chat.', '전송됨: ': 'Sent: ', '전송 실패: ': 'Send failed: ', '전송 거부': 'send rejected', '바로 답하기': 'Answer here', '템플릿 프롬프트 보내기': 'Send a template prompt', '존이 없습니다 — 오피스 탭에서 추가': 'No zones yet — add one in the Office tab',
+  '지침서 저장소 경로': 'Guidelines folder', '찾음': 'Found', 'agentdesk/zones.json 존 세트 사용 중': 'using its agentdesk/zones.json zone set', '폴더를 찾지 못했습니다': 'Folder not found',
+  '프롬프트 존의 {kb}로 치환되는 폴더. 안에 agentdesk/zones.json이 있으면 팀 공용 존 세트로 불러옵니다.': 'Folder substituted for {kb} in zone prompts. If it contains agentdesk/zones.json, that becomes the shared zone set.',
+  '지침서 저장소 연결됨': 'Guidelines folder connected', '지침서 저장소 경로가 없습니다 — 설정에서 지정하세요': 'No guidelines folder — set it in Settings',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -3543,7 +3548,7 @@ $('list').addEventListener('click', async e => {
       // template zones as a submenu; picking one sends that zone's prompt to the session right away (no confirm step)
       const s = sessions.find(ss => ss.id === actBtn.dataset.id); if (!s) return;
       const ch = officeChars.get(s.id) || { sid: s.id, sess: s, x: 0, y: 0 };
-      const items = zoneState.zones.map(z => [z.icon, zoneLabel(z), () => zoneSend(ch, z, zoneFill(z.prompt, s))]);
+      const items = zoneState.zones.map(z => [z.icon, zoneLabel(z), () => { if (zoneReady(z)) zoneSend(ch, z, zoneFill(z.prompt, s)); }]);
       if (!items.length) items.push(['✎', '존이 없습니다 — 오피스 탭에서 추가', () => {}]);
       const r = actBtn.getBoundingClientRect();
       openItemsMenu(r.left, r.bottom + 4, `🧩 ${s.name}`, items);
@@ -6712,7 +6717,39 @@ let zoneState = { zones: ZONE_DEFAULTS.map(z => ({ ...z })), assign: {} };   // 
 let zoneBlockCache = null;
 async function zonesLoad() {
   if (OFFICE_DEMO) { zoneState.assign = { 'demo-2': { zoneId: 'deploy', sentAt: Date.now() } }; return; }
-  try { const d = await window.orca.zonesRead(); if (d && Array.isArray(d.zones)) zoneState = { zones: d.zones, assign: d.assign || {} }; } catch {}
+  try { const d = await window.orca.zonesRead(); if (d && Array.isArray(d.zones)) zoneState = { zones: d.zones, assign: d.assign || {}, history: d.history || [] }; } catch {}
+  await kbRefresh();
+}
+// knowledge base: the folder set in Settings (roca-kb-path). Prompts see it as {kb}; <kb>/agentdesk/zones.json, when present, is the shared zone set
+let officeKbPath = ''; try { officeKbPath = localStorage.getItem('roca-kb-path') || ''; } catch {}
+let officeKb = null, officeKbInfo = { ok: false, zones: false };
+async function kbRefresh() {
+  officeKb = null; officeKbInfo = { ok: false, zones: false };
+  if (!officeKbPath) return;
+  try { officeKbInfo = await window.orca.kbCheck(officeKbPath); } catch { return; }
+  if (!officeKbInfo.ok) return;
+  officeKb = officeKbInfo.path;
+  if (!officeKbInfo.zones) return;
+  try {
+    const repo = await window.orca.kbZones(officeKbPath);
+    if (repo && Array.isArray(repo.zones)) {
+      let changed = false;
+      for (const z of repo.zones) {
+        if (!z || !z.id) continue;
+        const i = zoneState.zones.findIndex(x => x.id === z.id);
+        const merged = { ...z, auto: i >= 0 ? !!zoneState.zones[i].auto : !!z.auto };   // "send without confirm" stays a personal choice
+        if (i >= 0) { if (JSON.stringify(zoneState.zones[i]) !== JSON.stringify(merged)) { zoneState.zones[i] = merged; changed = true; } }
+        else { zoneState.zones.push(merged); changed = true; }
+      }
+      if (changed) zonesSave();
+    }
+  } catch {}
+}
+function kbSetPath(p) { officeKbPath = (p || '').trim(); try { localStorage.setItem('roca-kb-path', officeKbPath); } catch {} return kbRefresh(); }
+setInterval(kbRefresh, 5 * 60 * 1000);
+function zoneReady(zone) {
+  if (zone.prompt.includes('{kb}') && !officeKb) { showInAppToast(t('지침서 저장소 경로가 없습니다 — 설정에서 지정하세요'), 'error'); return false; }
+  return true;
 }
 let zonesSaveTimer = null;
 function zonesSave() {
@@ -6729,7 +6766,7 @@ function zonePinned(sid) { const c = zoneState.assign[sid] ? officeChars.get(sid
 function zoneOf(sid) { const a = zoneState.assign[sid]; return a ? zoneById(a.zoneId) : null; }
 function zoneFill(tpl, sess) {
   const file = sess.toolInput ? String(sess.toolInput).split(/\s+/)[0] : '';
-  const vars = { name: sess.name || '', branch: sess.branch || '', repo: sess.repo || '', tool: sess.tool || '', file: file || '변경한 파일', date: new Date().toISOString().slice(0, 10) };
+  const vars = { name: sess.name || '', branch: sess.branch || '', repo: sess.repo || '', tool: sess.tool || '', file: file || '변경한 파일', date: new Date().toISOString().slice(0, 10), kb: officeKb || '{kb}' };
   return tpl.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
 }
 // an assignment ends once the session has answered (left running for 5s+) or the character is gone
@@ -6821,6 +6858,7 @@ async function zoneSend(ch, zone, text) {
   } catch (e) { showInAppToast(`${name}: ${e.message}`, 'error'); }
 }
 function zoneDrop(ch, zone) {
+  if (!zoneReady(zone)) return;
   const text = zoneFill(zone.prompt, ch.sess);
   if (zone.auto) { zoneSend(ch, zone, text); return; }
   const m = teamModal(`<h3>${esc(zone.icon)} ${esc(zone.name)} · ${t('존 프롬프트 보내기')}</h3>
@@ -6839,7 +6877,7 @@ function zoneEdit(zone) {
   const z = zone || { id: 'z' + Date.now().toString(36), icon: '✨', name: '', prompt: '', auto: false };
   const m = teamModal(`<h3>${t(isNew ? '새 존 추가…' : '존 편집')}</h3>
     <div class="row" style="gap:8px"><label>${t('아이콘')} <input id="zone-icon" value="${esc(z.icon)}" style="width:3em"></label><label style="flex:1">${t('이름')} <input id="zone-name" value="${esc(z.name)}" style="width:100%"></label></div>
-    <label style="display:block;margin-top:8px">${t('프롬프트 템플릿')} <span style="color:var(--text3)">{name} {branch} {repo} {tool} {file} {date}</span></label>
+    <label style="display:block;margin-top:8px">${t('프롬프트 템플릿')} <span style="color:var(--text3)">{name} {branch} {repo} {tool} {file} {date} {kb}</span></label>
     <textarea id="zone-prompt" style="min-height:140px">${esc(z.prompt)}</textarea>
     <label style="display:block;margin-top:8px"><input type="checkbox" id="zone-auto2" ${z.auto ? 'checked' : ''}> ${t('확인 없이 바로 보내기')}</label>
     <div class="row"><button id="zone-cancel">${t('취소')}</button><span style="margin-left:auto"></span><button class="primary" id="zone-save">${t('저장')}</button></div>`);
@@ -7320,6 +7358,8 @@ function settingsRender() {
     ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
     <h2>${esc(t('오피스'))}</h2>
     ${row(t('픽셀 배율'), t('자동은 창 크기에 맞춰 정수 배율을 고릅니다.'), seg('zoom', zoom, [['auto', t('자동')], ['2', '2×'], ['3', '3×'], ['4', '4×']]))}
+    ${row(t('지침서 저장소 경로'), (officeKbPath ? (officeKbInfo.ok ? `${t('찾음')}: ${officeKb}${officeKbInfo.zones ? ' · ' + t('agentdesk/zones.json 존 세트 사용 중') : ''}` : t('폴더를 찾지 못했습니다')) : t('프롬프트 존의 {kb}로 치환되는 폴더. 안에 agentdesk/zones.json이 있으면 팀 공용 존 세트로 불러옵니다.')),
+      `<div class="set-inline"><input id="set-kb" value="${esc(officeKbPath)}" placeholder="~/team-guides" spellcheck="false"><button class="set-btn" data-set="kb-save">${esc(t('저장'))}</button></div>`)}
     <h2>${esc(t('기타'))}</h2>
     ${row(t('업데이트'), updateInfo && updateInfo.newer ? `${t('새 버전')} ${updateInfo.latest} ${t('사용 가능')} (${t('현재')} ${updateInfo.current})` : updateInfo && updateInfo.latest ? `${t('최신 버전입니다')} (${updateInfo.current})` : t('하루에 한 번 GitHub 릴리스를 확인합니다.'), (updateInfo && updateInfo.newer) ? `<button class="set-btn" data-set="update-open">${esc(t('받기'))}</button>` : `<button class="set-btn" data-set="update-check">${esc(t('지금 확인'))}</button>`)}
     ${row(t('업데이트 자동 확인'), t('꺼 두면 위젯이 GitHub에 접속하지 않습니다.'), sw('update-auto', updateAuto))}
@@ -7341,6 +7381,7 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'sound') { $('office-sound').click(); settingsRender(); }
   else if (name === 'zoom' && v) { const sel = $('office-zoom'); sel.value = v; sel.dispatchEvent(new Event('change')); settingsRender(); }
   else if (name === 'onboarding') { onboardStep = 0; onboardOpen(); }
+  else if (name === 'kb-save') { await kbSetPath($('set-kb').value); settingsRender(); showInAppToast(officeKb ? t('지침서 저장소 연결됨') : t('폴더를 찾지 못했습니다'), officeKb ? undefined : 'error'); }
   else if (name === 'update-open') { if (updateInfo && updateInfo.url) window.orca.openExternal(updateInfo.url); }
   else if (name === 'update-check') { b.disabled = true; b.textContent = t('확인 중…'); await checkForUpdate(true); settingsRender(); }
   else if (name === 'update-auto') { updateAuto = !updateAuto; try { localStorage.setItem('roca-update-check', updateAuto ? '1' : '0'); } catch {} settingsRender(); }
