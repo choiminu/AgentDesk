@@ -1,0 +1,6 @@
+{
+  "display_information": { "name": "AgentDesk", "description": "Office front desk for AI coding agents", "background_color": "#0e1014" },
+  "features": { "bot_user": { "display_name": "agentdesk", "always_online": true }, "app_home": { "messages_tab_enabled": true, "messages_tab_read_only_enabled": false } },
+  "oauth_config": { "scopes": { "bot": ["app_mentions:read", "chat:write", "im:history", "im:read", "im:write", "reactions:write", "channels:history", "groups:history"] } },
+  "settings": { "event_subscriptions": { "bot_events": ["app_mention", "message.im"] }, "interactivity": { "is_enabled": false }, "org_deploy_enabled": false, "socket_mode_enabled": true, "token_rotation_enabled": false }
+}

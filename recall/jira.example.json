@@ -1,0 +1,6 @@
+{
+  "baseUrl": "https://your-site.atlassian.net",
+  "email": "you@company.com",
+  "token": "ATATT3... (https://id.atlassian.com/manage-profile/security/api-tokens)",
+  "jql": "assignee = currentUser() AND statusCategory != Done AND (duedate <= endOfDay() OR priority in (Highest, High)) ORDER BY duedate ASC"
+}
