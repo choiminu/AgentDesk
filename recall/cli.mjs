@@ -15,6 +15,7 @@ const usage = `agentdesk-recall <command>
   list [--repo NAME|--worktree NAME|--all] [--limit N] [--json]   newest notes
   summarize <transcript.jsonl> [--cwd DIR] [--agent claude|gemini|codex]   make a note from one transcript now
   backfill [--since 7d] [--project DIR]            summarize past Claude Code transcripts of a project (default: all projects)
+  brief                                            write today's morning briefing (~/.agentdesk/briefing.json) now
   install                                          register SessionStart + SessionEnd + PreCompact + prompt hooks (Claude Code; Gemini/Codex if present) and the /recall skill
   ensure-index                                     create MongoDB indexes
 Env: AGENTDESK_MONGO_URL (default mongodb://127.0.0.1:27017), AGENTDESK_MONGO_DB (agentdesk), AGENTDESK_RECALL_MODEL (haiku)`;
@@ -73,6 +74,7 @@ async function main() {
     console.log(`backfill done: ${n} transcript(s) processed`);
     return;
   }
+  if (cmd === "brief") { const { makeBriefing } = await import("./brief.mjs"); const o = await makeBriefing(); console.log(o.headline); for (const l of o.lines) console.log("•", l); return; }
   if (cmd === "install") { await install(); return; }
   console.log(usage);
 }

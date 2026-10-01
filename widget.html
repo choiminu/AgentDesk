@@ -2188,6 +2188,7 @@
   .session.stuck .s-icon { background: var(--yellow-dim); }
   .s-tool.stuck { color: var(--yellow) !important; border-color: color-mix(in srgb, var(--yellow) 50%, transparent) !important; font-weight: 700; }
   .s-time.ask { color: var(--yellow) !important; font-weight: 700; }
+  .s-tool.loop { color: var(--red) !important; border-color: color-mix(in srgb, var(--red) 50%, transparent) !important; font-weight: 700; }
   .s-expand { position: absolute; right: 8px; bottom: 6px; width: 18px; height: 18px; border-radius: 6px; border: none; background: transparent; color: var(--text3); font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .s-expand:hover { background: var(--surface-hover); color: var(--text); }
   .session.expanded .s-expand { transform: rotate(90deg); }
@@ -2206,6 +2207,18 @@
   .hidden-link:hover { color: var(--text); }
   .local-stats { font-family: var(--mono); font-size: 9.5px; color: var(--text3); justify-content: center; gap: 10px; }
   .local-stats[hidden] { display: none; }
+  /* ── morning briefing ── */
+  .brief-card { margin: 8px 10px 0; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border-subtle); box-shadow: 0 1px 2px rgba(0,0,0,0.12); position: relative; }
+  .brief-card[hidden] { display: none; }
+  .brief-card.urgent { border-color: color-mix(in srgb, var(--red) 50%, transparent); } .brief-card.busy { border-color: color-mix(in srgb, var(--yellow) 50%, transparent); }
+  .brief-card .b-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .brief-card .b-tag { font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); }
+  .brief-card .b-title { font-size: 12px; font-weight: 700; color: var(--text); flex: 1; min-width: 0; }
+  .brief-card .b-x { border: none; background: none; color: var(--text3); cursor: pointer; font-size: 12px; padding: 0 2px; }
+  .brief-card .b-x:hover { color: var(--text); }
+  .brief-card ul { margin: 8px 0 0; padding-left: 16px; font-size: 11px; line-height: 1.5; color: var(--text2); }
+  .brief-card ul li { margin: 2px 0; }
+  .brief-card .b-meta { margin-top: 6px; font-family: var(--mono); font-size: 9.5px; color: var(--text3); }
   /* ── first-run onboarding ── */
   .onboard { position: fixed; inset: 0; z-index: 200; background: var(--bg); display: flex; flex-direction: column; -webkit-app-region: no-drag; }
   .onboard[hidden] { display: none; }
@@ -2414,6 +2427,7 @@
       <input class="search-input" id="search" type="text" placeholder="검색... (repo: agent: term: 접두어 가능)" />
     </div>
     <div class="filters" id="filters" hidden></div>
+    <div class="brief-card" id="brief-card" hidden></div>
     <div class="list" id="list"></div>
     <div id="chat-panel" class="chat-panel">
       <div class="chat-header">
@@ -2655,6 +2669,8 @@
 
 <script src="core/status.js"></script>
 <script>
+// dev: ROCA_START_PAGE=…,set:<localStorage key>=<url-encoded value> presets a setting before anything reads it
+for (const part of location.hash.replace('#', '').split(',')) { const m = part.match(/^set:([a-z0-9-]+)=(.*)$/i); if (m) { try { localStorage.setItem(m[1], decodeURIComponent(m[2])); } catch {} } }
 // ── Shared utilities ──
 const POLL = 5000;
 const $ = id => document.getElementById(id);
@@ -2695,6 +2711,18 @@ const I18N = {
   '마지막 프롬프트': 'Last prompt', '마지막 응답': 'Last reply', '최근 도구': 'Recent tools', '위치': 'Location', '컨텍스트': 'Context', '지난 노트': 'Past notes', '불러오는 중…': 'Loading…', '관련 노트 없음': 'No related notes', '개 파일 변경됨': ' file(s) changed since',
   '/compact 보내기 (컨텍스트 정리)': 'Send /compact (trim context)', '/compact 전송': '/compact sent', '/compact 전송 (수락 미확인)': '/compact sent (not confirmed)', '/compact 전송 실패': 'Could not send /compact', '컨텍스트 90% — /compact 권장': 'context at 90% — consider /compact',
   '오늘 세션': 'today', '선택 응답 평균': 'avg answer', '검색... (repo: agent: term: 접두어 가능)': 'Search… (repo: agent: term: prefixes)',
+  '에이전트 자율 조절': 'Agent self-regulation', '컨텍스트 자동 정리': 'Auto context trim', '대기 중인 세션의 컨텍스트가 기준치를 넘으면 /compact 를 보냅니다 (30분에 한 번).': 'Sends /compact to a waiting session whose context passed the threshold (at most once per 30 min).',
+  '끔': 'Off', '반복 실패 개입': 'Loop intervention', '같은 도구 호출을 3번 반복하거나 3번 연속 실패하면, 팀이면 PM에게 다른 접근을 요청하고 아니면 세션에 직접 방향 전환을 요구합니다.': 'When a session repeats the same tool call 3 times or fails 3 times in a row, its PM is asked for a different approach (or the session itself when it has no team).',
+  '자율 조절 기록': 'Self-regulation log', '아직 개입한 적이 없습니다.': 'No interventions yet.', '건': '', '최근': 'latest', '보기': 'View', '연속 실패': 'failing', '반복 시도': 'repeating',
+  '도구 호출이 연속으로 실패하고 있습니다': 'Tool calls keep failing', '같은 도구 호출을 반복하고 있습니다': 'The same tool call keeps repeating', '반복 실패 → PM에게 다른 접근 요청': 'looping → asked the PM for another approach', '반복 실패 → 다른 접근 요청': 'looping → asked for another approach',
+  '오늘의 브리핑': "Today's briefing", '오늘은 그만 보기': 'Hide for today', '노트': 'notes', '어제 세션': 'sessions yesterday', '선택 요청': 'input requests', '오늘의 브리핑이 화이트보드에 적혔습니다': "Today's briefing is on the whiteboard",
+  '아침 브리핑': 'Morning briefing', '매일 생성': 'Generate daily', '지정 시각이 지나면 어제 노트·활동·Jira 마감 티켓으로 브리핑을 만들어 화이트보드와 대시보드에 적습니다.': "After the set time, yesterday's notes, activity and Jira due tickets become a briefing on the whiteboard and the dashboard.",
+  'Jira 연동은 ~/.agentdesk/jira.json(baseUrl·email·token)을 두면 켜집니다.': 'Jira joins in once ~/.agentdesk/jira.json (baseUrl, email, token) exists.', '지금 생성': 'Generate now', '마지막': 'last', '아직 생성된 브리핑이 없습니다.': 'No briefing yet.', '생성': 'Generate', '생성 중…': 'Generating…',
+  '브리핑 생성을 시작하지 못했습니다 (recall 모듈·MongoDB 확인)': 'Could not start the briefing (check the recall module and MongoDB)', '브리핑 생성 중 — 1~2분 뒤 표시됩니다': 'Generating the briefing — it appears in a minute or two',
+  '슬랙 창구': 'Slack front desk', '브리지 상태': 'Bridge status', '연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.': 'Connected — requests arrive via @mention or DM in Slack.', '설정 파일은 있지만 브리지가 꺼져 있습니다.': 'Config found but the bridge is not running.',
+  '~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.': 'Create ~/.agentdesk/slack.json (appToken, botToken) and the bridge starts by itself.', '재시작': 'Restart', '접수 담당 세션': 'Reception session',
+  '슬랙 요청을 처음 받아 처리하거나 다른 세션에 넘길 세션입니다. 연결된 세션 중에서 고르세요.': 'The session that receives Slack requests first and handles or forwards them. Pick a connected session.', '지정 안 함': 'None', '접수 기록': 'Front desk log', '보류': 'pending', '아직 받은 요청이 없습니다.': 'No requests yet.',
+  '접수 담당': 'Reception', '접수 담당 세션 지정 해제': 'Reception session cleared', '슬랙 접수: 담당 세션이 없어 보류 — 설정 → 슬랙 창구에서 지정하세요': 'Slack request on hold — pick a reception session in Settings → Slack front desk', '슬랙 스레드에 보고를 보냈습니다': 'report posted to the Slack thread',
   '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'AgentDesk에 오신 것을 환영합니다': 'Welcome to AgentDesk',
   'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
   '픽셀 오피스': 'Pixel office', '필요할 때만 알림': 'Alerts only when needed',
@@ -3171,6 +3199,7 @@ async function fetchData() {
         askSince: hk && hk.needsInput ? hk.askAt : 0,
         stuck: !!(hk && finalStatus === 'running' && Date.now() - hk.last > STUCK_MS),
         stuckSince: hk ? hk.last : 0,
+        loop: hk && finalStatus !== 'done' ? loopStateFor(hk) : null,
       };
     });
     for (const h of hookOnly) sessions.push(await hookOnlySession(h));
@@ -3313,6 +3342,7 @@ async function hookOnlySession(h) {
     ctxPct: screenCtxCache.get(h.id) ?? meta.ctxPct ?? null,
     recentTools: st.recentTools || [], askSince: st.needsInput ? st.askAt : 0,
     stuck: finalStatus === 'running' && Date.now() - st.last > STUCK_MS, stuckSince: st.last,
+    loop: finalStatus !== 'done' ? loopStateFor(st) : null,
   };
 }
 function showModeBanner(orcaOk, hookOnlyCount, paneCount) {
@@ -3385,7 +3415,8 @@ function applyStatusTransitions() {
             if (row && !officeAsk && live && live.needsInput) dashAskOpen(live, row);
           }, 500);
         }
-        if (s.ctxPct >= 90 && s.status !== 'done' && !ctxWarned.has(s.id)) { ctxWarned.add(s.id); showInAppToast(`${s.name}: ${t('컨텍스트 90% — /compact 권장')}`, 'error'); }
+        if (s.ctxPct >= 90 && s.status !== 'done' && !ctxWarned.has(s.id)) { ctxWarned.add(s.id); if (!unionCfg.compact) showInAppToast(`${s.name}: ${t('컨텍스트 90% — /compact 권장')}`, 'error'); }
+        unionTick(s);
         if (!s.needsInput && notifiedWaiting.has(s.id)) {
           notifiedWaiting.delete(s.id);
           clearWaitingToast(s.id);
@@ -3552,6 +3583,7 @@ function renderCard(s) {
             <span class="s-branch">${esc(s.branch)}</span>
             ${timeLabel}
             ${s.stuck ? `<span class="s-tool stuck" title="${esc(t('30분 넘게 도구 호출이나 응답이 없습니다'))}">${esc(t('응답 없음'))} ${timeAgo(s.stuckSince)}</span>` : ''}
+            ${s.loop ? `<span class="s-tool loop" title="${esc((s.loop.reason === 'fail' ? t('도구 호출이 연속으로 실패하고 있습니다') : t('같은 도구 호출을 반복하고 있습니다')) + ': ' + s.loop.tool + ' ' + (s.loop.input || ''))}">${esc(t(s.loop.reason === 'fail' ? '연속 실패' : '반복 시도'))} ${s.loop.count}×</span>` : ''}
             ${s.tool ? `<span class="s-tool">${esc(s.tool)}</span>` : ''}
             ${s.hookOnly ? `<span class="s-tool" title="${esc(t(s.connected ? '터미널로 연결됨' : (s.ended ? '클릭하면 터미널에서 claude --resume 으로 다시 엽니다' : '읽기 전용 (터미널 없음)')))}">${s.connected ? esc(terminalKind(handles.get(s.id)) === 'tmux' ? 'tmux' : t('터미널')) : (s.ended ? '▶ ' + t('다시 열기') : t('읽기 전용'))}</span>` : ''}
             ${s.ctxPct != null ? `<span class="s-tool ctx-chip ${ctxCls}" title="컨텍스트 사용량">ctx ${s.ctxPct}%</span>` : ''}
@@ -6135,9 +6167,10 @@ function officeDrawBoard(ctx, shown, worldW, floorTop) {
     teamLine = `팀 ${(officeChars.get(tm.pm)?.sess?.name || 'PM').slice(0, 10)}: R${tm.rounds || 0} · 진행 ${pending} · 보고 ${all.length - pending}${stale ? ' · 갱신 필요 ' + stale : ''}`;
     break;
   }
+  const briefLine = briefing && briefing.headline && briefing.date === new Date().toISOString().slice(0, 10) ? `📋 ${briefing.headline.slice(0, 40)}` : '';
   const line2 = t(longest ? `가장 오래 대기: ${(longest.sess.name || '').slice(0, 12)} ${officeFmtSince(longest.statusSince)}`
     : (hot && hot.ctxPct >= 75) ? `컨텍스트 주의: ${(hot.name || '').slice(0, 12)} ${hot.ctxPct}%`
-    : teamLine || (run ? '모두 응답 중입니다' : '대기 중인 요청이 없습니다'));
+    : teamLine || briefLine || (run ? '모두 응답 중입니다' : '대기 중인 요청이 없습니다'));
   ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
   // shrink the copy until the board fits the room
   const maxW = worldW - 16;
@@ -7168,7 +7201,10 @@ function teamParseBrief(text) {
   const m = text.match(/BRIEF_START([\s\S]*?)BRIEF_END/); return m ? m[1].trim() : (text.includes('## 목표') ? text.trim() : null);
 }
 function teamParseReport(text) {
-  const m = text.match(/REPORT_START([\s\S]*?)REPORT_END/); return m ? m[1].trim() : text.trim().slice(-1200);
+  // the instruction echoed above the answer also contains "REPORT_START … REPORT_END" (the format hint), so take the LAST block
+  const i = text.lastIndexOf('REPORT_START'); if (i < 0) return text.trim().slice(-1200);
+  const j = text.indexOf('REPORT_END', i + 12);
+  return text.slice(i + 12, j < 0 ? undefined : j).trim();
 }
 
 async function teamStartFlow(t) {
@@ -7574,6 +7610,17 @@ function settingsRender() {
     <h2>${esc(t('감지와 알림'))}</h2>
     ${row(t('정확 감지 (에이전트 훅)'), (() => { const s = hooksAgentsSummary(); return (hooksEnabled ? t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 세션도 표시됩니다.') : t('꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.')) + (s.on.length ? ` · ${t('켜짐')}: ${s.on.join(', ')}` : '') + (s.off.length ? ` · ${t('꺼짐')}: ${s.off.join(', ')}` : ''); })(), sw('hooks', hooksEnabled))}
     ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
+    <h2>${esc(t('슬랙 창구'))}</h2>
+    ${row(t('브리지 상태'), inboxStatus.configured ? (inboxStatus.running ? t('연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.') : `${t('설정 파일은 있지만 브리지가 꺼져 있습니다.')}${inboxStatus.lastError ? ` (${esc(inboxStatus.lastError)})` : ''}`) : t('~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.'), inboxStatus.configured ? `<button class="set-btn" data-set="inbox-restart">${esc(t('재시작'))}</button>` : '')}
+    ${row(t('접수 담당 세션'), t('슬랙 요청을 처음 받아 처리하거나 다른 세션에 넘길 세션입니다. 연결된 세션 중에서 고르세요.'), `<select class="theme-btn" data-set="inbox-owner" style="width:auto;max-width:150px;padding:0 6px;font-size:11px"><option value="">${esc(t('지정 안 함'))}</option>${sessions.filter(s => s.connected && handles.get(s.id)).map(s => `<option value="${esc(s.id)}" ${s.id === inboxOwner ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>`)}
+    ${row(t('접수 기록'), inboxLog.length ? `${inboxLog.length}${t('건')}${inboxPending.length ? ` · ${t('보류')} ${inboxPending.length}` : ''} · ${t('최근')}: ${esc(inboxLog[0].type)} ${esc(trunc(inboxLog[0].text, 40))}` : t('아직 받은 요청이 없습니다.'), `<button class="set-btn" data-set="inbox-log">${esc(t('보기'))}</button>`)}
+    <h2>${esc(t('아침 브리핑'))}</h2>
+    ${row(t('매일 생성'), `${t('지정 시각이 지나면 어제 노트·활동·Jira 마감 티켓으로 브리핑을 만들어 화이트보드와 대시보드에 적습니다.')}${briefJira ? '' : ` ${t('Jira 연동은 ~/.agentdesk/jira.json(baseUrl·email·token)을 두면 켜집니다.')}`}`, seg('brief-time', briefCfg.enabled ? briefCfg.time : 'off', [['off', t('끔')], ['07:30', '07:30'], ['08:30', '08:30'], ['09:30', '09:30']]))}
+    ${row(t('지금 생성'), briefing ? `${t('마지막')}: ${esc(briefing.date)} · ${esc(trunc(briefing.headline || '', 50))}` : t('아직 생성된 브리핑이 없습니다.'), `<button class="set-btn" data-set="brief-now">${esc(t('생성'))}</button>`)}
+    <h2>${esc(t('에이전트 자율 조절'))}</h2>
+    ${row(t('컨텍스트 자동 정리'), t('대기 중인 세션의 컨텍스트가 기준치를 넘으면 /compact 를 보냅니다 (30분에 한 번).'), seg('union-threshold', unionCfg.compact ? String(unionCfg.threshold || 90) : 'off', [['off', t('끔')], ['85', '85%'], ['90', '90%'], ['95', '95%']]))}
+    ${row(t('반복 실패 개입'), t('같은 도구 호출을 3번 반복하거나 3번 연속 실패하면, 팀이면 PM에게 다른 접근을 요청하고 아니면 세션에 직접 방향 전환을 요구합니다.'), sw('union-loop', unionCfg.loop))}
+    ${row(t('자율 조절 기록'), unionLog.length ? `${unionLog.length}${t('건')} · ${t('최근')}: ${esc(unionLog[0].name)} ${esc(unionLog[0].type)} ${esc(trunc(unionLog[0].text, 40))}` : t('아직 개입한 적이 없습니다.'), `<button class="set-btn" data-set="union-log">${esc(t('보기'))}</button>`)}
     <h2>${esc(t('오피스'))}</h2>
     ${row(t('픽셀 배율'), t('자동은 창 크기에 맞춰 정수 배율을 고릅니다.'), seg('zoom', zoom, [['auto', t('자동')], ['2', '2×'], ['3', '3×'], ['4', '4×']]))}
     ${row(t('지침서 저장소 경로'), (officeKbPath ? (officeKbInfo.ok ? `${t('찾음')}: ${officeKb} · ${officeKbInfo.count || 0}${t('개 존')}${officeKbInfo.generated ? ' (' + t('카테고리 폴더에서 생성') + ')' : ' (agentdesk/zones.json)'}` : t('폴더를 찾지 못했습니다')) : t('README.md가 있는 카테고리 폴더마다 프롬프트 존이 생기고, 프롬프트의 {kb}가 이 경로로 치환됩니다. agentdesk/zones.json이 있으면 그 파일을 우선 사용합니다.')),
@@ -7590,6 +7637,11 @@ function settingsRender() {
     el.innerHTML = `AgentDesk ${esc(v || '')}<br>${esc(t('훅 스크립트'))}: ${esc(st?.script || '~/.roca/hook.sh')}<br>${esc(t('이벤트 로그'))}: ${esc(st?.events || '~/.roca/events.jsonl')}`;
   })();
 }
+$('settings-body').addEventListener('change', (e) => {
+  const sel = e.target.closest('select[data-set="inbox-owner"]'); if (!sel) return;
+  inboxOwner = sel.value; try { localStorage.setItem('roca-inbox-owner', inboxOwner); } catch {}
+  showInAppToast(inboxOwner ? `${t('접수 담당')}: ${sel.options[sel.selectedIndex].text}` : t('접수 담당 세션 지정 해제'));
+});
 $('settings-body').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-set]'); if (!b) return;
   const name = b.dataset.set, v = (e.target.closest('[data-v]') || b).dataset.v;
@@ -7603,7 +7655,150 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'update-open') { if (updateInfo && updateInfo.url) window.orca.openExternal(updateInfo.url); }
   else if (name === 'update-check') { b.disabled = true; b.textContent = t('확인 중…'); await checkForUpdate(true); settingsRender(); }
   else if (name === 'update-auto') { updateAuto = !updateAuto; try { localStorage.setItem('roca-update-check', updateAuto ? '1' : '0'); } catch {} settingsRender(); }
+  else if (name === 'inbox-restart') { b.disabled = true; await window.orca.inboxRestart(); setTimeout(async () => { await inboxRefreshStatus(); settingsRender(); }, 4000); }
+  else if (name === 'inbox-log') {
+    const lines = inboxLog.map(l => `${new Date(l.t).toLocaleString(LANG === 'ko' ? 'ko-KR' : 'en-US')} · ${l.type} · ${l.text}`).join('\n');
+    teamModal(`<h3>${esc(t('접수 기록'))}</h3><div class="log">${esc(lines || t('아직 받은 요청이 없습니다.'))}</div><div class="row"><button id="team-close">${esc(t('닫기'))}</button></div>`).querySelector('#team-close').onclick = closeTeamModal;
+  }
+  else if (name === 'brief-time' && v) { briefCfg = await window.orca.briefConfig(v === 'off' ? { enabled: false } : { enabled: true, time: v }); settingsRender(); }
+  else if (name === 'brief-now') { b.disabled = true; b.textContent = t('생성 중…'); const r = await window.orca.briefNow(); if (!r.started) showInAppToast(t('브리핑 생성을 시작하지 못했습니다 (recall 모듈·MongoDB 확인)'), 'error'); else showInAppToast(t('브리핑 생성 중 — 1~2분 뒤 표시됩니다')); }
+  else if (name === 'union-threshold' && v) { if (v === 'off') unionCfg.compact = false; else { unionCfg.compact = true; unionCfg.threshold = Number(v); } unionSave(); settingsRender(); }
+  else if (name === 'union-loop') { unionCfg.loop = !unionCfg.loop; unionSave(); settingsRender(); }
+  else if (name === 'union-log') {
+    const lines = unionLog.map(l => `${new Date(l.t).toLocaleString(LANG === 'ko' ? 'ko-KR' : 'en-US')} · ${l.name} · ${l.type} · ${l.text}`).join('\n');
+    teamModal(`<h3>${esc(t('자율 조절 기록'))}</h3><div class="log">${esc(lines || t('아직 개입한 적이 없습니다.'))}</div><div class="row"><button id="team-close">${esc(t('닫기'))}</button></div>`).querySelector('#team-close').onclick = closeTeamModal;
+  }
 });
+// ── morning briefing: written by recall/brief.mjs, shown on the dashboard and on the office whiteboard ──
+let briefing = null, briefCfg = { enabled: true, time: '08:30' }, briefJira = false, briefOpen = true;
+let briefDismissed = ''; try { briefDismissed = localStorage.getItem('roca-brief-dismissed') || ''; } catch {}
+function briefRender() {
+  const el = $('brief-card'); if (!el) return;
+  const b = briefing;
+  if (!b || !b.headline || briefDismissed === b.date) { el.hidden = true; return; }
+  el.hidden = false; el.className = `brief-card ${b.mood || ''}`;
+  el.innerHTML = `<div class="b-head" data-brief="toggle"><span class="b-tag">${esc(t('오늘의 브리핑'))}</span><span class="b-title">${esc(b.headline)}</span><button class="b-x" data-brief="dismiss" title="${esc(t('오늘은 그만 보기'))}">✕</button></div>
+    ${briefOpen ? `<ul>${(b.lines || []).map(l => `<li>${esc(l)}</li>`).join('')}</ul><div class="b-meta">${esc(t('노트'))} ${b.notes || 0} · ${b.stats ? `${esc(t('어제 세션'))} ${b.stats.sessions} · ${esc(t('선택 요청'))} ${b.stats.asks}` : ''}${b.jira && !b.jira.error ? ` · Jira ${b.jira.count}` : ''} · ${new Date(b.generatedAt).toLocaleTimeString(LANG === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</div>` : ''}`;
+}
+async function briefLoad() {
+  try { const r = await window.orca.briefRead(); briefing = r.brief; briefCfg = r.cfg || briefCfg; briefJira = !!r.jira; } catch {}
+  briefRender(); if (document.querySelector('#page-settings.active')) settingsRender();
+}
+window.orca.onBriefUpdated && window.orca.onBriefUpdated(b => { briefing = b; briefRender(); showInAppToast(t('오늘의 브리핑이 화이트보드에 적혔습니다')); if (document.querySelector('#page-settings.active')) settingsRender(); });
+$('brief-card').addEventListener('click', e => {
+  const b = e.target.closest('[data-brief]'); if (!b) return;
+  if (b.dataset.brief === 'dismiss') { briefDismissed = briefing ? briefing.date : ''; try { localStorage.setItem('roca-brief-dismissed', briefDismissed); } catch {} briefRender(); }
+  else { briefOpen = !briefOpen; briefRender(); }
+});
+setTimeout(briefLoad, 1200); setInterval(briefLoad, 10 * 60 * 1000);
+
+// ── Slack front desk: tasks from recall/slack-bridge.mjs go to the designated "reception" session; its REPORT returns to the thread ──
+let inboxOwner = ''; try { inboxOwner = localStorage.getItem('roca-inbox-owner') || ''; } catch {}
+let inboxLog = []; try { inboxLog = JSON.parse(localStorage.getItem('roca-inbox-log') || '[]'); } catch {}
+const inboxTasks = new Map(), inboxPending = [];   // id → { task, sid, sentAt, done }
+let inboxStatus = { configured: false, running: false, lastError: '' };
+const INBOX_TIMEOUT_MS = 60 * 60 * 1000;
+function inboxNote(type, text) { inboxLog.unshift({ t: Date.now(), type, text }); inboxLog = inboxLog.slice(0, 30); try { localStorage.setItem('roca-inbox-log', JSON.stringify(inboxLog)); } catch {} }
+function inboxPrompt(task, owner) {
+  const zone = task.zoneId ? zoneById(task.zoneId) : null;
+  const issues = (task.issues || []).filter(i => !i.error).map(i => `${i.key} ${i.summary}${i.status ? ` (${i.status})` : ''}`).join('; ');
+  const head = LANG === 'en' ? `[Slack front desk · ${task.title}] Request from <@${task.user}>: "${task.text}"` : `[슬랙 창구 · ${task.title}] 요청자 <@${task.user}> 메시지: "${task.text}"`;
+  const parts = [head];
+  if (issues) parts.push(`${LANG === 'en' ? 'Tickets' : '티켓'}: ${issues}`);
+  if (zone) parts.push(`${LANG === 'en' ? 'Work zone' : '업무 존'}: ${zone.name}`, zoneFill(zone.prompt, owner));
+  parts.push(task.prompt);
+  parts.push(LANG === 'en' ? 'Handle it yourself, or if another session fits better say in [Next suggestion] how to hand it over. Always end with the REPORT block.' : '직접 처리하되, 더 적합한 다른 세션이 있으면 REPORT의 [다음 제안]에 어떻게 넘길지 적어 주세요. 반드시 REPORT 블록으로 끝내세요.');
+  return parts.join(' ');
+}
+async function inboxAccept(task) {
+  const owner = sessions.find(s => s.id === inboxOwner && s.connected && handles.get(s.id));
+  if (!owner) {
+    inboxPending.push(task); inboxNote('pending', task.title);
+    showInAppToast(t('슬랙 접수: 담당 세션이 없어 보류 — 설정 → 슬랙 창구에서 지정하세요'), 'error');
+    await window.orca.inboxReply({ id: task.id, channel: task.channel, thread: task.thread, text: '⏸ 접수 담당 세션이 지정되지 않아 보류 중입니다. AgentDesk 설정 → 슬랙 창구에서 담당 세션을 지정하면 바로 전달됩니다.' }).catch(() => {});
+    return;
+  }
+  const h = handles.get(owner.id);
+  try {
+    const r = await window.orca.terminalSend(h, inboxPrompt(task, owner).replace(/\r?\n+/g, ' ').trim(), true, 15);
+    if (!r?.result?.send?.accepted) throw new Error(t('전송이 거부되었습니다 (세션이 입력 대기 상태인지 확인)'));
+    inboxTasks.set(task.id, { task, sid: owner.id, sentAt: Date.now(), done: false, prev: 'running' });
+    inboxNote('sent', `${task.title} → ${owner.name}`);
+    const ch = officeChars.get(owner.id); if (ch) ch.reactT = 1.5;
+    showInAppToast(`📥 ${task.title} → ${owner.name}`);
+    await window.orca.inboxReply({ id: task.id, channel: task.channel, thread: task.thread, text: `▶ ${owner.name} 세션이 작업을 시작했습니다. 끝나면 이 스레드에 보고합니다.` }).catch(() => {});
+  } catch (e) {
+    inboxNote('error', `${task.title}: ${e.message}`);
+    await window.orca.inboxReply({ id: task.id, channel: task.channel, thread: task.thread, text: `⚠️ 전달 실패: ${e.message}` }).catch(() => {});
+  }
+}
+async function inboxTick() {
+  for (const [id, it] of inboxTasks) {
+    if (it.done) continue;
+    const sess = sessions.find(x => x.id === it.sid);
+    if (!sess) continue;
+    const prev = it.prev; it.prev = sess.status;
+    if (Date.now() - it.sentAt > INBOX_TIMEOUT_MS) { it.done = true; inboxNote('timeout', it.task.title); await window.orca.inboxReply({ id, channel: it.task.channel, thread: it.task.thread, text: `⏱ ${it.task.title}: 60분 안에 보고가 오지 않아 추적을 멈춥니다. 세션을 직접 확인해 주세요.` }).catch(() => {}); continue; }
+    if (!(prev === 'running' && sess.status === 'waiting') || Date.now() - it.sentAt < 8000) continue;
+    it.done = true;
+    try {
+      const res = await window.orca.terminalRead(handles.get(it.sid), true);
+      const report = teamParseReport(extractLastResponse(extractTail(res)) || '').slice(0, 2800);
+      inboxNote('report', it.task.title);
+      await window.orca.inboxReply({ id, channel: it.task.channel, thread: it.task.thread, text: `✅ ${it.task.title} — ${sess.name}\n${report || '(보고 블록을 찾지 못했습니다. 세션 화면을 확인해 주세요.)'}` });
+      showInAppToast(`${sess.name}: ${t('슬랙 스레드에 보고를 보냈습니다')}`);
+    } catch (e) { inboxNote('error', e.message); }
+  }
+  if (inboxPending.length && sessions.some(s => s.id === inboxOwner && s.connected)) { const q = inboxPending.splice(0); for (const task of q) await inboxAccept(task); }
+}
+setInterval(inboxTick, 2500);
+if (window.orca.onInboxTask) window.orca.onInboxTask(task => { inboxNote('received', task.title); inboxAccept(task); });
+async function inboxRefreshStatus() { try { inboxStatus = await window.orca.inboxStatus(); } catch {} }
+setInterval(inboxRefreshStatus, 30000); setTimeout(inboxRefreshStatus, 3000);
+
+// ── agent self-regulation ("노조"): the office keeps itself healthy without a human watching ──
+//   compact: a session that is waiting with ≥ threshold% context gets /compact (at most once per 30 min)
+//   loop:    a session that repeats the same tool call or fails 3× in a row is asked to change approach —
+//            through its PM when it belongs to a team, otherwise directly
+let unionCfg = { compact: true, loop: true, threshold: 90 };
+try { Object.assign(unionCfg, JSON.parse(localStorage.getItem('roca-union') || '{}')); } catch {}
+function unionSave() { try { localStorage.setItem('roca-union', JSON.stringify(unionCfg)); } catch {} }
+let unionLog = []; try { unionLog = JSON.parse(localStorage.getItem('roca-union-log') || '[]'); } catch {}
+function unionNote(type, sess, text) {
+  unionLog.unshift({ t: Date.now(), type, name: sess.name, text }); unionLog = unionLog.slice(0, 50);
+  try { localStorage.setItem('roca-union-log', JSON.stringify(unionLog)); } catch {}
+  const ch = officeChars.get(sess.id); if (ch) ch.reactT = 1.5;
+}
+const unionLast = new Map();   // `${id}:${kind}` → last action time
+function unionDue(id, kind, ms = 30 * 60 * 1000) { const k = `${id}:${kind}`; const last = unionLast.get(k) || 0; if (Date.now() - last < ms) return false; unionLast.set(k, Date.now()); return true; }
+async function unionTick(s) {
+  const h = handles.get(s.id); if (!h || !s.connected) return;
+  if (unionCfg.compact && s.ctxPct >= (unionCfg.threshold || 90) && s.status === 'waiting' && !s.needsInput && unionDue(s.id, 'compact')) {
+    try { await window.orca.terminalSend(h, '/compact', true, 15); unionNote('compact', s, `ctx ${s.ctxPct}% → /compact`); showInAppToast(`${s.name}: ${t('컨텍스트')} ${s.ctxPct}% → /compact`); } catch (e) { unionNote('error', s, e.message); }
+  }
+  if (unionCfg.loop && s.loop && s.status === 'waiting' && unionDue(s.id, 'loop')) {
+    const what = `${s.loop.tool}${s.loop.input ? ' ' + trunc(s.loop.input, 80) : ''}`;
+    const team = teamOf(s.id); const pmHandle = team && team.pm && team.pm !== s.id ? handles.get(team.pm) : null;
+    try {
+      if (pmHandle) {
+        const msg = LANG === 'en'
+          ? `[Team alert] Member "${s.name}" has ${s.loop.reason === 'fail' ? `failed the same step ${s.loop.count} times in a row` : `repeated the same tool call ${s.loop.count} times`}: ${what}. Please propose a different approach (2 options with reasons) and send the member a new instruction, or stop the task if it is not worth continuing.`
+          : `[팀 알림] 팀원 "${s.name}"이(가) ${s.loop.reason === 'fail' ? `같은 단계에서 ${s.loop.count}회 연속 실패` : `같은 도구 호출을 ${s.loop.count}회 반복`} 중입니다: ${what}. 이 방식 말고 다른 접근을 2가지(이유 포함) 제안하고 팀원에게 새 지시를 보내 주세요. 계속할 가치가 없으면 중단시켜도 됩니다.`;
+        await window.orca.terminalSend(pmHandle, msg, true, 15);
+        teamLog(team, 'union', msg, { from: s.name }); unionNote('loop→pm', s, what);
+        showInAppToast(`${s.name}: ${t('반복 실패 → PM에게 다른 접근 요청')}`, 'error');
+      } else {
+        const msg = LANG === 'en'
+          ? `[AgentDesk] The same step has ${s.loop.reason === 'fail' ? `failed ${s.loop.count} times in a row` : `been repeated ${s.loop.count} times`}: ${what}. Stop repeating it. Summarize what was tried and why it failed, propose two different approaches, and ask which one to take before continuing.`
+          : `[AgentDesk] 같은 단계가 ${s.loop.reason === 'fail' ? `${s.loop.count}회 연속 실패` : `${s.loop.count}회 반복`}되었습니다: ${what}. 같은 시도를 멈추고, 지금까지 시도한 것과 실패 원인을 정리한 뒤 다른 접근 2가지를 제안하고 어느 쪽으로 갈지 물어본 다음 진행하세요.`;
+        await window.orca.terminalSend(h, msg, true, 15);
+        unionNote('loop→self', s, what);
+        showInAppToast(`${s.name}: ${t('반복 실패 → 다른 접근 요청')}`, 'error');
+      }
+    } catch (e) { unionNote('error', s, e.message); }
+  }
+}
+
 // ── new-version check: badge on the ⚙ button, details in Settings ──
 let updateInfo = null;
 let updateAuto = true; try { updateAuto = localStorage.getItem('roca-update-check') !== '0'; } catch {}

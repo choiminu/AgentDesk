@@ -111,6 +111,7 @@ function applyHookEvent(rec, sessions) {
   let st = sessions.get(sid);
   if (!st) { st = { sid, cwd: ev.cwd, transcript: ev.transcript_path || '', first: ts, status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false, recentTools: [], runMs: 0, askAt: 0, askMs: 0, askN: 0 }; sessions.set(sid, st); }
   if (!st.recentTools) { st.recentTools = []; st.runMs = st.runMs || 0; st.askAt = st.askAt || 0; st.askMs = st.askMs || 0; st.askN = st.askN || 0; }
+  if (!st.failures) { st.failures = []; st.failStreak = 0; }
   if (ev.cwd) st.cwd = ev.cwd;
   if (rec.term) st.term = rec.term;   // TERM_PROGRAM of the launching terminal (Orca, iTerm.app, tmux, Apple_Terminal)
   st.agent = rec.agent || st.agent || 'claude';   // which CLI emitted the event (claude / gemini / codex)
@@ -129,7 +130,7 @@ function applyHookEvent(rec, sessions) {
   const evName = GEMINI_EVENTS[ev.hook_event_name] || ev.hook_event_name;
   switch (evName) {
     case 'SessionStart': st.ended = false; break;
-    case 'UserPromptSubmit': setStatus('running'); st.tool = ''; st.toolInput = ''; setAsk(false); st.ended = false; break;
+    case 'UserPromptSubmit': setStatus('running'); st.tool = ''; st.toolInput = ''; setAsk(false); st.ended = false; st.failStreak = 0; st.failures = []; st.loopNotified = 0; break;   // the user stepped in: start the loop watch afresh
     case 'PreToolUse':
       if (sub) { sub.tool = ev.tool_name || ''; sub.toolInput = hookToolInput(ev.tool_name, ev.tool_input); sub.last = ts; }
       else {
@@ -139,7 +140,10 @@ function applyHookEvent(rec, sessions) {
       break;
     case 'PostToolUse':
       if (sub) { sub.tool = ''; sub.last = ts; }
-      else { setStatus('running'); setAsk(false); }
+      else { setStatus('running'); setAsk(false); st.failStreak = 0; }
+      break;
+    case 'PostToolUseFailure':
+      if (!sub) { setStatus('running'); st.failStreak++; st.failures.push({ tool: ev.tool_name || st.tool || '', input: hookToolInput(ev.tool_name, ev.tool_input) || st.toolInput || '', ts }); if (st.failures.length > 10) st.failures.shift(); }
       break;
     case 'PermissionRequest': setStatus('waiting'); setAsk(true); break;
     case 'Notification': {
@@ -156,6 +160,23 @@ function applyHookEvent(rec, sessions) {
   }
 }
 
+// a session "loops" when the same tool call repeats 3+ times within 10 minutes, or 3+ tool calls fail in a row.
+// Returns null or { count, reason: 'repeat'|'fail', tool, input, since }.
+const LOOP_WINDOW_MS = 10 * 60 * 1000;
+function loopStateFor(st) {
+  if (!st || st.ended) return null;
+  const now = st.last || Date.now();
+  if ((st.failStreak || 0) >= 3) { const f = st.failures[st.failures.length - 1] || {}; return { count: st.failStreak, reason: 'fail', tool: f.tool || st.tool || '', input: f.input || '', since: (st.failures[0] || {}).ts || now }; }
+  const recent = (st.recentTools || []).filter(x => now - x.ts <= LOOP_WINDOW_MS);
+  const key = x => `${x.tool}\u0000${x.input}`;
+  const counts = new Map();
+  for (const x of recent) { if (!x.input) continue; const k = key(x); counts.set(k, (counts.get(k) || 0) + 1); }
+  let best = null;
+  for (const [k, n] of counts) if (n >= 3 && (!best || n > best.n)) best = { k, n };
+  if (!best) return null;
+  const [tool, input] = best.k.split('\u0000'); const first = recent.find(x => key(x) === best.k);
+  return { count: best.n, reason: 'repeat', tool, input, since: first ? first.ts : now };
+}
 function hookStatusFor(st) {
   if (!st) return null;
   if (st.status === 'waiting' && Date.now() - st.since > DONE_FRESH_MS) return 'done';
@@ -170,7 +191,7 @@ function resolveStatus(baseStatus, screenSt, hk) {
   return baseStatus;
 }
 
-const AgentDeskStatus = { SPINNER_RE, DONE_FRESH_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus };
+const AgentDeskStatus = { SPINNER_RE, DONE_FRESH_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus, loopStateFor };
 // the widget loads this as a classic <script> (globals); tests `import()` it and read globalThis.AgentDeskStatus
 root.AgentDeskStatus = AgentDeskStatus;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskStatus;

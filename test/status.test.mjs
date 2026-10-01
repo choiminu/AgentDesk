@@ -118,3 +118,18 @@ test('bookkeeping: recent tools, time spent running, needs-input wait time', () 
   for (let i = 0; i < 7; i++) S.applyHookEvent(claude('PreToolUse', { tool_name: 'T' + i, tool_input: {} }, t0 + 40 + i), m);
   assert.equal(st.recentTools.length, 5, 'capped at five');
 });
+
+test('loop detection: three failures in a row, or the same tool call three times in ten minutes', () => {
+  const t0 = now;
+  const m = fold(claude('UserPromptSubmit', {}, t0));
+  const st = m.get('c-1');
+  assert.equal(S.loopStateFor(st), null);
+  for (let i = 0; i < 3; i++) S.applyHookEvent(claude('PostToolUseFailure', { tool_name: 'Bash', tool_input: { command: 'npm test' } }, t0 + i), m);
+  assert.deepEqual([S.loopStateFor(st).reason, S.loopStateFor(st).count], ['fail', 3]);
+  S.applyHookEvent(claude('PostToolUse', { tool_name: 'Bash' }, t0 + 5), m);
+  assert.equal(S.loopStateFor(st), null, 'a success resets the failure streak');
+  for (let i = 0; i < 3; i++) S.applyHookEvent(claude('PreToolUse', { tool_name: 'Edit', tool_input: { file_path: 'x.js' } }, t0 + 10 + i * 60), m);
+  const l = S.loopStateFor(st); assert.equal(l.reason, 'repeat'); assert.equal(l.count, 3); assert.equal(l.tool, 'Edit');
+  S.applyHookEvent(claude('UserPromptSubmit', {}, t0 + 300), m);
+  st.recentTools = []; assert.equal(S.loopStateFor(st), null, 'a new user prompt starts the watch afresh');
+});
