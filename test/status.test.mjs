@@ -103,3 +103,18 @@ test('resolveStatus: hooks win, then the screen, then the platform state; error 
   assert.equal(S.resolveStatus('waiting', 'waiting-untimed', null), 'waiting', 'untimed is decided by the caller, so the base state stays');
   assert.equal(S.resolveStatus('error', 'running', hk), 'error');
 });
+
+test('bookkeeping: recent tools, time spent running, needs-input wait time', () => {
+  const t0 = now;
+  const m = fold(claude('UserPromptSubmit', {}, t0), claude('PreToolUse', { tool_name: 'Read', tool_input: { file_path: 'a.js' } }, t0 + 1), claude('PreToolUse', { tool_name: 'Edit', tool_input: { file_path: 'a.js' } }, t0 + 2));
+  const st = m.get('c-1');
+  assert.deepEqual(st.recentTools.map(x => x.tool), ['Read', 'Edit']);
+  S.applyHookEvent(claude('PermissionRequest', {}, t0 + 10), m);          // ran 10s, now waiting for the user
+  assert.equal(st.runMs, 10000); assert.equal(st.askAt, (t0 + 10) * 1000);
+  S.applyHookEvent(claude('PostToolUse', { tool_name: 'Bash' }, t0 + 25), m);   // user answered after 15s
+  assert.equal(st.askN, 1); assert.equal(st.askMs, 15000); assert.equal(st.askAt, 0);
+  S.applyHookEvent(claude('Stop', {}, t0 + 30), m);
+  assert.equal(st.runMs, 15000, 'running again from 25s to 30s');
+  for (let i = 0; i < 7; i++) S.applyHookEvent(claude('PreToolUse', { tool_name: 'T' + i, tool_input: {} }, t0 + 40 + i), m);
+  assert.equal(st.recentTools.length, 5, 'capped at five');
+});

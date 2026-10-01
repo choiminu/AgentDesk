@@ -1089,6 +1089,18 @@ ipcMain.handle("roca:update-check", async (_e, force) => {
   } catch (e) { return { at: Date.now(), current, latest: cache?.latest || null, url: cache?.url || null, newer: cache ? semverNewer(cache.latest, current) : false, error: e.message }; }
 });
 ipcMain.handle("roca:app-version", () => app.getVersion());
+// session notes written by recall/ (MongoDB) for a checkout: spawn the CLI, which knows the worktree/repo rules; [] when unavailable
+const RECALL_CLI = [join(__dirname, "recall", "cli.mjs"), join(homedir(), "project", "agentdesk-internal", "recall", "cli.mjs"), join(homedir(), "orca-widget", "recall", "cli.mjs")].find(p => existsSync(p)) || null;
+ipcMain.handle("roca:recall-notes", async (_e, cwd, limit) => {
+  if (!RECALL_CLI || !cwd || !existsSync(cwd)) return [];
+  const node = ["/opt/homebrew/bin/node", "/usr/local/bin/node"].find(p => existsSync(p)) || process.execPath;
+  const run = async (extra) => { const { stdout } = await exec(node, [RECALL_CLI, "list", "--json", "--limit", String(limit || 3), ...extra], { cwd, timeout: 5000, env: { ...process.env, PATH: EXEC_PATH, ELECTRON_RUN_AS_NODE: "1" } }); const arr = JSON.parse(stdout.trim().split("\n").pop() || "[]"); return Array.isArray(arr) ? arr : []; };
+  try {
+    // notes from this very checkout first; other worktrees of the same repo only when it has none
+    const own = await run(["--worktree", cwd.split("/").filter(Boolean).pop()]);
+    return own.length ? own : await run([]);
+  } catch { return []; }
+});
 ipcMain.handle("roca:open-external", (_e, url) => { if (/^https:\/\/github\.com\//.test(String(url))) shell.openExternal(url); });
 
 ipcMain.handle("orca:version", async () => {
