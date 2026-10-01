@@ -3,7 +3,7 @@ import { execFile, exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join, delimiter as PATH_DELIM } from "node:path";
-import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 
@@ -941,7 +941,7 @@ function hookCommand(agent) {
 }
 const EVENTS_FILE = join(ROCA_DIR, "events.jsonl");
 const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
-const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification", "PermissionRequest", "SubagentStart", "SubagentStop", "SessionEnd", "PostCompact"];
+const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "Notification", "PermissionRequest", "SubagentStart", "SubagentStop", "SessionEnd", "PostCompact"];
 const HOOK_PS1 = `param([string]$Agent = "claude")
 # AgentDesk hook (Windows): append the agent's hook payload to %USERPROFILE%\\.roca\\events.jsonl and exit immediately.
 $f = Join-Path $env:USERPROFILE ".roca\\events.jsonl"
@@ -993,9 +993,14 @@ function agentHooksInstalled(a) {
   return cfg.events.every(ev => Array.isArray(h[ev]) && h[ev].some(isOurHook)) && existsSync(HOOK_SCRIPT);
 }
 // per-agent state for the UI: "on" | "off" | "absent" (CLI not installed on this Mac)
+// some of our hooks present but not all (an event was added in an update) → counts as on, and startup re-registers the full set
+function agentHooksPartial(a) {
+  const cfg = AGENT_HOOKS[a]; const h = readJsonFile(cfg.settings).hooks || {};
+  return cfg.events.some(ev => Array.isArray(h[ev]) && h[ev].some(isOurHook)) && !agentHooksInstalled(a);
+}
 function hooksAgents() {
   const out = {};
-  for (const a of Object.keys(AGENT_HOOKS)) out[a] = !agentPresent(a) ? "absent" : agentHooksInstalled(a) ? "on" : "off";
+  for (const a of Object.keys(AGENT_HOOKS)) out[a] = !agentPresent(a) ? "absent" : (agentHooksInstalled(a) || agentHooksPartial(a)) ? "on" : "off";
   return out;
 }
 // installed = the user turned exact detection on for at least one agent; newly found CLIs are covered at startup
@@ -1089,6 +1094,64 @@ ipcMain.handle("roca:update-check", async (_e, force) => {
   } catch (e) { return { at: Date.now(), current, latest: cache?.latest || null, url: cache?.url || null, newer: cache ? semverNewer(cache.latest, current) : false, error: e.message }; }
 });
 ipcMain.handle("roca:app-version", () => app.getVersion());
+// morning briefing: recall/brief.mjs writes ~/.agentdesk/briefing.json; the main process schedules it once a day
+const BRIEF_FILE = join(homedir(), ".agentdesk", "briefing.json");
+const BRIEF_CFG = join(app.getPath("userData"), "brief-config.json");
+let briefCfg = { enabled: true, time: "08:30" }; try { Object.assign(briefCfg, JSON.parse(readFileSync(BRIEF_CFG, "utf-8"))); } catch {}
+let briefRunning = false;
+function readBrief() { try { return JSON.parse(readFileSync(BRIEF_FILE, "utf-8")); } catch { return null; } }
+function runBrief() {
+  if (briefRunning || !RECALL_CLI) return false;
+  const node = ["/opt/homebrew/bin/node", "/usr/local/bin/node"].find(p => existsSync(p)) || process.execPath;
+  briefRunning = true;
+  const child = spawn(node, [join(dirname(RECALL_CLI), "brief.mjs")], { detached: true, stdio: "ignore", env: { ...process.env, PATH: EXEC_PATH, ELECTRON_RUN_AS_NODE: "1" } });
+  child.on("exit", () => { briefRunning = false; if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:brief-updated", readBrief()); });
+  child.on("error", () => { briefRunning = false; });
+  child.unref();
+  return true;
+}
+function briefTick() {
+  if (!briefCfg.enabled) return;
+  const now = new Date(); const [hh, mm] = String(briefCfg.time || "08:30").split(":").map(Number);
+  const due = now.getHours() > hh || (now.getHours() === hh && now.getMinutes() >= mm);
+  const today = now.toISOString().slice(0, 10); const cur = readBrief();
+  if (due && (!cur || cur.date !== today)) runBrief();
+}
+setInterval(briefTick, 5 * 60 * 1000); setTimeout(briefTick, 20000);
+ipcMain.handle("roca:brief-read", () => ({ brief: readBrief(), cfg: briefCfg, running: briefRunning, jira: existsSync(join(homedir(), ".agentdesk", "jira.json")) }));
+ipcMain.handle("roca:brief-config", (_e, cfg) => { briefCfg = { ...briefCfg, ...(cfg || {}) }; try { writeFileSync(BRIEF_CFG, JSON.stringify(briefCfg)); } catch {} return briefCfg; });
+ipcMain.handle("roca:brief-now", () => ({ started: runBrief() }));
+
+// Slack front desk: recall/slack-bridge.mjs runs as a child when ~/.agentdesk/slack.json exists; tasks arrive as files in
+// ~/.agentdesk/inbox/, the renderer hands them to a session and writes the REPORT to inbox/replies/ for the bridge to post.
+const INBOX_DIR = join(homedir(), ".agentdesk", "inbox"), INBOX_REPLIES = join(INBOX_DIR, "replies"), SLACK_CFG = join(homedir(), ".agentdesk", "slack.json");
+let slackChild = null, slackRestartAt = 0, slackStatus = { configured: false, running: false, lastError: "" };
+function startSlackBridge() {
+  slackStatus.configured = existsSync(SLACK_CFG);
+  if (!slackStatus.configured || slackChild || !RECALL_CLI || Date.now() < slackRestartAt) return;
+  const node = ["/opt/homebrew/bin/node", "/usr/local/bin/node"].find(p => existsSync(p)) || process.execPath;
+  const child = spawn(node, [join(dirname(RECALL_CLI), "slack-bridge.mjs")], { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, PATH: EXEC_PATH, ELECTRON_RUN_AS_NODE: "1" } });
+  slackChild = child; slackStatus.running = true; slackStatus.lastError = "";
+  let err = ""; child.stderr.on("data", d => { err = (err + d.toString()).slice(-400); });
+  child.on("exit", (code) => { slackChild = null; slackStatus.running = false; if (code) slackStatus.lastError = err.trim().split("\n").pop() || `exit ${code}`; slackRestartAt = Date.now() + 60000; });
+}
+setInterval(startSlackBridge, 30000); setTimeout(startSlackBridge, 8000);
+const inboxSeen = new Set();
+function pumpInbox() {
+  try {
+    mkdirSync(INBOX_REPLIES, { recursive: true });
+    for (const f of readdirSync(INBOX_DIR).filter(f => f.endsWith(".json"))) {
+      const p = join(INBOX_DIR, f); if (inboxSeen.has(p)) continue; inboxSeen.add(p);
+      let task; try { task = JSON.parse(readFileSync(p, "utf-8")); } catch { continue; }
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:inbox-task", task);
+      try { unlinkSync(p); } catch {}
+    }
+  } catch {}
+}
+setInterval(pumpInbox, 3000);
+ipcMain.handle("roca:inbox-reply", (_e, reply) => { try { mkdirSync(INBOX_REPLIES, { recursive: true }); writeFileSync(join(INBOX_REPLIES, `${reply.id}-${Date.now()}.json`), JSON.stringify(reply)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("roca:inbox-status", () => ({ ...slackStatus, configured: existsSync(SLACK_CFG) }));
+ipcMain.handle("roca:inbox-restart", () => { if (slackChild) { try { slackChild.kill(); } catch {} } slackRestartAt = 0; setTimeout(startSlackBridge, 500); return { ok: true }; });
 // session notes written by recall/ (MongoDB) for a checkout: spawn the CLI, which knows the worktree/repo rules; [] when unavailable
 const RECALL_CLI = [join(__dirname, "recall", "cli.mjs"), join(homedir(), "project", "agentdesk-internal", "recall", "cli.mjs"), join(homedir(), "orca-widget", "recall", "cli.mjs")].find(p => existsSync(p)) || null;
 ipcMain.handle("roca:recall-notes", async (_e, cwd, limit) => {
@@ -1187,7 +1250,7 @@ app.on("ready", () => {
   // exact detection already on: extend it to agent CLIs that appeared since (e.g. Gemini CLI installed later)
   try {
     const st = hooksAgents();
-    if (Object.values(st).some(v => v === "on")) for (const [a, v] of Object.entries(st)) if (v === "off") { installAgentHooks(a); console.log("[hooks] installed for", a); }
+    if (Object.values(st).some(v => v === "on")) for (const [a, v] of Object.entries(st)) if (v === "off" || agentHooksPartial(a)) { installAgentHooks(a); console.log("[hooks] installed for", a); }
   } catch (e) { console.log("[hooks] extend failed", e.message); }
   startEventsWatch();
   createTray();
