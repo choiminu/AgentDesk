@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("orca", {
   version: () => ipcRenderer.invoke("orca:version"),
   platform: process.platform,
   appVersion: () => ipcRenderer.invoke("roca:app-version"),
+  recallNotes: (cwd, limit) => ipcRenderer.invoke("roca:recall-notes", cwd, limit),
   updateCheck: (force) => ipcRenderer.invoke("roca:update-check", force),
   openExternal: (url) => ipcRenderer.invoke("roca:open-external", url),
   hooksStatus: () => ipcRenderer.invoke("orca:hooks-status"),

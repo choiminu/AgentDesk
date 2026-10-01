@@ -12,7 +12,7 @@ const has = (n) => { const i = rest.indexOf(n); if (i >= 0) { rest.splice(i, 1);
 const usage = `agentdesk-recall <command>
   search <query> [--repo NAME|--worktree NAME|--all] [--limit N]   full-text search over session notes (current repo by default)
   show <id>                                        print one note in full
-  list [--repo NAME|--all] [--limit N]             newest notes
+  list [--repo NAME|--worktree NAME|--all] [--limit N] [--json]   newest notes
   summarize <transcript.jsonl> [--cwd DIR] [--agent claude|gemini|codex]   make a note from one transcript now
   backfill [--since 7d] [--project DIR]            summarize past Claude Code transcripts of a project (default: all projects)
   install                                          register SessionStart + SessionEnd + PreCompact + prompt hooks (Claude Code; Gemini/Codex if present) and the /recall skill
@@ -23,7 +23,7 @@ async function main() {
   if (!cmd || cmd === "help") { console.log(usage); return; }
   if (cmd === "ensure-index") { await ensureIndexes(); console.log("indexes ok"); return; }
   if (cmd === "search" || cmd === "list") {
-    const all = has("--all"); const repo = flag("--repo"); const wt = flag("--worktree"); const limit = Number(flag("--limit") || 10);
+    const asJson = has("--json"); const all = has("--all"); const repo = flag("--repo"); const wt = flag("--worktree"); const limit = Number(flag("--limit") || 10);
     const g = gitInfo(process.cwd()); const scope = all ? {} : wt ? { worktree: wt } : { repo: repo || g.repo };
     const c = await notes(); await ensureIndexes();
     let rows;
@@ -31,7 +31,8 @@ async function main() {
       const q = rest.join(" ").trim(); if (!q) throw new Error("query required");
       rows = await c.find({ ...scope, $text: { $search: q } }, { projection: { score: { $meta: "textScore" }, body: 0 } }).sort({ score: { $meta: "textScore" } }).limit(limit).toArray();
     } else rows = await c.find(scope, { projection: { body: 0 } }).sort({ createdAt: -1 }).limit(limit).toArray();
-    if (!rows.length) { console.log(`(no notes${all ? "" : ` for repo ${scope.repo}`})`); return; }
+    if (asJson) { console.log(JSON.stringify(rows.map(n => ({ id: String(n._id), title: n.title, summary: n.summary, keywords: n.keywords || [], files: n.files || [], repo: n.repo, worktree: n.worktree, commit: n.commit, createdAt: n.createdAt, changed: changedSince(g.root, n.commit, n.files) })))); return; }
+    if (!rows.length) { console.log(`(no notes${all ? "" : ` for repo ${scope.repo || scope.worktree}`})`); return; }
     for (const n of rows) console.log(fmtNote(n, changedSince(g.root, n.commit, n.files)) + (n.keywords?.length ? `\n    keywords: ${n.keywords.join(", ")}` : ""));
     return;
   }

@@ -2166,6 +2166,46 @@
   .upd-dot { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 999px; background: var(--accent); border: 2px solid var(--bg); }
   #settings-btn { position: relative; }
   .set-meta { font-size: 10px; color: var(--text3); line-height: 1.6; margin-top: 10px; word-break: break-all; }
+  /* ── dashboard: groups, detail, filters, keyboard selection, feedback ── */
+  .stat[hidden] { display: none; }
+  .stat.ask { background: var(--yellow-dim); color: var(--yellow); }
+  .stat .ask-mark { width: 16px; height: 16px; border-radius: 999px; background: var(--yellow); color: #1a1408; font-size: 10px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+  .stat.bump { animation: statBump 0.5s ease-out; }
+  @keyframes statBump { 0% { transform: scale(1); } 35% { transform: scale(1.18); } 100% { transform: scale(1); } }
+  .filters { display: flex; gap: 4px; padding: 6px 10px 0; flex-wrap: wrap; }
+  .filters[hidden] { display: none; }
+  .fchip { font: inherit; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; }
+  .fchip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .gh-btn { font: inherit; font-size: 9.5px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; margin-left: 4px; }
+  .gh-btn:hover { color: var(--text); border-color: var(--border); }
+  .group-header.ask { color: var(--yellow); }
+  .group-header.ask .gh-count { color: var(--yellow); }
+  .repo-header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; margin: 0 0 6px; border-radius: 10px; background: var(--surface); border: 1px dashed var(--border-subtle); color: var(--text2); font-size: 11px; cursor: pointer; }
+  .repo-header:hover { border-color: var(--border); }
+  .repo-header .rh-count { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+  .repo-header .rh-arrow { margin-left: auto; color: var(--text3); font-size: 10px; }
+  .session.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+  .session.stuck .s-icon { background: var(--yellow-dim); }
+  .s-tool.stuck { color: var(--yellow) !important; border-color: color-mix(in srgb, var(--yellow) 50%, transparent) !important; font-weight: 700; }
+  .s-time.ask { color: var(--yellow) !important; font-weight: 700; }
+  .s-expand { position: absolute; right: 8px; bottom: 6px; width: 18px; height: 18px; border-radius: 6px; border: none; background: transparent; color: var(--text3); font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .s-expand:hover { background: var(--surface-hover); color: var(--text); }
+  .session.expanded .s-expand { transform: rotate(90deg); }
+  .session.expanded { flex-wrap: wrap; }
+  .s-detail { flex-basis: 100%; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; color: var(--text2); }
+  .s-detail .d-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; }
+  .s-detail .d-row b { color: var(--text3); font-weight: 600; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .s-detail .d-row span { line-height: 1.45; word-break: break-word; }
+  .s-detail code { font-family: var(--mono); font-size: 9.5px; padding: 0 4px; border-radius: 4px; background: var(--surface-hover); color: var(--text); }
+  .s-detail .d-ctx { height: 4px; border-radius: 999px; background: var(--surface-hover); overflow: hidden; }
+  .s-detail .d-ctx i { display: block; height: 100%; border-radius: 999px; background: var(--green); }
+  .s-detail .d-ctx i.warn { background: var(--yellow); } .s-detail .d-ctx i.crit { background: var(--red); }
+  .s-detail .d-note { display: block; padding: 4px 0; }
+  .s-detail .d-note b { color: var(--text); text-transform: none; letter-spacing: 0; font-size: 10.5px; }
+  .hidden-link { text-align: center; font-size: 10px; color: var(--text3); padding: 8px 0 4px; cursor: pointer; }
+  .hidden-link:hover { color: var(--text); }
+  .local-stats { font-family: var(--mono); font-size: 9.5px; color: var(--text3); justify-content: center; gap: 10px; }
+  .local-stats[hidden] { display: none; }
   /* ── first-run onboarding ── */
   .onboard { position: fixed; inset: 0; z-index: 200; background: var(--bg); display: flex; flex-direction: column; -webkit-app-region: no-drag; }
   .onboard[hidden] { display: none; }
@@ -2343,6 +2383,7 @@
     <div class="stats" id="stats">
       <span class="stat run" title="작업 중"><span class="px-ic pc-on"></span><span id="nRun">0</span></span>
       <span class="stat wait" title="대기 중"><span class="px-ic clock"></span><span id="nWait">0</span></span>
+      <span class="stat ask" id="statAsk" title="선택 필요" hidden><span class="ask-mark">?</span><span id="nAsk">0</span></span>
       <span class="stat done" title="완료"><span class="px-ic pc-off"></span><span id="nDone">0</span></span>
     </div>
     <div class="header-controls">
@@ -2370,8 +2411,9 @@
       <button class="tab" data-tab="done">완료<span class="tab-badge" id="badge-done">0</span></button>
     </div>
     <div class="search-wrap">
-      <input class="search-input" id="search" type="text" placeholder="검색..." />
+      <input class="search-input" id="search" type="text" placeholder="검색... (repo: agent: term: 접두어 가능)" />
     </div>
+    <div class="filters" id="filters" hidden></div>
     <div class="list" id="list"></div>
     <div id="chat-panel" class="chat-panel">
       <div class="chat-header">
@@ -2603,6 +2645,7 @@
   <div class="office-ask" id="office-ask" data-verbatim hidden></div>
   <div class="footer" id="footer">
     <div id="tokenBars"></div>
+    <div class="footer-row local-stats" id="localStats" hidden></div>
     <div class="footer-row">
       <div class="spinner"></div>
       <span id="updatedAt">--</span>
@@ -2646,6 +2689,12 @@ const I18N = {
   'Windows에서는 세션 상태 표시(훅)와 종료 세션 다시 열기(Windows Terminal)만 지원합니다. 채팅·지시는 아직 지원하지 않습니다.': 'On Windows the widget shows session states (hooks) and reopens ended sessions in Windows Terminal. Chat and directing are not supported yet.',
   '업데이트': 'Update', '새 버전': 'New version', '사용 가능': 'available', '현재': 'current', '최신 버전입니다': 'You are up to date', '하루에 한 번 GitHub 릴리스를 확인합니다.': 'Checks GitHub Releases once a day.', '받기': 'Get it', '지금 확인': 'Check now',
   '업데이트 자동 확인': 'Check for updates automatically', '꺼 두면 위젯이 GitHub에 접속하지 않습니다.': 'When off, the widget never contacts GitHub.',
+  '선택 필요': 'Needs input', '이전 완료': 'Older done', '더 보기': 'Show', '접기': 'Collapse', '모두 숨기기': 'Hide all', '24시간 넘게 지난 완료 세션을 목록에서 숨깁니다': 'Hide done sessions older than 24 hours from the list',
+  '24시간 지난 완료 세션을 숨겼습니다': 'Hid done sessions older than 24 hours', '숨긴 세션': 'Hidden sessions', '개 보기': ' — show', '숨긴 세션 감추기': 'Hide hidden sessions again', '목록에서 숨기기': 'Hide from the list', '다시 표시': 'Show again',
+  '펼치기': 'Expand', '응답 없음': 'no response', '30분 넘게 도구 호출이나 응답이 없습니다': 'No tool call or reply for over 30 minutes', '선택을 기다린 시간': 'Waiting for your choice since',
+  '마지막 프롬프트': 'Last prompt', '마지막 응답': 'Last reply', '최근 도구': 'Recent tools', '위치': 'Location', '컨텍스트': 'Context', '지난 노트': 'Past notes', '불러오는 중…': 'Loading…', '관련 노트 없음': 'No related notes', '개 파일 변경됨': ' file(s) changed since',
+  '/compact 보내기 (컨텍스트 정리)': 'Send /compact (trim context)', '/compact 전송': '/compact sent', '/compact 전송 (수락 미확인)': '/compact sent (not confirmed)', '/compact 전송 실패': 'Could not send /compact', '컨텍스트 90% — /compact 권장': 'context at 90% — consider /compact',
+  '오늘 세션': 'today', '선택 응답 평균': 'avg answer', '검색... (repo: agent: term: 접두어 가능)': 'Search… (repo: agent: term: prefixes)',
   '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'AgentDesk에 오신 것을 환영합니다': 'Welcome to AgentDesk',
   'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
   '픽셀 오피스': 'Pixel office', '필요할 때만 알림': 'Alerts only when needed',
@@ -3117,6 +3166,11 @@ async function fetchData() {
         prompt: a?.prompt || '',
         lastMsg: a?.lastAssistantMessage || '',
         connected: term?.connected || false,
+        cwd: String(w.worktreeId || '').split('::').pop() || '',
+        recentTools: hk ? (hk.recentTools || []) : [],
+        askSince: hk && hk.needsInput ? hk.askAt : 0,
+        stuck: !!(hk && finalStatus === 'running' && Date.now() - hk.last > STUCK_MS),
+        stuckSince: hk ? hk.last : 0,
       };
     });
     for (const h of hookOnly) sessions.push(await hookOnlySession(h));
@@ -3257,6 +3311,8 @@ async function hookOnlySession(h) {
     needsInput: st.needsInput && finalStatus !== 'done',
     subagents: hookSubagentsFor(st).length ? hookSubagentsFor(st) : (screenAgentsCache.get(h.id) || []),
     ctxPct: screenCtxCache.get(h.id) ?? meta.ctxPct ?? null,
+    recentTools: st.recentTools || [], askSince: st.needsInput ? st.askAt : 0,
+    stuck: finalStatus === 'running' && Date.now() - st.last > STUCK_MS, stuckSince: st.last,
   };
 }
 function showModeBanner(orcaOk, hookOnlyCount, paneCount) {
@@ -3329,6 +3385,7 @@ function applyStatusTransitions() {
             if (row && !officeAsk && live && live.needsInput) dashAskOpen(live, row);
           }, 500);
         }
+        if (s.ctxPct >= 90 && s.status !== 'done' && !ctxWarned.has(s.id)) { ctxWarned.add(s.id); showInAppToast(`${s.name}: ${t('컨텍스트 90% — /compact 권장')}`, 'error'); }
         if (!s.needsInput && notifiedWaiting.has(s.id)) {
           notifiedWaiting.delete(s.id);
           clearWaitingToast(s.id);
@@ -3340,14 +3397,34 @@ function applyStatusTransitions() {
     isFirstFetch = false;
 }
 
+const lastCounts = {};
+// footer line computed from hook sessions active today: session count, time spent running, average wait on needs-input
+function renderLocalStats() {
+  const el = $('localStats'); if (!el) return;
+  if (!hooksEnabled || !hookSessions.size) { el.hidden = true; return; }
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0); const d0 = dayStart.getTime(); const now = Date.now();
+  let n = 0, run = 0, askMs = 0, askN = 0;
+  for (const st of hookSessions.values()) {
+    if (st.last < d0) continue;
+    n++; run += (st.runMs || 0) + (st.status === 'running' && !st.ended ? now - st.since : 0); askMs += st.askMs || 0; askN += st.askN || 0;
+  }
+  if (!n) { el.hidden = true; return; }
+  const parts = [`${t('오늘 세션')} ${n}`, `${t('작업')} ${fmtDur(run)}`];
+  if (askN) parts.push(`${t('선택 응답 평균')} ${Math.round(askMs / askN / 1000)}s`);
+  el.hidden = false; el.textContent = parts.join(' · ');
+}
 function updateCounters() {
     const running = sessions.filter(s => s.status === 'running').length;
     const waiting = sessions.filter(s => s.status === 'waiting').length;
     const done = sessions.filter(s => s.status === 'done' || s.status === 'error').length;
 
-    $('nRun').textContent = running;
-    $('nWait').textContent = waiting;
-    $('nDone').textContent = done;
+    const asksNow = sessions.filter(s => s.needsInput && s.status !== 'done').length;
+    const bump = (id, el, v) => { if (lastCounts[id] !== undefined && lastCounts[id] !== v) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); } lastCounts[id] = v; };
+    $('nRun').textContent = running; bump('run', $('nRun').closest('.stat'), running);
+    $('nWait').textContent = waiting; bump('wait', $('nWait').closest('.stat'), waiting);
+    $('nDone').textContent = done; bump('done', $('nDone').closest('.stat'), done);
+    $('nAsk').textContent = asksNow; $('statAsk').hidden = asksNow === 0; bump('ask', $('statAsk'), asksNow);
+    renderLocalStats();
     $('updatedAt').textContent = new Date().toLocaleTimeString(LANG === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     const officeBadge = $('badge-office');
@@ -3418,26 +3495,112 @@ function showOrcaError(msg) {
   }
   el.innerHTML = `<b>Orca CLI 호출 실패</b><span>${esc(String(msg))}</span><span>Orca 앱이 실행 중인지, 터미널에서 <code>orca --version</code>이 동작하는지 확인하세요.</span>`;
 }
-function renderDashboard() {
-  let items = sessions;
-  if (tab === 'recent') {
-    items = items.filter(isRecentSession);
-  } else if (tab === 'running') items = items.filter(s => s.status === 'running' || s.status === 'waiting');
-  else if (tab === 'done') items = items.filter(s => s.status === 'done' || s.status === 'error');
-  if (searchQuery) {
-    const q = searchQuery.toLowerCase();
-    items = items.filter(s => s.name.toLowerCase().includes(q) || s.branch.toLowerCase().includes(q) || s.repo.toLowerCase().includes(q));
+// ── dashboard state: collapsed older-done list, per-repo folds, expanded cards, hidden sessions, filters, keyboard selection ──
+const STUCK_MS = 30 * 60 * 1000;          // running with no hook event for this long → "no response" badge
+const DONE_RECENT_MS = 24 * 60 * 60 * 1000;
+let showOlderDone = false, showHidden = false, filterAgent = 'all', selectedId = null;
+const doneRepoOpen = new Set(), expandedIds = new Set(), ctxWarned = new Set();
+let hiddenSessions = new Set(); try { hiddenSessions = new Set(JSON.parse(localStorage.getItem('roca-hidden') || '[]')); } catch {}
+function hiddenSave() { try { localStorage.setItem('roca-hidden', JSON.stringify([...hiddenSessions])); } catch {} }
+// search: free text over name/branch/repo/prompt/last message, plus repo:/agent:/term: prefixes
+function parseSearch(q) {
+  const f = { text: [], repo: null, agent: null, term: null };
+  for (const tok of q.toLowerCase().split(/\s+/).filter(Boolean)) {
+    const m = tok.match(/^(repo|agent|term):(.*)$/);
+    if (m && m[2]) f[m[1]] = m[2]; else f.text.push(tok);
   }
+  return f;
+}
+function sessionMatches(s, f) {
+  if (f.repo && !String(s.repo || '').toLowerCase().includes(f.repo) && !String(s.cwd || '').toLowerCase().includes(f.repo)) return false;
+  if (f.agent && String(s.agent || '').toLowerCase() !== f.agent) return false;
+  if (f.term) { const k = (terminalKind(handles.get(s.id)) || (s.hookOnly ? 'none' : 'orca')).toLowerCase(); if (!k.includes(f.term)) return false; }
+  const hay = `${s.name} ${s.branch} ${s.repo} ${s.prompt || ''} ${s.lastMsg || ''} ${s.tool || ''}`.toLowerCase();
+  return f.text.every(w => hay.includes(w));
+}
+function repoNameOf(s) { return String(s.repo || s.cwd || '').split('/').filter(Boolean).pop() || '—'; }
+function fmtDur(ms) { const m = Math.round(ms / 60000); if (m < 60) return `${m}m`; const h = Math.floor(m / 60); return `${h}h ${m % 60}m`; }
+function renderCard(s) {
+  const h = handles.get(s.id);
+  const hasHandle = h && s.connected;
+  const isPinned = pinnedSessions.has(s.id);
+  const peek = s.prompt || s.lastMsg || '';
+  const prev = prevStatuses.get(s.id);
+  const changed = (prev && prev !== s.status) || (!prev && !isFirstFetch);
+  const expanded = expandedIds.has(s.id);
+  const ctxCls = s.ctxPct >= 90 ? 'crit' : s.ctxPct >= 75 ? 'warn' : '';
+  const timeLabel = s.needsInput && s.askSince ? `<span class="s-time ask" title="${esc(t('선택을 기다린 시간'))}">${esc(t('대기'))} ${timeAgo(s.askSince)}</span>`
+    : `<span class="s-time" title="${s.status === 'running' ? '작업 시작 후 경과' : s.status === 'waiting' ? '응답 완료 후 대기' : '마지막 활동'}">${sessionTimeLabel(s)}</span>`;
+  let detail = '';
+  if (expanded) {
+    const tools = (s.recentTools || []).slice(-5).reverse();
+    detail = `<div class="s-detail">
+      <div class="d-row"><b>${esc(t('마지막 프롬프트'))}</b><span>${esc(trunc(s.prompt || '—', 300))}</span></div>
+      <div class="d-row"><b>${esc(t('마지막 응답'))}</b><span>${esc(trunc(s.lastMsg || '—', 300))}</span></div>
+      <div class="d-row"><b>${esc(t('최근 도구'))}</b><span>${tools.length ? tools.map(x => `<code>${esc(x.tool)}</code>${x.input ? ' ' + esc(trunc(x.input, 36)) : ''}`).join(' · ') : (s.tool ? `<code>${esc(s.tool)}</code>` : '—')}</span></div>
+      <div class="d-row"><b>${esc(t('위치'))}</b><span>${esc(s.cwd || s.repo || '—')}${s.branch ? ` · ${esc(s.branch)}` : ''}${s.sessionId ? ` · ${esc(String(s.sessionId).slice(0, 8))}` : ''}</span></div>
+      ${s.ctxPct != null ? `<div class="d-row"><b>${esc(t('컨텍스트'))}</b><span><div class="d-ctx" title="${s.ctxPct}%"><i class="${ctxCls}" style="width:${Math.min(100, s.ctxPct)}%"></i></div></span></div>` : ''}
+      <div class="d-row d-notes" data-notes-for="${esc(s.id)}"><b>${esc(t('지난 노트'))}</b><span>${esc(t('불러오는 중…'))}</span></div>
+    </div>`;
+  }
+  return `<div class="session${changed ? ' pulse' : ''}${expanded ? ' expanded' : ''}${s.id === selectedId ? ' selected' : ''}${s.stuck ? ' stuck' : ''}" data-id="${esc(s.id)}" data-handle="${esc(h || '')}">
+        <span class="s-icon ${s.status}" title="${s.needsInput ? '선택 필요' : ''}${s.viaHooks ? ' (hooks)' : ''}">${s.needsInput ? '<span class="px-ic clock"></span><span class="px-badge q">?</span>' : statusIcon(s.status)}</span>
+        <div class="s-info">
+          <div class="s-name">${isPinned ? '📌 ' : ''}${esc(s.name)}</div>
+          <div class="s-meta">
+            <span class="s-agent ${s.agent}">${esc(s.agent)}</span>
+            <span class="s-branch">${esc(s.branch)}</span>
+            ${timeLabel}
+            ${s.stuck ? `<span class="s-tool stuck" title="${esc(t('30분 넘게 도구 호출이나 응답이 없습니다'))}">${esc(t('응답 없음'))} ${timeAgo(s.stuckSince)}</span>` : ''}
+            ${s.tool ? `<span class="s-tool">${esc(s.tool)}</span>` : ''}
+            ${s.hookOnly ? `<span class="s-tool" title="${esc(t(s.connected ? '터미널로 연결됨' : (s.ended ? '클릭하면 터미널에서 claude --resume 으로 다시 엽니다' : '읽기 전용 (터미널 없음)')))}">${s.connected ? esc(terminalKind(handles.get(s.id)) === 'tmux' ? 'tmux' : t('터미널')) : (s.ended ? '▶ ' + t('다시 열기') : t('읽기 전용'))}</span>` : ''}
+            ${s.ctxPct != null ? `<span class="s-tool ctx-chip ${ctxCls}" title="컨텍스트 사용량">ctx ${s.ctxPct}%</span>` : ''}
+            ${(s.subagents || []).filter(a => a.state === 'running').length ? `<span class="s-tool" title="${esc((s.subagents || []).filter(a => a.state === 'running').map(a => a.name).join(', '))}">🤖${(s.subagents || []).filter(a => a.state === 'running').length}</span>` : ''}
+          </div>
+          ${peek && !expanded ? `<div class="s-prompt">${esc(trunc(peek, 120))}</div>` : ''}
+        </div>
+        <button class="s-expand" data-act="expand" data-id="${esc(s.id)}" title="${esc(t(expanded ? '접기' : '펼치기'))}">▶</button>
+        <div class="s-actions">
+          ${hasHandle ? `<button class="s-chat" data-act="chat" data-h="${esc(h)}" title="${esc(t('채팅 패널 열기'))}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"></path></svg>${esc(t('채팅'))}</button>` : ''}
+          ${s.needsInput && hasHandle ? `<button class="s-act" data-act="ask" data-id="${esc(s.id)}" title="${esc(t('바로 답하기'))}">❓</button>` : ''}
+          ${hasHandle && s.ctxPct >= 85 ? `<button class="s-act" data-act="compact" data-h="${esc(h)}" data-id="${esc(s.id)}" title="${esc(t('/compact 보내기 (컨텍스트 정리)'))}">🧹</button>` : ''}
+          ${hasHandle ? `<button class="s-act" data-act="tpl" data-id="${esc(s.id)}" title="${esc(t('템플릿 프롬프트 보내기'))}">🧩</button>` : ''}
+          <button class="s-act ${isPinned ? 'pinned' : ''}" data-act="pin" data-id="${esc(s.id)}" title="${isPinned ? '고정 해제' : '고정'}">📌</button>
+          <button class="s-act" data-act="copy-id" data-id="${esc(s.id)}" title="세션 ID 복사">📋</button>
+          ${hasHandle ? `<button class="s-act" data-act="interrupt" data-h="${esc(h)}" title="인터럽트">⏸</button>` : ''}
+          ${(s.status === 'done' || s.status === 'error') ? `<button class="s-act" data-act="hide" data-id="${esc(s.id)}" title="${esc(t(hiddenSessions.has(s.id) ? '다시 표시' : '목록에서 숨기기'))}">${hiddenSessions.has(s.id) ? '👁' : '🙈'}</button>` : ''}
+          ${hasHandle ? `<button class="s-act danger" data-act="close" data-h="${esc(h)}" title="종료">✕</button>` : ''}
+        </div>
+        ${detail}
+      </div>`;
+}
+function renderFilters(items) {
+  const el = $('filters'); if (!el) return;
+  const agents = [...new Set(sessions.map(s => s.agent).filter(Boolean))].sort();
+  if (agents.length < 2 && filterAgent === 'all') { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  el.innerHTML = [['all', t('전체')], ...agents.map(a => [a, a.toUpperCase()])].map(([v, l]) => `<button class="fchip ${filterAgent === v ? 'on' : ''}" data-filter-agent="${esc(v)}">${esc(l)}${v !== 'all' ? ` <span style="opacity:.7">${sessions.filter(s => s.agent === v).length}</span>` : ''}</button>`).join('');
+}
+if (location.hash.includes('older-open')) showOlderDone = true;   // dev captures
+function renderDashboard() {
+  if (location.hash.includes('expand-first') && sessions.length && !expandedIds.size) expandedIds.add(sessions.find(s => s.status === 'running')?.id || sessions[0].id);
+  let items = sessions.filter(s => showHidden || !hiddenSessions.has(s.id));
+  if (filterAgent !== 'all') items = items.filter(s => s.agent === filterAgent);
+  if (tab === 'recent') items = items.filter(isRecentSession);
+  else if (tab === 'running') items = items.filter(s => s.status === 'running' || s.status === 'waiting');
+  else if (tab === 'done') items = items.filter(s => s.status === 'done' || s.status === 'error');
+  if (searchQuery) { const f = parseSearch(searchQuery); items = items.filter(s => sessionMatches(s, f)); }
+  renderFilters(items);
+  const hiddenNote = hiddenSessions.size ? `<div class="hidden-link" data-act="hidden-toggle">${showHidden ? esc(t('숨긴 세션 감추기')) : `${esc(t('숨긴 세션'))} ${hiddenSessions.size}${esc(t('개 보기'))}`}</div>` : '';
   if (!items.length) {
     const emptyMsg = tab === 'running' ? '실행 중인 세션이 없습니다'
       : tab === 'done' ? '완료된 세션이 없습니다'
       : tab === 'recent' ? '최근 24시간 내 세션이 없습니다'
       : '세션이 없습니다';
     const emptyIcon = tab === 'running' ? '⏳' : tab === 'done' ? '🎉' : '📭';
-    $('list').innerHTML = `<div class="empty"><span class="empty-icon">${emptyIcon}</span><span class="empty-text">${emptyMsg}</span></div>`;
+    $('list').innerHTML = `<div class="empty"><span class="empty-icon">${emptyIcon}</span><span class="empty-text">${emptyMsg}</span></div>${hiddenNote}`;
     return;
   }
-
   items.sort((a, b) => {
     const pa = pinnedSessions.has(a.id) ? 0 : 1;
     const pb = pinnedSessions.has(b.id) ? 0 : 1;
@@ -3446,56 +3609,54 @@ function renderDashboard() {
     const d = ord[a.status] - ord[b.status];
     return d !== 0 ? d : (b.time || 0) - (a.time || 0);
   });
-
   const showGroups = tab === 'all' && !searchQuery;
-  const groups = showGroups ? [
-    { key: 'running', label: '실행 중', items: items.filter(s => s.status === 'running') },
-    { key: 'waiting', label: '대기 중', items: items.filter(s => s.status === 'waiting') },
-    { key: 'error', label: '오류', items: items.filter(s => s.status === 'error') },
-    { key: 'done', label: '완료', items: items.filter(s => s.status === 'done') },
-  ].filter(g => g.items.length > 0) : [{ key: 'flat', label: '', items }];
-
   let html = '';
-  for (const group of groups) {
-    if (showGroups && group.label) {
-      html += `<div class="group-header"><span>${group.label}</span><span class="gh-count">${group.items.length}</span><span class="gh-line"></span></div>`;
+  if (!showGroups) {
+    for (const s of items) html += renderCard(s);
+  } else {
+    const now = Date.now();
+    const isDone = s => s.status === 'done';
+    const groups = [
+      { key: 'ask', label: '선택 필요', cls: 'ask', items: items.filter(s => s.needsInput && !isDone(s)) },
+      { key: 'running', label: '실행 중', items: items.filter(s => s.status === 'running' && !s.needsInput) },
+      { key: 'waiting', label: '대기 중', items: items.filter(s => s.status === 'waiting' && !s.needsInput) },
+      { key: 'error', label: '오류', items: items.filter(s => s.status === 'error') },
+      { key: 'done', label: '완료', items: items.filter(s => isDone(s) && (pinnedSessions.has(s.id) || (s.time || 0) > now - DONE_RECENT_MS)) },
+    ].filter(g => g.items.length > 0);
+    const older = items.filter(s => isDone(s) && !pinnedSessions.has(s.id) && (s.time || 0) <= now - DONE_RECENT_MS);
+    for (const group of groups) {
+      html += `<div class="group-header ${group.cls || ''}"><span>${esc(t(group.label))}</span><span class="gh-count">${group.items.length}</span><span class="gh-line"></span></div>`;
+      for (const s of group.items) html += renderCard(s);
     }
-    for (const s of group.items) {
-      const h = handles.get(s.id);
-      const hasHandle = h && s.connected;
-      const isPinned = pinnedSessions.has(s.id);
-      const peek = s.prompt || s.lastMsg || '';
-      const prev = prevStatuses.get(s.id);
-      const changed = prev && prev !== s.status;
-      html += `<div class="session${changed ? ' pulse' : ''}" data-id="${esc(s.id)}" data-handle="${esc(h || '')}">
-        <span class="s-icon ${s.status}" title="${s.needsInput ? '선택 필요' : ''}${s.viaHooks ? ' (hooks)' : ''}">${s.needsInput ? '<span class="px-ic clock"></span><span class="px-badge q">?</span>' : statusIcon(s.status)}</span>
-        <div class="s-info">
-          <div class="s-name">${isPinned ? '📌 ' : ''}${esc(s.name)}</div>
-          <div class="s-meta">
-            <span class="s-agent ${s.agent}">${esc(s.agent)}</span>
-            <span class="s-branch">${esc(s.branch)}</span>
-            <span class="s-time" title="${s.status === 'running' ? '작업 시작 후 경과' : s.status === 'waiting' ? '응답 완료 후 대기' : '마지막 활동'}">${sessionTimeLabel(s)}</span>
-            ${s.tool ? `<span class="s-tool">${esc(s.tool)}</span>` : ''}
-            ${s.hookOnly ? `<span class="s-tool" title="${esc(t(s.connected ? '터미널로 연결됨' : (s.ended ? '클릭하면 터미널에서 claude --resume 으로 다시 엽니다' : '읽기 전용 (터미널 없음)')))}">${s.connected ? esc(terminalKind(handles.get(s.id)) === 'tmux' ? 'tmux' : t('터미널')) : (s.ended ? '▶ ' + t('다시 열기') : t('읽기 전용'))}</span>` : ''}
-            ${s.ctxPct != null ? `<span class="s-tool ctx-chip ${s.ctxPct >= 90 ? 'crit' : s.ctxPct >= 75 ? 'warn' : ''}" title="컨텍스트 사용량">ctx ${s.ctxPct}%</span>` : ''}
-            ${(s.subagents || []).filter(a => a.state === 'running').length ? `<span class="s-tool" title="${esc((s.subagents || []).filter(a => a.state === 'running').map(a => a.name).join(', '))}">🤖${(s.subagents || []).filter(a => a.state === 'running').length}</span>` : ''}
-          </div>
-          ${peek ? `<div class="s-prompt">${esc(trunc(peek, 120))}</div>` : ''}
-        </div>
-        <div class="s-actions">
-          ${hasHandle ? `<button class="s-chat" data-act="chat" data-h="${esc(h)}" title="${esc(t('채팅 패널 열기'))}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"></path></svg>${esc(t('채팅'))}</button>` : ''}
-          ${s.needsInput && hasHandle ? `<button class="s-act" data-act="ask" data-id="${esc(s.id)}" title="${esc(t('바로 답하기'))}">❓</button>` : ''}
-          ${hasHandle ? `<button class="s-act" data-act="tpl" data-id="${esc(s.id)}" title="${esc(t('템플릿 프롬프트 보내기'))}">🧩</button>` : ''}
-          <button class="s-act ${isPinned ? 'pinned' : ''}" data-act="pin" data-id="${esc(s.id)}" title="${isPinned ? '고정 해제' : '고정'}">📌</button>
-          <button class="s-act" data-act="copy-id" data-id="${esc(s.id)}" title="세션 ID 복사">📋</button>
-          ${hasHandle ? `<button class="s-act" data-act="interrupt" data-h="${esc(h)}" title="인터럽트">⏸</button>` : ''}
-          ${hasHandle ? `<button class="s-act danger" data-act="close" data-h="${esc(h)}" title="종료">✕</button>` : ''}
-        </div>
-      </div>`;
+    if (older.length) {
+      html += `<div class="group-header"><span>${esc(t('이전 완료'))}</span><span class="gh-count">${older.length}</span><span class="gh-line"></span><button class="gh-btn" data-act="older-toggle">${esc(t(showOlderDone ? '접기' : '더 보기'))}</button><button class="gh-btn" data-act="hide-older" title="${esc(t('24시간 넘게 지난 완료 세션을 목록에서 숨깁니다'))}">${esc(t('모두 숨기기'))}</button></div>`;
+      if (showOlderDone) {
+        const byRepo = new Map();
+        for (const s of older) { const k = repoNameOf(s); if (!byRepo.has(k)) byRepo.set(k, []); byRepo.get(k).push(s); }
+        for (const [repo, list] of [...byRepo.entries()].sort((a, b) => (b[1][0].time || 0) - (a[1][0].time || 0))) {
+          const open = doneRepoOpen.has(repo);
+          html += `<div class="repo-header" data-act="repo-toggle" data-repo="${esc(repo)}"><span>${esc(repo)}</span><span class="rh-count">${list.length}</span><span class="rh-arrow">${open ? '▾' : '▸'}</span></div>`;
+          if (open) for (const s of list) html += renderCard(s);
+        }
+      }
     }
   }
-  $('list').innerHTML = html;
+  $('list').innerHTML = html + hiddenNote;
+  if (location.hash.includes('list-bottom')) setTimeout(() => { $('list').scrollTop = $('list').scrollHeight; }, 50);
+  for (const id of expandedIds) { const s = sessions.find(x => x.id === id); if (s && $('list').querySelector(`.d-notes[data-notes-for="${CSS.escape(id)}"]`)) loadNotesFor(s); }
   if (officeAsk && officeAsk.anchor) officeAskPlace();
+}
+// recall notes for an expanded card (per session, cached a minute)
+const notesCache = new Map();
+async function loadNotesFor(s) {
+  const el = () => $('list').querySelector(`.d-notes[data-notes-for="${CSS.escape(s.id)}"] span`);
+  const cached = notesCache.get(s.id);
+  let notes;
+  if (cached && Date.now() - cached.at < 60000) notes = cached.notes;
+  else { try { notes = await window.orca.recallNotes(s.cwd || s.repo, 2); } catch { notes = []; } notesCache.set(s.id, { at: Date.now(), notes }); }
+  const target = el(); if (!target) return;
+  if (!notes || !notes.length) { target.textContent = t('관련 노트 없음'); return; }
+  target.innerHTML = notes.map(n => `<span class="d-note"><b>${esc(n.title)}</b>${n.changed && n.changed.length ? ` <span style="color:var(--yellow)">⚠ ${n.changed.length}${esc(t('개 파일 변경됨'))}</span>` : ''}<br>${esc(trunc(n.summary || '', 220))}</span>`).join('');
 }
 
 // ── File drag & drop onto session cards ──
@@ -3568,11 +3729,32 @@ $('list').addEventListener('click', async e => {
       fetchData();
     } else if (act === 'chat') {
       openChat(actBtn.dataset.h);
+    } else if (act === 'expand') {
+      const id = actBtn.dataset.id; if (expandedIds.has(id)) expandedIds.delete(id); else expandedIds.add(id);
+      renderDashboard();
+    } else if (act === 'compact') {
+      const s = sessions.find(ss => ss.id === actBtn.dataset.id);
+      try { const r = await window.orca.terminalSend(actBtn.dataset.h, '/compact', true, 15); showInAppToast(`${s ? s.name : ''}: ${t(r?.result?.send?.accepted ? '/compact 전송' : '/compact 전송 (수락 미확인)')}`); } catch (err) { showInAppToast(`${t('/compact 전송 실패')}: ${err.message}`, 'error'); }
+    } else if (act === 'hide') {
+      const id = actBtn.dataset.id; if (hiddenSessions.has(id)) hiddenSessions.delete(id); else hiddenSessions.add(id);
+      hiddenSave(); renderDashboard();
+    } else if (act === 'hide-older') {
+      const now = Date.now();
+      for (const s of sessions) if (s.status === 'done' && !pinnedSessions.has(s.id) && (s.time || 0) <= now - DONE_RECENT_MS) hiddenSessions.add(s.id);
+      hiddenSave(); renderDashboard(); showInAppToast(t('24시간 지난 완료 세션을 숨겼습니다'));
+    } else if (act === 'older-toggle') {
+      showOlderDone = !showOlderDone; renderDashboard();
+    } else if (act === 'repo-toggle') {
+      const r = actBtn.dataset.repo; if (doneRepoOpen.has(r)) doneRepoOpen.delete(r); else doneRepoOpen.add(r);
+      renderDashboard();
+    } else if (act === 'hidden-toggle') {
+      showHidden = !showHidden; renderDashboard();
     }
     return;
   }
   const row = e.target.closest('.session');
   if (!row) return;
+  selectedId = row.dataset.id;
   const handle = row.dataset.handle;
   if (!handle) {
     const sess = sessions.find(ss => ss.id === row.dataset.id);
@@ -3584,6 +3766,36 @@ $('list').addEventListener('click', async e => {
   if (r && r.ok === false) { showInAppToast(`${t('터미널 전환 실패')}: ${r.error || ''}`, 'error'); openChat(handle); }
 });
 
+$('filters').addEventListener('click', e => {
+  const b = e.target.closest('[data-filter-agent]'); if (!b) return;
+  filterAgent = b.dataset.filterAgent; renderDashboard();
+});
+// keyboard: ↑↓ select · Enter terminal · c chat · e expand · p pin · i interrupt · / search · Esc clear
+document.addEventListener('keydown', e => {
+  if (currentPage !== 'dashboard') return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) { if (e.key === 'Escape') e.target.blur(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === '/') { e.preventDefault(); $('search').focus(); $('search').select(); return; }
+  const rows = [...$('list').querySelectorAll('.session')];
+  if (!rows.length) return;
+  let idx = rows.findIndex(r => r.dataset.id === selectedId);
+  const cur = rows[idx]; const sess = cur && sessions.find(x => x.id === cur.dataset.id);
+  const paint = () => { for (const r of rows) r.classList.toggle('selected', r.dataset.id === selectedId); };
+  switch (e.key) {
+    case 'ArrowDown': case 'j': e.preventDefault(); idx = Math.min(rows.length - 1, idx + 1); selectedId = rows[idx].dataset.id; paint(); rows[idx].scrollIntoView({ block: 'nearest' }); return;
+    case 'ArrowUp': case 'k': e.preventDefault(); idx = Math.max(0, idx < 0 ? 0 : idx - 1); selectedId = rows[idx].dataset.id; paint(); rows[idx].scrollIntoView({ block: 'nearest' }); return;
+    case 'Escape': selectedId = null; paint(); return;
+  }
+  if (!cur) return;
+  switch (e.key) {
+    case 'Enter': e.preventDefault(); if (cur.dataset.handle) api.switchTo(cur.dataset.handle); else if (sess && sess.hookOnly && sess.sessionId) resumeSessionInTerminal(sess); return;
+    case 'c': if (cur.dataset.handle) openChat(cur.dataset.handle); return;
+    case 'e': if (expandedIds.has(cur.dataset.id)) expandedIds.delete(cur.dataset.id); else expandedIds.add(cur.dataset.id); renderDashboard(); return;
+    case 'p': if (pinnedSessions.has(cur.dataset.id)) pinnedSessions.delete(cur.dataset.id); else pinnedSessions.add(cur.dataset.id); try { localStorage.setItem('roca-pinned', JSON.stringify([...pinnedSessions])); } catch {} renderDashboard(); return;
+    case 'i': if (cur.dataset.handle) { api.interrupt(cur.dataset.handle); showInAppToast(t('인터럽트 전송')); } return;
+  }
+});
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => {
     document.querySelector('.tab.active').classList.remove('active');
