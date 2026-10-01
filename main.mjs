@@ -1094,6 +1094,33 @@ ipcMain.handle("roca:update-check", async (_e, force) => {
   } catch (e) { return { at: Date.now(), current, latest: cache?.latest || null, url: cache?.url || null, newer: cache ? semverNewer(cache.latest, current) : false, error: e.message }; }
 });
 ipcMain.handle("roca:app-version", () => app.getVersion());
+// morning briefing: recall/brief.mjs writes ~/.agentdesk/briefing.json; the main process schedules it once a day
+const BRIEF_FILE = join(homedir(), ".agentdesk", "briefing.json");
+const BRIEF_CFG = join(app.getPath("userData"), "brief-config.json");
+let briefCfg = { enabled: true, time: "08:30" }; try { Object.assign(briefCfg, JSON.parse(readFileSync(BRIEF_CFG, "utf-8"))); } catch {}
+let briefRunning = false;
+function readBrief() { try { return JSON.parse(readFileSync(BRIEF_FILE, "utf-8")); } catch { return null; } }
+function runBrief() {
+  if (briefRunning || !RECALL_CLI) return false;
+  const node = ["/opt/homebrew/bin/node", "/usr/local/bin/node"].find(p => existsSync(p)) || process.execPath;
+  briefRunning = true;
+  const child = spawn(node, [join(dirname(RECALL_CLI), "brief.mjs")], { detached: true, stdio: "ignore", env: { ...process.env, PATH: EXEC_PATH, ELECTRON_RUN_AS_NODE: "1" } });
+  child.on("exit", () => { briefRunning = false; if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:brief-updated", readBrief()); });
+  child.on("error", () => { briefRunning = false; });
+  child.unref();
+  return true;
+}
+function briefTick() {
+  if (!briefCfg.enabled) return;
+  const now = new Date(); const [hh, mm] = String(briefCfg.time || "08:30").split(":").map(Number);
+  const due = now.getHours() > hh || (now.getHours() === hh && now.getMinutes() >= mm);
+  const today = now.toISOString().slice(0, 10); const cur = readBrief();
+  if (due && (!cur || cur.date !== today)) runBrief();
+}
+setInterval(briefTick, 5 * 60 * 1000); setTimeout(briefTick, 20000);
+ipcMain.handle("roca:brief-read", () => ({ brief: readBrief(), cfg: briefCfg, running: briefRunning, jira: existsSync(join(homedir(), ".agentdesk", "jira.json")) }));
+ipcMain.handle("roca:brief-config", (_e, cfg) => { briefCfg = { ...briefCfg, ...(cfg || {}) }; try { writeFileSync(BRIEF_CFG, JSON.stringify(briefCfg)); } catch {} return briefCfg; });
+ipcMain.handle("roca:brief-now", () => ({ started: runBrief() }));
 // session notes written by recall/ (MongoDB) for a checkout: spawn the CLI, which knows the worktree/repo rules; [] when unavailable
 const RECALL_CLI = [join(__dirname, "recall", "cli.mjs"), join(homedir(), "project", "agentdesk-internal", "recall", "cli.mjs"), join(homedir(), "orca-widget", "recall", "cli.mjs")].find(p => existsSync(p)) || null;
 ipcMain.handle("roca:recall-notes", async (_e, cwd, limit) => {
