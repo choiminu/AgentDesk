@@ -1094,6 +1094,56 @@ ipcMain.handle("roca:update-check", async (_e, force) => {
   } catch (e) { return { at: Date.now(), current, latest: cache?.latest || null, url: cache?.url || null, newer: cache ? semverNewer(cache.latest, current) : false, error: e.message }; }
 });
 ipcMain.handle("roca:app-version", () => app.getVersion());
+// "what is it doing right now?" — one sentence from the last few turns of the transcript (Haiku), cached per file state for 5 minutes
+const nowCache = new Map();   // transcriptPath → { key, at, text }
+let nowInFlight = 0;
+const NOW_PROMPT = "You get the last turns of an AI coding session. Reply with ONE sentence (≤ 60 characters, same language as the conversation, no subject like 'the agent', present tense, concrete: feature/file/error) saying what is being worked on right now. Return ONLY JSON {\"now\": \"...\"}.";
+// headless Claude with the prompt on stdin; resolves stdout, rejects with stderr
+function runClaude(args, input, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("claude", args, { env: { ...process.env, PATH: EXEC_PATH, AGENTDESK_RECALL: "1", DISABLE_OMC: "1", OMC_SKIP_HOOKS: "all" } });
+    let out = "", err = ""; const timer = setTimeout(() => { child.kill(); reject(new Error("timeout")); }, timeoutMs || 60000);
+    child.stdout.on("data", d => out += d); child.stderr.on("data", d => err += d);
+    child.on("error", e => { clearTimeout(timer); reject(e); });
+    child.on("close", code => { clearTimeout(timer); code === 0 ? resolve(out) : reject(new Error(err.trim().split("\n").pop() || `exit ${code}`)); });
+    child.stdin.end(input);
+  });
+}
+function transcriptTailText(path, agent) {
+  const st = statSync(path); const size = st.size, from = Math.max(0, size - 120000);
+  const fd = openSync(path, "r"); const buf = Buffer.alloc(size - from); readSync(fd, buf, 0, buf.length, from); closeSync(fd);
+  const turns = [];
+  for (const line of buf.toString("utf-8").split("\n")) {
+    if (!line.startsWith("{")) continue; let rec; try { rec = JSON.parse(line); } catch { continue; }
+    if (agent === "gemini") { const msgs = rec.$set?.messages || (rec.type ? [rec] : []); for (const x of msgs) { const tx = Array.isArray(x.content) ? x.content.map(c => c && c.text || "").join(" ") : String(x.content || ""); if (tx && !/^\s*<session_context>/.test(tx)) turns.push(`${x.type === "user" ? "USER" : "ASSISTANT"}: ${tx.slice(0, 600)}`); } continue; }
+    if (agent === "codex") { const p = rec.payload || rec; if (p.type === "message" && Array.isArray(p.content)) { const tx = p.content.map(c => c && (c.text || "")).join(" "); if (tx) turns.push(`${p.role === "user" ? "USER" : "ASSISTANT"}: ${tx.slice(0, 600)}`); } continue; }
+    if (rec.type !== "user" && rec.type !== "assistant" || rec.isMeta || rec.isSidechain) continue;
+    const c = rec.message?.content; const tx = Array.isArray(c) ? c.map(x => x && (x.text || (x.type === "tool_use" ? `[tool ${x.name} ${String(x.input?.file_path || x.input?.command || x.input?.pattern || "").slice(0, 60)}]` : ""))).filter(Boolean).join(" ") : String(c || "");
+    if (!tx || /^<(command-name|local-command|system-reminder)/.test(tx.trim())) continue;
+    if (rec.type === "user" && Array.isArray(c) && c.every(x => x && x.type === "tool_result")) continue;
+    turns.push(`${rec.type === "user" ? "USER" : "ASSISTANT"}: ${tx.slice(0, 600)}`);
+  }
+  return { key: `${st.mtimeMs}:${size}`, text: turns.slice(-8).join("\n") };
+}
+ipcMain.handle("roca:now-summary", async (_e, transcriptPath, agent) => {
+  if (!transcriptPath || !existsSync(transcriptPath)) { if (process.env.ROCA_DEBUG) console.log("[now] no transcript", transcriptPath); return null; }
+  let tail; try { tail = transcriptTailText(transcriptPath, agent || "claude"); } catch (e) { if (process.env.ROCA_DEBUG) console.log("[now] tail failed", e.message); return null; }
+  const c = nowCache.get(transcriptPath);
+  if (c && (c.key === tail.key || Date.now() - c.at < 5 * 60 * 1000)) return c.text;
+  if (!tail.text || tail.text.length < 80 || nowInFlight >= 2) return c ? c.text : null;
+  if (process.env.ROCA_DEBUG) console.log("[now] ask", transcriptPath.split("/").pop().slice(0, 8), "chars", tail.text.length);
+  nowInFlight++;
+  try {
+    // the transcript goes through stdin: --disallowedTools is variadic and would swallow a positional prompt
+    const stdout = await runClaude(["-p", "--model", "haiku", "--output-format", "json", "--json-schema", JSON.stringify({ type: "object", additionalProperties: false, required: ["now"], properties: { now: { type: "string" } } }), "--system-prompt", NOW_PROMPT, "--disable-slash-commands", "--disallowedTools", "Bash", "Edit", "Write", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "Agent", "Task"], tail.text, 60000);
+    const env2 = JSON.parse(stdout); const obj = env2.structured_output || (typeof env2.result === "string" ? JSON.parse(env2.result) : env2.result);
+    const text = String(obj?.now || "").trim().slice(0, 90);
+    if (process.env.ROCA_DEBUG) console.log("[now] ->", JSON.stringify(text));
+    nowCache.set(transcriptPath, { key: tail.key, at: Date.now(), text });
+    return text;
+  } catch (e) { if (process.env.ROCA_DEBUG) console.log("[now] failed:", String(e.stderr || e.message).slice(-600)); nowCache.set(transcriptPath, { key: tail.key, at: Date.now() - 4 * 60 * 1000, text: c ? c.text : "" }); return c ? c.text : null; }
+  finally { nowInFlight--; }
+});
 // morning briefing: recall/brief.mjs writes ~/.agentdesk/briefing.json; the main process schedules it once a day
 const BRIEF_FILE = join(homedir(), ".agentdesk", "briefing.json");
 const BRIEF_CFG = join(app.getPath("userData"), "brief-config.json");
