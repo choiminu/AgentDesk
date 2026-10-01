@@ -2188,6 +2188,8 @@
   .session.stuck .s-icon { background: var(--yellow-dim); }
   .s-tool.stuck { color: var(--yellow) !important; border-color: color-mix(in srgb, var(--yellow) 50%, transparent) !important; font-weight: 700; }
   .s-time.ask { color: var(--yellow) !important; font-weight: 700; }
+  .s-prompt.s-now { color: var(--text2); font-style: normal; }
+  .s-prompt.s-now::before { content: '▸ '; color: var(--accent); }
   .s-tool.loop { color: var(--red) !important; border-color: color-mix(in srgb, var(--red) 50%, transparent) !important; font-weight: 700; }
   .s-expand { position: absolute; right: 8px; bottom: 6px; width: 18px; height: 18px; border-radius: 6px; border: none; background: transparent; color: var(--text3); font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .s-expand:hover { background: var(--surface-hover); color: var(--text); }
@@ -2723,6 +2725,7 @@ const I18N = {
   '~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.': 'Create ~/.agentdesk/slack.json (appToken, botToken) and the bridge starts by itself.', '재시작': 'Restart', '접수 담당 세션': 'Reception session',
   '슬랙 요청을 처음 받아 처리하거나 다른 세션에 넘길 세션입니다. 연결된 세션 중에서 고르세요.': 'The session that receives Slack requests first and handles or forwards them. Pick a connected session.', '지정 안 함': 'None', '접수 기록': 'Front desk log', '보류': 'pending', '아직 받은 요청이 없습니다.': 'No requests yet.',
   '접수 담당': 'Reception', '접수 담당 세션 지정 해제': 'Reception session cleared', '슬랙 접수: 담당 세션이 없어 보류 — 설정 → 슬랙 창구에서 지정하세요': 'Slack request on hold — pick a reception session in Settings → Slack front desk', '슬랙 스레드에 보고를 보냈습니다': 'report posted to the Slack thread',
+  '진행 요약 한 줄': 'One-line "doing now"', '작업 중·대기 중 세션의 최근 대화를 Haiku가 한 문장으로 요약해 카드에 표시합니다 (세션당 5분에 한 번).': 'Haiku turns the latest turns of active sessions into one sentence shown on the card (once per 5 minutes per session).', '지금 하는 일 (5분마다 갱신)': 'Doing now (refreshed every 5 minutes)',
   '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'AgentDesk에 오신 것을 환영합니다': 'Welcome to AgentDesk',
   'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
   '픽셀 오피스': 'Pixel office', '필요할 때만 알림': 'Alerts only when needed',
@@ -3200,12 +3203,14 @@ async function fetchData() {
         stuck: !!(hk && finalStatus === 'running' && Date.now() - hk.last > STUCK_MS),
         stuckSince: hk ? hk.last : 0,
         loop: hk && finalStatus !== 'done' ? loopStateFor(hk) : null,
+        transcript: hk ? hk.transcript : '',
       };
     });
     for (const h of hookOnly) sessions.push(await hookOnlySession(h));
 
     applyStatusTransitions();
     updateCounters();
+    refreshNowSummaries();
     renderRateLimits(rateLimits);
     renderDashboard();
   } catch (e) { console.error(e); }
@@ -3343,6 +3348,7 @@ async function hookOnlySession(h) {
     recentTools: st.recentTools || [], askSince: st.needsInput ? st.askAt : 0,
     stuck: finalStatus === 'running' && Date.now() - st.last > STUCK_MS, stuckSince: st.last,
     loop: finalStatus !== 'done' ? loopStateFor(st) : null,
+    transcript: st.transcript || '',
   };
 }
 function showModeBanner(orcaOk, hookOnlyCount, paneCount) {
@@ -3589,7 +3595,7 @@ function renderCard(s) {
             ${s.ctxPct != null ? `<span class="s-tool ctx-chip ${ctxCls}" title="컨텍스트 사용량">ctx ${s.ctxPct}%</span>` : ''}
             ${(s.subagents || []).filter(a => a.state === 'running').length ? `<span class="s-tool" title="${esc((s.subagents || []).filter(a => a.state === 'running').map(a => a.name).join(', '))}">🤖${(s.subagents || []).filter(a => a.state === 'running').length}</span>` : ''}
           </div>
-          ${peek && !expanded ? `<div class="s-prompt">${esc(trunc(peek, 120))}</div>` : ''}
+          ${!expanded ? (nowSummaries.get(s.id) ? `<div class="s-prompt s-now" title="${esc(t('지금 하는 일 (5분마다 갱신)'))}">${esc(nowSummaries.get(s.id))}</div>` : (peek ? `<div class="s-prompt">${esc(trunc(peek, 120))}</div>` : '')) : ''}
         </div>
         <button class="s-expand" data-act="expand" data-id="${esc(s.id)}" title="${esc(t(expanded ? '접기' : '펼치기'))}">▶</button>
         <div class="s-actions">
@@ -7609,6 +7615,7 @@ function settingsRender() {
     ${row(t('테마'), t('시스템 설정을 따르거나 라이트/다크로 고정합니다.'), seg('theme', currentTheme, [['system', t('시스템')], ['light', t('라이트')], ['dark', t('다크')]]))}
     <h2>${esc(t('감지와 알림'))}</h2>
     ${row(t('정확 감지 (에이전트 훅)'), (() => { const s = hooksAgentsSummary(); return (hooksEnabled ? t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 세션도 표시됩니다.') : t('꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.')) + (s.on.length ? ` · ${t('켜짐')}: ${s.on.join(', ')}` : '') + (s.off.length ? ` · ${t('꺼짐')}: ${s.off.join(', ')}` : ''); })(), sw('hooks', hooksEnabled))}
+    ${row(t('진행 요약 한 줄'), t('작업 중·대기 중 세션의 최근 대화를 Haiku가 한 문장으로 요약해 카드에 표시합니다 (세션당 5분에 한 번).'), sw('now-summary', nowEnabled))}
     ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
     <h2>${esc(t('슬랙 창구'))}</h2>
     ${row(t('브리지 상태'), inboxStatus.configured ? (inboxStatus.running ? t('연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.') : `${t('설정 파일은 있지만 브리지가 꺼져 있습니다.')}${inboxStatus.lastError ? ` (${esc(inboxStatus.lastError)})` : ''}`) : t('~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.'), inboxStatus.configured ? `<button class="set-btn" data-set="inbox-restart">${esc(t('재시작'))}</button>` : '')}
@@ -7662,6 +7669,7 @@ $('settings-body').addEventListener('click', async (e) => {
   }
   else if (name === 'brief-time' && v) { briefCfg = await window.orca.briefConfig(v === 'off' ? { enabled: false } : { enabled: true, time: v }); settingsRender(); }
   else if (name === 'brief-now') { b.disabled = true; b.textContent = t('생성 중…'); const r = await window.orca.briefNow(); if (!r.started) showInAppToast(t('브리핑 생성을 시작하지 못했습니다 (recall 모듈·MongoDB 확인)'), 'error'); else showInAppToast(t('브리핑 생성 중 — 1~2분 뒤 표시됩니다')); }
+  else if (name === 'now-summary') { nowEnabled = !nowEnabled; try { localStorage.setItem('roca-now-summary', nowEnabled ? '1' : '0'); } catch {} if (!nowEnabled) nowSummaries.clear(); settingsRender(); renderDashboard(); }
   else if (name === 'union-threshold' && v) { if (v === 'off') unionCfg.compact = false; else { unionCfg.compact = true; unionCfg.threshold = Number(v); } unionSave(); settingsRender(); }
   else if (name === 'union-loop') { unionCfg.loop = !unionCfg.loop; unionSave(); settingsRender(); }
   else if (name === 'union-log') {
@@ -7691,6 +7699,25 @@ $('brief-card').addEventListener('click', e => {
   else { briefOpen = !briefOpen; briefRender(); }
 });
 setTimeout(briefLoad, 1200); setInterval(briefLoad, 10 * 60 * 1000);
+
+// ── "what is it doing right now?": one Haiku sentence per active session, refreshed by the main process at most every 5 minutes ──
+const nowSummaries = new Map(); let nowBusy = false;
+let nowEnabled = true; try { nowEnabled = localStorage.getItem('roca-now-summary') !== '0'; } catch {}
+async function refreshNowSummaries() {
+  if (!nowEnabled || nowBusy) return;
+  nowBusy = true;
+  try {
+    const active = sessions.filter(s => s.transcript && (s.status === 'running' || s.status === 'waiting') && Date.now() - (s.time || 0) < 30 * 60 * 1000).slice(0, 6);
+    for (const s of active) {
+      const txt = await window.orca.nowSummary(s.transcript, s.agent);
+      if (txt && txt !== nowSummaries.get(s.id)) {
+        nowSummaries.set(s.id, txt);
+        const row = $('list').querySelector(`.session[data-id="${CSS.escape(s.id)}"] .s-info`);
+        if (row && !row.querySelector('.s-detail')) { let el = row.querySelector('.s-prompt'); if (!el) { el = document.createElement('div'); row.appendChild(el); } el.className = 's-prompt s-now'; el.title = t('지금 하는 일 (5분마다 갱신)'); el.textContent = txt; }
+      }
+    }
+  } finally { nowBusy = false; }
+}
 
 // ── Slack front desk: tasks from recall/slack-bridge.mjs go to the designated "reception" session; its REPORT returns to the thread ──
 let inboxOwner = ''; try { inboxOwner = localStorage.getItem('roca-inbox-owner') || ''; } catch {}
