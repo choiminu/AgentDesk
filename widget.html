@@ -2669,6 +2669,8 @@
 
 <script src="core/status.js"></script>
 <script>
+// dev: ROCA_START_PAGE=…,set:<localStorage key>=<url-encoded value> presets a setting before anything reads it
+for (const part of location.hash.replace('#', '').split(',')) { const m = part.match(/^set:([a-z0-9-]+)=(.*)$/i); if (m) { try { localStorage.setItem(m[1], decodeURIComponent(m[2])); } catch {} } }
 // ── Shared utilities ──
 const POLL = 5000;
 const $ = id => document.getElementById(id);
@@ -2717,6 +2719,10 @@ const I18N = {
   '아침 브리핑': 'Morning briefing', '매일 생성': 'Generate daily', '지정 시각이 지나면 어제 노트·활동·Jira 마감 티켓으로 브리핑을 만들어 화이트보드와 대시보드에 적습니다.': "After the set time, yesterday's notes, activity and Jira due tickets become a briefing on the whiteboard and the dashboard.",
   'Jira 연동은 ~/.agentdesk/jira.json(baseUrl·email·token)을 두면 켜집니다.': 'Jira joins in once ~/.agentdesk/jira.json (baseUrl, email, token) exists.', '지금 생성': 'Generate now', '마지막': 'last', '아직 생성된 브리핑이 없습니다.': 'No briefing yet.', '생성': 'Generate', '생성 중…': 'Generating…',
   '브리핑 생성을 시작하지 못했습니다 (recall 모듈·MongoDB 확인)': 'Could not start the briefing (check the recall module and MongoDB)', '브리핑 생성 중 — 1~2분 뒤 표시됩니다': 'Generating the briefing — it appears in a minute or two',
+  '슬랙 창구': 'Slack front desk', '브리지 상태': 'Bridge status', '연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.': 'Connected — requests arrive via @mention or DM in Slack.', '설정 파일은 있지만 브리지가 꺼져 있습니다.': 'Config found but the bridge is not running.',
+  '~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.': 'Create ~/.agentdesk/slack.json (appToken, botToken) and the bridge starts by itself.', '재시작': 'Restart', '접수 담당 세션': 'Reception session',
+  '슬랙 요청을 처음 받아 처리하거나 다른 세션에 넘길 세션입니다. 연결된 세션 중에서 고르세요.': 'The session that receives Slack requests first and handles or forwards them. Pick a connected session.', '지정 안 함': 'None', '접수 기록': 'Front desk log', '보류': 'pending', '아직 받은 요청이 없습니다.': 'No requests yet.',
+  '접수 담당': 'Reception', '접수 담당 세션 지정 해제': 'Reception session cleared', '슬랙 접수: 담당 세션이 없어 보류 — 설정 → 슬랙 창구에서 지정하세요': 'Slack request on hold — pick a reception session in Settings → Slack front desk', '슬랙 스레드에 보고를 보냈습니다': 'report posted to the Slack thread',
   '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'AgentDesk에 오신 것을 환영합니다': 'Welcome to AgentDesk',
   'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
   '픽셀 오피스': 'Pixel office', '필요할 때만 알림': 'Alerts only when needed',
@@ -7195,7 +7201,10 @@ function teamParseBrief(text) {
   const m = text.match(/BRIEF_START([\s\S]*?)BRIEF_END/); return m ? m[1].trim() : (text.includes('## 목표') ? text.trim() : null);
 }
 function teamParseReport(text) {
-  const m = text.match(/REPORT_START([\s\S]*?)REPORT_END/); return m ? m[1].trim() : text.trim().slice(-1200);
+  // the instruction echoed above the answer also contains "REPORT_START … REPORT_END" (the format hint), so take the LAST block
+  const i = text.lastIndexOf('REPORT_START'); if (i < 0) return text.trim().slice(-1200);
+  const j = text.indexOf('REPORT_END', i + 12);
+  return text.slice(i + 12, j < 0 ? undefined : j).trim();
 }
 
 async function teamStartFlow(t) {
@@ -7601,6 +7610,10 @@ function settingsRender() {
     <h2>${esc(t('감지와 알림'))}</h2>
     ${row(t('정확 감지 (에이전트 훅)'), (() => { const s = hooksAgentsSummary(); return (hooksEnabled ? t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 세션도 표시됩니다.') : t('꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.')) + (s.on.length ? ` · ${t('켜짐')}: ${s.on.join(', ')}` : '') + (s.off.length ? ` · ${t('꺼짐')}: ${s.off.join(', ')}` : ''); })(), sw('hooks', hooksEnabled))}
     ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
+    <h2>${esc(t('슬랙 창구'))}</h2>
+    ${row(t('브리지 상태'), inboxStatus.configured ? (inboxStatus.running ? t('연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.') : `${t('설정 파일은 있지만 브리지가 꺼져 있습니다.')}${inboxStatus.lastError ? ` (${esc(inboxStatus.lastError)})` : ''}`) : t('~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.'), inboxStatus.configured ? `<button class="set-btn" data-set="inbox-restart">${esc(t('재시작'))}</button>` : '')}
+    ${row(t('접수 담당 세션'), t('슬랙 요청을 처음 받아 처리하거나 다른 세션에 넘길 세션입니다. 연결된 세션 중에서 고르세요.'), `<select class="theme-btn" data-set="inbox-owner" style="width:auto;max-width:150px;padding:0 6px;font-size:11px"><option value="">${esc(t('지정 안 함'))}</option>${sessions.filter(s => s.connected && handles.get(s.id)).map(s => `<option value="${esc(s.id)}" ${s.id === inboxOwner ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>`)}
+    ${row(t('접수 기록'), inboxLog.length ? `${inboxLog.length}${t('건')}${inboxPending.length ? ` · ${t('보류')} ${inboxPending.length}` : ''} · ${t('최근')}: ${esc(inboxLog[0].type)} ${esc(trunc(inboxLog[0].text, 40))}` : t('아직 받은 요청이 없습니다.'), `<button class="set-btn" data-set="inbox-log">${esc(t('보기'))}</button>`)}
     <h2>${esc(t('아침 브리핑'))}</h2>
     ${row(t('매일 생성'), `${t('지정 시각이 지나면 어제 노트·활동·Jira 마감 티켓으로 브리핑을 만들어 화이트보드와 대시보드에 적습니다.')}${briefJira ? '' : ` ${t('Jira 연동은 ~/.agentdesk/jira.json(baseUrl·email·token)을 두면 켜집니다.')}`}`, seg('brief-time', briefCfg.enabled ? briefCfg.time : 'off', [['off', t('끔')], ['07:30', '07:30'], ['08:30', '08:30'], ['09:30', '09:30']]))}
     ${row(t('지금 생성'), briefing ? `${t('마지막')}: ${esc(briefing.date)} · ${esc(trunc(briefing.headline || '', 50))}` : t('아직 생성된 브리핑이 없습니다.'), `<button class="set-btn" data-set="brief-now">${esc(t('생성'))}</button>`)}
@@ -7624,6 +7637,11 @@ function settingsRender() {
     el.innerHTML = `AgentDesk ${esc(v || '')}<br>${esc(t('훅 스크립트'))}: ${esc(st?.script || '~/.roca/hook.sh')}<br>${esc(t('이벤트 로그'))}: ${esc(st?.events || '~/.roca/events.jsonl')}`;
   })();
 }
+$('settings-body').addEventListener('change', (e) => {
+  const sel = e.target.closest('select[data-set="inbox-owner"]'); if (!sel) return;
+  inboxOwner = sel.value; try { localStorage.setItem('roca-inbox-owner', inboxOwner); } catch {}
+  showInAppToast(inboxOwner ? `${t('접수 담당')}: ${sel.options[sel.selectedIndex].text}` : t('접수 담당 세션 지정 해제'));
+});
 $('settings-body').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-set]'); if (!b) return;
   const name = b.dataset.set, v = (e.target.closest('[data-v]') || b).dataset.v;
@@ -7637,6 +7655,11 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'update-open') { if (updateInfo && updateInfo.url) window.orca.openExternal(updateInfo.url); }
   else if (name === 'update-check') { b.disabled = true; b.textContent = t('확인 중…'); await checkForUpdate(true); settingsRender(); }
   else if (name === 'update-auto') { updateAuto = !updateAuto; try { localStorage.setItem('roca-update-check', updateAuto ? '1' : '0'); } catch {} settingsRender(); }
+  else if (name === 'inbox-restart') { b.disabled = true; await window.orca.inboxRestart(); setTimeout(async () => { await inboxRefreshStatus(); settingsRender(); }, 4000); }
+  else if (name === 'inbox-log') {
+    const lines = inboxLog.map(l => `${new Date(l.t).toLocaleString(LANG === 'ko' ? 'ko-KR' : 'en-US')} · ${l.type} · ${l.text}`).join('\n');
+    teamModal(`<h3>${esc(t('접수 기록'))}</h3><div class="log">${esc(lines || t('아직 받은 요청이 없습니다.'))}</div><div class="row"><button id="team-close">${esc(t('닫기'))}</button></div>`).querySelector('#team-close').onclick = closeTeamModal;
+  }
   else if (name === 'brief-time' && v) { briefCfg = await window.orca.briefConfig(v === 'off' ? { enabled: false } : { enabled: true, time: v }); settingsRender(); }
   else if (name === 'brief-now') { b.disabled = true; b.textContent = t('생성 중…'); const r = await window.orca.briefNow(); if (!r.started) showInAppToast(t('브리핑 생성을 시작하지 못했습니다 (recall 모듈·MongoDB 확인)'), 'error'); else showInAppToast(t('브리핑 생성 중 — 1~2분 뒤 표시됩니다')); }
   else if (name === 'union-threshold' && v) { if (v === 'off') unionCfg.compact = false; else { unionCfg.compact = true; unionCfg.threshold = Number(v); } unionSave(); settingsRender(); }
@@ -7668,6 +7691,70 @@ $('brief-card').addEventListener('click', e => {
   else { briefOpen = !briefOpen; briefRender(); }
 });
 setTimeout(briefLoad, 1200); setInterval(briefLoad, 10 * 60 * 1000);
+
+// ── Slack front desk: tasks from recall/slack-bridge.mjs go to the designated "reception" session; its REPORT returns to the thread ──
+let inboxOwner = ''; try { inboxOwner = localStorage.getItem('roca-inbox-owner') || ''; } catch {}
+let inboxLog = []; try { inboxLog = JSON.parse(localStorage.getItem('roca-inbox-log') || '[]'); } catch {}
+const inboxTasks = new Map(), inboxPending = [];   // id → { task, sid, sentAt, done }
+let inboxStatus = { configured: false, running: false, lastError: '' };
+const INBOX_TIMEOUT_MS = 60 * 60 * 1000;
+function inboxNote(type, text) { inboxLog.unshift({ t: Date.now(), type, text }); inboxLog = inboxLog.slice(0, 30); try { localStorage.setItem('roca-inbox-log', JSON.stringify(inboxLog)); } catch {} }
+function inboxPrompt(task, owner) {
+  const zone = task.zoneId ? zoneById(task.zoneId) : null;
+  const issues = (task.issues || []).filter(i => !i.error).map(i => `${i.key} ${i.summary}${i.status ? ` (${i.status})` : ''}`).join('; ');
+  const head = LANG === 'en' ? `[Slack front desk · ${task.title}] Request from <@${task.user}>: "${task.text}"` : `[슬랙 창구 · ${task.title}] 요청자 <@${task.user}> 메시지: "${task.text}"`;
+  const parts = [head];
+  if (issues) parts.push(`${LANG === 'en' ? 'Tickets' : '티켓'}: ${issues}`);
+  if (zone) parts.push(`${LANG === 'en' ? 'Work zone' : '업무 존'}: ${zone.name}`, zoneFill(zone.prompt, owner));
+  parts.push(task.prompt);
+  parts.push(LANG === 'en' ? 'Handle it yourself, or if another session fits better say in [Next suggestion] how to hand it over. Always end with the REPORT block.' : '직접 처리하되, 더 적합한 다른 세션이 있으면 REPORT의 [다음 제안]에 어떻게 넘길지 적어 주세요. 반드시 REPORT 블록으로 끝내세요.');
+  return parts.join(' ');
+}
+async function inboxAccept(task) {
+  const owner = sessions.find(s => s.id === inboxOwner && s.connected && handles.get(s.id));
+  if (!owner) {
+    inboxPending.push(task); inboxNote('pending', task.title);
+    showInAppToast(t('슬랙 접수: 담당 세션이 없어 보류 — 설정 → 슬랙 창구에서 지정하세요'), 'error');
+    await window.orca.inboxReply({ id: task.id, channel: task.channel, thread: task.thread, text: '⏸ 접수 담당 세션이 지정되지 않아 보류 중입니다. AgentDesk 설정 → 슬랙 창구에서 담당 세션을 지정하면 바로 전달됩니다.' }).catch(() => {});
+    return;
+  }
+  const h = handles.get(owner.id);
+  try {
+    const r = await window.orca.terminalSend(h, inboxPrompt(task, owner).replace(/\r?\n+/g, ' ').trim(), true, 15);
+    if (!r?.result?.send?.accepted) throw new Error(t('전송이 거부되었습니다 (세션이 입력 대기 상태인지 확인)'));
+    inboxTasks.set(task.id, { task, sid: owner.id, sentAt: Date.now(), done: false, prev: 'running' });
+    inboxNote('sent', `${task.title} → ${owner.name}`);
+    const ch = officeChars.get(owner.id); if (ch) ch.reactT = 1.5;
+    showInAppToast(`📥 ${task.title} → ${owner.name}`);
+    await window.orca.inboxReply({ id: task.id, channel: task.channel, thread: task.thread, text: `▶ ${owner.name} 세션이 작업을 시작했습니다. 끝나면 이 스레드에 보고합니다.` }).catch(() => {});
+  } catch (e) {
+    inboxNote('error', `${task.title}: ${e.message}`);
+    await window.orca.inboxReply({ id: task.id, channel: task.channel, thread: task.thread, text: `⚠️ 전달 실패: ${e.message}` }).catch(() => {});
+  }
+}
+async function inboxTick() {
+  for (const [id, it] of inboxTasks) {
+    if (it.done) continue;
+    const sess = sessions.find(x => x.id === it.sid);
+    if (!sess) continue;
+    const prev = it.prev; it.prev = sess.status;
+    if (Date.now() - it.sentAt > INBOX_TIMEOUT_MS) { it.done = true; inboxNote('timeout', it.task.title); await window.orca.inboxReply({ id, channel: it.task.channel, thread: it.task.thread, text: `⏱ ${it.task.title}: 60분 안에 보고가 오지 않아 추적을 멈춥니다. 세션을 직접 확인해 주세요.` }).catch(() => {}); continue; }
+    if (!(prev === 'running' && sess.status === 'waiting') || Date.now() - it.sentAt < 8000) continue;
+    it.done = true;
+    try {
+      const res = await window.orca.terminalRead(handles.get(it.sid), true);
+      const report = teamParseReport(extractLastResponse(extractTail(res)) || '').slice(0, 2800);
+      inboxNote('report', it.task.title);
+      await window.orca.inboxReply({ id, channel: it.task.channel, thread: it.task.thread, text: `✅ ${it.task.title} — ${sess.name}\n${report || '(보고 블록을 찾지 못했습니다. 세션 화면을 확인해 주세요.)'}` });
+      showInAppToast(`${sess.name}: ${t('슬랙 스레드에 보고를 보냈습니다')}`);
+    } catch (e) { inboxNote('error', e.message); }
+  }
+  if (inboxPending.length && sessions.some(s => s.id === inboxOwner && s.connected)) { const q = inboxPending.splice(0); for (const task of q) await inboxAccept(task); }
+}
+setInterval(inboxTick, 2500);
+if (window.orca.onInboxTask) window.orca.onInboxTask(task => { inboxNote('received', task.title); inboxAccept(task); });
+async function inboxRefreshStatus() { try { inboxStatus = await window.orca.inboxStatus(); } catch {} }
+setInterval(inboxRefreshStatus, 30000); setTimeout(inboxRefreshStatus, 3000);
 
 // ── agent self-regulation ("노조"): the office keeps itself healthy without a human watching ──
 //   compact: a session that is waiting with ≥ threshold% context gets /compact (at most once per 30 min)

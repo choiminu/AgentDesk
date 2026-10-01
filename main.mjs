@@ -3,7 +3,7 @@ import { execFile, exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join, delimiter as PATH_DELIM } from "node:path";
-import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 
@@ -1121,6 +1121,37 @@ setInterval(briefTick, 5 * 60 * 1000); setTimeout(briefTick, 20000);
 ipcMain.handle("roca:brief-read", () => ({ brief: readBrief(), cfg: briefCfg, running: briefRunning, jira: existsSync(join(homedir(), ".agentdesk", "jira.json")) }));
 ipcMain.handle("roca:brief-config", (_e, cfg) => { briefCfg = { ...briefCfg, ...(cfg || {}) }; try { writeFileSync(BRIEF_CFG, JSON.stringify(briefCfg)); } catch {} return briefCfg; });
 ipcMain.handle("roca:brief-now", () => ({ started: runBrief() }));
+
+// Slack front desk: recall/slack-bridge.mjs runs as a child when ~/.agentdesk/slack.json exists; tasks arrive as files in
+// ~/.agentdesk/inbox/, the renderer hands them to a session and writes the REPORT to inbox/replies/ for the bridge to post.
+const INBOX_DIR = join(homedir(), ".agentdesk", "inbox"), INBOX_REPLIES = join(INBOX_DIR, "replies"), SLACK_CFG = join(homedir(), ".agentdesk", "slack.json");
+let slackChild = null, slackRestartAt = 0, slackStatus = { configured: false, running: false, lastError: "" };
+function startSlackBridge() {
+  slackStatus.configured = existsSync(SLACK_CFG);
+  if (!slackStatus.configured || slackChild || !RECALL_CLI || Date.now() < slackRestartAt) return;
+  const node = ["/opt/homebrew/bin/node", "/usr/local/bin/node"].find(p => existsSync(p)) || process.execPath;
+  const child = spawn(node, [join(dirname(RECALL_CLI), "slack-bridge.mjs")], { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, PATH: EXEC_PATH, ELECTRON_RUN_AS_NODE: "1" } });
+  slackChild = child; slackStatus.running = true; slackStatus.lastError = "";
+  let err = ""; child.stderr.on("data", d => { err = (err + d.toString()).slice(-400); });
+  child.on("exit", (code) => { slackChild = null; slackStatus.running = false; if (code) slackStatus.lastError = err.trim().split("\n").pop() || `exit ${code}`; slackRestartAt = Date.now() + 60000; });
+}
+setInterval(startSlackBridge, 30000); setTimeout(startSlackBridge, 8000);
+const inboxSeen = new Set();
+function pumpInbox() {
+  try {
+    mkdirSync(INBOX_REPLIES, { recursive: true });
+    for (const f of readdirSync(INBOX_DIR).filter(f => f.endsWith(".json"))) {
+      const p = join(INBOX_DIR, f); if (inboxSeen.has(p)) continue; inboxSeen.add(p);
+      let task; try { task = JSON.parse(readFileSync(p, "utf-8")); } catch { continue; }
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:inbox-task", task);
+      try { unlinkSync(p); } catch {}
+    }
+  } catch {}
+}
+setInterval(pumpInbox, 3000);
+ipcMain.handle("roca:inbox-reply", (_e, reply) => { try { mkdirSync(INBOX_REPLIES, { recursive: true }); writeFileSync(join(INBOX_REPLIES, `${reply.id}-${Date.now()}.json`), JSON.stringify(reply)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("roca:inbox-status", () => ({ ...slackStatus, configured: existsSync(SLACK_CFG) }));
+ipcMain.handle("roca:inbox-restart", () => { if (slackChild) { try { slackChild.kill(); } catch {} } slackRestartAt = 0; setTimeout(startSlackBridge, 500); return { ok: true }; });
 // session notes written by recall/ (MongoDB) for a checkout: spawn the CLI, which knows the worktree/repo rules; [] when unavailable
 const RECALL_CLI = [join(__dirname, "recall", "cli.mjs"), join(homedir(), "project", "agentdesk-internal", "recall", "cli.mjs"), join(homedir(), "orca-widget", "recall", "cli.mjs")].find(p => existsSync(p)) || null;
 ipcMain.handle("roca:recall-notes", async (_e, cwd, limit) => {

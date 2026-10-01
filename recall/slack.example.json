@@ -1,0 +1,6 @@
+{
+  "appToken": "xapp-1-...   (Slack app → Basic Information → App-Level Tokens, scope connections:write)",
+  "botToken": "xoxb-...     (OAuth & Permissions → Bot User OAuth Token)",
+  "allowUsers": ["U0123ABC"],
+  "allowChannels": ["C0123ABC"]
+}
