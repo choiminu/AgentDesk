@@ -3158,8 +3158,9 @@ async function fetchData() {
     handles.clear();
     const tMap = new Map();
     for (const t of ts) {
-      if (!tMap.has(t.worktreeId)) tMap.set(t.worktreeId, t);
-      handles.set(t.worktreeId, t.handle);
+      // one handle per worktree: prefer the agent TUI terminal over plain shells (setup runners, extra tabs)
+      const cur = tMap.get(t.worktreeId);
+      if (!cur || (t.agentIdentity && !cur.agentIdentity)) { tMap.set(t.worktreeId, t); handles.set(t.worktreeId, t.handle); }
     }
 
     // Claude Code sessions known only from hooks (not an Orca worktree) — e.g. no Orca installed, or a
@@ -4335,7 +4336,9 @@ function extractLastResponse(lines) {
       break;
     }
   }
-  if (lastPromptIdx < 0 || lastDoneIdx <= lastPromptIdx) return '';
+  if (lastDoneIdx < 0) return '';
+  // a long pasted prompt can push its ❯ line off the top of the screen: then everything above the done line is the answer
+  if (lastPromptIdx < 0 || lastDoneIdx <= lastPromptIdx) lastPromptIdx = -1;
   const block = lines.slice(lastPromptIdx + 1, lastDoneIdx);
   const responseLines = [];
   for (const line of block) {
