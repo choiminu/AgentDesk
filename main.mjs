@@ -941,7 +941,7 @@ function hookCommand(agent) {
 }
 const EVENTS_FILE = join(ROCA_DIR, "events.jsonl");
 const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
-const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification", "PermissionRequest", "SubagentStart", "SubagentStop", "SessionEnd", "PostCompact"];
+const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "Notification", "PermissionRequest", "SubagentStart", "SubagentStop", "SessionEnd", "PostCompact"];
 const HOOK_PS1 = `param([string]$Agent = "claude")
 # AgentDesk hook (Windows): append the agent's hook payload to %USERPROFILE%\\.roca\\events.jsonl and exit immediately.
 $f = Join-Path $env:USERPROFILE ".roca\\events.jsonl"
@@ -993,9 +993,14 @@ function agentHooksInstalled(a) {
   return cfg.events.every(ev => Array.isArray(h[ev]) && h[ev].some(isOurHook)) && existsSync(HOOK_SCRIPT);
 }
 // per-agent state for the UI: "on" | "off" | "absent" (CLI not installed on this Mac)
+// some of our hooks present but not all (an event was added in an update) → counts as on, and startup re-registers the full set
+function agentHooksPartial(a) {
+  const cfg = AGENT_HOOKS[a]; const h = readJsonFile(cfg.settings).hooks || {};
+  return cfg.events.some(ev => Array.isArray(h[ev]) && h[ev].some(isOurHook)) && !agentHooksInstalled(a);
+}
 function hooksAgents() {
   const out = {};
-  for (const a of Object.keys(AGENT_HOOKS)) out[a] = !agentPresent(a) ? "absent" : agentHooksInstalled(a) ? "on" : "off";
+  for (const a of Object.keys(AGENT_HOOKS)) out[a] = !agentPresent(a) ? "absent" : (agentHooksInstalled(a) || agentHooksPartial(a)) ? "on" : "off";
   return out;
 }
 // installed = the user turned exact detection on for at least one agent; newly found CLIs are covered at startup
@@ -1187,7 +1192,7 @@ app.on("ready", () => {
   // exact detection already on: extend it to agent CLIs that appeared since (e.g. Gemini CLI installed later)
   try {
     const st = hooksAgents();
-    if (Object.values(st).some(v => v === "on")) for (const [a, v] of Object.entries(st)) if (v === "off") { installAgentHooks(a); console.log("[hooks] installed for", a); }
+    if (Object.values(st).some(v => v === "on")) for (const [a, v] of Object.entries(st)) if (v === "off" || agentHooksPartial(a)) { installAgentHooks(a); console.log("[hooks] installed for", a); }
   } catch (e) { console.log("[hooks] extend failed", e.message); }
   startEventsWatch();
   createTray();

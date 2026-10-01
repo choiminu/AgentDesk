@@ -2188,6 +2188,7 @@
   .session.stuck .s-icon { background: var(--yellow-dim); }
   .s-tool.stuck { color: var(--yellow) !important; border-color: color-mix(in srgb, var(--yellow) 50%, transparent) !important; font-weight: 700; }
   .s-time.ask { color: var(--yellow) !important; font-weight: 700; }
+  .s-tool.loop { color: var(--red) !important; border-color: color-mix(in srgb, var(--red) 50%, transparent) !important; font-weight: 700; }
   .s-expand { position: absolute; right: 8px; bottom: 6px; width: 18px; height: 18px; border-radius: 6px; border: none; background: transparent; color: var(--text3); font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .s-expand:hover { background: var(--surface-hover); color: var(--text); }
   .session.expanded .s-expand { transform: rotate(90deg); }
@@ -2695,6 +2696,10 @@ const I18N = {
   '마지막 프롬프트': 'Last prompt', '마지막 응답': 'Last reply', '최근 도구': 'Recent tools', '위치': 'Location', '컨텍스트': 'Context', '지난 노트': 'Past notes', '불러오는 중…': 'Loading…', '관련 노트 없음': 'No related notes', '개 파일 변경됨': ' file(s) changed since',
   '/compact 보내기 (컨텍스트 정리)': 'Send /compact (trim context)', '/compact 전송': '/compact sent', '/compact 전송 (수락 미확인)': '/compact sent (not confirmed)', '/compact 전송 실패': 'Could not send /compact', '컨텍스트 90% — /compact 권장': 'context at 90% — consider /compact',
   '오늘 세션': 'today', '선택 응답 평균': 'avg answer', '검색... (repo: agent: term: 접두어 가능)': 'Search… (repo: agent: term: prefixes)',
+  '에이전트 자율 조절': 'Agent self-regulation', '컨텍스트 자동 정리': 'Auto context trim', '대기 중인 세션의 컨텍스트가 기준치를 넘으면 /compact 를 보냅니다 (30분에 한 번).': 'Sends /compact to a waiting session whose context passed the threshold (at most once per 30 min).',
+  '끔': 'Off', '반복 실패 개입': 'Loop intervention', '같은 도구 호출을 3번 반복하거나 3번 연속 실패하면, 팀이면 PM에게 다른 접근을 요청하고 아니면 세션에 직접 방향 전환을 요구합니다.': 'When a session repeats the same tool call 3 times or fails 3 times in a row, its PM is asked for a different approach (or the session itself when it has no team).',
+  '자율 조절 기록': 'Self-regulation log', '아직 개입한 적이 없습니다.': 'No interventions yet.', '건': '', '최근': 'latest', '보기': 'View', '연속 실패': 'failing', '반복 시도': 'repeating',
+  '도구 호출이 연속으로 실패하고 있습니다': 'Tool calls keep failing', '같은 도구 호출을 반복하고 있습니다': 'The same tool call keeps repeating', '반복 실패 → PM에게 다른 접근 요청': 'looping → asked the PM for another approach', '반복 실패 → 다른 접근 요청': 'looping → asked for another approach',
   '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'AgentDesk에 오신 것을 환영합니다': 'Welcome to AgentDesk',
   'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
   '픽셀 오피스': 'Pixel office', '필요할 때만 알림': 'Alerts only when needed',
@@ -3171,6 +3176,7 @@ async function fetchData() {
         askSince: hk && hk.needsInput ? hk.askAt : 0,
         stuck: !!(hk && finalStatus === 'running' && Date.now() - hk.last > STUCK_MS),
         stuckSince: hk ? hk.last : 0,
+        loop: hk && finalStatus !== 'done' ? loopStateFor(hk) : null,
       };
     });
     for (const h of hookOnly) sessions.push(await hookOnlySession(h));
@@ -3313,6 +3319,7 @@ async function hookOnlySession(h) {
     ctxPct: screenCtxCache.get(h.id) ?? meta.ctxPct ?? null,
     recentTools: st.recentTools || [], askSince: st.needsInput ? st.askAt : 0,
     stuck: finalStatus === 'running' && Date.now() - st.last > STUCK_MS, stuckSince: st.last,
+    loop: finalStatus !== 'done' ? loopStateFor(st) : null,
   };
 }
 function showModeBanner(orcaOk, hookOnlyCount, paneCount) {
@@ -3385,7 +3392,8 @@ function applyStatusTransitions() {
             if (row && !officeAsk && live && live.needsInput) dashAskOpen(live, row);
           }, 500);
         }
-        if (s.ctxPct >= 90 && s.status !== 'done' && !ctxWarned.has(s.id)) { ctxWarned.add(s.id); showInAppToast(`${s.name}: ${t('컨텍스트 90% — /compact 권장')}`, 'error'); }
+        if (s.ctxPct >= 90 && s.status !== 'done' && !ctxWarned.has(s.id)) { ctxWarned.add(s.id); if (!unionCfg.compact) showInAppToast(`${s.name}: ${t('컨텍스트 90% — /compact 권장')}`, 'error'); }
+        unionTick(s);
         if (!s.needsInput && notifiedWaiting.has(s.id)) {
           notifiedWaiting.delete(s.id);
           clearWaitingToast(s.id);
@@ -3552,6 +3560,7 @@ function renderCard(s) {
             <span class="s-branch">${esc(s.branch)}</span>
             ${timeLabel}
             ${s.stuck ? `<span class="s-tool stuck" title="${esc(t('30분 넘게 도구 호출이나 응답이 없습니다'))}">${esc(t('응답 없음'))} ${timeAgo(s.stuckSince)}</span>` : ''}
+            ${s.loop ? `<span class="s-tool loop" title="${esc((s.loop.reason === 'fail' ? t('도구 호출이 연속으로 실패하고 있습니다') : t('같은 도구 호출을 반복하고 있습니다')) + ': ' + s.loop.tool + ' ' + (s.loop.input || ''))}">${esc(t(s.loop.reason === 'fail' ? '연속 실패' : '반복 시도'))} ${s.loop.count}×</span>` : ''}
             ${s.tool ? `<span class="s-tool">${esc(s.tool)}</span>` : ''}
             ${s.hookOnly ? `<span class="s-tool" title="${esc(t(s.connected ? '터미널로 연결됨' : (s.ended ? '클릭하면 터미널에서 claude --resume 으로 다시 엽니다' : '읽기 전용 (터미널 없음)')))}">${s.connected ? esc(terminalKind(handles.get(s.id)) === 'tmux' ? 'tmux' : t('터미널')) : (s.ended ? '▶ ' + t('다시 열기') : t('읽기 전용'))}</span>` : ''}
             ${s.ctxPct != null ? `<span class="s-tool ctx-chip ${ctxCls}" title="컨텍스트 사용량">ctx ${s.ctxPct}%</span>` : ''}
@@ -7574,6 +7583,10 @@ function settingsRender() {
     <h2>${esc(t('감지와 알림'))}</h2>
     ${row(t('정확 감지 (에이전트 훅)'), (() => { const s = hooksAgentsSummary(); return (hooksEnabled ? t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 세션도 표시됩니다.') : t('꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.')) + (s.on.length ? ` · ${t('켜짐')}: ${s.on.join(', ')}` : '') + (s.off.length ? ` · ${t('꺼짐')}: ${s.off.join(', ')}` : ''); })(), sw('hooks', hooksEnabled))}
     ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
+    <h2>${esc(t('에이전트 자율 조절'))}</h2>
+    ${row(t('컨텍스트 자동 정리'), t('대기 중인 세션의 컨텍스트가 기준치를 넘으면 /compact 를 보냅니다 (30분에 한 번).'), seg('union-threshold', unionCfg.compact ? String(unionCfg.threshold || 90) : 'off', [['off', t('끔')], ['85', '85%'], ['90', '90%'], ['95', '95%']]))}
+    ${row(t('반복 실패 개입'), t('같은 도구 호출을 3번 반복하거나 3번 연속 실패하면, 팀이면 PM에게 다른 접근을 요청하고 아니면 세션에 직접 방향 전환을 요구합니다.'), sw('union-loop', unionCfg.loop))}
+    ${row(t('자율 조절 기록'), unionLog.length ? `${unionLog.length}${t('건')} · ${t('최근')}: ${esc(unionLog[0].name)} ${esc(unionLog[0].type)} ${esc(trunc(unionLog[0].text, 40))}` : t('아직 개입한 적이 없습니다.'), `<button class="set-btn" data-set="union-log">${esc(t('보기'))}</button>`)}
     <h2>${esc(t('오피스'))}</h2>
     ${row(t('픽셀 배율'), t('자동은 창 크기에 맞춰 정수 배율을 고릅니다.'), seg('zoom', zoom, [['auto', t('자동')], ['2', '2×'], ['3', '3×'], ['4', '4×']]))}
     ${row(t('지침서 저장소 경로'), (officeKbPath ? (officeKbInfo.ok ? `${t('찾음')}: ${officeKb} · ${officeKbInfo.count || 0}${t('개 존')}${officeKbInfo.generated ? ' (' + t('카테고리 폴더에서 생성') + ')' : ' (agentdesk/zones.json)'}` : t('폴더를 찾지 못했습니다')) : t('README.md가 있는 카테고리 폴더마다 프롬프트 존이 생기고, 프롬프트의 {kb}가 이 경로로 치환됩니다. agentdesk/zones.json이 있으면 그 파일을 우선 사용합니다.')),
@@ -7603,7 +7616,56 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'update-open') { if (updateInfo && updateInfo.url) window.orca.openExternal(updateInfo.url); }
   else if (name === 'update-check') { b.disabled = true; b.textContent = t('확인 중…'); await checkForUpdate(true); settingsRender(); }
   else if (name === 'update-auto') { updateAuto = !updateAuto; try { localStorage.setItem('roca-update-check', updateAuto ? '1' : '0'); } catch {} settingsRender(); }
+  else if (name === 'union-threshold' && v) { if (v === 'off') unionCfg.compact = false; else { unionCfg.compact = true; unionCfg.threshold = Number(v); } unionSave(); settingsRender(); }
+  else if (name === 'union-loop') { unionCfg.loop = !unionCfg.loop; unionSave(); settingsRender(); }
+  else if (name === 'union-log') {
+    const lines = unionLog.map(l => `${new Date(l.t).toLocaleString(LANG === 'ko' ? 'ko-KR' : 'en-US')} · ${l.name} · ${l.type} · ${l.text}`).join('\n');
+    teamModal(`<h3>${esc(t('자율 조절 기록'))}</h3><div class="log">${esc(lines || t('아직 개입한 적이 없습니다.'))}</div><div class="row"><button id="team-close">${esc(t('닫기'))}</button></div>`).querySelector('#team-close').onclick = closeTeamModal;
+  }
 });
+// ── agent self-regulation ("노조"): the office keeps itself healthy without a human watching ──
+//   compact: a session that is waiting with ≥ threshold% context gets /compact (at most once per 30 min)
+//   loop:    a session that repeats the same tool call or fails 3× in a row is asked to change approach —
+//            through its PM when it belongs to a team, otherwise directly
+let unionCfg = { compact: true, loop: true, threshold: 90 };
+try { Object.assign(unionCfg, JSON.parse(localStorage.getItem('roca-union') || '{}')); } catch {}
+function unionSave() { try { localStorage.setItem('roca-union', JSON.stringify(unionCfg)); } catch {} }
+let unionLog = []; try { unionLog = JSON.parse(localStorage.getItem('roca-union-log') || '[]'); } catch {}
+function unionNote(type, sess, text) {
+  unionLog.unshift({ t: Date.now(), type, name: sess.name, text }); unionLog = unionLog.slice(0, 50);
+  try { localStorage.setItem('roca-union-log', JSON.stringify(unionLog)); } catch {}
+  const ch = officeChars.get(sess.id); if (ch) ch.reactT = 1.5;
+}
+const unionLast = new Map();   // `${id}:${kind}` → last action time
+function unionDue(id, kind, ms = 30 * 60 * 1000) { const k = `${id}:${kind}`; const last = unionLast.get(k) || 0; if (Date.now() - last < ms) return false; unionLast.set(k, Date.now()); return true; }
+async function unionTick(s) {
+  const h = handles.get(s.id); if (!h || !s.connected) return;
+  if (unionCfg.compact && s.ctxPct >= (unionCfg.threshold || 90) && s.status === 'waiting' && !s.needsInput && unionDue(s.id, 'compact')) {
+    try { await window.orca.terminalSend(h, '/compact', true, 15); unionNote('compact', s, `ctx ${s.ctxPct}% → /compact`); showInAppToast(`${s.name}: ${t('컨텍스트')} ${s.ctxPct}% → /compact`); } catch (e) { unionNote('error', s, e.message); }
+  }
+  if (unionCfg.loop && s.loop && s.status === 'waiting' && unionDue(s.id, 'loop')) {
+    const what = `${s.loop.tool}${s.loop.input ? ' ' + trunc(s.loop.input, 80) : ''}`;
+    const team = teamOf(s.id); const pmHandle = team && team.pm && team.pm !== s.id ? handles.get(team.pm) : null;
+    try {
+      if (pmHandle) {
+        const msg = LANG === 'en'
+          ? `[Team alert] Member "${s.name}" has ${s.loop.reason === 'fail' ? `failed the same step ${s.loop.count} times in a row` : `repeated the same tool call ${s.loop.count} times`}: ${what}. Please propose a different approach (2 options with reasons) and send the member a new instruction, or stop the task if it is not worth continuing.`
+          : `[팀 알림] 팀원 "${s.name}"이(가) ${s.loop.reason === 'fail' ? `같은 단계에서 ${s.loop.count}회 연속 실패` : `같은 도구 호출을 ${s.loop.count}회 반복`} 중입니다: ${what}. 이 방식 말고 다른 접근을 2가지(이유 포함) 제안하고 팀원에게 새 지시를 보내 주세요. 계속할 가치가 없으면 중단시켜도 됩니다.`;
+        await window.orca.terminalSend(pmHandle, msg, true, 15);
+        teamLog(team, 'union', msg, { from: s.name }); unionNote('loop→pm', s, what);
+        showInAppToast(`${s.name}: ${t('반복 실패 → PM에게 다른 접근 요청')}`, 'error');
+      } else {
+        const msg = LANG === 'en'
+          ? `[AgentDesk] The same step has ${s.loop.reason === 'fail' ? `failed ${s.loop.count} times in a row` : `been repeated ${s.loop.count} times`}: ${what}. Stop repeating it. Summarize what was tried and why it failed, propose two different approaches, and ask which one to take before continuing.`
+          : `[AgentDesk] 같은 단계가 ${s.loop.reason === 'fail' ? `${s.loop.count}회 연속 실패` : `${s.loop.count}회 반복`}되었습니다: ${what}. 같은 시도를 멈추고, 지금까지 시도한 것과 실패 원인을 정리한 뒤 다른 접근 2가지를 제안하고 어느 쪽으로 갈지 물어본 다음 진행하세요.`;
+        await window.orca.terminalSend(h, msg, true, 15);
+        unionNote('loop→self', s, what);
+        showInAppToast(`${s.name}: ${t('반복 실패 → 다른 접근 요청')}`, 'error');
+      }
+    } catch (e) { unionNote('error', s, e.message); }
+  }
+}
+
 // ── new-version check: badge on the ⚙ button, details in Settings ──
 let updateInfo = null;
 let updateAuto = true; try { updateAuto = localStorage.getItem('roca-update-check') !== '0'; } catch {}
