@@ -109,39 +109,49 @@ function applyHookEvent(rec, sessions) {
   const ev = rec.ev || {}; const ts = (rec.ts || 0) * 1000;
   const sid = ev.session_id; if (!sid) return;
   let st = sessions.get(sid);
-  if (!st) { st = { sid, cwd: ev.cwd, transcript: ev.transcript_path || '', first: ts, status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false }; sessions.set(sid, st); }
+  if (!st) { st = { sid, cwd: ev.cwd, transcript: ev.transcript_path || '', first: ts, status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false, recentTools: [], runMs: 0, askAt: 0, askMs: 0, askN: 0 }; sessions.set(sid, st); }
+  if (!st.recentTools) { st.recentTools = []; st.runMs = st.runMs || 0; st.askAt = st.askAt || 0; st.askMs = st.askMs || 0; st.askN = st.askN || 0; }
   if (ev.cwd) st.cwd = ev.cwd;
   if (rec.term) st.term = rec.term;   // TERM_PROGRAM of the launching terminal (Orca, iTerm.app, tmux, Apple_Terminal)
   st.agent = rec.agent || st.agent || 'claude';   // which CLI emitted the event (claude / gemini / codex)
   if (ev.transcript_path) st.transcript = ev.transcript_path;
   st.last = Math.max(st.last, ts);
-  const setStatus = (v) => { if (st.status !== v) { st.status = v; st.since = ts; } };
+  // runMs accumulates time spent in 'running'; askAt/askMs/askN measure how long needs-input prompts waited for the user
+  const setStatus = (v) => { if (st.status !== v) { if (st.status === 'running' && ts > st.since) st.runMs += ts - st.since; st.status = v; st.since = ts; } };
+  const setAsk = (v) => {
+    if (v && !st.needsInput) st.askAt = ts;
+    else if (!v && st.needsInput && st.askAt) { st.askMs += Math.max(0, ts - st.askAt); st.askN++; st.askAt = 0; }
+    st.needsInput = v;
+  };
   const sub = ev.agent_id ? st.subagents.get(ev.agent_id) : null;
   // Gemini CLI uses its own event names; Codex CLI shares Claude Code's. Normalize to the Claude Code set.
   const GEMINI_EVENTS = { BeforeAgent: 'UserPromptSubmit', AfterAgent: 'Stop', BeforeTool: 'PreToolUse', AfterTool: 'PostToolUse', PreCompress: 'PostCompact' };
   const evName = GEMINI_EVENTS[ev.hook_event_name] || ev.hook_event_name;
   switch (evName) {
     case 'SessionStart': st.ended = false; break;
-    case 'UserPromptSubmit': setStatus('running'); st.tool = ''; st.toolInput = ''; st.needsInput = false; st.ended = false; break;
+    case 'UserPromptSubmit': setStatus('running'); st.tool = ''; st.toolInput = ''; setAsk(false); st.ended = false; break;
     case 'PreToolUse':
       if (sub) { sub.tool = ev.tool_name || ''; sub.toolInput = hookToolInput(ev.tool_name, ev.tool_input); sub.last = ts; }
-      else { setStatus('running'); st.tool = ev.tool_name || ''; st.toolInput = hookToolInput(ev.tool_name, ev.tool_input); st.needsInput = ev.tool_name === 'AskUserQuestion'; }
+      else {
+        setStatus('running'); st.tool = ev.tool_name || ''; st.toolInput = hookToolInput(ev.tool_name, ev.tool_input); setAsk(ev.tool_name === 'AskUserQuestion');
+        st.recentTools.push({ tool: st.tool, input: st.toolInput, ts }); if (st.recentTools.length > 5) st.recentTools.shift();
+      }
       break;
     case 'PostToolUse':
       if (sub) { sub.tool = ''; sub.last = ts; }
-      else { setStatus('running'); st.needsInput = false; }
+      else { setStatus('running'); setAsk(false); }
       break;
-    case 'PermissionRequest': setStatus('waiting'); st.needsInput = true; break;
+    case 'PermissionRequest': setStatus('waiting'); setAsk(true); break;
     case 'Notification': {
       const nt = ev.notification_type || '';
-      if (/permission_prompt|agent_needs_input|elicitation_dialog|elicitation_url_dialog|ToolPermission|approval/i.test(nt)) { setStatus('waiting'); st.needsInput = true; }   // Claude / Gemini / Codex names
+      if (/permission_prompt|agent_needs_input|elicitation_dialog|elicitation_url_dialog|ToolPermission|approval/i.test(nt)) { setStatus('waiting'); setAsk(true); }   // Claude / Gemini / Codex names
       else if (nt === 'idle_prompt') setStatus('waiting');
       break;
     }
-    case 'Stop': case 'Interrupt': setStatus('waiting'); st.tool = ''; st.toolInput = ''; st.needsInput = false; break;
+    case 'Stop': case 'Interrupt': setStatus('waiting'); st.tool = ''; st.toolInput = ''; setAsk(false); break;
     case 'SubagentStart': if (ev.agent_id) st.subagents.set(ev.agent_id, { id: ev.agent_id, type: ev.agent_type || 'agent', since: ts, last: ts, tool: '', toolInput: '' }); break;
     case 'SubagentStop': if (ev.agent_id) st.subagents.delete(ev.agent_id); break;
-    case 'SessionEnd': st.ended = true; st.status = 'done'; st.since = ts; st.subagents.clear(); break;
+    case 'SessionEnd': setStatus('done'); setAsk(false); st.ended = true; st.subagents.clear(); break;
     case 'PostCompact': break;
   }
 }
