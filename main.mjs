@@ -84,7 +84,7 @@ function createWindow() {
 
   mainWindow.loadFile("widget.html", process.env.ROCA_START_PAGE ? { hash: process.env.ROCA_START_PAGE } : undefined);
   if (process.env.ROCA_SHOT) {
-    for (const [i, delay] of [[1, 8000], [2, 13500], [3, 24000]]) {
+    for (const [i, delay] of [[1, 8000], [2, 13500], [3, 24000], [4, 48000]]) {
       setTimeout(async () => {
         const img = await mainWindow.webContents.capturePage();
         const out = process.env.ROCA_SHOT.replace(/\.png$/, `-${i}.png`);
