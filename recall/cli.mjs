@@ -15,6 +15,7 @@ const usage = `agentdesk-recall <command>
   list [--repo NAME|--worktree NAME|--all] [--limit N] [--json]   newest notes
   summarize <transcript.jsonl> [--cwd DIR] [--agent claude|gemini|codex]   make a note from one transcript now
   backfill [--since 7d] [--project DIR]            summarize past Claude Code transcripts of a project (default: all projects)
+  slack-setup | jira-setup                         enter tokens with hidden input and write ~/.agentdesk/{slack,jira}.json (mode 600)
   brief                                            write today's morning briefing (~/.agentdesk/briefing.json) now
   install                                          register SessionStart + SessionEnd + PreCompact + prompt hooks (Claude Code; Gemini/Codex if present) and the /recall skill
   ensure-index                                     create MongoDB indexes
@@ -75,6 +76,7 @@ async function main() {
     return;
   }
   if (cmd === "brief") { const { makeBriefing } = await import("./brief.mjs"); const o = await makeBriefing(); console.log(o.headline); for (const l of o.lines) console.log("•", l); return; }
+  if (cmd === "slack-setup" || cmd === "jira-setup") { await secretSetup(cmd === "slack-setup" ? "slack" : "jira"); return; }
   if (cmd === "install") { await install(); return; }
   console.log(usage);
 }
@@ -85,6 +87,38 @@ async function runWorker(sid, path, cwd, agent, verbose) {
 }
 function parseDur(s) { const m = String(s).match(/^(\d+)([hdw])$/); if (!m) return 30 * 86400000; return Number(m[1]) * ({ h: 3600000, d: 86400000, w: 7 * 86400000 })[m[2]]; }
 
+// interactive secret entry: nothing is echoed, nothing passes through chat or shell history
+async function secretSetup(kind) {
+  const { createInterface } = await import("node:readline");
+  const { chmodSync } = await import("node:fs");
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+  const ask = (q, hidden) => new Promise(res => {
+    if (!hidden) return rl.question(q, a => res(a.trim()));
+    const onData = (ch) => { ch = String(ch); if (ch === "\n" || ch === "\r" || ch === "\u0004") { process.stdin.removeListener("data", onData); return; } process.stdout.write("\u001b[2K\r" + q + "*".repeat(8)); };
+    process.stdout.write(q); process.stdin.on("data", onData);
+    rl.question("", a => { process.stdin.removeListener("data", onData); process.stdout.write("\n"); res(a.trim()); });
+  });
+  const file = join(homedir(), ".agentdesk", `${kind}.json`);
+  let cur = {}; try { cur = JSON.parse(readFileSync(file, "utf-8")); } catch {}
+  const out = { ...cur };
+  if (kind === "slack") {
+    console.log("Slack app → Basic Information → App-Level Tokens (scope connections:write) / OAuth & Permissions → Bot User OAuth Token");
+    const app = await ask("appToken (xapp-…): ", true); if (app) out.appToken = app;
+    const bot = await ask("botToken (xoxb-…): ", true); if (bot) out.botToken = bot;
+    const users = await ask("allowUsers (Slack user IDs, comma-separated; empty = everyone): ", false); if (users) out.allowUsers = users.split(/[\s,]+/).filter(Boolean); else if (users === "" && !cur.allowUsers) delete out.allowUsers;
+    const chans = await ask("allowChannels (channel IDs, comma-separated; empty = any): ", false); if (chans) out.allowChannels = chans.split(/[\s,]+/).filter(Boolean);
+    if (!out.appToken || !out.botToken) { console.log("appToken and botToken are both required — nothing written"); rl.close(); return; }
+    if (!/^xapp-/.test(out.appToken) || !/^xoxb-/.test(out.botToken)) console.log("warning: tokens usually start with xapp- / xoxb-");
+  } else {
+    const base = await ask(`baseUrl [${cur.baseUrl || "https://your-site.atlassian.net"}]: `, false); out.baseUrl = base || cur.baseUrl || "";
+    const email = await ask(`email [${cur.email || ""}]: `, false); out.email = email || cur.email || "";
+    const tok = await ask("API token (https://id.atlassian.com/manage-profile/security/api-tokens): ", true); if (tok) out.token = tok;
+    if (!out.baseUrl || !out.email || !out.token) { console.log("baseUrl, email and token are all required — nothing written"); rl.close(); return; }
+  }
+  rl.close();
+  mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, JSON.stringify(out, null, 2) + "\n"); chmodSync(file, 0o600);
+  console.log(`saved ${file} (mode 600). ${kind === "slack" ? "The widget starts the Slack bridge within 30 s; check Settings → Slack front desk." : "Used by the morning briefing and the Slack front desk for ticket details."}`);
+}
 // hooks + skill registration
 async function install() {
   // prefer a version-stable node path: Homebrew's Cellar path changes on every upgrade and would break the hooks silently

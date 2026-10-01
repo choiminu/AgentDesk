@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("orca", {
   platform: process.platform,
   appVersion: () => ipcRenderer.invoke("roca:app-version"),
   recallNotes: (cwd, limit) => ipcRenderer.invoke("roca:recall-notes", cwd, limit),
+  nowSummary: (transcript, agent) => ipcRenderer.invoke("roca:now-summary", transcript, agent),
   briefRead: () => ipcRenderer.invoke("roca:brief-read"),
   briefConfig: (cfg) => ipcRenderer.invoke("roca:brief-config", cfg),
   briefNow: () => ipcRenderer.invoke("roca:brief-now"),
