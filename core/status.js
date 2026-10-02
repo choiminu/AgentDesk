@@ -191,7 +191,44 @@ function resolveStatus(baseStatus, screenSt, hk) {
   return baseStatus;
 }
 
-const AgentDeskStatus = { SPINNER_RE, DONE_FRESH_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus, loopStateFor };
+// ── answer text for Slack / reports: keeps code indentation and rejoins lines the TUI hard-wrapped ──
+function displayCols(s) {
+  let n = 0;
+  for (const ch of s) {
+    const c = ch.codePointAt(0);
+    n += (c >= 0x1100 && (c <= 0x115f || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60) || (c >= 0xffe0 && c <= 0xffe6) || c >= 0x1f300)) ? 2 : 1;
+  }
+  return n;
+}
+const RESPONSE_LINE_MARK = /^\s*([•·▪\-*▸→]|\d+[.)]\s|\[[^\]]{1,24}\]|REPORT_|⎿|```|#{1,6}\s)/;
+// lines: a screen (array of lines). Returns the last answer (between the last ❯ prompt and the ✻ done line) with the TUI's
+// 2-space indent removed, relative indentation kept, and a line that was wrapped because it reached the screen width glued back.
+function responseTextFromScreen(lines) {
+  let lastPromptIdx = -1, lastDoneIdx = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const t = lines[i].trim();
+    if (t.includes('✻') && t.includes('done') && lastDoneIdx === -1) lastDoneIdx = i;
+    if (t.startsWith('❯') && t.length > 5 && lastDoneIdx > i) { lastPromptIdx = i; break; }
+  }
+  if (lastDoneIdx < 0) return '';
+  if (lastPromptIdx < 0 || lastDoneIdx <= lastPromptIdx) lastPromptIdx = -1;
+  const block = lines.slice(lastPromptIdx + 1, lastDoneIdx).map(l => l.replace(/\s+$/, '').replace(/^(\s*)⏺\s?/, '$1  '));
+  const nonEmpty = block.filter(l => l.trim());
+  if (!nonEmpty.length) return '';
+  const width = Math.max(...lines.map(displayCols));
+  const base = Math.min(...nonEmpty.map(l => l.match(/^ */)[0].length));
+  const out = [];
+  for (const raw of block) {
+    const l = raw.slice(Math.min(base, raw.match(/^ */)[0].length));
+    const prev = out.length ? out[out.length - 1] : null;
+    const wrapped = prev && prev.trim() && l.trim() && displayCols(prev) + base >= width - 12 && !RESPONSE_LINE_MARK.test(l) && !/^\s/.test(l);
+    if (wrapped) out[out.length - 1] = prev + ' ' + l.trim();   // the TUI wraps at word boundaries, so a space is always right
+    else out.push(l);
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+const AgentDeskStatus = { SPINNER_RE, DONE_FRESH_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus, loopStateFor, displayCols, responseTextFromScreen };
 // the widget loads this as a classic <script> (globals); tests `import()` it and read globalThis.AgentDeskStatus
 root.AgentDeskStatus = AgentDeskStatus;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskStatus;
