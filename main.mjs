@@ -136,7 +136,7 @@ function createTray() {
   });
 }
 
-app.on("before-quit", () => { app.isQuitting = true; });
+app.on("before-quit", () => { app.isQuitting = true; if (slackChild) { try { slackChild.kill(); } catch {} } });   // no orphan bridge that would post every reply twice
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { app.isQuitting = true; app.quit(); });
 
 // Finder-launched apps only see /usr/bin:/bin:/usr/sbin:/sbin, so look in the usual symlink

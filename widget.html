@@ -7773,9 +7773,12 @@ async function inboxTick() {
     it.done = true;
     try {
       const res = await window.orca.terminalRead(handles.get(it.sid), true);
-      const report = teamParseReport(extractLastResponse(extractTail(res)) || '').slice(0, 2800);
+      const lines = extractTail(res);
+      // keeps code indentation and rejoins hard-wrapped lines; the bridge turns it into Slack mrkdwn blocks (recall/slack-format.mjs)
+      const report = teamParseReport(AgentDeskStatus.responseTextFromScreen(lines) || extractLastResponse(lines) || '').slice(0, 12000);
       inboxNote('report', it.task.title);
-      await window.orca.inboxReply({ id, channel: it.task.channel, thread: it.task.thread, text: `✅ ${it.task.title} — ${sess.name}\n${report || '(보고 블록을 찾지 못했습니다. 세션 화면을 확인해 주세요.)'}` });
+      const fallback = '(보고 블록을 찾지 못했습니다. 세션 화면을 확인해 주세요.)';
+      await window.orca.inboxReply({ id, channel: it.task.channel, thread: it.task.thread, title: it.task.title, session: sess.name, report, text: `✅ ${it.task.title} — ${sess.name}\n${report || fallback}` });
       showInAppToast(`${sess.name}: ${t('슬랙 스레드에 보고를 보냈습니다')}`);
     } catch (e) { inboxNote('error', e.message); }
   }

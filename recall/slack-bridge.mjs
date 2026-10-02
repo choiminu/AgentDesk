@@ -5,7 +5,8 @@
 // ~/.agentdesk/inbox/ (tasks) and ~/.agentdesk/inbox/replies/ (results), so no port is opened.
 import { SocketModeClient } from "@slack/socket-mode";
 import { WebClient } from "@slack/web-api";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, renameSync } from "node:fs";
+import { replyPayload } from "./slack-format.mjs";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -64,10 +65,15 @@ async function handle(ev) {
   }
 }
 // replies written by the widget → Slack thread
+// a reply file is claimed by renaming it first, so two bridges (e.g. a dev widget next to the installed one) never post it twice
 function pumpReplies() {
   for (const f of readdirSync(REPLIES).filter(f => f.endsWith(".json"))) {
-    const p = join(REPLIES, f); let r; try { r = JSON.parse(readFileSync(p, "utf-8")); } catch { unlinkSync(p); continue; }
-    web.chat.postMessage({ channel: r.channel, thread_ts: r.thread, text: r.text }).then(() => unlinkSync(p)).catch(e => log("slack reply error", e.message));
+    const p = join(REPLIES, f), claimed = p + ".sending";
+    try { renameSync(p, claimed); } catch { continue; }
+    let r; try { r = JSON.parse(readFileSync(claimed, "utf-8")); } catch { unlinkSync(claimed); continue; }
+    web.chat.postMessage({ channel: r.channel, thread_ts: r.thread, ...replyPayload(r) })
+      .then(() => unlinkSync(claimed))
+      .catch(e => { log("slack reply error", e.message); try { renameSync(claimed, p); } catch {} });
   }
 }
 sock.on("app_mention", async ({ event, ack }) => { await ack(); handle(event); });
