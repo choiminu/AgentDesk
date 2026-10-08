@@ -57,6 +57,7 @@
       "widget.html",
       "preload.cjs",
       "core/**/*",
+      "team/**/*",
       "package.json",
       "assets/**/*"
     ],
