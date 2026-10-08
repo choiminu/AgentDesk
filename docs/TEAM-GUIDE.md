@@ -10,7 +10,8 @@ AgentDesk는 내 PC에서 돌아가는 AI 코딩 에이전트 세션(Claude Code
 3. 처음 실행할 때 "확인되지 않은 개발자" 경고가 뜨면, **Finder에서 앱을 우클릭 → 열기**로 한 번 열어 줍니다. 사내 배포용이라 Apple 공증을 받지 않았습니다.
 4. 앱이 뜨면 온보딩에서 언어를 고르고, **정확 감지(에이전트 훅)** 를 켭니다. 켜면 Claude Code 등 CLI 설정에 상태 알림 훅이 추가되어 세션 상태가 정확히 보입니다. 꺼도 Orca 세션은 보이지만 터미널에서 띄운 세션은 보이지 않습니다.
 
-> 필요한 것: macOS 13 이상, Node.js(`/opt/homebrew/bin/node` 또는 `/usr/local/bin/node`). 훅과 팀 공유 서버가 Node로 동작합니다.
+> 필요한 것: macOS 13 이상, Node.js(`/opt/homebrew/bin/node` 또는 `/usr/local/bin/node`). 훅이 Node로 동작합니다.
+> 세션 노트(recall)·슬랙 창구·아침 브리핑은 소스 체크아웃과 MongoDB가 있는 PC에서만 켜집니다. DMG만 설치한 PC에서는 대시보드·오피스·팀 공유만 동작합니다.
 
 ## 2. 팀 공유 켜기
 
