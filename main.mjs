@@ -60,7 +60,8 @@ function createWindow() {
   const y = saved?.y ?? (sh - WIN_H - MARGIN);
   const w = saved?.width ?? WIN_W;
   // a widget minimized to its header bar (44px) must not come back minimized
-  const h = (saved?.height ?? WIN_H) < 320 ? WIN_H : saved.height;   // bounds saved while collapsed → full height
+  const savedH = saved?.height ?? WIN_H;
+  const h = savedH < 320 ? WIN_H : savedH;   // bounds saved while collapsed → full height (saved is null on first run)
 
   mainWindow = new BrowserWindow({
     width: w,
