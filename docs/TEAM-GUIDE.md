@@ -7,7 +7,11 @@ AgentDesk는 내 PC에서 돌아가는 AI 코딩 에이전트 세션(Claude Code
 
 1. 전달받은 `AgentDesk-<버전>-arm64.dmg`(Apple Silicon) 또는 `AgentDesk-<버전>.dmg`(Intel)를 엽니다.
 2. `AgentDesk.app`을 `Applications` 폴더로 끌어다 놓습니다.
-3. 처음 실행할 때 "확인되지 않은 개발자" 경고가 뜨면, **Finder에서 앱을 우클릭 → 열기**로 한 번 열어 줍니다. 사내 배포용이라 Apple 공증을 받지 않았습니다.
+3. 처음 실행할 때 "확인되지 않은 개발자" 또는 "손상된 앱" 경고가 뜨면, 터미널에서 아래 명령을 한 번 실행한 뒤 다시 엽니다. 사내 배포용이라 Apple 공증을 받지 않았습니다.
+   ```
+   xattr -cr /Applications/AgentDesk.app
+   ```
+   (또는 Finder에서 앱을 우클릭 → 열기)
 4. 앱이 뜨면 온보딩에서 언어를 고르고, **정확 감지(에이전트 훅)** 를 켭니다. 켜면 Claude Code 등 CLI 설정에 상태 알림 훅이 추가되어 세션 상태가 정확히 보입니다. 꺼도 Orca 세션은 보이지만 터미널에서 띄운 세션은 보이지 않습니다.
 
 > 필요한 것: macOS 13 이상, Node.js(`/opt/homebrew/bin/node` 또는 `/usr/local/bin/node`). 훅이 Node로 동작합니다.
