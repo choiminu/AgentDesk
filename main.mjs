@@ -6,6 +6,7 @@ import { dirname, join, delimiter as PATH_DELIM } from "node:path";
 import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
+import { readTeamConfig, writeTeamExample, startTeamServer, fetchPeer, TEAM_CFG } from "./team/peer.mjs";
 
 const exec = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -136,7 +137,7 @@ function createTray() {
   });
 }
 
-app.on("before-quit", () => { app.isQuitting = true; if (slackChild) { try { slackChild.kill(); } catch {} } });   // no orphan bridge that would post every reply twice
+app.on("before-quit", () => { app.isQuitting = true; if (slackChild) { try { slackChild.kill(); } catch {} } if (teamServer) { try { teamServer.close(); } catch {} } });   // no orphan bridge that would post every reply twice
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { app.isQuitting = true; app.quit(); });
 
 // Finder-launched apps only see /usr/bin:/bin:/usr/sbin:/sbin, so look in the usual symlink
@@ -1204,6 +1205,40 @@ ipcMain.handle("roca:inbox-status", () => ({ ...slackStatus, configured: existsS
 ipcMain.handle("roca:inbox-restart", () => { if (slackChild) { try { slackChild.kill(); } catch {} } slackRestartAt = 0; setTimeout(startSlackBridge, 500); return { ok: true }; });
 // session notes written by recall/ (MongoDB) for a checkout: spawn the CLI, which knows the worktree/repo rules; [] when unavailable
 const RECALL_CLI = [join(__dirname, "recall", "cli.mjs"), join(homedir(), "project", "agentdesk-internal", "recall", "cli.mjs"), join(homedir(), "orca-widget", "recall", "cli.mjs")].find(p => existsSync(p)) || null;
+// ── team sharing (phase 1): publish my sessions on the office network, poll teammates' — read-only, see team/peer.mjs ──
+let teamCfg = null, teamServer = null, teamServerKey = "", teamStatus = { configured: false, listening: false, error: "", name: "", port: 0, peers: {} };
+let teamSnapshot = { at: 0, sessions: [] };
+ipcMain.on("roca:team-publish", (_e, sessions) => { teamSnapshot = { at: Date.now(), sessions: Array.isArray(sessions) ? sessions : [] }; });
+function teamReload() {
+  const cfg = readTeamConfig();
+  teamStatus.configured = !!cfg; teamStatus.error = cfg && cfg.error ? cfg.error : "";
+  if (!cfg || cfg.error) { teamCfg = null; if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; teamStatus.listening = false; } return; }
+  teamCfg = cfg; teamStatus.name = cfg.name; teamStatus.port = cfg.port;
+  const key = `${cfg.bind}:${cfg.port}`;
+  if (teamServer && teamServerKey === key) return;
+  if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; }
+  const srv = startTeamServer(cfg, () => teamSnapshot);
+  srv.once("error", (e) => { teamStatus.listening = false; teamStatus.error = `listen ${key}: ${e.code || e.message}`; teamServer = null; });
+  srv.listen(cfg.port, cfg.bind, () => { teamStatus.listening = true; teamStatus.error = ""; });
+  teamServer = srv; teamServerKey = key;
+}
+async function teamPoll() {
+  if (!teamCfg) return;
+  const results = await Promise.all(teamCfg.peers.map(p => fetchPeer(p, teamCfg.token)));
+  const peers = {};
+  for (const r of results) {
+    const prev = teamStatus.peers[r.name] || {};
+    // keep the last good snapshot for a while so a blip does not empty the list
+    peers[r.name] = r.ok ? { ...r, lastOk: r.at } : { name: r.name, ok: false, error: r.error, sessions: prev.lastOk && Date.now() - prev.lastOk < 60000 ? prev.sessions : [], at: prev.at || 0, lastOk: prev.lastOk || 0 };
+  }
+  teamStatus.peers = peers;
+}
+setTimeout(() => { teamReload(); teamPoll(); }, 3000);
+setInterval(teamReload, 30000);
+setInterval(teamPoll, 3000);
+ipcMain.handle("roca:team-status", () => teamStatus);
+ipcMain.handle("roca:team-setup", () => { try { const created = writeTeamExample(); teamReload(); return { ok: true, created, file: TEAM_CFG }; } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("roca:team-open-config", () => { shell.showItemInFolder(TEAM_CFG); return true; });
 ipcMain.handle("roca:recall-notes", async (_e, cwd, limit) => {
   if (!RECALL_CLI || !cwd || !existsSync(cwd)) return [];
   const node = ["/opt/homebrew/bin/node", "/usr/local/bin/node"].find(p => existsSync(p)) || process.execPath;
