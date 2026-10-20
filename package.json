@@ -54,6 +54,7 @@
     },
     "files": [
       "main.mjs",
+      "jira-oauth.mjs",
       "widget.html",
       "preload.cjs",
       "core/**/*",
