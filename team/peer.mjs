@@ -459,7 +459,8 @@ export function startTeamServer(cfg, getSnapshot, opts = {}) {
     if (action === "input") { const v = validateRemoteText(body.text); if (v.error) return json(400, { error: v.error }); text = v.text; }
     if (!noteRateCheck(remoteTimes, sid, now(), REMOTE_RATE)) { event({ kind: action, result: "rate", text }); return json(429, { error: "too many requests" }); }
     if (action === "input") {
-      const g = isDangerous(text);
+      let g; try { g = typeof remote.guard === "function" ? remote.guard(text) : isDangerous(text); } catch { g = isDangerous(text); }
+      if (!g || typeof g !== "object") g = isDangerous(text);
       if (g.blocked) { event({ kind: "input", result: "blocked", rule: g.rule, ruleLabel: g.label, text }); return json(403, { error: "blocked", rule: g.rule }); }
       // only a session that sits at its prompt: not running, not on a permission / choice prompt, not gone
       // and only while Claude Code still asks before risky tools (a known, safe permission mode)
