@@ -3,10 +3,14 @@
 import { networkInterfaces, userInfo, hostname } from "node:os";
 import { existsSync } from "node:fs";
 
-// a fresh install joins no team: empty token (an invite code fills it in), no peers, discovery on
+// a fresh install joins no team and shows nothing to the network: empty token, no peers, listening on 127.0.0.1 only,
+// no beacon. "Create our team" / "join with an invite code" switch to 0.0.0.0 + discovery after the user confirms.
 export function defaultTeamConfig({ name, instanceId }) {
-  return { name, token: "", port: 7331, bind: "0.0.0.0", instanceId, peers: [] };
+  return { name, token: "", port: 7331, bind: "127.0.0.1", discovery: false, instanceId, peers: [] };
 }
+// the fields that make this PC visible on the office network (team create / join) — and the ones that hide it again
+export const SHARE_ON = { bind: "0.0.0.0", discovery: true };
+export const SHARE_OFF = { bind: "127.0.0.1", discovery: false };
 export function defaultName() {
   let n = ""; try { n = userInfo().username; } catch {}
   if (!n) n = String(hostname() || "").split(".")[0];

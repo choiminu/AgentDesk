@@ -4,6 +4,7 @@ import { readFileSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import "../core/mask.js";   // defines globalThis.AgentDeskMask
 
 export const HOME_DIR = join(homedir(), ".agentdesk");
 export const LOG_FILE = join(HOME_DIR, "recall.log");
@@ -50,22 +51,9 @@ export function changedSince(root, commit, files) {
   } catch { return []; }
 }
 
-// ── secret masking (applied to everything that leaves the transcript) ──
-const SECRET_RES = [
-  [/\b(sk|rk|pk)[-_](live|test|ant|proj)?[-_]?[A-Za-z0-9_-]{16,}\b/g, "[MASKED]"],
-  [/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, "[MASKED]"], [/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "[MASKED]"],
-  [/\bAKIA[0-9A-Z]{16}\b/g, "[MASKED]"], [/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[MASKED]"],
-  [/\bAIza[0-9A-Za-z_-]{30,}\b/g, "[MASKED]"], [/\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/g, "[MASKED]"],
-  [/(Bearer\s+)[A-Za-z0-9._~+\/=-]{16,}/gi, "$1[MASKED]"],
-  [/((?:password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret)\s*[=:]\s*["']?)[^\s"'&]{6,}/gi, "$1[MASKED]"],
-  [/((?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis|amqp):\/\/[^:\/\s]+:)[^@\s]+(@)/gi, "$1[MASKED]$2"],
-  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[MASKED PRIVATE KEY]"],
-];
-export function mask(s) {
-  let out = String(s || "");
-  for (const [re, repl] of SECRET_RES) out = out.replace(re, repl);
-  return out;
-}
+// ── secret masking (applied to everything that leaves the transcript): rules live in core/mask.js, shared with team/ ──
+// input is cut to 64 KB first: masking stays fast whatever a transcript contains
+export const mask = s => globalThis.AgentDeskMask.mask(String(s ?? "").slice(0, 65536));
 
 // ── transcript digests: user prompts + assistant text (+ tool names), tool output dropped ──
 const textOf = (content) => Array.isArray(content) ? content.map(c => c && (c.text || (c.type === "tool_use" ? `[tool: ${c.name}${c.input && (c.input.file_path || c.input.command || c.input.pattern) ? " " + String(c.input.file_path || c.input.command || c.input.pattern).slice(0, 80) : ""}]` : "")) || "").filter(Boolean).join("\n") : String(content || "");

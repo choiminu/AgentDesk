@@ -130,8 +130,9 @@ function applyHookEvent(rec, sessions) {
   const evName = GEMINI_EVENTS[ev.hook_event_name] || ev.hook_event_name;
   switch (evName) {
     case 'SessionStart': st.ended = false; break;
-    case 'UserPromptSubmit': setStatus('running'); st.tool = ''; st.toolInput = ''; setAsk(false); st.ended = false; st.failStreak = 0; st.failures = []; st.loopNotified = 0; break;   // the user stepped in: start the loop watch afresh
+    case 'UserPromptSubmit': setStatus('running'); st.tool = ''; st.toolInput = ''; setAsk(false); st.ended = false; st.failStreak = 0; st.failures = []; st.loopNotified = 0; st.compacting = false; break;   // the user stepped in: start the loop watch afresh
     case 'PreToolUse':
+      if (!sub) st.compacting = false;
       if (sub) { sub.tool = ev.tool_name || ''; sub.toolInput = hookToolInput(ev.tool_name, ev.tool_input); sub.last = ts; }
       else {
         setStatus('running'); st.tool = ev.tool_name || ''; st.toolInput = hookToolInput(ev.tool_name, ev.tool_input); setAsk(ev.tool_name === 'AskUserQuestion');
@@ -153,11 +154,24 @@ function applyHookEvent(rec, sessions) {
       else if (nt === 'idle_prompt') setStatus('waiting');
       break;
     }
-    case 'Stop': case 'Interrupt': setStatus('waiting'); st.tool = ''; st.toolInput = ''; setAsk(false); break;
+    case 'Stop': case 'Interrupt': st.compacting = false; setStatus('waiting'); st.tool = ''; st.toolInput = ''; setAsk(false); break;
     case 'SubagentStart': if (ev.agent_id) st.subagents.set(ev.agent_id, { id: ev.agent_id, type: ev.agent_type || 'agent', since: ts, last: ts, tool: '', toolInput: '' }); break;
     case 'SubagentStop': if (ev.agent_id) st.subagents.delete(ev.agent_id); break;
     case 'SessionEnd': setStatus('done'); setAsk(false); st.ended = true; st.subagents.clear(); break;
-    case 'PostCompact': break;
+    case 'StopFailure': setStatus('error'); st.tool = ''; st.toolInput = ''; setAsk(false); st.compacting = false; st.lastError = { at: ts, reason: String(ev.last_assistant_message || ev.error_details || ev.error || 'unknown').slice(0, 300), error: String(ev.error || '').slice(0, 60) }; break;
+    case 'PermissionDenied': (st.denied = st.denied || []).push({ tool: String(ev.tool_name || ''), at: ts }); if (st.denied.length > 20) st.denied.shift(); break;
+    case 'TaskCreated': case 'TaskCompleted': {
+      const id = String(ev.task_id || ''); if (!id) break;
+      st.tasks = st.tasks || [];
+      let t = st.tasks.find(x => x.id === id);
+      if (!t) { t = { id, desc: '', state: 'open', at: ts }; st.tasks.push(t); if (st.tasks.length > 50) st.tasks.shift(); }
+      t.desc = String(ev.task_subject || ev.task_description || t.desc || '').slice(0, 120); t.at = ts;
+      if (evName === 'TaskCompleted') t.state = 'done';
+      break;
+    }
+    case 'PreCompact': st.compacting = true; st.compactTrigger = ev.trigger === 'auto' ? 'auto' : 'manual'; break;
+    case 'PostCompact': st.compacting = false; break;
+    case 'CwdChanged': if (ev.new_cwd) st.cwd = ev.new_cwd; break;
   }
 }
 

@@ -7,6 +7,8 @@ import { createSocket } from "node:dgram";
 import { networkInterfaces } from "node:os";
 
 export const BEACON_PORT = 7332;
+export const NAME_RE = /^[\w.\-가-힣 ]{1,40}$/;
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const BEACON_APP = "agentdesk";
 
 export function encodeBeacon({ name, port, id }) {
@@ -19,10 +21,11 @@ export function parseBeacon(buf, rinfo) {
   if (!m || m.app !== BEACON_APP || m.v !== 1) return null;
   const port = Number(m.port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
-  if (typeof m.name !== "string" || !m.name.trim() || typeof m.id !== "string" || !m.id) return null;
+  // anyone on the LAN can send a beacon: only a plain display name and a uuid get through to the UI
+  if (typeof m.name !== "string" || !NAME_RE.test(m.name) || !m.name.trim() || typeof m.id !== "string" || !UUID_RE.test(m.id)) return null;
   const addr = rinfo && rinfo.address ? String(rinfo.address).replace(/^::ffff:/, "") : "";
-  if (!/^[0-9.]+$/.test(addr)) return null;
-  return { name: m.name.trim().slice(0, 40), host: `${addr}:${port}`, id: m.id.slice(0, 64), at: Date.now() };
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(addr)) return null;
+  return { name: m.name.trim(), host: `${addr}:${port}`, id: m.id.toLowerCase(), at: Date.now() };
 }
 // 255.255.255.255 plus each IPv4 interface's directed broadcast (some routers drop the limited one)
 export function broadcastAddresses(ifaces = networkInterfaces()) {

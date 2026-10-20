@@ -159,3 +159,45 @@ test('relPath: inside cwd, outside cwd, climbing out, already relative', () => {
   assert.equal(S.relPath('../B.ts', '/w/app'), 'B.ts');
   assert.equal(S.relPath('', '/w/app'), '');
 });
+
+test('StopFailure → error status with lastError, distinct from Stop; next prompt recovers', () => {
+  const m = fold(claude('UserPromptSubmit'), claude('StopFailure', { error: 'rate_limit', last_assistant_message: 'API Error: Rate limit reached' }));
+  const st = m.get('c-1');
+  assert.equal(st.status, 'error'); assert.equal(S.hookStatusFor(st), 'error'); assert.equal(st.needsInput, false);
+  assert.equal(st.lastError.reason, 'API Error: Rate limit reached'); assert.equal(st.lastError.error, 'rate_limit');
+  S.applyHookEvent(claude('StopFailure', { error: 'x'.repeat(5), error_details: 'y'.repeat(500) }), m);
+  assert.equal(st.lastError.reason.length, 300);
+  S.applyHookEvent(claude('UserPromptSubmit'), m);
+  assert.equal(st.status, 'running');
+});
+
+test('PermissionDenied accumulates (max 20) without changing status', () => {
+  const m = fold(claude('UserPromptSubmit'));
+  for (let i = 0; i < 25; i++) S.applyHookEvent(claude('PermissionDenied', { tool_name: i === 24 ? 'Bash' : 'Edit' }), m);
+  const st = m.get('c-1');
+  assert.equal(st.denied.length, 20); assert.equal(st.denied[19].tool, 'Bash'); assert.equal(st.status, 'running');
+});
+
+test('TaskCreated / TaskCompleted track progress per task id, separate from subagents', () => {
+  const m = fold(claude('TaskCreated', { task_id: 't1', task_subject: 'A' }), claude('TaskCreated', { task_id: 't2', task_subject: 'B' }), claude('TaskCompleted', { task_id: 't1' }), claude('TaskCompleted', { task_id: 't1' }));
+  const st = m.get('c-1');
+  assert.equal(st.tasks.length, 2); assert.deepEqual(st.tasks.map(t => t.state), ['done', 'open']); assert.equal(st.tasks[0].desc, 'A');
+  assert.equal(st.subagents.size, 0);
+});
+
+test('PreCompact sets compacting (trigger kept); PostCompact / next tool use / prompt clear it', () => {
+  const m = fold(claude('PreCompact', { trigger: 'auto' }));
+  const st = m.get('c-1');
+  assert.equal(st.compacting, true); assert.equal(st.compactTrigger, 'auto');
+  S.applyHookEvent(claude('PostCompact', { trigger: 'auto' }), m); assert.equal(st.compacting, false);
+  S.applyHookEvent(claude('PreCompact', { trigger: 'manual' }), m); S.applyHookEvent(claude('PreToolUse', { tool_name: 'Bash' }), m); assert.equal(st.compacting, false);
+  S.applyHookEvent(claude('PreCompact'), m); S.applyHookEvent(claude('UserPromptSubmit'), m); assert.equal(st.compacting, false);
+});
+
+test('CwdChanged updates cwd; unknown events are ignored', () => {
+  const m = fold(claude('UserPromptSubmit'), claude('CwdChanged', { cwd: '/w/app/src', new_cwd: '/w/app/src', old_cwd: '/w/app' }));
+  const st = m.get('c-1'); assert.equal(st.cwd, '/w/app/src');
+  const before = JSON.stringify([st.status, st.tool, st.needsInput]);
+  S.applyHookEvent(claude('SomethingNew'), m);
+  assert.equal(JSON.stringify([st.status, st.tool, st.needsInput]), before);
+});
