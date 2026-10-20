@@ -10,6 +10,8 @@ import { readTeamConfig, startTeamServer, fetchPeer, postNote, postHello, remote
 import { startDiscovery } from "./team/discovery.mjs";
 import { createDelegationStore, createRemoteLog, createEventThrottle, remoteMessage, validateRemoteText, resolveDelegatedSession, screenAllowsInput, remoteInterruptAllowed, canDelegate, autoRevokeReasons, permissionOk, REMOTE_LOG } from "./team/remote.mjs";
 import "./core/status.js";   // globalThis.AgentDeskStatus (responseTextFromScreen) for a delegated session's last answer
+import "./core/mask.js";
+import "./core/timeline.js";   // globalThis.AgentDeskTimeline: the card's [타임라인] tab (details masked here)
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { randomUUID } from "node:crypto";
 import { openPermEndpoint, ensurePrivateDir, permHookScript as permHookSh, guardHookScript, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK } from "./perm/server.mjs";
@@ -1137,11 +1139,13 @@ function uninstallHooks(agents) {
 let eventsOffset = 0;
 let eventsWatcher = null;
 let eventsPollTimer = null;
+// session timeline: the newest 2,000 entries per session, fed from the same incremental reads (never a full re-read per request)
+const timelineIndex = AgentDeskTimeline.createIndex({ max: AgentDeskTimeline.MAX_EVENTS, sessions: 100 });
 function readNewEvents() {
   try {
     if (!existsSync(EVENTS_FILE)) return [];
     const size = statSync(EVENTS_FILE).size;
-    if (size < eventsOffset) eventsOffset = 0;            // truncated/rotated
+    if (size < eventsOffset) { eventsOffset = 0; timelineIndex.clear(); }   // truncated/rotated: re-read from the start
     if (size === eventsOffset) return [];
     const fd = openSync(EVENTS_FILE, "r");
     const buf = Buffer.alloc(size - eventsOffset);
@@ -1151,7 +1155,7 @@ function readNewEvents() {
     const out = [];
     for (const line of buf.toString("utf-8").split("\n")) {
       if (!line.trim()) continue;
-      try { const o = JSON.parse(line.replace(/^\uFEFF/, "")); noteKnownSession(o); out.push(o); } catch {}   // PowerShell may write a BOM
+      try { const o = JSON.parse(line.replace(/^\uFEFF/, "")); noteKnownSession(o); timelineIndex.add(o); out.push(o); } catch {}   // PowerShell may write a BOM
     }
     return out;
   } catch { return []; }
@@ -1908,6 +1912,22 @@ function diffErr(where, e) {
   console.error(`[diff] ${where}: ${e && e.message ? e.message : e}`);
   return e && (e.killed || e.signal === "SIGTERM" || e.code === "ETIMEDOUT") ? "시간 초과" : "git 실행 실패";
 }
+// session timeline (card [타임라인] tab): built from the in-memory index only; details were masked when indexed.
+// sessionId: a hook session id, or the widget's "hook:<sid>::<cwd>" card id
+ipcMain.handle("roca:timeline", (_e, req = {}) => {
+  try {
+    const raw = req && typeof req.sessionId === "string" ? req.sessionId : "";
+    const sid = raw.startsWith("hook:") ? raw.slice(5).split("::")[0] : raw;
+    if (!sid || sid.length > 200 || /[\u0000-\u001f]/.test(sid)) return { ok: false, error: "invalid session" };
+    pushEvents(readNewEvents());   // whatever the hooks appended since the last poll
+    const got = timelineIndex.get(sid);
+    if (!got) return { ok: true, events: [], span: { start: 0, end: 0 }, truncated: false, noEarlier: true, subs: [], waits: [], stats: null };
+    const since = Number(req.sinceMs) || 0;
+    const entries = since > 0 ? got.entries.filter(x => x.at >= since) : got.entries;
+    const limit = Math.max(1, Math.min(AgentDeskTimeline.MAX_EVENTS, Number(req.limit) || AgentDeskTimeline.MAX_EVENTS));
+    return { ok: true, ...AgentDeskTimeline.buildModel(entries, { limit, truncated: got.truncated || entries.length < got.entries.length }) };
+  } catch (e) { console.error("[timeline]", e && e.message); return { ok: false, error: "timeline failed" }; }
+});
 ipcMain.handle("roca:diff-stat", async (_e, req = {}) => {
   const sessionId = req && typeof req.sessionId === "string" ? req.sessionId : "", scope = req && req.scope === "branch" ? "branch" : "working";
   const seq = diffStatSeq.next(sessionId);
@@ -2041,7 +2061,8 @@ ipcMain.handle("orca:hooks-recent", () => {
     eventsOffset = statSync(EVENTS_FILE).size;
     const cutoff = Math.floor(Date.now() / 1000) - 24 * 3600;
     const out = [];
-    for (const l of lines) { try { const o = JSON.parse(l); if (o.ts >= cutoff) { noteKnownSession(o); out.push(o); } } catch {} }
+    timelineIndex.clear();   // the whole file is read here: rebuild the timeline index from it (no duplicates)
+    for (const l of lines) { try { const o = JSON.parse(l.replace(/^\uFEFF/, "")); timelineIndex.add(o); if (o.ts >= cutoff) { noteKnownSession(o); out.push(o); } } catch {} }
     return out;
   } catch { return []; }
 });

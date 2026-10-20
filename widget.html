@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-s0/ml3d5JtuK7IPs0i8jlmFpEG/1E5gMNSyAzf0BN9I='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-VlPJrev2WeVJrn8wBGqkJd6zgsfvjjyDZsT9MEbuO7k='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2425,6 +2425,58 @@
   .diff-panel .df-chip { padding: 1px 8px; border-radius: 999px; background: var(--accent-dim); color: var(--accent); }
   .diff-panel .df-foot .primary { margin-left: auto; }
   .diff-panel .df-empty { padding: 6px; color: var(--text3); }
+  /* card "타임라인" tab: hook events on a time axis (core/timeline.js); SVG colors come from classes */
+  .tl-panel { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-xs); color: var(--text2); cursor: default; min-width: 0; }
+  .tl-panel button { background: var(--surface-raised); color: var(--text2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+  .tl-panel button:hover { color: var(--text); border-color: var(--accent); }
+  .tl-panel button.on { background: var(--accent-dim); color: var(--text); border-color: var(--accent); }
+  .tl-panel .tl-bar-top, .tl-panel .tl-chips, .tl-panel .tl-legend, .tl-panel .tl-sum { display: flex; gap: 4px 8px; align-items: center; flex-wrap: wrap; }
+  .tl-panel .tl-chips span { padding: 1px 8px; border-radius: 999px; background: var(--surface-raised); border: 1px solid var(--border-subtle); color: var(--text); }
+  .tl-panel .bad { color: var(--red); }
+  .tl-panel .tl-dim, .tl-panel .tl-empty { color: var(--text3); }
+  .tl-panel .tl-empty { padding: 6px; }
+  .tl-panel .tl-note { color: var(--yellow); }
+  .tl-panel .tl-sum b { color: var(--text3); font-weight: 600; }
+  .tl-panel .tl-sum code, .tl-panel .tl-row .lb { font-family: var(--mono); }
+  .tl-panel .tl-axis { border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-solid); overflow: hidden; }
+  .tl-panel .tl-svg { display: block; }
+  .tl-svg .tl-grid { stroke: var(--border-subtle); stroke-width: 1; }
+  .tl-svg .tl-ax, .tl-svg .tl-lane { fill: var(--text3); font-family: var(--mono); font-size: 8.5px; }
+  .tl-svg .tl-ax { text-anchor: middle; }
+  .tl-svg [data-ti] { cursor: pointer; }
+  .tl-svg .tl-bar { stroke: none; }
+  .tl-svg .tl-bar.fail { stroke: var(--red); stroke-width: 1.5; }
+  .tl-svg .tl-bar.open { opacity: .55; }
+  .tl-svg .sel { stroke: var(--text); stroke-width: 1.5; }
+  .tl-svg .tl-prompt { stroke: var(--accent); stroke-width: 1.5; }
+  .tl-svg .tl-prompt.sel { stroke-width: 3; }
+  .tl-svg .tl-sess { stroke: var(--text3); stroke-width: 1; stroke-dasharray: 2 2; }
+  .tl-svg .tl-stop { fill: var(--green); }
+  .tl-svg .tl-stop.fail, .tl-svg .tl-deny { fill: var(--red); }
+  .tl-svg .tl-sub { fill: var(--purple-dim); stroke: var(--purple); stroke-width: 1; }
+  .tl-svg .tl-sub.open { stroke-dasharray: 3 2; }
+  .tl-svg .tl-wait.user { fill: var(--text3); opacity: .35; }
+  .tl-svg .tl-wait.perm { fill: var(--yellow); opacity: .75; }
+  .tl-svg .tl-mark { fill: var(--text2); }
+  .tl-svg .c-bash, .tl-legend .c-bash { fill: var(--accent); background: var(--accent); }
+  .tl-svg .c-edit, .tl-legend .c-edit { fill: var(--green); background: var(--green); }
+  .tl-svg .c-read, .tl-legend .c-read { fill: var(--purple); background: var(--purple); }
+  .tl-svg .c-web, .tl-legend .c-web { fill: var(--text2); background: var(--text2); }
+  .tl-svg .c-agent, .tl-legend .c-agent { fill: var(--yellow); background: var(--yellow); }
+  .tl-svg .c-mcp, .tl-legend .c-mcp { fill: color-mix(in srgb, var(--accent) 45%, var(--purple)); background: color-mix(in srgb, var(--accent) 45%, var(--purple)); }
+  .tl-svg .c-other, .tl-legend .c-other { fill: var(--text3); background: var(--text3); }
+  .tl-legend span { display: inline-flex; align-items: center; gap: 3px; color: var(--text3); }
+  .tl-legend i { display: inline-block; width: 9px; height: 7px; border-radius: 2px; }
+  .tl-legend i.w-perm { background: var(--yellow); opacity: .75; } .tl-legend i.w-user { background: var(--text3); opacity: .35; }
+  .tl-panel .tl-list { position: relative; max-height: 220px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: 6px; }
+  .tl-panel .tl-row { display: grid; grid-template-columns: 5.2em 6.5em minmax(4em, 9em) 1fr auto; gap: 6px; padding: 1px 6px; cursor: pointer; align-items: baseline; }
+  .tl-panel .tl-row:hover { background: var(--surface-hover); }
+  .tl-panel .tl-row.sel { background: var(--accent-dim); color: var(--text); }
+  .tl-panel .tl-row.bad .du, .tl-panel .tl-row.bad .lb { color: var(--red); }
+  .tl-panel .tl-row .tm, .tl-panel .tl-row .du { font-family: var(--mono); color: var(--text3); }
+  .tl-panel .tl-row .lb { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .tl-panel .tl-row .dt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .tl-panel .tl-row .k-prompt { color: var(--accent); } .tl-panel .tl-row .k-permission { color: var(--yellow); } .tl-panel .tl-row .k-subagent { color: var(--purple); }
   .hidden-link { text-align: center; font-size: 10px; color: var(--text3); padding: 8px 0 4px; cursor: pointer; }
   .hidden-link:hover { color: var(--text); }
   .local-stats { font-family: var(--mono); font-size: 9.5px; color: var(--text3); justify-content: center; gap: 10px; }
@@ -3126,6 +3178,11 @@ Object.assign(I18N, {
   '규칙 파일이 깨져 있습니다. 지금 화면의 설정(마지막으로 읽은 설정, 없으면 기본값)으로 덮어쓸까요?': 'The rule file is broken. Overwrite it with the settings shown here (the last config that loaded, or the defaults)?',
   '파일을 고치기 전까지 마지막으로 읽은 설정(없으면 차단 모드)으로 동작합니다. 버튼을 누르면 파일을 덮어씁니다.': 'Until the file is fixed the last config that loaded is used (block mode if none). Pressing a button overwrites the file.',
   '기본 규칙으로 되돌릴까요? 추가한 규칙과 편집 내용이 지워집니다 (모드는 유지).': 'Restore the default rules? Added rules and edits are removed (the mode stays).',
+  // session timeline tab
+  '타임라인': 'Timeline', '세션 타임라인': 'Session timeline', '최근 10분': 'Last 10 min', '사용자 대기': 'User wait',
+  '이전 기록 없음': 'No earlier records', '이전 이벤트는 로그에 남아 있지 않습니다': 'and earlier is no longer in the log', '최근 2,000건만 표시': 'latest 2,000 only', '도구별': 'By tool',
+  '오래 걸린 호출': 'Slowest calls', '읽기·검색': 'Read/search', '이 구간에 이벤트가 없습니다': 'No events in this range', '이 세션의 기록된 이벤트가 없습니다': 'No recorded events for this session',
+  '이 세션의 hook 기록을 찾지 못했습니다': 'No hook records found for this session', '정확한 감지(hook)를 켜면 타임라인이 기록됩니다': 'Turn on exact detection (hooks) to record a timeline',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -4183,8 +4240,9 @@ function renderCard(s) {
   if (expanded) {
     const tools = (s.recentTools || []).slice(-5).reverse();
     const dtab = diffTabOf(s.id), dst = diffState.get(s.id), dcnt = dst && dst.stat && dst.stat.total ? dst.stat.total.files : null;
-    const tabs = `<div class="d-tabs"><button data-act="dtab" data-id="${esc(s.id)}" data-tab="info" class="${dtab === 'info' ? 'on' : ''}">${esc(t('정보'))}</button><button data-act="dtab" data-id="${esc(s.id)}" data-tab="diff" class="${dtab === 'diff' ? 'on' : ''}">${esc(t('변경'))}<span class="cnt" data-diff-cnt="${esc(s.id)}">${dcnt != null ? dcnt : ''}</span></button></div>`;
+    const tabs = `<div class="d-tabs"><button data-act="dtab" data-id="${esc(s.id)}" data-tab="info" class="${dtab === 'info' ? 'on' : ''}">${esc(t('정보'))}</button><button data-act="dtab" data-id="${esc(s.id)}" data-tab="diff" class="${dtab === 'diff' ? 'on' : ''}">${esc(t('변경'))}<span class="cnt" data-diff-cnt="${esc(s.id)}">${dcnt != null ? dcnt : ''}</span></button><button data-act="dtab" data-id="${esc(s.id)}" data-tab="timeline" class="${dtab === 'timeline' ? 'on' : ''}">${esc(t('타임라인'))}</button></div>`;
     if (dtab === 'diff') detail = `<div class="s-detail">${tabs}<div class="d-diff-slot" data-diff-for="${esc(s.id)}"></div></div>`;
+    else if (dtab === 'timeline') detail = `<div class="s-detail">${tabs}<div class="d-tl-slot" data-tl-for="${esc(s.id)}"></div></div>`;
     else detail = `<div class="s-detail">${tabs}
       <div class="d-row"><b>${esc(t('마지막 프롬프트'))}</b><span>${esc(trunc(s.prompt || '—', 300))}</span></div>
       <div class="d-row"><b>${esc(t('마지막 응답'))}</b><span>${esc(trunc(s.lastMsg || '—', 300))}</span></div>
@@ -4307,6 +4365,7 @@ function renderDashboard() {
   const dFocus = diffFocusSave();
   $('list').innerHTML = html + hiddenNote;
   diffMount(dFocus);
+  tlMount();
   if (location.hash.includes('list-bottom')) setTimeout(() => { $('list').scrollTop = $('list').scrollHeight; }, 50);
   for (const id of expandedIds) { const s = sessions.find(x => x.id === id); if (s && $('list').querySelector(`.d-notes[data-notes-for="${CSS.escape(id)}"]`)) loadNotesFor(s); }
   if (officeAsk && officeAsk.anchor) officeAskPlace();
@@ -4331,7 +4390,7 @@ async function loadNotesFor(s) {
 //    a file's diff only when it is clicked. ──
 const DIFF_TTL_MS = 30000;
 const diffState = new Map();       // session id → { scope, stat, statAt, loading, err, sel, files: Map(key → { at, data }), comments, edit, draft, el }
-const diffTab = new Map();         // session id → 'info' | 'diff'
+const diffTab = new Map();         // session id → 'info' | 'diff' | 'timeline'
 const diffReportBadge = new Set(); // sessions whose REPORT arrived and whose changes were not looked at yet
 const diffTabOf = id => diffTab.get(id) || 'info';
 function diffSt(id) {
@@ -4362,6 +4421,163 @@ function diffMount(focus) {
     slot.appendChild(st.el);
   }
   if (focus && focus.el.isConnected) { try { focus.el.focus(); if (focus.start != null) focus.el.setSelectionRange(focus.start, focus.end); } catch {} }
+}
+// ── card "타임라인" tab: one session's hook events on a time axis (main: core/timeline.js over an in-memory index of
+//    events.jsonl; details arrive masked). One persistent panel per session, re-attached after every list render; it is
+//    read again only while the card is expanded on this tab (5 s, 10 s when a render took over 100 ms). ──
+const tlState = new Map();   // session id → { zoom, model, at, loading, err, sel, el, renderMs }
+const TL_ZOOM = { '10m': 10 * 60000, '1h': 3600000, all: 0 };
+function tlSt(id) {
+  let st = tlState.get(id);
+  if (!st) { st = { zoom: 'all', model: null, at: 0, loading: false, err: '', sel: -1, el: null, renderMs: 0 }; tlState.set(id, st); }
+  return st;
+}
+// hook session id behind a card: hook-only cards carry it; Orca cards map by worktree path (ended sessions too)
+function tlSidFor(s) {
+  if (!s) return '';
+  if (String(s.id).startsWith('hook:')) return String(s.id).slice(5).split('::')[0];
+  if (s.sessionId) return String(s.sessionId);
+  const hk = hookStateFor(s.id); if (hk) return hk.sid;
+  const path = String(s.id || '').split('::').pop().replace(/\/$/, ''); if (!path) return '';
+  let best = null;
+  for (const st of hookSessions.values()) if (st.cwd && (st.cwd === path || st.cwd.startsWith(path + '/')) && (!best || st.last > best.last)) best = st;
+  return best ? best.sid : '';
+}
+function tlMount() {
+  const live = new Set(sessions.map(x => x.id));
+  for (const [id, st] of tlState) if (!live.has(id)) { if (st.el) st.el.remove(); tlState.delete(id); }
+  for (const id of expandedIds) {
+    if (diffTabOf(id) !== 'timeline' || !live.has(id)) continue;
+    const slot = $('list').querySelector(`.d-tl-slot[data-tl-for="${CSS.escape(id)}"]`); if (!slot) continue;
+    const st = tlSt(id);
+    if (!st.el) { st.el = tlPanelEl(id); tlRender(id); }
+    slot.appendChild(st.el);
+    if (!st.loading && Date.now() - st.at >= (st.renderMs > 100 ? 10000 : 5000) - 500) tlLoad(id);
+  }
+}
+async function tlLoad(id) {
+  const st = tlSt(id), s = sessions.find(x => x.id === id), sid = tlSidFor(s);
+  st.at = Date.now();
+  if (!sid) { st.err = hooksEnabled ? tlT('이 세션의 hook 기록을 찾지 못했습니다') : tlT('정확한 감지(hook)를 켜면 타임라인이 기록됩니다'); st.model = null; tlRender(id); return; }
+  st.loading = true;
+  let r;
+  try { r = await window.orca.timeline({ sessionId: sid }); } catch (e) { r = { ok: false, error: e.message }; }
+  st.loading = false; st.at = Date.now();
+  if (!r || r.ok === false) { st.err = (r && r.error) || 'error'; }
+  else { st.err = ''; st.model = r; }
+  tlRender(id);
+}
+function tlPanelEl(id) {
+  const el = document.createElement('div'); el.className = 'tl-panel'; el.dataset.sid = id;
+  el.addEventListener('click', e => {
+    e.stopPropagation();   // the card's own click handler would switch to the terminal
+    const st = tlSt(id), z = e.target.closest('[data-tlz]');
+    if (z) { st.zoom = TL_ZOOM[z.dataset.tlz] != null ? z.dataset.tlz : 'all'; tlRender(id); return; }
+    const m = e.target.closest('[data-ti]');
+    if (m) { st.sel = Number(m.dataset.ti); tlRender(id); tlScrollToSel(id); }
+  });
+  el.addEventListener('dblclick', e => e.stopPropagation());
+  return el;
+}
+function tlScrollToSel(id) {
+  const st = tlSt(id); if (!st.el) return;
+  const list = st.el.querySelector('.tl-list'), row = list && list.querySelector(`[data-tr="${st.sel}"]`);
+  if (row) list.scrollTop = Math.max(0, row.offsetTop - list.clientHeight / 3);
+}
+const tlCat = n => /^(Edit|MultiEdit|Write|NotebookEdit)$/.test(n) ? 'edit' : n === 'Bash' ? 'bash' : /^(Read|Grep|Glob|LS)$/.test(n) ? 'read'
+  : /^(WebFetch|WebSearch)$/.test(n) ? 'web' : /^(Task|Agent)$/.test(n) ? 'agent' : /^mcp__/.test(n) ? 'mcp' : 'other';
+function tlDur(ms) {
+  if (ms == null) return '';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const sec = Math.round(ms / 1000); if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60); if (m < 60) return `${m}m ${sec % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+const tlTime = (at, secs) => { const d = new Date(at), p = n => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())}${secs ? ':' + p(d.getSeconds()) : ''}`; };
+// short words translated here, not in I18N: there they would also be substituted inside other untranslated phrases
+const TL_EN = { 프롬프트: 'Prompt', 도구: 'Tool', 승인: 'Approval', 서브에이전트: 'Subagent', '응답 완료': 'Stop', '중단(오류)': 'Stop (error)', 정리: 'Compact', 작업: 'Task', 세션: 'Session',
+  요청: 'asked', 허용: 'allowed', 거부: 'denied', 시작: 'start', 종료: 'end', 완료: 'done', 생성: 'created', 소요: 'took', '끝 기록 없음': 'no end recorded', '진행 중': 'running',
+  '1시간': '1 hour', 턴: 'Turns', 회: '×', 실패: 'failed', 서브: 'Sub', 대기: 'Wait', 편집: 'Edit', 기타: 'Other', '승인 대기': 'Approval wait' };
+const tlT = s => LANG === 'ko' ? s : (TL_EN[s] || t(s));
+const TL_KIND = { prompt: '프롬프트', tool: '도구', permission: '승인', subagent: '서브에이전트', stop: '응답 완료', 'stop-failure': '중단(오류)', compact: '정리', task: '작업', session: '세션' };
+const TL_STATE = { ask: '요청', allowed: '허용', denied: '거부', start: '시작', stop: '종료', end: '종료', done: '완료', created: '생성', completed: '완료' };
+function tlLabel(e) {
+  const st = e.state ? tlT(TL_STATE[e.state] || e.state) : '';
+  if (e.kind === 'tool' || e.kind === 'subagent' || e.kind === 'permission') return [e.label, st].filter(Boolean).join(' · ');
+  if (e.kind === 'compact') return [e.label, st].filter(Boolean).join(' · ');
+  return st;
+}
+function tlTip(e) {
+  return [tlTime(e.at, true), tlT(TL_KIND[e.kind] || e.kind), tlLabel(e), e.detail || '', e.err || '', e.dur != null ? `${tlT('소요')} ${tlDur(e.dur)}` : (e.open ? tlT('끝 기록 없음') : '')].filter(Boolean).join(' · ');
+}
+function tlSvg(m, W, start, end, sel) {
+  const LBL = 46, R = 6, span = Math.max(1000, end - start), X = at => LBL + (Math.min(end, Math.max(start, at)) - start) / span * (W - LBL - R);
+  const subRows = Math.min(6, Math.max(1, ...m.subs.map(s => s.row + 1)));
+  const yTool = 16, hTool = 14, ySub = yTool + hTool + 6, hRow = 9, yWait = ySub + subRows * hRow + 6, hWait = 10, H = yWait + hWait + 4;
+  const subRow = new Map(m.subs.map(s => [s.sub, Math.min(subRows - 1, s.row)]));
+  const inWin = (a, b) => b >= start && a <= end;
+  let g = '';
+  // axis: ≤ 6 ticks on a round step
+  const steps = [10e3, 30e3, 60e3, 120e3, 300e3, 600e3, 900e3, 1800e3, 3600e3, 7200e3, 10800e3, 21600e3, 43200e3, 86400e3];
+  const step = steps.find(x => span / x <= 6) || 86400e3;
+  for (let at = Math.ceil(start / step) * step; at <= end; at += step) { const x = X(at).toFixed(1); g += `<line class="tl-grid" x1="${x}" x2="${x}" y1="12" y2="${H}"/><text class="tl-ax" x="${x}" y="9">${tlTime(at, step < 60e3)}</text>`; }
+  g += `<text class="tl-lane" x="2" y="${yTool + 10}">${esc(tlT('도구'))}</text><text class="tl-lane" x="2" y="${ySub + 7}">${esc(tlT('서브'))}</text><text class="tl-lane" x="2" y="${yWait + 8}">${esc(tlT('대기'))}</text>`;
+  for (const w of m.waits) {
+    if (!inWin(w.start, w.end)) continue;
+    const x = X(w.start), wd = Math.max(1.5, X(w.end) - x);
+    g += `<rect class="tl-wait ${w.kind}"${w.i != null ? ` data-ti="${w.i}"` : ''} x="${x.toFixed(1)}" y="${yWait}" width="${wd.toFixed(1)}" height="${hWait}"><title>${esc(`${tlTime(w.start, true)}–${tlTime(w.end, true)} · ${tlT(w.kind === 'perm' ? '승인 대기' : '사용자 대기')} ${tlDur(w.end - w.start)}`)}</title></rect>`;
+  }
+  for (const s of m.subs) {
+    if (!inWin(s.start, s.end)) continue;
+    const x = X(s.start), wd = Math.max(2, X(s.end) - x), y = ySub + Math.min(subRows - 1, s.row) * hRow;
+    g += `<rect class="tl-sub${s.open ? ' open' : ''}" x="${x.toFixed(1)}" y="${y}" width="${wd.toFixed(1)}" height="${hRow - 2}"><title>${esc(`${s.label} · ${tlTime(s.start, true)} · ${s.open ? tlT('진행 중') : tlDur(s.end - s.start)}`)}</title></rect>`;
+  }
+  m.events.forEach((e, i) => {
+    const a = e.at, b = e.at + (e.dur || 0);
+    if (!inWin(a, b)) return;
+    const x = X(a), on = i === sel ? ' sel' : '';
+    if (e.kind === 'tool') {
+      const wd = Math.max(2, X(b) - x), cls = `tl-bar c-${tlCat(e.label)}${e.ok === false ? ' fail' : ''}${e.open || e.orphan ? ' open' : ''}${on}`;
+      const y = e.sub && subRow.has(e.sub) ? ySub + subRow.get(e.sub) * hRow + 1 : yTool + 2, h = e.sub && subRow.has(e.sub) ? hRow - 4 : hTool - 4;
+      g += `<rect class="${cls}" data-ti="${i}" x="${x.toFixed(1)}" y="${y}" width="${wd.toFixed(1)}" height="${h}"><title>${esc(tlTip(e))}</title></rect>`;
+    } else if (e.kind === 'prompt') g += `<line class="tl-prompt${on}" data-ti="${i}" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="12" y2="${H}"><title>${esc(tlTip(e))}</title></line>`;
+    else if (e.kind === 'stop' || e.kind === 'stop-failure') g += `<circle class="tl-stop${e.kind === 'stop-failure' ? ' fail' : ''}${on}" data-ti="${i}" cx="${x.toFixed(1)}" cy="${yTool + hTool / 2}" r="3"><title>${esc(tlTip(e))}</title></circle>`;
+    else if (e.kind === 'permission' && e.state === 'denied' && e.dur == null) g += `<rect class="tl-deny${on}" data-ti="${i}" x="${(x - 1).toFixed(1)}" y="${yWait}" width="2.5" height="${hWait}"><title>${esc(tlTip(e))}</title></rect>`;
+    else if (e.kind === 'session') g += `<line class="tl-sess${on}" data-ti="${i}" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="12" y2="${H}"><title>${esc(tlTip(e))}</title></line>`;
+    else if (e.kind === 'compact' || e.kind === 'task') g += `<rect class="tl-mark ${e.kind}${on}" data-ti="${i}" x="${(x - 2).toFixed(1)}" y="11" width="4" height="4"><title>${esc(tlTip(e))}</title></rect>`;
+  });
+  return `<svg class="tl-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(tlT('세션 타임라인'))}">${g}</svg>`;
+}
+function tlRender(id) {
+  const st = tlState.get(id); if (!st || !st.el) return;
+  const t0 = performance.now();
+  const keep = st.el.querySelector('.tl-list'), top = keep ? keep.scrollTop : 0;
+  const m = st.model;
+  let h = `<div class="tl-bar-top">${['10m', '1h', 'all'].map(z => `<button data-tlz="${z}" class="${st.zoom === z ? 'on' : ''}">${esc(tlT(z === '10m' ? '최근 10분' : z === '1h' ? '1시간' : '전체'))}</button>`).join('')}${st.loading ? `<span class="tl-dim">${esc(tlT('불러오는 중…'))}</span>` : ''}</div>`;
+  if (st.err) h += `<div class="tl-empty">${esc(st.err)}</div>`;
+  if (!m) { st.el.innerHTML = h + (st.err ? '' : `<div class="tl-empty">${esc(tlT('불러오는 중…'))}</div>`); return; }
+  if (!m.events.length) { st.el.innerHTML = h + `<div class="tl-empty">${esc(tlT('이 세션의 기록된 이벤트가 없습니다'))}</div>`; return; }
+  const s = m.stats || {};
+  h += `<div class="tl-chips"><span>${esc(tlT('턴'))} ${s.turns || 0}</span><span>${esc(tlT('도구'))} ${s.toolCalls || 0}${esc(tlT('회'))}${s.toolFails ? ` / <b class="bad">${esc(tlT('실패'))} ${s.toolFails}</b>` : ''}</span><span>${esc(tlT('서브에이전트'))} ${s.subagents || 0}</span><span>${esc(tlT('사용자 대기'))} ${esc(tlDur(s.userWaitMs || 0))}</span><span>${esc(tlT('승인 대기'))} ${esc(tlDur(s.permWaitMs || 0))}</span></div>`;
+  if (m.noEarlier) h += `<div class="tl-note">${esc(tlT('이전 기록 없음'))} — ${esc(tlTime(m.span.start, true))} ${esc(tlT('이전 이벤트는 로그에 남아 있지 않습니다'))}${m.truncated ? ` (${esc(tlT('최근 2,000건만 표시'))})` : ''}</div>`;
+  const end = m.span.end, win = TL_ZOOM[st.zoom] || 0, start = win ? Math.max(m.span.start, end - win) : m.span.start;
+  const W = Math.max(240, Math.floor(st.el.clientWidth || (st.el.parentElement && st.el.parentElement.clientWidth) || 560));
+  h += `<div class="tl-axis">${tlSvg(m, W, start, end, st.sel)}</div>`;
+  const legend = [['bash', 'Bash'], ['edit', tlT('편집')], ['read', tlT('읽기·검색')], ['web', 'Web'], ['agent', 'Agent'], ['mcp', 'MCP'], ['other', tlT('기타')]];
+  h += `<div class="tl-legend">${legend.map(([c, l]) => `<span><i class="c-${c}"></i>${esc(l)}</span>`).join('')}<span><i class="w-perm"></i>${esc(tlT('승인 대기'))}</span><span><i class="w-user"></i>${esc(tlT('사용자 대기'))}</span></div>`;
+  if (s.byTool && s.byTool.length) h += `<div class="tl-sum"><b>${esc(tlT('도구별'))}</b>${s.byTool.slice(0, 8).map(x => `<span><code>${esc(x.tool)}</code> ${x.n}${esc(tlT('회'))} · ${esc(tlDur(x.ms))}${x.fail ? ` · <b class="bad">${esc(tlT('실패'))} ${x.fail}</b>` : ''}</span>`).join('')}</div>`;
+  if (s.slowest && s.slowest.length) h += `<div class="tl-sum"><b>${esc(tlT('오래 걸린 호출'))}</b>${s.slowest.map(i => { const e = m.events[i]; return e ? `<button data-ti="${i}" title="${esc(tlTip(e))}"><code>${esc(e.label)}</code> ${esc(tlDur(e.dur))}</button>` : ''; }).join('')}</div>`;
+  const rows = [];
+  for (let i = m.events.length - 1; i >= 0; i--) {
+    const e = m.events[i]; if (e.at + (e.dur || 0) < start || e.at > end) continue;
+    const bad = e.ok === false || e.kind === 'stop-failure' || e.state === 'denied';
+    rows.push(`<div class="tl-row${bad ? ' bad' : ''}${i === st.sel ? ' sel' : ''}" data-tr="${i}" data-ti="${i}"><span class="tm">${tlTime(e.at, true)}</span><span class="k k-${e.kind}">${esc(tlT(TL_KIND[e.kind] || e.kind))}</span><span class="lb">${esc(tlLabel(e))}</span><span class="dt">${esc([e.detail, e.err].filter(Boolean).join(' — '))}</span><span class="du">${e.dur != null ? esc(tlDur(e.dur)) : e.open ? '…' : ''}</span></div>`);
+  }
+  h += `<div class="tl-list">${rows.join('') || `<div class="tl-empty">${esc(tlT('이 구간에 이벤트가 없습니다'))}</div>`}</div>`;
+  st.el.innerHTML = h;
+  const list = st.el.querySelector('.tl-list'); if (list) list.scrollTop = top;
+  void st.el.offsetHeight;   // layout included in the measured cost
+  st.renderMs = performance.now() - t0;
 }
 const diffSeq = AgentDeskDiff.createSeq();   // keys "stat|<id>" and "file|<id>": only the newest answer is used
 async function diffLoadStat(id) {
@@ -4602,7 +4818,7 @@ $('list').addEventListener('click', async e => {
       const id = actBtn.dataset.id; if (expandedIds.has(id)) expandedIds.delete(id); else expandedIds.add(id);
       renderDashboard();
     } else if (act === 'dtab') {
-      const id = actBtn.dataset.id; diffTab.set(id, actBtn.dataset.tab === 'diff' ? 'diff' : 'info');
+      const id = actBtn.dataset.id; diffTab.set(id, actBtn.dataset.tab === 'diff' || actBtn.dataset.tab === 'timeline' ? actBtn.dataset.tab : 'info');
       if (actBtn.dataset.tab === 'diff') diffReportBadge.delete(id);
       renderDashboard();
     } else if (act === 'diff-open') {

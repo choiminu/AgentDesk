@@ -70,6 +70,7 @@ contextBridge.exposeInMainWorld("orca", {
   onTeamRemote: (cb) => ipcRenderer.on("roca:team-remote", (_e, entry) => cb(entry)),
   updateCheck: (force) => ipcRenderer.invoke("roca:update-check", force),
   openExternal: (url) => ipcRenderer.invoke("roca:open-external", url),
+  timeline: (req) => ipcRenderer.invoke("roca:timeline", req),
   diffStat: (req) => ipcRenderer.invoke("roca:diff-stat", req),
   diffFile: (req) => ipcRenderer.invoke("roca:diff-file", req),
   diffOpenFile: (req) => ipcRenderer.invoke("roca:diff-open-file", req),
