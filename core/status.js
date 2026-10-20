@@ -139,6 +139,7 @@ function applyHookEvent(rec, sessions) {
       }
       break;
     case 'PostToolUse':
+      if (TOUCH_TOOLS.test(ev.tool_name || '')) recordTouch(st, (ev.tool_input || {}).file_path || (ev.tool_input || {}).notebook_path, ts);
       if (sub) { sub.tool = ''; sub.last = ts; }
       else { setStatus('running'); setAsk(false); st.failStreak = 0; }
       break;
@@ -158,6 +159,31 @@ function applyHookEvent(rec, sessions) {
     case 'SessionEnd': setStatus('done'); setAsk(false); st.ended = true; st.subagents.clear(); break;
     case 'PostCompact': break;
   }
+}
+
+// files a session changed (team conflict check): Edit/Write/NotebookEdit targets, stored relative to the session's cwd.
+// A path outside the cwd keeps only its file name, so no private directory layout ever leaves the machine.
+const TOUCH_TOOLS = /^(Edit|Write|MultiEdit|NotebookEdit)$/;
+const TOUCH_WINDOW_MS = 10 * 60 * 1000;
+function relPath(file, cwd) {
+  const f = String(file || '').replace(/\\/g, '/').trim(); if (!f) return '';
+  const base = f.split('/').filter(Boolean).pop() || '';
+  const abs = f.startsWith('/') || /^[A-Za-z]:\//.test(f);
+  if (!abs) { const parts = f.split('/').filter(p => p && p !== '.'); return parts.includes('..') ? base : parts.join('/'); }
+  const c = String(cwd || '').replace(/\\/g, '/').replace(/\/+$/, '');
+  if (c && f.startsWith(c + '/')) { const r = f.slice(c.length + 1); return r.split('/').includes('..') ? base : r.split('/').filter(Boolean).join('/'); }
+  return base;
+}
+function recordTouch(st, file, ts) {
+  const path = relPath(file, st.cwd); if (!path) return;
+  st.touched = (st.touched || []).filter(x => x.path !== path);
+  st.touched.push({ path, at: ts });
+  if (st.touched.length > 50) st.touched.shift();
+}
+// newest first, unique, at most `max`, only those touched within `windowMs` of `now`
+function touchedFiles(st, now, windowMs, max) {
+  const t0 = (now || Date.now()) - (windowMs || TOUCH_WINDOW_MS);
+  return ((st && st.touched) || []).filter(x => x.at >= t0).sort((a, b) => b.at - a.at).slice(0, max || 20).map(x => x.path);
 }
 
 // a session "loops" when the same tool call repeats 3+ times within 10 minutes, or 3+ tool calls fail in a row.
@@ -228,7 +254,7 @@ function responseTextFromScreen(lines) {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-const AgentDeskStatus = { SPINNER_RE, DONE_FRESH_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus, loopStateFor, displayCols, responseTextFromScreen };
+const AgentDeskStatus = { SPINNER_RE, DONE_FRESH_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus, loopStateFor, relPath, recordTouch, touchedFiles, TOUCH_WINDOW_MS, displayCols, responseTextFromScreen };
 // the widget loads this as a classic <script> (globals); tests `import()` it and read globalThis.AgentDeskStatus
 root.AgentDeskStatus = AgentDeskStatus;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskStatus;

@@ -49,8 +49,18 @@
           "y": 220,
           "type": "link",
           "path": "/Applications"
+        },
+        {
+          "x": 270,
+          "y": 400,
+          "type": "file",
+          "path": "build/dmg/처음 실행.command"
         }
-      ]
+      ],
+      "window": {
+        "width": 540,
+        "height": 520
+      }
     },
     "files": [
       "main.mjs",

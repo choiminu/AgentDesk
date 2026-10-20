@@ -6,7 +6,10 @@ import { dirname, join, delimiter as PATH_DELIM } from "node:path";
 import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync, mkdtempSync, rmSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
-import { readTeamConfig, writeTeamExample, startTeamServer, fetchPeer, TEAM_CFG } from "./team/peer.mjs";
+import { readTeamConfig, startTeamServer, fetchPeer, postNote, postHello, ensureInstanceId, addPeerToConfig, validateNote, setTeamFields, newTeamToken, encodeInvite, decodeInvite, TEAM_CFG } from "./team/peer.mjs";
+import { startDiscovery } from "./team/discovery.mjs";
+import { defaultTeamConfig, defaultName, lanAddress, nodeRunner } from "./team/setup.mjs";
+import { randomUUID } from "node:crypto";
 import * as jiraOAuth from "./jira-oauth.mjs";
 
 const exec = promisify(execFile);
@@ -139,7 +142,7 @@ function createTray() {
   });
 }
 
-app.on("before-quit", () => { app.isQuitting = true; if (slackChild) { try { slackChild.kill(); } catch {} } if (teamServer) { try { teamServer.close(); } catch {} } });   // no orphan bridge that would post every reply twice
+app.on("before-quit", () => { app.isQuitting = true; if (slackChild) { try { slackChild.kill(); } catch {} } if (teamServer) { try { teamServer.close(); } catch {} } if (teamDiscovery) { try { teamDiscovery.stop(); } catch {} } });   // no orphan bridge that would post every reply twice
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { app.isQuitting = true; app.quit(); });
 
 // Finder-launched apps only see /usr/bin:/bin:/usr/sbin:/sbin, so look in the usual symlink
@@ -1213,7 +1216,7 @@ let briefRunning = false;
 function readBrief() { try { return JSON.parse(readFileSync(BRIEF_FILE, "utf-8")); } catch { return null; } }
 function runBrief() {
   if (briefRunning || !RECALL_CLI) return false;
-  const node = ["/opt/homebrew/bin/node", "/usr/local/bin/node"].find(p => existsSync(p)) || process.execPath;
+  const node = nodeRunner(process.execPath).cmd;   // no Node.js on this PC → the app binary in Node mode (ELECTRON_RUN_AS_NODE below)
   briefRunning = true;
   const child = spawn(node, [join(dirname(RECALL_CLI), "brief.mjs")], { detached: true, stdio: "ignore", env: { ...process.env, PATH: EXEC_PATH, ELECTRON_RUN_AS_NODE: "1" } });
   child.on("exit", () => { briefRunning = false; if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:brief-updated", readBrief()); });
@@ -1240,7 +1243,7 @@ let slackChild = null, slackRestartAt = 0, slackStatus = { configured: false, ru
 function startSlackBridge() {
   slackStatus.configured = existsSync(SLACK_CFG);
   if (!slackStatus.configured || slackChild || !RECALL_CLI || Date.now() < slackRestartAt) return;
-  const node = ["/opt/homebrew/bin/node", "/usr/local/bin/node"].find(p => existsSync(p)) || process.execPath;
+  const node = nodeRunner(process.execPath).cmd;   // no Node.js on this PC → the app binary in Node mode (ELECTRON_RUN_AS_NODE below)
   const child = spawn(node, [join(dirname(RECALL_CLI), "slack-bridge.mjs")], { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, PATH: EXEC_PATH, ELECTRON_RUN_AS_NODE: "1" } });
   slackChild = child; slackStatus.running = true; slackStatus.lastError = "";
   let err = ""; child.stderr.on("data", d => { err = (err + d.toString()).slice(-400); });
@@ -1265,43 +1268,180 @@ ipcMain.handle("roca:inbox-status", () => ({ ...slackStatus, configured: existsS
 ipcMain.handle("roca:inbox-restart", () => { if (slackChild) { try { slackChild.kill(); } catch {} } slackRestartAt = 0; setTimeout(startSlackBridge, 500); return { ok: true }; });
 // session notes written by recall/ (MongoDB) for a checkout: spawn the CLI, which knows the worktree/repo rules; [] when unavailable
 const RECALL_CLI = [join(__dirname, "recall", "cli.mjs"), join(homedir(), "project", "agentdesk-internal", "recall", "cli.mjs"), join(homedir(), "orca-widget", "recall", "cli.mjs")].find(p => existsSync(p)) || null;
-// ── team sharing (phase 1): publish my sessions on the office network, poll teammates' — read-only, see team/peer.mjs ──
-let teamCfg = null, teamServer = null, teamServerKey = "", teamStatus = { configured: false, listening: false, error: "", name: "", port: 0, peers: {} };
+// ── team sharing: publish my sessions on the office network, poll teammates', find them by UDP beacon, take notes — see team/*.mjs ──
+let teamCfg = null, teamServer = null, teamServerKey = "", teamStatus = { configured: false, listening: false, error: "", name: "", port: 0, instanceId: "", peers: {}, discovered: [], discovery: false };
 let teamSnapshot = { at: 0, sessions: [] };
+let teamDiscovery = null, teamDiscoveryKey = "";
+// first run: write a team.json of our own (name = login name, no token, no peers) so the beacon and the invite flow work
+// without hand-editing. Only once per install — deleting team.json later turns team sharing off and keeps it off.
+const TEAM_AUTOCREATED = join(app.getPath("userData"), "team-autocreated");
+function teamFirstRun() {
+  if (existsSync(TEAM_AUTOCREATED)) return;
+  try {
+    if (!existsSync(TEAM_CFG)) { mkdirSync(dirname(TEAM_CFG), { recursive: true }); writeFileSync(TEAM_CFG, JSON.stringify(defaultTeamConfig({ name: defaultName(), instanceId: randomUUID() }), null, 2) + "\n", { mode: 0o600 }); }
+    writeFileSync(TEAM_AUTOCREATED, String(Date.now()));
+  } catch {}
+}
+const teamFound = new Map();      // instanceId → { name, host, id, at } heard through the beacon
+const teamPeerState = new Map();  // peer name → { etag, theirAt, fails, nextAt, ... } (connection quality + backoff)
+const TEAM_NOTES = join(homedir(), ".agentdesk", "team-notes.jsonl");
+let teamNotes = [];               // newest last, at most 100: { id, at, to, toName, from, text, state: 'new'|'sent'|'ignored' }
+try { teamNotes = readFileSync(TEAM_NOTES, "utf-8").split("\n").filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(n => n && n.id).slice(-100); } catch {}
+function teamNotesSave() { try { mkdirSync(dirname(TEAM_NOTES), { recursive: true }); writeFileSync(TEAM_NOTES, teamNotes.map(n => JSON.stringify(n)).join("\n") + (teamNotes.length ? "\n" : ""), { mode: 0o600 }); } catch {} }
+function teamOnNote(note) {
+  const n = { ...note, state: "new" };
+  teamNotes.push(n);
+  if (teamNotes.length > 100) { teamNotes = teamNotes.slice(-100); teamNotesSave(); }
+  else { try { mkdirSync(dirname(TEAM_NOTES), { recursive: true }); writeFileSync(TEAM_NOTES, JSON.stringify(n) + "\n", { flag: "a", mode: 0o600 }); } catch {} }
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:team-note", n);
+}
 ipcMain.on("roca:team-publish", (_e, sessions) => { teamSnapshot = { at: Date.now(), sessions: Array.isArray(sessions) ? sessions : [] }; });
+function teamStopDiscovery() { if (teamDiscovery) { try { teamDiscovery.stop(); } catch {} teamDiscovery = null; } teamDiscoveryKey = ""; teamStatus.discovery = false; }
 function teamReload() {
-  const cfg = readTeamConfig();
+  let cfg = readTeamConfig();
   teamStatus.configured = !!cfg; teamStatus.error = cfg && cfg.error ? cfg.error : "";
-  if (!cfg || cfg.error) { teamCfg = null; if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; teamStatus.listening = false; } return; }
-  teamCfg = cfg; teamStatus.name = cfg.name; teamStatus.port = cfg.port;
+  if (!cfg || cfg.error) { teamCfg = null; teamStopDiscovery(); if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; teamStatus.listening = false; } return; }
+  if (!cfg.instanceId) { try { cfg = { ...cfg, instanceId: ensureInstanceId() }; } catch {} }
+  teamCfg = cfg; teamStatus.name = cfg.name; teamStatus.port = cfg.port; teamStatus.instanceId = cfg.instanceId || ""; teamStatus.hasToken = !!cfg.token;
+  for (const k of [...teamPeerState.keys()]) if (!cfg.peers.some(p => p.name === k)) teamPeerState.delete(k);
+  // beacon: on unless team.json says "discovery": false; restarted when the advertised name/port changes
+  const dKey = cfg.discovery === false ? "" : `${cfg.name}:${cfg.port}:${cfg.instanceId}`;
+  if (dKey !== teamDiscoveryKey) {
+    teamStopDiscovery();
+    if (dKey) {
+      try {
+        teamDiscovery = startDiscovery({ name: cfg.name, port: cfg.port, id: cfg.instanceId, onPeer: p => teamFound.set(p.id, p), onError: () => teamStopDiscovery() });
+        teamDiscoveryKey = dKey; teamStatus.discovery = true;
+      } catch { teamStopDiscovery(); }
+    }
+  }
   const key = `${cfg.bind}:${cfg.port}`;
   if (teamServer && teamServerKey === key) return;
   if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; }
-  const srv = startTeamServer(cfg, () => teamSnapshot);
+  // the server reads teamCfg on every request through this live view, so a token / name edit applies without a restart
+  const live = { get name() { return teamCfg ? teamCfg.name : cfg.name; }, get token() { return teamCfg ? teamCfg.token : cfg.token; }, get instanceId() { return teamCfg ? teamCfg.instanceId : cfg.instanceId; } };
+  const srv = startTeamServer(live, () => teamSnapshot, { onNote: teamOnNote, onHello: teamOnHello });
   srv.once("error", (e) => { teamStatus.listening = false; teamStatus.error = `listen ${key}: ${e.code || e.message}`; teamServer = null; });
   srv.listen(cfg.port, cfg.bind, () => { teamStatus.listening = true; teamStatus.error = ""; });
   teamServer = srv; teamServerKey = key;
 }
-async function teamPoll() {
-  if (!teamCfg) return;
-  const results = await Promise.all(teamCfg.peers.map(p => fetchPeer(p, teamCfg.token)));
-  const peers = {};
-  for (const r of results) {
-    const prev = teamStatus.peers[r.name] || {};
-    // keep the last good snapshot for a while so a blip does not empty the list
-    peers[r.name] = r.ok ? { ...r, lastOk: r.at } : { name: r.name, ok: false, error: r.error, sessions: prev.lastOk && Date.now() - prev.lastOk < 60000 ? prev.sessions : [], at: prev.at || 0, lastOk: prev.lastOk || 0 };
-  }
-  teamStatus.peers = peers;
+// a teammate who joined with my invite code (or added me from discovery) says hello: they become / stay my peer.
+// Same instanceId → only the address is updated (their IP changed).
+function teamOnHello(peer) {
+  const r = addPeerToConfig(TEAM_CFG, peer);
+  if (r.ok && (r.added || r.updated)) { teamReload(); if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:team-joined", { name: r.name, added: r.added }); }
+  return r;
 }
-setTimeout(() => { teamReload(); teamPoll(); }, 3000);
+const teamHelloSent = new Set();   // peers greeted this run (so they learn my current IP)
+function teamSayHello(p) {
+  if (!teamCfg || !teamCfg.token || teamHelloSent.has(p.name)) return;
+  teamHelloSent.add(p.name);
+  postHello(p, teamCfg.token, { name: teamCfg.name, port: teamCfg.port, instanceId: teamCfg.instanceId }).then(r => { if (!r.ok) teamHelloSent.delete(p.name); });
+}
+// 3 s polling with a conditional GET (304 when nothing changed); after 3 failures in a row a peer is polled every 15 s
+let teamPolling = false;
+async function teamPoll() {
+  if (!teamCfg || !teamCfg.token || teamPolling) return;   // no token = not in a team yet: nothing to ask for
+  teamPolling = true;
+  try {
+    const now = Date.now();
+    const due = teamCfg.peers.filter(p => { const st = teamPeerState.get(p.name); return !st || now >= (st.nextAt || 0) || st.host !== p.host; });
+    const results = await Promise.all(due.map(p => { const st = teamPeerState.get(p.name); const same = st && st.host === p.host; return fetchPeer(p, teamCfg.token, same ? { etag: st.etag, since: st.theirAt } : {}).then(r => ({ r, p })); }));
+    for (const { r, p } of results) {
+      const prev = teamPeerState.get(p.name) || {};
+      const st = { ...(prev.host === p.host ? prev : {}), name: p.name, host: p.host, checkedAt: Date.now() };
+      if (r.ok) {
+        st.ok = true; st.error = ""; st.fails = 0; st.lastOk = r.at; st.at = r.at; st.rtt = r.rtt; st.nextAt = Date.now() + 3000 - 200;
+        if (r.etag) st.etag = r.etag;
+        teamSayHello(p);
+        if (!r.notModified) { st.sessions = r.sessions; st.theirAt = r.theirAt; st.remoteName = r.remoteName; st.instanceId = r.instanceId; }
+      } else {
+        st.ok = false; st.error = r.error; st.fails = (prev.fails || 0) + 1; st.rtt = r.rtt ?? null; st.etag = ""; st.theirAt = 0;
+        st.nextAt = Date.now() + (st.fails >= 3 ? 15000 : 3000) - 200;
+        // keep the last good snapshot for a while so a blip does not empty the list
+        if (!(st.lastOk && Date.now() - st.lastOk < 60000)) st.sessions = [];
+      }
+      st.backoff = !st.ok && st.fails >= 3;
+      teamPeerState.set(p.name, st);
+    }
+    const peers = {};
+    for (const p of teamCfg.peers) { const st = teamPeerState.get(p.name); peers[p.name] = st ? { ...st, sessions: st.sessions || [] } : { name: p.name, host: p.host, ok: false, error: "", sessions: [], fails: 0 }; }
+    teamStatus.peers = peers;
+  } finally { teamPolling = false; }
+}
+function teamDiscoveredList() {
+  if (!teamCfg) return [];
+  const hosts = new Set(teamCfg.peers.map(p => p.host)), ids = new Set([...teamPeerState.values(), ...teamCfg.peers].map(s => s.instanceId).filter(Boolean));
+  for (const [id, p] of teamFound) if (Date.now() - p.at > 20000) teamFound.delete(id);
+  return [...teamFound.values()].filter(p => p.id !== teamCfg.instanceId && !hosts.has(p.host) && !ids.has(p.id));
+}
+setTimeout(() => { teamFirstRun(); teamReload(); teamPoll(); }, 3000);
 setInterval(teamReload, 30000);
-setInterval(teamPoll, 3000);
-ipcMain.handle("roca:team-status", () => teamStatus);
-ipcMain.handle("roca:team-setup", () => { try { const created = writeTeamExample(); teamReload(); return { ok: true, created, file: TEAM_CFG }; } catch (e) { return { ok: false, error: e.message }; } });
+setInterval(teamPoll, 1000);   // each peer keeps its own 3 s / 15 s schedule (nextAt)
+ipcMain.handle("roca:team-status", () => ({ ...teamStatus, ip: lanAddress(), discovered: teamDiscoveredList(), notesNew: teamNotes.filter(n => n.state === "new").length }));
+// "turn on": the same token-less team.json a first run writes (join or create a team with an invite code afterwards)
+ipcMain.handle("roca:team-setup", () => {
+  try {
+    if (existsSync(TEAM_CFG)) { teamReload(); return { ok: true, created: false, file: TEAM_CFG }; }
+    mkdirSync(dirname(TEAM_CFG), { recursive: true });
+    writeFileSync(TEAM_CFG, JSON.stringify(defaultTeamConfig({ name: defaultName(), instanceId: randomUUID() }), null, 2) + "\n", { mode: 0o600 });
+    teamReload(); return { ok: true, created: true, file: TEAM_CFG };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+ipcMain.handle("roca:team-rename", (_e, name) => {
+  const n = String(name || "").trim().replace(/[^\w.\-가-힣]/g, "").slice(0, 40); if (!n || !teamCfg) return { ok: false, error: "bad name" };
+  try { setTeamFields(TEAM_CFG, { name: n }); teamReload(); teamHelloSent.clear(); return { ok: true, name: n }; } catch (e) { return { ok: false, error: e.message }; }
+});
+// invite code → clipboard only (it carries the token: never returned to the page, logged or stored anywhere else)
+ipcMain.handle("roca:team-invite-create", () => {
+  if (!teamCfg) return { ok: false, error: "team sharing is off" };
+  const ip = lanAddress(); if (!ip) return { ok: false, error: "no office-network address" };
+  try {
+    if (!teamCfg.token) { setTeamFields(TEAM_CFG, { token: newTeamToken() }); teamReload(); }
+    clipboard.writeText(encodeInvite({ token: teamCfg.token, inviter: { name: teamCfg.name, host: `${ip}:${teamCfg.port}`, instanceId: teamCfg.instanceId } }));
+    return { ok: true, host: `${ip}:${teamCfg.port}`, name: teamCfg.name };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+// join: save the token + the inviter as a peer, check the connection, then say hello so the inviter adds me back
+ipcMain.handle("roca:team-invite-join", async (_e, code) => {
+  const inv = decodeInvite(code); if (inv.error) return { ok: false, error: inv.error };
+  try {
+    if (!existsSync(TEAM_CFG)) { mkdirSync(dirname(TEAM_CFG), { recursive: true }); writeFileSync(TEAM_CFG, JSON.stringify(defaultTeamConfig({ name: defaultName(), instanceId: randomUUID() }), null, 2) + "\n", { mode: 0o600 }); }
+    setTeamFields(TEAM_CFG, { token: inv.token });
+    const r = addPeerToConfig(TEAM_CFG, inv.inviter); if (!r.ok) return r;
+    teamReload(); if (!teamCfg) return { ok: false, error: teamStatus.error || "team.json" };
+    const peer = { name: r.name, host: inv.inviter.host };
+    const f = await fetchPeer(peer, teamCfg.token);
+    if (!f.ok) return { ok: true, connected: false, name: r.name, error: f.error };
+    teamHelloSent.delete(peer.name); teamSayHello(peer); setTimeout(teamPoll, 200);
+    return { ok: true, connected: true, name: r.name };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
 ipcMain.handle("roca:team-open-config", () => { shell.showItemInFolder(TEAM_CFG); return true; });
+// add a discovered teammate to team.json peers (the token is not touched; both sides still need the same one)
+ipcMain.handle("roca:team-add-peer", (_e, peer) => {
+  if (!teamCfg) return { ok: false, error: "team sharing is off" };
+  try {
+    const r = addPeerToConfig(TEAM_CFG, peer || {});
+    // same team (same token) → the hello makes them add me back; another team's PC answers 401 and nothing more happens
+    if (r.ok) { teamReload(); teamHelloSent.delete(r.name); teamSayHello({ name: r.name, host: String(peer.host) }); setTimeout(teamPoll, 100); }
+    return r;
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+ipcMain.handle("roca:team-notes", () => teamNotes.slice().reverse());
+ipcMain.handle("roca:team-note-update", (_e, id, state) => {
+  const n = teamNotes.find(x => x.id === id); if (!n || !["new", "sent", "ignored"].includes(state)) return { ok: false };
+  n.state = state; n.doneAt = Date.now(); teamNotesSave(); return { ok: true };
+});
+ipcMain.handle("roca:team-note-send", async (_e, msg) => {
+  if (!teamCfg) return { ok: false, error: "team sharing is off" };
+  const peer = teamCfg.peers.find(p => p.name === (msg && msg.peer)); if (!peer) return { ok: false, error: "unknown peer" };
+  const v = validateNote({ to: msg.to, toName: msg.toName, from: teamCfg.name, text: msg.text }); if (v.error) return { ok: false, error: v.error };
+  return postNote(peer, teamCfg.token, v.note);
+});
 ipcMain.handle("roca:recall-notes", async (_e, cwd, limit) => {
   if (!RECALL_CLI || !cwd || !existsSync(cwd)) return [];
-  const node = ["/opt/homebrew/bin/node", "/usr/local/bin/node"].find(p => existsSync(p)) || process.execPath;
+  const node = nodeRunner(process.execPath).cmd;   // no Node.js on this PC → the app binary in Node mode (ELECTRON_RUN_AS_NODE below)
   const run = async (extra) => { const { stdout } = await exec(node, [RECALL_CLI, "list", "--json", "--limit", String(limit || 3), ...extra], { cwd, timeout: 5000, env: { ...process.env, PATH: EXEC_PATH, ELECTRON_RUN_AS_NODE: "1" } }); const arr = JSON.parse(stdout.trim().split("\n").pop() || "[]"); return Array.isArray(arr) ? arr : []; };
   try {
     // notes from this very checkout first; other worktrees of the same repo only when it has none
