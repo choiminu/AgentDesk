@@ -1,6 +1,6 @@
 {
   "name": "agentdesk",
-  "version": "0.2.0-internal.7",
+  "version": "0.2.0-internal.8",
   "description": "AgentDesk — a pixel-art office for your AI coding agents",
   "main": "main.mjs",
   "type": "module",
