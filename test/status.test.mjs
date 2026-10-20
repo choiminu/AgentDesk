@@ -133,3 +133,29 @@ test('loop detection: three failures in a row, or the same tool call three times
   S.applyHookEvent(claude('UserPromptSubmit', {}, t0 + 300), m);
   st.recentTools = []; assert.equal(S.loopStateFor(st), null, 'a new user prompt starts the watch afresh');
 });
+
+test('touched files: Edit/Write/NotebookEdit targets relative to cwd, outside cwd → basename, 10-minute window', () => {
+  const m = fold(
+    claude('PostToolUse', { tool_name: 'Edit', tool_input: { file_path: '/w/app/src/Pay.java', old_string: 'SECRET' } }, now - 700),
+    claude('PostToolUse', { tool_name: 'Write', tool_input: { file_path: '/w/app/README.md' } }, now - 60),
+    claude('PostToolUse', { tool_name: 'NotebookEdit', tool_input: { notebook_path: '/w/app/nb/a.ipynb' } }, now - 30),
+    claude('PostToolUse', { tool_name: 'Edit', tool_input: { file_path: '/Users/x/.ssh/config' } }, now - 20),
+    claude('PostToolUse', { tool_name: 'Read', tool_input: { file_path: '/w/app/ignored.txt' } }, now - 10),
+    claude('PostToolUse', { tool_name: 'Edit', tool_input: { file_path: '/w/app/README.md' } }, now - 5),
+  );
+  const st = m.get('c-1');
+  assert.deepEqual(st.touched.map(x => x.path), ['src/Pay.java', 'nb/a.ipynb', 'config', 'README.md']);
+  assert.ok(!JSON.stringify(st.touched).includes('SECRET'));
+  assert.deepEqual(S.touchedFiles(st, now * 1000), ['README.md', 'config', 'nb/a.ipynb'], 'newest first, Pay.java is older than 10 minutes');
+  assert.deepEqual(S.touchedFiles(st, now * 1000, 60 * 60 * 1000, 2), ['README.md', 'config']);
+});
+
+test('relPath: inside cwd, outside cwd, climbing out, already relative', () => {
+  assert.equal(S.relPath('/w/app/src/A.java', '/w/app'), 'src/A.java');
+  assert.equal(S.relPath('/w/app/src/A.java', '/w/app/'), 'src/A.java');
+  assert.equal(S.relPath('/w/apple/A.java', '/w/app'), 'A.java');
+  assert.equal(S.relPath('/w/app/../etc/passwd', '/w/app'), 'passwd');
+  assert.equal(S.relPath('src/./B.ts', '/w/app'), 'src/B.ts');
+  assert.equal(S.relPath('../B.ts', '/w/app'), 'B.ts');
+  assert.equal(S.relPath('', '/w/app'), '');
+});
