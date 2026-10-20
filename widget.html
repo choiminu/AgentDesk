@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-VlPJrev2WeVJrn8wBGqkJd6zgsfvjjyDZsT9MEbuO7k='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-ZcEaGypeNTOie+yI7/sQdichc0XS2hqqy+sSJJSDbUg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -732,6 +732,9 @@
   .bar-fill.green { background: linear-gradient(90deg, #2ea87a, var(--green)); }
   .bar-fill.yellow { background: linear-gradient(90deg, #c8922e, var(--yellow)); }
   .bar-fill.red { background: linear-gradient(90deg, #c94e49, var(--red)); }
+  .token-eta { font-size: 9.5px; color: var(--text3); padding-left: 36px; margin: -2px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .token-eta.warn { color: var(--yellow); }
+  .token-eta.crit { color: var(--red); }
 
   .empty {
     display: flex;
@@ -2087,6 +2090,8 @@
   .jb-due { font-size: var(--fs-xs); color: var(--text2); margin-top: 5px; }
   .jb-due.over { color: var(--red); }
   .jb-subs { font-size: var(--fs-xs); color: var(--text3); margin-top: 4px; }
+  .jb-cost { font-size: var(--fs-xs); color: var(--yellow); margin-top: 5px; }
+  .jira-cost { color: var(--yellow); }
   .jb-foot { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-size: var(--fs-xs); }
   .jb-key { font-family: var(--mono); color: var(--text2); }
   .jb-type { width: 14px; height: 14px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; color: #fff; background: var(--accent); flex-shrink: 0; }
@@ -2961,6 +2966,7 @@
   <div class="footer" id="footer">
     <div id="tokenBars"></div>
     <div class="footer-row local-stats" id="localStats" hidden></div>
+    <div class="footer-row local-stats" id="ticketCostStats" hidden></div>
     <div class="footer-row">
       <div class="spinner"></div>
       <span id="updatedAt">--</span>
@@ -2972,6 +2978,7 @@
 <script src="core/jira.js"></script>
 <script src="core/team.js"></script>
 <script src="core/diff.js"></script>
+<script src="core/usage.js"></script>
 <script>
 // dev: ROCA_START_PAGE=…,set:<localStorage key>=<url-encoded value> presets a setting before anything reads it
 for (const part of location.hash.replace('#', '').split(',')) { const m = part.match(/^set:([a-z0-9-]+)=(.*)$/i); if (m) { try { localStorage.setItem(m[1], decodeURIComponent(m[2])); } catch {} } }
@@ -3183,6 +3190,11 @@ Object.assign(I18N, {
   '이전 기록 없음': 'No earlier records', '이전 이벤트는 로그에 남아 있지 않습니다': 'and earlier is no longer in the log', '최근 2,000건만 표시': 'latest 2,000 only', '도구별': 'By tool',
   '오래 걸린 호출': 'Slowest calls', '읽기·검색': 'Read/search', '이 구간에 이벤트가 없습니다': 'No events in this range', '이 세션의 기록된 이벤트가 없습니다': 'No recorded events for this session',
   '이 세션의 hook 기록을 찾지 못했습니다': 'No hook records found for this session', '정확한 감지(hook)를 켜면 타임라인이 기록됩니다': 'Turn on exact detection (hooks) to record a timeline',
+  '한도 경고': 'Limit warning', '한도 경고 임계값': 'Limit warning levels', '5시간·주간 한도 사용률이 임계값을 넘으면 토스트와 데스크톱 알림을 한 번 띄웁니다 (레벨별 한 번, 리셋 후 다시).': 'Shows a toast and a desktop notification once when 5-hour or weekly usage passes a level (once per level, again after a reset).',
+  '두 값(%) — 앞 값에서 노랑, 뒤 값에서 빨강. 한도 막대 색에도 쓰입니다.': 'Two values (%) — yellow at the first, red at the second. Also used for the limit bar colors.', '임계값은 1~100 사이, 앞 값이 더 작아야 합니다': 'Levels must be 1-100 and the first must be smaller',
+  '세션 파일 기반 추정, 구독 요금제에서는 실제 청구액이 아님': 'Estimated from session files; on a subscription plan this is not what you are billed',
+  '기존 세션에 배치한 티켓은 그 세션의 배치 이전 비용도 포함': 'for a ticket sent to an existing session this includes that session\'s earlier cost', '비용 미상 세션': 'sessions without cost',
+  '오늘 배치 비용': 'Today\'s dispatch cost', '티켓별 상위 3': 'Top 3 tickets', '비용': 'Cost',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -4900,20 +4912,130 @@ document.querySelectorAll('.tab').forEach(t => {
 
 $('search').addEventListener('input', e => { searchQuery = e.target.value.trim(); renderDashboard(); });
 
+// ── plan limits: bars + burn forecast. Samples hold only the usage % and the time (no account data) ──
+const USAGE_KEY = 'roca-usage-samples';
+let usageSamples = [];   // [{ at, s, w }] — s: 5-hour %, w: weekly %; memory keeps 60, localStorage the last 30
+try { const a = JSON.parse(localStorage.getItem(USAGE_KEY) || '[]'); if (Array.isArray(a)) usageSamples = a.filter(x => x && Number.isFinite(x.at)).map(x => ({ at: x.at, s: Number.isFinite(x.s) ? x.s : null, w: Number.isFinite(x.w) ? x.w : null })).slice(-30); } catch {}
+let usageAlert = { on: true, levels: [80, 95] };
+try { const c = JSON.parse(localStorage.getItem('roca-usage-alert') || '{}'); if (typeof c.on === 'boolean') usageAlert.on = c.on; if (Array.isArray(c.levels) && c.levels.length === 2 && c.levels[0] >= 1 && c.levels[1] <= 100 && c.levels[0] < c.levels[1]) usageAlert.levels = c.levels.map(Number); } catch {}
+function usageAlertSave() { try { localStorage.setItem('roca-usage-alert', JSON.stringify(usageAlert)); } catch {} }
+const usageFired = { s: [], w: [] }, usageResetAt = { s: 0, w: 0 };
+let lastRateLimits = {};
+function usageColor(pct) { return pct >= usageAlert.levels[1] ? 'red' : pct >= usageAlert.levels[0] ? 'yellow' : 'green'; }
+const usageLabel = k => LANG === 'en' ? (k === 's' ? '5-hour' : 'weekly') : (k === 's' ? '5시간' : '주간');
+function usageResetText(at) {
+  if (!at) return '';
+  const d = new Date(at), loc = LANG === 'ko' ? 'ko-KR' : 'en-US';
+  const hm = d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return at - Date.now() > 20 * 3600000 ? `${d.toLocaleDateString(loc, { month: 'numeric', day: 'numeric', weekday: 'short' })} ${hm}` : hm;
+}
+// once a minute at most (and only when Orca's reading changed): record, check the alert levels, persist
+function usageSample(claude) {
+  const at = Number(claude.updatedAt) || Date.now();
+  const cur = { s: claude.session ? Number(claude.session.usedPercent) : null, w: claude.weekly ? Number(claude.weekly.usedPercent) : null };
+  if (!Number.isFinite(cur.s)) cur.s = null; if (!Number.isFinite(cur.w)) cur.w = null;
+  if (cur.s == null && cur.w == null) return;
+  const last = usageSamples[usageSamples.length - 1];
+  if (last && (at <= last.at || at - last.at < 55000)) return;
+  for (const k of ['s', 'w']) {
+    if (cur[k] == null) continue;
+    const win = k === 's' ? claude.session : claude.weekly, resetAt = Number(win && win.resetsAt) || 0;
+    const reset = !!(usageResetAt[k] && resetAt && Math.abs(resetAt - usageResetAt[k]) > 5 * 60000);
+    if (resetAt) usageResetAt[k] = resetAt;
+    const r = AgentDeskUsage.thresholdCrossed(last ? last[k] : null, cur[k], usageAlert.levels, usageFired[k], { reset });
+    usageFired[k] = r.fired;
+    if (!usageAlert.on || !r.crossed.length) continue;
+    const lv = Math.max(...r.crossed);
+    const msg = LANG === 'en' ? `${usageLabel(k)} limit at ${cur[k]}% (reset ${usageResetText(resetAt)})` : `${usageLabel(k)} 한도 ${cur[k]}% 사용 (리셋 ${usageResetText(resetAt)})`;
+    showInAppToast(`⚠ ${msg}`, lv >= usageAlert.levels[1] ? 'error' : undefined);
+    try { window.orca.notify(t('한도 경고'), msg); } catch {}
+  }
+  usageSamples.push({ at, s: cur.s, w: cur.w });
+  if (usageSamples.length > 60) usageSamples = usageSamples.slice(-60);
+  try { localStorage.setItem(USAGE_KEY, JSON.stringify(usageSamples.slice(-30))); } catch {}
+}
+function usageEtaHtml(k, win) {
+  const resetAt = Number(win.resetsAt) || 0;
+  const f = AgentDeskUsage.forecast(usageSamples.filter(x => x[k] != null).map(x => ({ at: x.at, used: x[k] })), 100, Date.now(), resetAt);
+  if (f.reason === 'few-samples' && Number(win.usedPercent) < 100) return '';
+  const en = LANG === 'en', rs = usageResetText(resetAt);
+  const eta = AgentDeskUsage.formatEta(f.etaMs, LANG);
+  let text = f.etaMs == null ? `${eta}${rs ? (en ? ` (reset ${rs})` : ` (리셋 ${rs})`) : ''}`
+    : f.etaMs === 0 ? `${usageLabel(k)} ${eta}${rs ? (en ? ` (reset ${rs})` : ` (리셋 ${rs})`) : ''}`
+    : en ? `At this pace the ${usageLabel(k)} limit runs out ${eta}${rs ? ` (reset ${rs})` : ''}` : `이 속도면 ${eta} ${usageLabel(k)} 한도 소진${rs ? ` (리셋 ${rs})` : ''}`;
+  if (f.confidence === 'low' && f.etaMs) text += en ? ' (uncertain)' : ' (추정 불확실)';
+  const tip = en ? `${f.ratePerHour} %/h over the last ${f.samples} samples (30 min) · confidence ${f.confidence}` : `최근 30분 샘플 ${f.samples}개 기준 시간당 ${f.ratePerHour}% · 신뢰도 ${f.confidence}`;
+  const cls = f.etaMs != null ? (f.etaMs < 30 * 60000 ? ' crit' : ' warn') : '';
+  return `<div class="token-eta${cls}" data-verbatim title="${esc(tip)}">${esc(text)}</div>`;
+}
 function renderRateLimits(rateLimits) {
+  lastRateLimits = rateLimits || {};
   const claude = rateLimits?.claude;
   if (!claude) { $('tokenBars').innerHTML = ''; return; }
+  usageSample(claude);
   const bars = [];
-  if (claude.session) bars.push({ label: '세션', pct: claude.session.usedPercent, reset: claude.session.resetDescription || '' });
-  if (claude.weekly) bars.push({ label: '주간', pct: claude.weekly.usedPercent, reset: claude.weekly.resetDescription || '' });
+  if (claude.session) bars.push({ label: '세션', k: 's', win: claude.session, pct: claude.session.usedPercent, reset: claude.session.resetDescription || '' });
+  if (claude.weekly) bars.push({ label: '주간', k: 'w', win: claude.weekly, pct: claude.weekly.usedPercent, reset: claude.weekly.resetDescription || '' });
   if (claude.fableWeekly) bars.push({ label: 'Fable', pct: claude.fableWeekly.usedPercent, reset: claude.fableWeekly.resetDescription || '' });
   if (!bars.length) { $('tokenBars').innerHTML = ''; return; }
   let html = '';
   for (const b of bars) {
-    html += `<div class="token-bar"><span class="label">${esc(b.label)}</span><div class="bar-bg"><div class="bar-fill ${barColor(b.pct)}" style="width:${b.pct}%"></div></div><span class="pct">${b.pct}%</span></div>`;
+    html += `<div class="token-bar"><span class="label">${esc(b.label)}</span><div class="bar-bg"><div class="bar-fill ${usageColor(b.pct)}" style="width:${b.pct}%"></div></div><span class="pct">${b.pct}%</span></div>`;
+    if (b.k) html += usageEtaHtml(b.k, b.win);
   }
   $('tokenBars').innerHTML = html;
 }
+
+// ── per-ticket cost: Claude Code session files (main.mjs listClaudeSessions → cost-state totalCostUSD) summed per
+//    dispatched Jira ticket by directory and dispatch time. An estimate at list price, not a bill ──
+let ticketCostMap = {}, ticketCostAt = 0, ticketCostBusy = false;
+function ticketDispatchDirs() {
+  const m = {}; let changed = false;
+  for (const d of Object.values(jiraDispatch)) {
+    if (!d.cwd) { const p = String(d.path || '').replace(/\/+$/, '') || (jiraSessFor(d)?.cwd || ''); if (p) { d.cwd = p; changed = true; } }
+    if (d.cwd && d.sentAt) m[d.key] = { cwd: d.cwd, since: d.sentAt };
+  }
+  if (changed) jiraSave();
+  return m;
+}
+async function ticketCostRefresh(force) {
+  if (ticketCostBusy || (!force && Date.now() - ticketCostAt < 120000)) return;
+  const dirs = ticketDispatchDirs(), list = Object.values(dirs);
+  ticketCostAt = Date.now();
+  if (!list.length) { ticketCostMap = {}; ticketCostStatsRender(); return; }
+  ticketCostBusy = true;
+  try {
+    const since = Math.min(...list.map(d => d.since));
+    const all = await window.orca.claudeSessions({});
+    ticketCostMap = AgentDeskUsage.ticketCosts((all || []).filter(s => (s.timeUpdated || 0) >= since), dirs);
+  } catch {} finally { ticketCostBusy = false; }
+  ticketCostStatsRender();
+  if (currentPage === 'jira') jiraRender();
+}
+function ticketCostTip(key) {
+  const c = ticketCostMap[key], d = jiraDispatch[key];
+  return `${t('세션 파일 기반 추정, 구독 요금제에서는 실제 청구액이 아님')}${d && d.mode === 'session' ? ` · ${t('기존 세션에 배치한 티켓은 그 세션의 배치 이전 비용도 포함')}` : ''}${c && c.unknown ? ` · ${t('비용 미상 세션')} ${c.unknown}` : ''}`;
+}
+function ticketCostText(key) {
+  const c = ticketCostMap[key];
+  if (!c || !c.sessions.length) return '';
+  return `${t('비용')} $${c.cost.toFixed(2)} (${t('세션')} ${c.sessions.length})`;
+}
+function ticketCostToday() {
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  let sum = 0;
+  for (const [k, c] of Object.entries(ticketCostMap)) if (jiraDispatch[k] && jiraDispatch[k].sentAt >= d0.getTime()) sum += c.cost;
+  return sum;
+}
+function ticketCostStatsRender() {
+  const el = $('ticketCostStats'); if (!el) return;
+  const top = Object.entries(ticketCostMap).filter(([, c]) => c.cost > 0).sort((a, b) => b[1].cost - a[1].cost).slice(0, 3);
+  if (!top.length) { el.hidden = true; return; }
+  el.hidden = false; el.title = t('세션 파일 기반 추정, 구독 요금제에서는 실제 청구액이 아님');
+  el.textContent = `${t('티켓별 상위 3')}: ${top.map(([k, c]) => `${k} $${c.cost.toFixed(2)}`).join(' · ')}`;
+}
+setInterval(ticketCostRefresh, 60000);
+setTimeout(() => ticketCostRefresh(true), 4000);
 
 // ══════════════════════════════════════════
 // PAGE 2: SESSIONS VIEWER (Claude Code .jsonl)
@@ -9275,6 +9397,8 @@ function settingsRender() {
     ${permAvailable && permHookOn ? row(t('승인 대기 시간'), t('이 시간이 지나면 위젯 패널이 닫히고 터미널 질문만 남습니다. 터미널 질문도 함께 뜹니다. 먼저 답한 쪽이 적용됩니다.'), seg('perm-timeout', String(permTimeoutSec), [['60', '60s'], ['90', '90s'], ['180', '180s'], ['300', '300s']])) : ''}
     ${row(t('진행 요약 한 줄'), t('작업 중·대기 중 세션의 최근 대화를 Haiku가 한 문장으로 요약해 카드에 표시합니다 (세션당 5분에 한 번).'), sw('now-summary', nowEnabled))}
     ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
+    ${row(t('한도 경고'), t('5시간·주간 한도 사용률이 임계값을 넘으면 토스트와 데스크톱 알림을 한 번 띄웁니다 (레벨별 한 번, 리셋 후 다시).'), sw('usage-alert', usageAlert.on))}
+    ${row(t('한도 경고 임계값'), t('두 값(%) — 앞 값에서 노랑, 뒤 값에서 빨강. 한도 막대 색에도 쓰입니다.'), `<div class="set-inline"><input id="set-usage-l1" type="number" min="1" max="100" value="${usageAlert.levels[0]}" style="width:52px"><input id="set-usage-l2" type="number" min="1" max="100" value="${usageAlert.levels[1]}" style="width:52px"><button class="set-btn" data-set="usage-levels">${esc(t('저장'))}</button></div>`)}
     ${guardSectionHtml(row, seg, sw)}
     <h2>${esc(t('슬랙 창구'))}</h2>
     ${row(t('브리지 상태'), inboxStatus.configured ? (inboxStatus.running ? t('연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.') : `${t('설정 파일은 있지만 브리지가 꺼져 있습니다.')}${inboxStatus.lastError ? ` (${esc(inboxStatus.lastError)})` : ''}`) : t('~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.'), inboxStatus.configured ? `<button class="set-btn" data-set="inbox-restart">${esc(t('재시작'))}</button>` : '')}
@@ -9346,6 +9470,13 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'kb-save') { await kbSetPath($('set-kb').value); settingsRender(); showInAppToast(officeKb ? t('지침서 저장소 연결됨') : t('폴더를 찾지 못했습니다'), officeKb ? undefined : 'error'); }
   else if (name === 'update-open') { if (updateInfo && updateInfo.url) window.orca.openExternal(updateInfo.url); }
   else if (name === 'update-check') { b.disabled = true; b.textContent = t('확인 중…'); await checkForUpdate(true); settingsRender(); }
+  else if (name === 'usage-alert') { usageAlert.on = !usageAlert.on; usageAlertSave(); settingsRender(); }
+  else if (name === 'usage-levels') {
+    const a = Math.round(Number($('set-usage-l1').value)), b2 = Math.round(Number($('set-usage-l2').value));
+    if (!(a >= 1 && b2 <= 100 && a < b2)) { showInAppToast(t('임계값은 1~100 사이, 앞 값이 더 작아야 합니다'), 'error'); return; }
+    usageAlert.levels = [a, b2]; usageFired.s = []; usageFired.w = []; usageAlertSave(); settingsRender(); renderRateLimits(lastRateLimits);
+    showInAppToast(`${t('한도 경고 임계값')}: ${a}% · ${b2}%`);
+  }
   else if (name === 'update-auto') { updateAuto = !updateAuto; try { localStorage.setItem('roca-update-check', updateAuto ? '1' : '0'); } catch {} settingsRender(); }
   else if (name === 'team-config') { const r = await window.orca.teamSetup(); if (r.ok) { if (r.created) showInAppToast(t('팀 공유를 켰습니다. 팀 탭에서 팀을 만들거나 초대 코드로 합류하세요')); else window.orca.teamOpenConfig(); teamPageTick(); } }
   else if (name === 'team-invite') peerInviteCreate();
@@ -9565,7 +9696,7 @@ function jiraRowHtml(i, open) {
     const desc = open ? `<div class="jira-desc" data-verbatim>${esc((det || i).description || '') || (det ? esc(t('설명 없음')) : esc(t('불러오는 중…')))}</div>` : '';
     const track = d && (d.state === 'sent' || d.state === 'timeout') ? `<span class="jira-track" data-verbatim>→ ${esc(d.name || '')}</span>` : '';
     const draft = d && d.state === 'report' ? `<div class="jira-draft"><div class="jd-head">${esc(t('댓글 초안 — 고친 뒤 등록하세요 (자동 등록 안 함)'))}</div>${jiraDraftWarn(d.draft)}<textarea data-act="draft">${esc(d.draft || '')}</textarea><div class="jd-row"><button data-act="discard">${esc(t('버리기'))}</button><button class="primary" data-act="post">${esc(t('Jira에 등록'))}</button></div></div>` : '';
-    return `<div class="jira-item${open ? ' open' : ''}" data-key="${esc(i.key)}"><div class="jira-head" data-act="toggle"><span class="jira-key">${esc(i.key)}</span><span class="jira-sum" data-verbatim>${esc(i.summary)}</span>${jiraBadge(d)}</div>${meta ? `<div class="jira-meta" data-verbatim>${esc(meta)}</div>` : ''}${desc}<div class="jira-actions"><button class="primary" data-act="wt">${esc(t('워크트리로 배치'))}</button><button data-act="more" title="${esc(t('더보기'))}">⋯</button>${track}</div>${draft}</div>`;
+    return `<div class="jira-item${open ? ' open' : ''}" data-key="${esc(i.key)}"><div class="jira-head" data-act="toggle"><span class="jira-key">${esc(i.key)}</span><span class="jira-sum" data-verbatim>${esc(i.summary)}</span>${jiraBadge(d)}</div>${meta ? `<div class="jira-meta" data-verbatim>${esc(meta)}</div>` : ''}${ticketCostText(i.key) ? `<div class="jira-meta jira-cost" title="${esc(ticketCostTip(i.key))}">${esc(ticketCostText(i.key))}</div>` : ''}${desc}<div class="jira-actions"><button class="primary" data-act="wt">${esc(t('워크트리로 배치'))}</button><button data-act="more" title="${esc(t('더보기'))}">⋯</button>${track}</div>${draft}</div>`;
 }
 // ── Atlassian OAuth (3LO) connection box; the main process keeps the secret and tokens, this only sees jiraOAuthStatus() ──
 let jiraOAuth = null, jiraConnOpen = null;
@@ -9805,13 +9936,15 @@ function jbBarRender() {
     <button class="jb-btn${jb.mine ? ' on' : ''}" data-jb="mine">${esc(t('내 담당만'))}</button>
     <button class="jb-btn" data-jb="clear">${esc(t('필터 지우기'))}</button>
     <button class="jb-btn${jb.edit ? ' on' : ''}" data-jb="edit" title="${escA(t('열 순서 바꾸기·숨기기'))}">${esc(t('열 편집'))}</button>
-    ${open.length ? `<button class="jb-btn" data-jb="dispatch">${esc(t('배치 중'))} ${open.length}</button>` : ''}`;
+    ${open.length ? `<button class="jb-btn" data-jb="dispatch">${esc(t('배치 중'))} ${open.length}</button>` : ''}
+    ${Object.keys(ticketCostMap).length ? `<span class="jb-hint" title="${escA(t('세션 파일 기반 추정, 구독 요금제에서는 실제 청구액이 아님'))}">${esc(t('오늘 배치 비용'))} $${ticketCostToday().toFixed(2)}</span>` : ''}`;
 }
 function jbCardHtml(i) {
   const d = jiraDispatch[i.key], pr = AgentDeskJira.priorityIcon(i.priority), ty = AgentDeskJira.typeIcon(i.type), over = AgentDeskJira.isOverdue(i.due, i.cat);
   return `<div class="jb-card${jb.drawer === i.key ? ' sel' : ''}" data-key="${escA(i.key)}"><div class="jb-sum" data-verbatim>${esc(i.summary)}</div>
     ${i.due ? `<div class="jb-due${over ? ' over' : ''}">${over ? '⚠ ' : '📅 '}${esc(AgentDeskJira.formatDue(i.due, LANG))}</div>` : ''}
     ${i.subtasks ? `<div class="jb-subs">${esc(t('하위 작업'))} ${i.subtasks.done}/${i.subtasks.total} ›</div>` : ''}
+    ${ticketCostText(i.key) ? `<div class="jb-cost" title="${escA(ticketCostTip(i.key))}">${esc(ticketCostText(i.key))}</div>` : ''}
     <div class="jb-foot"><span class="jb-type ${ty.cls}" title="${escA(i.type)}">${ty.icon}</span><span class="jb-key">${esc(i.key)}</span>${jiraBadge(d)}<span class="jb-pri ${pr.cls}" title="${escA(i.priority)}">${pr.icon}</span>${i.assignee ? `<span title="${escA(i.assignee)}">${jbAvatar(i.assignee, i.avatar)}</span>` : `<span class="jb-ava" title="${escA(t('담당자 없음'))}"><i>–</i></span>`}</div></div>`;
 }
 function jbColsRender() {
