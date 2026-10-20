@@ -64,13 +64,17 @@ export function resolveDelegatedSession(sessions, localId) {
 // the last look before typing: a readable screen, no numbered choice (permission / question) on it, the turn over
 // ("waiting", or "waiting-untimed": a finished ⏺ block without a "done" line), and nothing typed at the ❯ prompt yet —
 // otherwise the remote text would be merged into the owner's draft. Anything unreadable → false.
-export function screenAllowsInput(tail) {
+// `opts.anyTurn` (the owner's own review comments): a running turn is fine (Claude Code queues the message) and the
+// bypass-permissions footer does not matter — still no choice prompt, and an empty ❯ prompt (no draft) must be visible
+export function screenAllowsInput(tail, opts) {
   if (!Array.isArray(tail) || !tail.length) return false;
   const lines = tail.map(l => String(l ?? ""));
   if (screenHasChoice(lines)) return false;
-  if (lines.some(l => /bypass permissions on/i.test(l))) return false;   // Claude Code's footer while checks are off
-  const st = statusFromScreen(lines);
-  if (st !== "waiting" && st !== "waiting-untimed") return false;
+  if (!(opts && opts.anyTurn)) {
+    if (lines.some(l => /bypass permissions on/i.test(l))) return false;   // Claude Code's footer while checks are off
+    const st = statusFromScreen(lines);
+    if (st !== "waiting" && st !== "waiting-untimed") return false;
+  }
   for (let i = lines.length - 1; i >= 0; i--) { const t = lines[i].trim(); if (/^❯/.test(t)) return t.slice(1).trim() === ""; }
   return false;
 }

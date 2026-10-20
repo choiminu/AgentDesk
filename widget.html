@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-M/3RqL632aEFSAY7p9KAKlSBB6EIlN72iK62O1a9M2g='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-s0/ml3d5JtuK7IPs0i8jlmFpEG/1E5gMNSyAzf0BN9I='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2381,6 +2381,50 @@
   .s-detail .d-ctx i.warn { background: var(--yellow); } .s-detail .d-ctx i.crit { background: var(--red); }
   .s-detail .d-note { display: block; padding: 4px 0; }
   .s-detail .d-note b { color: var(--text); text-transform: none; letter-spacing: 0; font-size: 10.5px; }
+  /* card "변경" tab: worktree diff + review comments (core/diff.js, diff/git.mjs) */
+  .s-detail .d-tabs { display: flex; gap: 4px; }
+  .s-detail .d-tabs button { background: transparent; border: 1px solid var(--border-subtle); color: var(--text2); border-radius: 999px; padding: 1px 9px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+  .s-detail .d-tabs button.on { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+  .s-detail .d-tabs .cnt { color: var(--text3); margin-left: 3px; }
+  .s-tool.diff-badge { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent); cursor: pointer; font: inherit; font-size: var(--fs-xs); }
+  .diff-panel { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-xs); color: var(--text2); cursor: default; }
+  .diff-panel button { background: var(--surface-raised); color: var(--text2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+  .diff-panel button:hover { color: var(--text); border-color: var(--accent); }
+  .diff-panel button.on { background: var(--accent-dim); color: var(--text); border-color: var(--accent); }
+  .diff-panel button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .diff-panel button:disabled { opacity: .45; cursor: default; }
+  .diff-panel .df-bar { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+  .diff-panel .df-sum { margin-left: auto; color: var(--text3); }
+  .diff-panel .df-sum .a, .diff-panel .df-file .a, .diff-panel .dl.add .ln-mark { color: var(--green); }
+  .diff-panel .df-sum .d, .diff-panel .df-file .d, .diff-panel .dl.del .ln-mark { color: var(--red); }
+  .diff-panel .df-note { color: var(--yellow); }
+  .diff-panel .df-files { max-height: 150px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: 6px; }
+  .diff-panel .df-file { display: grid; grid-template-columns: 14px 1fr auto; gap: 6px; padding: 2px 6px; cursor: pointer; align-items: center; }
+  .diff-panel .df-file:hover { background: var(--surface-hover); }
+  .diff-panel .df-file.sel { background: var(--accent-dim); color: var(--text); }
+  .diff-panel .df-file .p { font-family: var(--mono); word-break: break-all; }
+  .diff-panel .df-st { font-family: var(--mono); font-weight: 700; text-align: center; }
+  .diff-panel .df-st.A, .diff-panel .df-st.Q { color: var(--green); } .diff-panel .df-st.D { color: var(--red); } .diff-panel .df-st.R { color: var(--purple); } .diff-panel .df-st.M { color: var(--yellow); }
+  .diff-panel .df-view { max-height: 360px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-solid); }
+  .diff-panel .df-vhead { display: flex; gap: 6px; align-items: center; padding: 3px 6px; position: sticky; top: 0; background: var(--surface-raised); border-bottom: 1px solid var(--border-subtle); font-family: var(--mono); color: var(--text); word-break: break-all; z-index: 1; }
+  .diff-panel .df-vhead button { margin-left: auto; flex-shrink: 0; }
+  .diff-panel .hh { font-family: var(--mono); color: var(--purple); background: var(--purple-dim); padding: 1px 6px; }
+  .diff-panel .dl { display: grid; grid-template-columns: 3.4em 3.4em 1fr; font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.45; }
+  .diff-panel .dl.add { background: var(--green-dim); } .diff-panel .dl.del { background: var(--red-dim); }
+  .diff-panel .ln { text-align: right; padding-right: 4px; color: var(--text3); user-select: none; }
+  .diff-panel .ln.c { cursor: pointer; } .diff-panel .ln.c:hover { color: var(--accent); text-decoration: underline; }
+  .diff-panel .code { white-space: pre-wrap; word-break: break-all; color: var(--text); padding-left: 4px; }
+  .diff-panel .nonl { color: var(--text3); font-style: italic; }
+  .diff-panel .dc { margin: 2px 6px 4px 6.8em; padding: 4px 6px; border-left: 2px solid var(--accent); background: var(--accent-dim); border-radius: 4px; color: var(--text); white-space: pre-wrap; word-break: break-word; font-family: var(--sans); display: flex; gap: 6px; }
+  .diff-panel .dc span { flex: 1; }
+  .diff-panel .dc-edit { margin: 2px 6px 4px 6.8em; display: flex; flex-direction: column; gap: 4px; }
+  .diff-panel .dc-edit textarea { width: 100%; box-sizing: border-box; min-height: 52px; resize: vertical; background: var(--surface); color: var(--text); border: 1px solid var(--accent); border-radius: 6px; padding: 4px 6px; font: inherit; font-family: var(--sans); font-size: var(--fs-sm); }
+  .diff-panel .dc-edit .row { display: flex; gap: 4px; align-items: center; }
+  .diff-panel .dc-edit .row .cnt { margin-right: auto; color: var(--text3); }
+  .diff-panel .df-foot { display: flex; gap: 6px; align-items: center; }
+  .diff-panel .df-chip { padding: 1px 8px; border-radius: 999px; background: var(--accent-dim); color: var(--accent); }
+  .diff-panel .df-foot .primary { margin-left: auto; }
+  .diff-panel .df-empty { padding: 6px; color: var(--text3); }
   .hidden-link { text-align: center; font-size: 10px; color: var(--text3); padding: 8px 0 4px; cursor: pointer; }
   .hidden-link:hover { color: var(--text); }
   .local-stats { font-family: var(--mono); font-size: 9.5px; color: var(--text3); justify-content: center; gap: 10px; }
@@ -2875,6 +2919,7 @@
 <script src="core/status.js"></script>
 <script src="core/jira.js"></script>
 <script src="core/team.js"></script>
+<script src="core/diff.js"></script>
 <script>
 // dev: ROCA_START_PAGE=…,set:<localStorage key>=<url-encoded value> presets a setting before anything reads it
 for (const part of location.hash.replace('#', '').split(',')) { const m = part.match(/^set:([a-z0-9-]+)=(.*)$/i); if (m) { try { localStorage.setItem(m[1], decodeURIComponent(m[2])); } catch {} } }
@@ -4137,7 +4182,10 @@ function renderCard(s) {
   let detail = '';
   if (expanded) {
     const tools = (s.recentTools || []).slice(-5).reverse();
-    detail = `<div class="s-detail">
+    const dtab = diffTabOf(s.id), dst = diffState.get(s.id), dcnt = dst && dst.stat && dst.stat.total ? dst.stat.total.files : null;
+    const tabs = `<div class="d-tabs"><button data-act="dtab" data-id="${esc(s.id)}" data-tab="info" class="${dtab === 'info' ? 'on' : ''}">${esc(t('정보'))}</button><button data-act="dtab" data-id="${esc(s.id)}" data-tab="diff" class="${dtab === 'diff' ? 'on' : ''}">${esc(t('변경'))}<span class="cnt" data-diff-cnt="${esc(s.id)}">${dcnt != null ? dcnt : ''}</span></button></div>`;
+    if (dtab === 'diff') detail = `<div class="s-detail">${tabs}<div class="d-diff-slot" data-diff-for="${esc(s.id)}"></div></div>`;
+    else detail = `<div class="s-detail">${tabs}
       <div class="d-row"><b>${esc(t('마지막 프롬프트'))}</b><span>${esc(trunc(s.prompt || '—', 300))}</span></div>
       <div class="d-row"><b>${esc(t('마지막 응답'))}</b><span>${esc(trunc(s.lastMsg || '—', 300))}</span></div>
       <div class="d-row"><b>${esc(t('최근 도구'))}</b><span>${tools.length ? tools.map(x => `<code>${esc(x.tool)}</code>${x.input ? ' ' + esc(trunc(x.input, 36)) : ''}`).join(' · ') : (s.tool ? `<code>${esc(s.tool)}</code>` : '—')}</span></div>
@@ -4167,6 +4215,7 @@ function renderCard(s) {
             ${(s.subagents || []).filter(a => a.state === 'running').length ? `<span class="s-tool" title="${esc((s.subagents || []).filter(a => a.state === 'running').map(a => a.name).join(', '))}">🤖${(s.subagents || []).filter(a => a.state === 'running').length}</span>` : ''}
             ${peerConflictBySid.has(s.id) ? peerConflictBadges(peerConflictBySid.get(s.id), hasHandle) : ''}
             ${peerDelegBadges(s)}
+            ${diffReportBadge.has(s.id) ? `<button class="s-tool diff-badge" data-act="diff-open" data-id="${esc(s.id)}" title="${esc(t('보고가 도착했습니다 — 이 세션이 바꾼 파일을 봅니다'))}">${esc(t('변경 보기'))}</button>` : ''}
           </div>
           ${!expanded ? (nowSummaries.get(s.id) ? `<div class="s-prompt s-now" title="${esc(t('지금 하는 일 (5분마다 갱신)'))}">${esc(nowSummaries.get(s.id))}</div>` : (peek ? `<div class="s-prompt">${esc(trunc(peek, 120))}</div>` : '')) : ''}
         </div>
@@ -4195,6 +4244,7 @@ function renderFilters(items) {
 }
 if (location.hash.includes('older-open')) showOlderDone = true;   // dev captures
 function renderDashboard() {
+  diffPrune();
   if (location.hash.includes('expand-first') && sessions.length && !expandedIds.size) expandedIds.add(sessions.find(s => s.status === 'running')?.id || sessions[0].id);
   let items = sessions.filter(s => showHidden || !hiddenSessions.has(s.id));
   if (filterAgent !== 'all') items = items.filter(s => s.agent === filterAgent);
@@ -4254,7 +4304,9 @@ function renderDashboard() {
       }
     }
   }
+  const dFocus = diffFocusSave();
   $('list').innerHTML = html + hiddenNote;
+  diffMount(dFocus);
   if (location.hash.includes('list-bottom')) setTimeout(() => { $('list').scrollTop = $('list').scrollHeight; }, 50);
   for (const id of expandedIds) { const s = sessions.find(x => x.id === id); if (s && $('list').querySelector(`.d-notes[data-notes-for="${CSS.escape(id)}"]`)) loadNotesFor(s); }
   if (officeAsk && officeAsk.anchor) officeAskPlace();
@@ -4271,6 +4323,205 @@ async function loadNotesFor(s) {
   const target = el(); if (!target) return;
   if (!notes || !notes.length) { target.textContent = t('관련 노트 없음'); return; }
   target.innerHTML = notes.map(n => `<span class="d-note"><b>${esc(n.title)}</b>${n.changed && n.changed.length ? ` <span style="color:var(--yellow)">⚠ ${n.changed.length}${esc(t('개 파일 변경됨'))}</span>` : ''}<br>${esc(trunc(n.summary || '', 220))}</span>`).join('');
+}
+
+// ── card "변경" tab: the session worktree's diff (main: diff/git.mjs) and review comments sent back to the session.
+//    One persistent panel element per session is re-attached after every list render, so a half-typed comment, the
+//    open file and the scroll position survive the 5 s refresh. Stat only while the card is expanded (30 s cache),
+//    a file's diff only when it is clicked. ──
+const DIFF_TTL_MS = 30000;
+const diffState = new Map();       // session id → { scope, stat, statAt, loading, err, sel, files: Map(key → { at, data }), comments, edit, draft, el }
+const diffTab = new Map();         // session id → 'info' | 'diff'
+const diffReportBadge = new Set(); // sessions whose REPORT arrived and whose changes were not looked at yet
+const diffTabOf = id => diffTab.get(id) || 'info';
+function diffSt(id) {
+  let st = diffState.get(id);
+  if (!st) { st = { scope: 'working', stat: null, statAt: 0, loading: false, err: '', sel: '', files: new Map(), comments: [], edit: null, draft: '', el: null }; diffState.set(id, st); }
+  return st;
+}
+function diffFocusSave() {
+  const a = document.activeElement;
+  if (!a || !a.closest || !a.closest('.diff-panel')) return null;
+  return { el: a, start: a.selectionStart, end: a.selectionEnd };
+}
+// sessions that left the list: their panel, tab choice and badge go too (a detached panel is not kept alive)
+function diffPrune() {
+  const live = new Set(sessions.map(x => x.id));
+  for (const [id, st] of diffState) if (!live.has(id)) { if (st.el) st.el.remove(); st.el = null; diffState.delete(id); diffSeq.forget('stat|' + id); diffSeq.forget('file|' + id); }
+  for (const id of [...diffTab.keys()]) if (!live.has(id)) diffTab.delete(id);
+  for (const id of [...diffReportBadge]) if (!live.has(id)) diffReportBadge.delete(id);
+}
+function diffMount(focus) {
+  for (const id of expandedIds) {
+    if (!sessions.some(x => x.id === id)) continue;
+    const st = diffSt(id);
+    if (Date.now() - st.statAt > DIFF_TTL_MS && !st.loading) diffLoadStat(id);
+    const slot = $('list').querySelector(`.d-diff-slot[data-diff-for="${CSS.escape(id)}"]`);
+    if (!slot) continue;
+    if (!st.el) { st.el = diffPanelEl(id); diffRender(id); }
+    slot.appendChild(st.el);
+  }
+  if (focus && focus.el.isConnected) { try { focus.el.focus(); if (focus.start != null) focus.el.setSelectionRange(focus.start, focus.end); } catch {} }
+}
+const diffSeq = AgentDeskDiff.createSeq();   // keys "stat|<id>" and "file|<id>": only the newest answer is used
+async function diffLoadStat(id) {
+  const st = diffSt(id), scope = st.scope, tok = diffSeq.next('stat|' + id);
+  st.loading = true; st.err = ''; diffRender(id);
+  let r;
+  try { r = await window.orca.diffStat({ sessionId: id, scope }); } catch (e) { r = { ok: false, error: e.message }; }
+  if (!diffSeq.isLatest('stat|' + id, tok) || st.scope !== scope) return;   // superseded (scope toggled, refreshed): the newer one finishes
+  st.loading = false;
+  if (r && r.stale) { st.statAt = 0; diffRender(id); return; }   // main saw a newer request: read again on the next render
+  st.statAt = Date.now();
+  if (!r || r.ok === false) { st.err = (r && r.error) || 'error'; st.stat = null; }
+  else { st.stat = r; for (const c of st.files.values()) c.at = 0; }   // stale, but shown until the new diff arrives (a comment being typed stays)
+  const cnt = $('list').querySelector(`[data-diff-cnt="${CSS.escape(id)}"]`); if (cnt) cnt.textContent = st.stat && st.stat.total ? st.stat.total.files : '';
+  if (st.sel && !diffPaths(st).includes(st.sel)) st.sel = '';
+  diffRender(id);
+  if (st.sel) diffLoadFile(id, st.sel);
+}
+const diffPaths = st => st.stat ? [...(st.stat.files || []).map(f => f.path), ...(st.stat.untracked || [])] : [];
+async function diffLoadFile(id, path) {
+  const st = diffSt(id), key = `${st.scope}|${path}`;
+  const c = st.files.get(key);
+  if (c && Date.now() - c.at < DIFF_TTL_MS) return;
+  st.files.set(key, { at: Date.now(), data: c ? c.data : null });
+  const scope = st.scope, tok = diffSeq.next('file|' + id);
+  let r;
+  try { r = await window.orca.diffFile({ sessionId: id, path, scope }); } catch (e) { r = { ok: false, error: e.message }; }
+  if (!diffSeq.isLatest('file|' + id, tok) || st.scope !== scope) { st.files.delete(key); return; }
+  // main's list belongs to another scope (the toggle raced): read the list again, which reloads this file
+  if (r && r.stale) { st.files.delete(key); diffLoadStat(id); return; }
+  st.files.set(key, { at: Date.now(), data: r || { ok: false, error: 'error' } });
+  diffRender(id);
+}
+function diffPanelEl(id) {
+  const el = document.createElement('div'); el.className = 'diff-panel'; el.dataset.sid = id;
+  // clicks stay inside: the card's own click handler would switch to the terminal
+  el.addEventListener('click', e => { e.stopPropagation(); diffClick(id, e); });
+  el.addEventListener('dblclick', e => e.stopPropagation());
+  el.addEventListener('input', e => { if (e.target.matches('textarea.dc-in')) { diffSt(id).draft = e.target.value; const c = el.querySelector('.dc-edit .cnt'); if (c) c.textContent = `${e.target.value.length}/${AgentDeskDiff.COMMENT_MAX}`; } });
+  el.addEventListener('keydown', e => {
+    if (!e.target.matches('textarea.dc-in')) return;
+    e.stopPropagation();
+    if (e.key === 'Escape') { const st = diffSt(id); st.edit = null; st.draft = ''; diffRender(id); }
+    else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); diffCommentAdd(id); }
+  });
+  return el;
+}
+const DIFF_ST_LABEL = { M: '수정', A: '추가', D: '삭제', R: '이름 변경', C: '복사', T: '유형 변경', '?': '추적 안 됨' };
+function diffRender(id) {
+  const st = diffState.get(id); if (!st || !st.el) return;
+  const s = sessions.find(x => x.id === id), hasHandle = !!(s && s.connected && handles.get(id));
+  const keepScroll = st.el.querySelector('.df-view'), top = keepScroll ? keepScroll.scrollTop : 0;
+  const act = document.activeElement, typing = act && st.el.contains(act) && act.matches('textarea.dc-in') ? { s: act.selectionStart, e: act.selectionEnd } : null;
+  const sum = st.stat && st.stat.total ? st.stat.total : null;
+  let h = `<div class="df-bar">
+    <button data-dact="scope" data-scope="working" class="${st.scope === 'working' ? 'on' : ''}" title="${esc(t('커밋하지 않은 변경 (HEAD 기준)'))}">${esc(t('작업 트리'))}</button>
+    <button data-dact="scope" data-scope="branch" class="${st.scope === 'branch' ? 'on' : ''}" title="${esc(t('기본 브랜치와 갈라진 지점부터의 변경 전체'))}">${esc(t('브랜치 전체'))}</button>
+    <button data-dact="refresh" title="${esc(t('새로고침'))}">↻</button>
+    <span class="df-sum">${st.loading ? esc(t('불러오는 중…')) : sum ? `${esc(t('파일'))} ${sum.files} · <span class="a">+${sum.add}</span> <span class="d">−${sum.del}</span>` : ''}</span>
+  </div>`;
+  if (st.stat && st.stat.repoRoot) h += `<div style="color:var(--text3)">${esc(st.stat.repoRoot)}${st.stat.branch ? ' · ' + esc(st.stat.branch) : ''} · ${esc(t('기준'))} ${esc(st.stat.baseRef || '')} <code>${esc(st.stat.base || '')}</code>${st.scope === 'branch' && st.stat.scope !== 'branch' ? ` <span class="df-note">${esc(t('기본 브랜치를 찾지 못해 작업 트리 기준으로 보여 줍니다'))}</span>` : ''}</div>`;
+  if (st.err) h += `<div class="df-empty df-note">${esc(t('변경을 읽지 못했습니다'))}: ${esc(t(st.err))}</div>`;
+  else if (st.stat && st.stat.empty) h += `<div class="df-empty">${esc(t(st.stat.reason === 'unknown-session' ? '이 세션의 작업 폴더를 확인할 수 없습니다' : st.stat.reason === 'home' ? '홈 디렉터리 저장소는 표시하지 않습니다' : '저장소 아님'))}</div>`;
+  else if (st.stat) {
+    const rows = [...(st.stat.files || []).map(f => ({ ...f })), ...(st.stat.untracked || []).map(p => ({ path: p, status: '?', add: 0, del: 0, untracked: true }))];
+    if (!rows.length) h += `<div class="df-empty">${esc(t('변경 없음'))}</div>`;
+    else h += `<div class="df-files">${rows.map(f => {
+      const stc = f.status === '?' ? 'Q' : esc(f.status);
+      return `<div class="df-file${f.path === st.sel ? ' sel' : ''}" data-dact="file" data-path="${esc(f.path)}" title="${esc(t(DIFF_ST_LABEL[f.status] || f.status))}${f.oldPath ? ' ← ' + esc(f.oldPath) : ''}"><span class="df-st ${stc}">${esc(f.status === '?' ? 'U' : f.status)}</span><span class="p">${esc(f.path)}</span><span>${f.binary ? esc(t('바이너리')) : f.untracked ? '' : `<span class="a">+${f.add}</span> <span class="d">−${f.del}</span>`}</span></div>`;
+    }).join('')}</div>`;
+    if (st.stat.truncated) h += `<div class="df-note">${esc(t('파일이 너무 많아 일부만 표시합니다'))}</div>`;
+    if (st.sel) h += diffViewHtml(st);
+  }
+  const n = st.comments.length;
+  h += `<div class="df-foot">${n ? `<span class="df-chip">${esc(t('코멘트'))} ${n}${esc(t('건'))}</span><button data-dact="clear">${esc(t('모두 지우기'))}</button>` : `<span style="color:var(--text3)">${esc(t('줄 번호를 눌러 코멘트를 남기세요'))}</span>`}
+    <button class="primary" data-dact="send" ${n && hasHandle ? '' : 'disabled'} title="${esc(t(hasHandle ? '코멘트를 하나의 메시지로 세션에 보냅니다' : '터미널이 연결된 세션에만 보낼 수 있습니다'))}">${esc(t('세션에 보내기'))}</button></div>`;
+  st.el.innerHTML = h;
+  const v = st.el.querySelector('.df-view'); if (v && top) v.scrollTop = top;
+  const ta = st.el.querySelector('textarea.dc-in');
+  if (ta && typing) { ta.focus(); ta.setSelectionRange(typing.s, typing.e); }
+  else if (ta && st.edit && st.edit.focus) { st.edit.focus = false; ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+function diffViewHtml(st) {
+  const c = st.files.get(`${st.scope}|${st.sel}`), d = c && c.data;
+  let h = `<div class="df-view"><div class="df-vhead"><span>${esc(st.sel)}</span><button data-dact="reveal" data-path="${esc(st.sel)}" title="${esc(t('Finder에서 파일 위치를 엽니다'))}">${esc(t('폴더에서 보기'))}</button></div>`;
+  if (!d) return h + `<div class="df-empty">${esc(t('불러오는 중…'))}</div></div>`;
+  if (d.ok === false) return h + `<div class="df-empty df-note">${esc(d.error || '')}</div></div>`;
+  if (d.binary) return h + `<div class="df-empty">${esc(t('바이너리 파일 — 내용은 표시하지 않습니다'))}</div></div>`;
+  if (!d.hunks || !d.hunks.length) return h + `<div class="df-empty">${esc(t(d.status === 'A' || d.status === '?' ? '빈 파일 추가' : '표시할 줄 변경이 없습니다 (모드·이름만 변경)'))}</div></div>`;
+  const byLine = new Map();
+  st.comments.forEach((cm, i) => { if (cm.path !== st.sel) return; const k = `${cm.side}|${cm.line}`; if (!byLine.has(k)) byLine.set(k, []); byLine.get(k).push(i); });
+  for (const hk of d.hunks) {
+    h += `<div class="hh">${esc(hk.header)}</div>`;
+    for (const l of hk.lines) {
+      const side = l.t === 'del' ? 'old' : 'new', line = side === 'old' ? l.o : l.n, k = `${side}|${line}`;
+      const mark = l.t === 'add' ? '+' : l.t === 'del' ? '−' : ' ';
+      const cell = (num, on) => num ? `<span class="ln${on ? ' c' : ''}"${on ? ` data-dact="line" data-side="${side}" data-line="${num}" title="${esc(t('이 줄에 코멘트'))}"` : ''}>${num}</span>` : '<span class="ln"></span>';
+      h += `<div class="dl ${l.t}">${cell(l.o, side === 'old')}${cell(l.n, side === 'new')}<span class="code"><span class="ln-mark">${mark}</span>${esc(l.s.replace(/\r$/, ''))}${/\r$/.test(l.s) ? `<span class="nonl" title="CR">␍</span>` : ''}${l.noNl ? ` <span class="nonl">${esc(t('(파일 끝 개행 없음)'))}</span>` : ''}</span></div>`;
+      for (const i of byLine.get(k) || []) h += `<div class="dc"><span>${esc(st.comments[i].text)}</span><button data-dact="cdel" data-i="${i}" title="${esc(t('삭제'))}">✕</button></div>`;
+      if (st.edit && st.edit.path === st.sel && st.edit.side === side && st.edit.line === line) {
+        h += `<div class="dc-edit"><textarea class="dc-in" maxlength="${AgentDeskDiff.COMMENT_MAX}" placeholder="${esc(t('코멘트 (⌘Enter 추가 · Esc 취소)'))}">${esc(st.draft)}</textarea><div class="row"><span class="cnt">${st.draft.length}/${AgentDeskDiff.COMMENT_MAX}</span><button data-dact="cancel">${esc(t('취소'))}</button><button class="primary" data-dact="cadd">${esc(t('추가'))}</button></div></div>`;
+      }
+    }
+  }
+  if (d.truncated) h += `<div class="df-empty df-note">${esc(t('diff가 커서 앞부분만 표시합니다'))}</div>`;
+  return h + '</div>';
+}
+function diffCommentAdd(id) {
+  const st = diffSt(id), text = st.draft.trim();
+  if (!st.edit || !text) return;
+  if (st.comments.length >= AgentDeskDiff.COMMENTS_MAX) { showInAppToast(`${t('코멘트는 최대')} ${AgentDeskDiff.COMMENTS_MAX}${t('건까지 보낼 수 있습니다')}`, 'error'); return; }
+  st.comments.push({ path: st.edit.path, line: st.edit.line, side: st.edit.side, text: text.slice(0, AgentDeskDiff.COMMENT_MAX) });
+  st.edit = null; st.draft = ''; diffRender(id);
+}
+async function diffClick(id, e) {
+  const b = e.target.closest('[data-dact]'); if (!b) return;
+  const st = diffSt(id), act = b.dataset.dact;
+  if (act === 'scope') { const sc = b.dataset.scope === 'branch' ? 'branch' : 'working'; if (st.scope !== sc) { st.scope = sc; st.sel = ''; st.edit = null; diffLoadStat(id); } }
+  else if (act === 'refresh') { st.files.clear(); diffLoadStat(id); }
+  else if (act === 'file') { const p = b.dataset.path; st.sel = st.sel === p ? '' : p; st.edit = null; diffRender(id); if (st.sel) diffLoadFile(id, st.sel); }
+  else if (act === 'line') {
+    const line = Number(b.dataset.line), side = b.dataset.side === 'old' ? 'old' : 'new';
+    if (st.edit && st.edit.line === line && st.edit.side === side && st.edit.path === st.sel) { st.edit = null; st.draft = ''; }
+    else { st.edit = { path: st.sel, line, side, focus: true }; st.draft = ''; }
+    diffRender(id);
+  }
+  else if (act === 'cadd') diffCommentAdd(id);
+  else if (act === 'cancel') { st.edit = null; st.draft = ''; diffRender(id); }
+  else if (act === 'cdel') { st.comments.splice(Number(b.dataset.i), 1); diffRender(id); }
+  else if (act === 'clear') { if (await teamConfirm(t('코멘트 지우기'), `${t('코멘트')} ${st.comments.length}${t('건을 모두 지울까요?')}`, t('지우기'))) { st.comments = []; diffRender(id); } }
+  else if (act === 'reveal') { const r = await window.orca.diffOpenFile({ sessionId: id, path: b.dataset.path }).catch(err => ({ ok: false, error: err.message })); if (!r || r.ok === false) showInAppToast(`${t('파일을 열 수 없습니다')}: ${(r && r.error) || ''}`, 'error'); }
+  else if (act === 'send') diffSendConfirm(id);
+}
+function diffSendConfirm(id) {
+  const st = diffSt(id), s = sessions.find(x => x.id === id);
+  if (!st.comments.length) return;
+  const preview = summary => { const p = AgentDeskDiff.commentMessage(st.comments, summary, LANG); return p.text + (p.dropped.length ? `\n\n(${t('보내지 않을 코멘트')} ${p.dropped.length}${t('건')}: ${p.dropped.map(x => `${x.path}${x.line ? ':' + x.line : ''} — ${t(x.reason === 'limit' ? '최대 건수 초과' : x.reason === 'bad-path' ? '경로 오류' : '빈 내용')}`).join(', ')})` : ''); };
+  const m = teamModal(`<h3>${esc(t('리뷰 코멘트 보내기'))} · ${esc(s ? s.name : '')}</h3>
+    <p>${esc(t('아래 메시지를 한 줄로 세션에 입력하고 Enter 를 누릅니다.'))}</p>
+    <label class="jira-field">${esc(t('요약 (선택)'))}<input type="text" id="diff-sum" maxlength="500"></label>
+    <div class="brief" id="diff-preview">${esc(preview(''))}</div>
+    <div class="row"><span style="margin-left:auto"></span><button id="diff-no">${esc(t('취소'))}</button><button class="primary" id="diff-yes">${esc(t('세션에 보내기'))}</button></div>`);
+  const sumEl = m.querySelector('#diff-sum');
+  sumEl.addEventListener('input', () => { m.querySelector('#diff-preview').textContent = preview(sumEl.value); });
+  m.querySelector('#diff-no').onclick = closeTeamModal;
+  m.querySelector('#diff-yes').onclick = async () => {
+    const yes = m.querySelector('#diff-yes'); yes.disabled = true;
+    const batch = st.comments.slice();   // indexes in the answer refer to this exact list
+    const r = await window.orca.diffCommentSend({ sessionId: id, comments: batch, summary: sumEl.value, lang: LANG }).catch(err => ({ ok: false, error: err.message }));
+    if (r && r.ok) {
+      // only what was typed into the session leaves the list; anything main dropped stays for another try
+      const sent = new Set((r.sent || []).map(i => batch[i]).filter(Boolean));
+      closeTeamModal(); st.comments = st.comments.filter(c => !sent.has(c)); st.edit = null; st.draft = ''; diffRender(id);
+      showInAppToast(`${s ? s.name + ': ' : ''}${t('리뷰 코멘트')} ${r.count}${t('건을 보냈습니다')}${r.accepted ? '' : ' ' + t('(수락 미확인)')}`);
+      if (r.dropped && r.dropped.length) showInAppToast(`${t('보내지 않은 코멘트')} ${r.dropped.length}${t('건이 남아 있습니다')} (${r.dropped.slice(0, 3).map(x => `${x.path}${x.line ? ':' + x.line : ''}`).join(', ')})`, 'error');
+    } else {
+      yes.disabled = false;
+      showInAppToast(r && r.busy ? t('세션이 입력을 받을 수 없는 상태입니다(선택 중이거나 입력창에 글이 있음)') : `${t('보내지 못했습니다')}: ${t((r && r.error) || '')}`, 'error');
+    }
+  };
 }
 
 // ── File drag & drop onto session cards ──
@@ -4349,6 +4600,14 @@ $('list').addEventListener('click', async e => {
       openChat(actBtn.dataset.h);
     } else if (act === 'expand') {
       const id = actBtn.dataset.id; if (expandedIds.has(id)) expandedIds.delete(id); else expandedIds.add(id);
+      renderDashboard();
+    } else if (act === 'dtab') {
+      const id = actBtn.dataset.id; diffTab.set(id, actBtn.dataset.tab === 'diff' ? 'diff' : 'info');
+      if (actBtn.dataset.tab === 'diff') diffReportBadge.delete(id);
+      renderDashboard();
+    } else if (act === 'diff-open') {
+      const id = actBtn.dataset.id; diffReportBadge.delete(id); expandedIds.add(id); diffTab.set(id, 'diff');
+      const st = diffState.get(id); if (st) st.statAt = 0;   // a report just arrived: read the files again
       renderDashboard();
     } else if (act === 'compact') {
       const s = sessions.find(ss => ss.id === actBtn.dataset.id);
@@ -8354,6 +8613,7 @@ try { const t0 = AgentDeskTeam.startOfDay(); for (const [k, v] of Object.entries
 function peerRememberReport(sid, report) {
   const text = AgentDeskTeam.reportSummary(report); if (!sid || !text) return;
   peerReports.set(sid, { text, at: Date.now() });
+  diffReportBadge.add(sid); const dst = diffState.get(sid); if (dst) dst.statAt = 0;   // "변경 보기" on the card until clicked
   try { localStorage.setItem('roca-peer-reports', JSON.stringify(Object.fromEntries(peerReports))); } catch {}
   teamPublishSnapshot();
 }

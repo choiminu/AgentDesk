@@ -2,6 +2,7 @@
 // renderer. Pure, dependency-free. Loaded as a classic <script> (global AgentDeskMask) or imported for its side effect
 // (`import "../core/mask.js"; const { mask } = globalThis.AgentDeskMask;`).
 //
+//   maskLines(lines) → mask() per line, and every line of a multi-line private key block
 //   mask(s) → s with tokens, keys, connection URIs, card / account numbers and e-mail addresses replaced by [MASKED]
 (function (root) {
 'use strict';
@@ -32,7 +33,20 @@ function mask(s) {
   for (const [re, repl] of SECRET_RES) out = out.replace(re, repl);
   return out;
 }
-const AgentDeskMask = { mask };
+// mask() per line, plus a private key whose BEGIN / END markers sit on different lines (a diff, a file): every line
+// from BEGIN through END becomes [MASKED PRIVATE KEY]
+const PEM_BEGIN = /-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----/, PEM_END = /-----END [A-Z ]{0,40}PRIVATE KEY-----/;
+function maskLines(lines) {
+  let inPem = false;
+  return (Array.isArray(lines) ? lines : []).map(l => {
+    const s = String(l == null ? '' : l);
+    if (inPem) { if (PEM_END.test(s)) inPem = false; return '[MASKED PRIVATE KEY]'; }
+    const b = s.search(PEM_BEGIN);
+    if (b >= 0 && !PEM_END.test(s.slice(b))) { inPem = true; return mask(s.slice(0, b)) + '[MASKED PRIVATE KEY]'; }
+    return mask(s);
+  });
+}
+const AgentDeskMask = { mask, maskLines };
 root.AgentDeskMask = AgentDeskMask;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskMask;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
