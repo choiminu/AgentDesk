@@ -27,10 +27,10 @@
     --purple: #b694f6;
     --purple-dim: rgba(182, 148, 246, 0.12);
     --mono: 'JetBrains Mono', 'SF Mono', monospace;
-    --sans: 'Inter', -apple-system, sans-serif;
-    --fs-xs: 9px;
-    --fs-sm: 10px;
-    --fs-md: 11px;
+    --sans: 'Manrope', 'Pretendard Variable', 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+    --fs-xs: 10px;
+    --fs-sm: 11px;
+    --fs-md: 12px;
     --fs-base: 13px;
     --fs-lg: 14px;
     --radius-sm: 6px;
@@ -101,9 +101,14 @@
     font-family: var(--sans);
     font-size: var(--fs-base);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    word-break: keep-all;   /* Korean wraps at word boundaries, not mid-word */
+    overflow-wrap: anywhere;
     overflow: hidden;
     user-select: none;
   }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offset: 0; }
 
   .widget {
     display: flex;
@@ -1978,6 +1983,92 @@
   }
   .port-kill:hover { color: var(--red); border-color: var(--red); background: var(--red-dim); }
 
+  /* ── Jira page ── */
+  .jira-filter { background: var(--surface); color: var(--text2); border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; font-size: var(--fs-sm); padding: 3px 4px; }
+  .jira-list { flex: 1; overflow-y: auto; padding: 4px 8px; }
+  .jira-item { padding: 7px 10px; border-radius: var(--radius-md); margin-bottom: 4px; border: 1px solid var(--border-subtle); }
+  .jira-item:hover { background: var(--surface-hover); }
+  .jira-head { display: flex; gap: 6px; align-items: baseline; cursor: pointer; min-width: 0; }
+  .jira-key { font-family: var(--mono); font-size: var(--fs-xs); color: var(--accent); font-weight: 600; flex-shrink: 0; }
+  .jira-sum { flex: 1; min-width: 0; font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .jira-item.open .jira-sum { white-space: normal; }
+  .jira-badge { flex-shrink: 0; font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 8px; line-height: 15px; background: var(--surface-raised, var(--surface)); color: var(--text2); border: 1px solid var(--border); }
+  .jira-badge.report { background: var(--yellow); color: #1a1408; border-color: var(--yellow); }
+  .jira-meta { font-size: var(--fs-xs); color: var(--text3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .jira-desc { font-size: var(--fs-xs); color: var(--text2); white-space: pre-wrap; margin-top: 6px; max-height: 180px; overflow: auto; background: var(--bg-solid); border-radius: 6px; padding: 6px 8px; }
+  .jira-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; align-items: center; }
+  .jira-chips.recent > span { font-size: var(--fs-xs); color: var(--text3); }
+  .team-modal .jira-chip { padding: 2px 8px; font-size: var(--fs-xs); border-radius: 999px; color: var(--text2); }
+  .team-modal .jira-chip:hover { border-color: var(--accent); color: var(--text); }
+  .jira-prev { margin-top: 8px; font-size: var(--fs-xs); color: var(--text2); }
+  .jira-prev summary { cursor: pointer; }
+  .jira-prev pre { margin-top: 4px; user-select: text; }
+  .jira-draft .jd-warn { font-size: var(--fs-xs); color: var(--yellow); margin-bottom: 4px; }
+  .jira-actions { display: flex; gap: 4px; margin-top: 6px; align-items: center; }
+  .jira-actions button, .jira-draft button { appearance: none; border: 1px solid var(--border); background: var(--surface); color: var(--text2); font: inherit; font-size: var(--fs-xs); padding: 2px 8px; border-radius: 6px; cursor: pointer; }
+  .jira-actions button:hover, .jira-draft button:hover { background: var(--surface-hover); color: var(--text); }
+  .jira-actions button.primary, .jira-draft button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .jira-track { font-size: var(--fs-xs); color: var(--text3); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .jira-draft { margin-top: 6px; border-top: 1px dashed var(--border); padding-top: 6px; }
+  .jira-draft .jd-head { font-size: var(--fs-xs); color: var(--text2); margin-bottom: 4px; }
+  .jira-draft textarea { width: 100%; min-height: 110px; box-sizing: border-box; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px; font-family: var(--mono); font-size: var(--fs-xs); resize: vertical; }
+  .jira-draft .jd-row { display: flex; gap: 4px; margin-top: 4px; justify-content: flex-end; }
+  .jira-conn { padding: 6px 12px; border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-xs); color: var(--text2); flex-shrink: 0; }
+  .jira-conn .jc-line { display: flex; gap: 6px; align-items: center; }
+  .jira-conn .jc-line span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .jira-conn input, .jira-conn select { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; }
+  .jira-conn button { appearance: none; border: 1px solid var(--border); background: var(--surface); color: var(--text2); font: inherit; padding: 2px 8px; border-radius: 6px; cursor: pointer; }
+  .jira-conn button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .jira-conn .jc-row { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+  .jira-conn .jc-guide { color: var(--text3); margin-top: 4px; line-height: 1.4; }
+  .jira-board { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+  .jira-board[hidden], .jb-drawer[hidden], .jira-list[hidden], .jira-filter[hidden] { display: none; }
+  .jb-bar { display: flex; gap: 6px; align-items: center; padding: 6px 12px; flex-wrap: wrap; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; font-size: var(--fs-sm); }
+  .jb-bar select, .jb-bar input { background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; }
+  .jb-bar input { width: 160px; }
+  .jb-chips { display: flex; gap: 0; }
+  .jb-chips .jb-av { appearance: none; border: none; background: none; padding: 0; margin-left: -4px; cursor: pointer; border-radius: 50%; }
+  .jb-chips .jb-av:first-child { margin-left: 0; }
+  .jb-chips .jb-av.on .jb-ava { box-shadow: 0 0 0 2px var(--accent); }
+  .jb-btn { appearance: none; border: 1px solid var(--border); background: var(--surface); color: var(--text2); font: inherit; padding: 3px 9px; border-radius: 6px; cursor: pointer; }
+  .jb-btn:hover { background: var(--surface-hover); color: var(--text); }
+  .jb-btn.on { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+  .jb-cols { flex: 1; min-height: 0; display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 8px 12px; align-items: stretch; }
+  .jb-col { flex: 0 0 236px; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+  .jb-col.off { opacity: 0.45; }
+  .jb-colh { display: flex; gap: 6px; align-items: center; padding: 8px 10px 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.02em; flex-wrap: wrap; }
+  .jb-cnt { color: var(--text3); font-weight: 500; }
+  .jb-hint { font-size: var(--fs-xs); color: var(--text3); font-weight: 400; text-transform: none; }
+  .jb-edit { margin-left: auto; display: flex; gap: 2px; }
+  .jb-edit button { appearance: none; border: 1px solid var(--border); background: var(--bg-solid); color: var(--text2); font-size: var(--fs-xs); padding: 0 5px; border-radius: 4px; cursor: pointer; text-transform: none; }
+  .jb-edit button:disabled { opacity: 0.35; cursor: default; }
+  .jb-colb { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 8px; display: flex; flex-direction: column; gap: 6px; }
+  .jb-card { background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 9px; cursor: pointer; box-shadow: var(--shadow-card); }
+  .jb-card:hover { background: var(--surface-hover); }
+  .jb-card.sel { border-color: var(--accent); }
+  .jb-sum { font-size: var(--fs-md); color: var(--text); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .jb-due { font-size: var(--fs-xs); color: var(--text2); margin-top: 5px; }
+  .jb-due.over { color: var(--red); }
+  .jb-subs { font-size: var(--fs-xs); color: var(--text3); margin-top: 4px; }
+  .jb-foot { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-size: var(--fs-xs); }
+  .jb-key { font-family: var(--mono); color: var(--text2); }
+  .jb-type { width: 14px; height: 14px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; color: #fff; background: var(--accent); flex-shrink: 0; }
+  .jb-type.bug { background: var(--red); } .jb-type.story { background: var(--green); } .jb-type.epic { background: var(--purple); } .jb-type.sub { background: var(--text3); }
+  .jb-pri { margin-left: auto; font-weight: 700; color: var(--yellow); }
+  .jb-pri.highest, .jb-pri.high { color: var(--red); } .jb-pri.low, .jb-pri.lowest { color: var(--accent); }
+  .jb-ava { position: relative; width: 22px; height: 22px; border-radius: 50%; background: var(--purple-dim); color: var(--text); display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; overflow: hidden; flex-shrink: 0; border: 1px solid var(--border); }
+  .jb-ava img { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .jb-ava i { font-style: normal; }
+  .jb-drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 380px; max-width: 100%; background: var(--bg-solid); border-left: 1px solid var(--border); box-shadow: var(--shadow-float); overflow-y: auto; padding: 10px 12px; z-index: 5; }
+  .jb-dhead { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: var(--fs-sm); color: var(--text2); }
+  .jb-dhead .jb-x { margin-left: auto; appearance: none; border: none; background: none; color: var(--text2); cursor: pointer; font-size: 14px; }
+  .jb-drawer .jira-item { border: none; padding: 0; }
+  .jb-drawer .jira-item:hover { background: none; }
+  .jb-drawer .jira-sum { white-space: normal; font-size: var(--fs-md); }
+  .jb-drawer .jira-desc { max-height: none; }
+  .team-modal .jira-field { display: block; margin-top: 8px; color: var(--text2); font-size: var(--fs-xs); }
+  .team-modal .jira-field select, .team-modal .jira-field input[type=text] { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 6px; font: inherit; }
+
   /* ── Memo page ── */
   .memo-wrap {
     flex: 1;
@@ -2414,6 +2505,7 @@
     <button class="page-nav-btn" data-page="clipboard">클립보드</button>
     <button class="page-nav-btn" data-page="ports">포트</button>
     <button class="page-nav-btn" data-page="memo">메모</button>
+    <button class="page-nav-btn" data-page="jira">Jira<span class="nav-badge" id="badge-jira" hidden>0</span></button>
     <button class="page-nav-btn" data-page="pomodoro">타이머</button>
   </div>
 
@@ -2611,6 +2703,22 @@
     </div>
   </div>
 
+  <!-- PAGE: Jira tickets (Orca's Jira connection) -->
+  <div class="page" id="page-jira">
+    <div class="port-header">
+      <span style="font-size:var(--fs-sm);color:var(--text2);font-weight:600">Jira 티켓</span>
+      <select class="jira-filter" id="jira-filter" title="목록 필터"><option value="assigned">내 담당</option><option value="reported">내가 보고</option><option value="all">전체</option></select>
+      <button id="jira-refresh">새로고침</button>
+    </div>
+    <div class="jira-conn" id="jira-conn"></div>
+    <div class="jira-list" id="jira-list"></div>
+    <div class="jira-board" id="jira-board" hidden>
+      <div class="jb-bar" id="jb-bar"></div>
+      <div class="jb-cols" id="jb-cols"></div>
+      <div class="jb-drawer" id="jb-drawer" hidden></div>
+    </div>
+  </div>
+
   <!-- PAGE: Memo -->
   <div class="page" id="page-memo">
     <div class="memo-wrap">
@@ -2670,6 +2778,7 @@
 </div>
 
 <script src="core/status.js"></script>
+<script src="core/jira.js"></script>
 <script>
 // dev: ROCA_START_PAGE=…,set:<localStorage key>=<url-encoded value> presets a setting before anything reads it
 for (const part of location.hash.replace('#', '').split(',')) { const m = part.match(/^set:([a-z0-9-]+)=(.*)$/i); if (m) { try { localStorage.setItem(m[1], decodeURIComponent(m[2])); } catch {} } }
@@ -2815,6 +2924,30 @@ Object.assign(I18N, {
   '지침서 저장소 경로': 'Guidelines folder', '찾음': 'Found', 'agentdesk/zones.json 존 세트 사용 중': 'using its agentdesk/zones.json zone set', '폴더를 찾지 못했습니다': 'Folder not found',
   '프롬프트 존의 {kb}로 치환되는 폴더. 안에 agentdesk/zones.json이 있으면 팀 공용 존 세트로 불러옵니다.': 'Folder substituted for {kb} in zone prompts. If it contains agentdesk/zones.json, that becomes the shared zone set.', '개 존': ' zones', '카테고리 폴더에서 생성': 'generated from category folders',
   '지침서 저장소 연결됨': 'Guidelines folder connected', 'README.md가 있는 카테고리 폴더마다 프롬프트 존이 생기고, 프롬프트의 {kb}가 이 경로로 치환됩니다. agentdesk/zones.json이 있으면 그 파일을 우선 사용합니다.': 'Each category folder with a README.md becomes a prompt zone, and {kb} in prompts resolves to this folder. agentdesk/zones.json, if present, takes precedence.', '지침서 저장소 경로가 없습니다 — 설정에서 지정하세요': 'No guidelines folder — set it in Settings',
+  'Jira 티켓': 'Jira tickets', '목록 필터': 'List filter', '내 담당': 'Assigned to me', '내가 보고': 'Reported by me', '표시할 티켓이 없습니다': 'No tickets to show', '설명 없음': 'No description',
+  'Orca에 연결된 Jira 사이트가 없습니다. Orca 설정 → Jira에서 사이트를 연결한 뒤 새로고침하세요.': 'No Jira site is connected in Orca. Connect one in Orca Settings → Jira, then refresh.',
+  '배치됨': 'Dispatched', '보고 도착': 'Report in', '등록됨': 'Posted', '시간 초과': 'Timed out', '버림': 'Discarded',
+  '댓글 초안 — 고친 뒤 등록하세요 (자동 등록 안 함)': 'Comment draft — edit, then post (never posted automatically)', '버리기': 'Discard', 'Jira에 등록': 'Post to Jira',
+  '워크트리로 배치': 'Dispatch to worktree', '더보기': 'More', '기존 세션에 연결': 'Send to existing session', '화면에서 보고 읽기': 'Read report from screen', '배치 기록 지우기': 'Clear dispatch',
+  'Orca 저장소': 'Orca repository', '워크트리 이름': 'Worktree name', '지침 (선택)': 'Guidance (optional)', '지침 (필수)': 'Guidance (required)', '예: 원인 분석만 하고 코드는 고치지 말 것': 'e.g. analyse the cause only, do not change code',
+  'autopilot 키워드 추가': 'Append the autopilot keyword', '만들고 시작': 'Create and start', '취소': 'Cancel', 'Orca에 등록된 저장소가 없습니다': 'No repositories registered in Orca', '저장소를 고르세요': 'Pick a repository',
+  '이름은 영문·숫자·- _ . 만 쓸 수 있습니다': 'Use only letters, digits, - _ . in the name', '워크트리 생성 중… (최대 3분)': 'Creating worktree… (up to 3 min)', '생성 실패': 'Create failed',
+  '세션은 지침을 먼저 받고, 이어서 티켓 내용을 받습니다.': 'The session gets your guidance first, then the ticket.', '세션': 'Session', '이 티켓을 어떻게 다룰지 먼저 알려 주세요': 'Tell the agent how to approach this ticket first',
+  '최근 지침': 'Recent', '에이전트에게 보낼 프롬프트 미리보기': 'Preview the prompt sent to the agent', '보고에 빠진 항목': 'Missing from the report', '복사됨': 'copied', '복사하지 못했습니다': 'Copy failed',
+  '링크': 'Link', '티켓 키 복사': 'Copy ticket key', '티켓 링크 복사': 'Copy ticket link', '담당 세션 터미널로 이동': 'Go to its session terminal',
+  '보내기': 'Send', '연결된 세션이 없습니다': 'No connected sessions', '세션을 고르세요': 'Pick a session', '지침을 입력하세요': 'Enter guidance', '보내는 중…': 'Sending…',
+  '세션 터미널을 찾을 수 없습니다': 'Session terminal not found', '보고 블록을 찾지 못했습니다': 'No REPORT block found', '보고 도착 — Jira 탭에서 댓글 초안 확인': 'report in — check the comment draft in the Jira tab',
+  '세션을 아직 찾지 못했습니다': 'Session not found yet', '댓글 초안을 버릴까요?': 'Discard the comment draft?', '댓글 내용이 비어 있습니다': 'The comment is empty',
+  'Jira가 연결되지 않았습니다. 위 연결 설정에서 Atlassian으로 로그인하거나, Orca 설정 → Jira에서 사이트를 연결하세요.': 'Jira is not connected. Sign in with Atlassian in the connection box above, or connect a site in Orca Settings → Jira.',
+  'OAuth 연결됨': 'OAuth connected', 'OAuth 연결 안 됨': 'OAuth not connected', '연결 설정': 'Connection', '이 시스템에서는 암호화 저장소를 쓸 수 없어 OAuth를 사용할 수 없습니다.': 'Encrypted storage is not available on this system, so OAuth cannot be used.',
+  'developer.atlassian.com/console/myapps → OAuth 2.0 integration 만들기 → Permissions: Jira API (read:jira-work, read:jira-user, write:jira-work) → Authorization callback URL': 'developer.atlassian.com/console/myapps → create an OAuth 2.0 integration → Permissions: Jira API (read:jira-work, read:jira-user, write:jira-work) → Authorization callback URL',
+  '→ Settings에서 Client ID/Secret 복사': '→ copy the Client ID/Secret from Settings', 'Client Secret 저장됨 — 바꿀 때만 입력': 'Client Secret saved — type only to change it', 'Jira 사이트': 'Jira site',
+  'Atlassian으로 로그인': 'Sign in with Atlassian', '로그아웃': 'Sign out', '저장했습니다. 이제 Atlassian으로 로그인하세요.': 'Saved. Now sign in with Atlassian.',
+  '브라우저에서 Atlassian 로그인을 마치세요… (5분 안에)': 'Finish the Atlassian sign-in in your browser… (within 5 minutes)', 'Atlassian 연결을 끊고 저장된 Client ID·Secret·토큰을 지울까요?': 'Disconnect Atlassian and delete the saved Client ID, secret and tokens?',
+  'Jira 프로젝트': 'Jira project', '보드 검색': 'Search board', '내 계정': 'Me', '배치 중': 'Dispatched', '내 담당만': 'Only my issues', '필터 지우기': 'Clear filters', '열 편집': 'Edit columns', '열 순서 바꾸기·숨기기': 'Reorder or hide columns',
+  '배치한 티켓': 'Dispatched tickets', '하위 작업': 'Subtasks', '담당자 없음': 'Unassigned', '표시할 열이 없습니다': 'No columns to show', '최근 30일': 'last 30 days', '열 보이기': 'Show column', '열 숨기기': 'Hide column',
+  '최대 300개까지만 표시합니다': 'Showing at most 300 issues', '프로젝트를 불러오지 못했습니다': 'Could not load projects', '볼 수 있는 Jira 프로젝트가 없습니다': 'No Jira projects visible to you', '보드를 불러오지 못했습니다': 'Could not load the board',
+  '티켓에 이 댓글을 등록할까요? 되돌릴 수 없습니다.': ': post this comment to the ticket? This cannot be undone.', '등록 실패': 'Post failed', 'Jira 댓글 등록됨': 'Jira comment posted',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -2975,6 +3108,7 @@ const PAGE_SIZES = {
   clipboard:     { w: 340, h: 500 },
   ports:         { w: 360, h: 480 },
   memo:          { w: 380, h: 520 },
+  jira:          { w: 380, h: 560 },
   pomodoro:      { w: 320, h: 420 },
 };
 let currentPage = 'dashboard';
@@ -2994,6 +3128,7 @@ function showPage(name) {
     if (currentPage === 'collab') { renderDebateSessionList(); renderCollabTree(); }
     if (currentPage === 'clipboard') loadClipboardHistory();
     if (currentPage === 'ports') loadPorts();
+    if (currentPage === 'jira') jiraLoad();
     if (currentPage === 'settings') settingsRender();
   }
 }
@@ -3118,9 +3253,13 @@ const persistentToasts = new Map();
 
 function showInAppToast(name, type, sessionId) {
   const el = document.createElement('div');
-  if (type === 'error') { el.className = 'toast err'; el.textContent = `⚠ ${name} 오류 발생`; }
+  // session events (done / error / waiting) get a status suffix; every other call passes its own finished message
+  const mark = /^\p{Extended_Pictographic}/u.test(name) ? '' : null;
+  if (type === 'session-error') { el.className = 'toast err'; el.textContent = `⚠ ${name} 오류 발생`; }
   else if (type === 'waiting') { el.className = 'toast waiting'; el.textContent = `❓ ${name} 선택이 필요합니다`; }
-  else { el.className = 'toast'; el.textContent = `✓ ${name} 완료`; }
+  else if (type === 'session-done') { el.className = 'toast'; el.textContent = `✓ ${name} 완료`; }
+  else if (type === 'error') { el.className = 'toast err'; el.textContent = `${mark ?? '⚠ '}${name}`; }
+  else { el.className = 'toast'; el.textContent = `${mark ?? '✓ '}${name}`; }
   $('toasts').appendChild(el);
 
   if (type === 'waiting' && sessionId) {
@@ -3404,12 +3543,12 @@ function applyStatusTransitions() {
         if (prev === 'running' && s.status === 'done' && !notifiedDone.has(s.id)) {
           notifiedDone.add(s.id);
           window.orca.notify(t('작업 완료'), `${s.name} (${s.agent})`);
-          showInAppToast(s.name);
+          showInAppToast(s.name, 'session-done');
         }
         if (prev === 'running' && s.status === 'error' && !notifiedDone.has(s.id)) {
           notifiedDone.add(s.id);
           window.orca.notify(t('오류 발생'), `${s.name} (${s.agent})`);
-          showInAppToast(s.name, 'error');
+          showInAppToast(s.name, 'session-error');
         }
         if (s.needsInput && !notifiedWaiting.has(s.id)) {
           notifiedWaiting.add(s.id);
@@ -5025,6 +5164,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (ctxMenuEl) { closeCtxMenu(); return; }
     if ($('team-modal')) { closeTeamModal(); return; }
+    if (currentPage === 'jira' && jb.drawer && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName || '')) { jb.drawer = ''; jbColsRender(); jbDrawerRender(); return; }
     const panel = $('chat-panel');
     if (panel.classList.contains('open')) { panel.classList.remove('open'); chatHandle = null; }
   }
@@ -7788,6 +7928,376 @@ setInterval(inboxTick, 2500);
 if (window.orca.onInboxTask) window.orca.onInboxTask(task => { inboxNote('received', task.title); inboxAccept(task); });
 async function inboxRefreshStatus() { try { inboxStatus = await window.orca.inboxStatus(); } catch {} }
 setInterval(inboxRefreshStatus, 30000); setTimeout(inboxRefreshStatus, 3000);
+
+// ── Jira tickets: list through Orca's own Jira connection, put an agent on a ticket (new worktree or an existing session),
+//    and turn its REPORT into a comment DRAFT that is posted only after the user confirms. Logic lives in core/jira.js ──
+const JIRA_TIMEOUT_MS = 3 * 60 * 60 * 1000;
+let jiraIssues = [], jiraConn = null, jiraErr = '', jiraBusy = false, jiraRenderPending = false;
+const jiraOpen = new Set(), jiraDetail = new Map();   // key → normalized issue (fetched on demand, memory only)
+let jiraFilter = 'assigned', jiraRepo = '', jiraDispatch = {};   // key → { key, summary, mode, sid, worktreeId, path, handle, name, sentAt, state, draft, stale }
+try { const j = JSON.parse(localStorage.getItem('roca-jira') || '{}'); jiraFilter = j.filter || jiraFilter; jiraRepo = j.repo || ''; jiraDispatch = j.dispatch || {}; } catch {}
+function jiraSave() {
+  const keep = Object.values(jiraDispatch).filter(d => d.state === 'sent' || d.state === 'report' || Date.now() - d.sentAt < 7 * 86400000).sort((a, b) => b.sentAt - a.sentAt).slice(0, 50);
+  jiraDispatch = Object.fromEntries(keep.map(d => [d.key, d]));
+  try { localStorage.setItem('roca-jira', JSON.stringify({ filter: jiraFilter, repo: jiraRepo, dispatch: jiraDispatch })); } catch {}
+  const n = keep.filter(d => d.state === 'report').length;
+  const b = $('badge-jira'); if (b) { b.hidden = !n; b.textContent = n; }
+}
+const jiraHash = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); };
+$('jira-filter').value = jiraFilter;
+async function jiraLoad() {
+  if (jiraBusy) return; jiraBusy = true; jiraErr = '';
+  $('jira-list').innerHTML = `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text">${esc(t('불러오는 중…'))}</span></div>`;
+  try {
+    await jiraOAuthRefresh();
+    jiraSetMode(!!(jiraOAuth && jiraOAuth.connected));   // OAuth → Kanban board; Orca CLI → the plain list
+    if (jiraBoardMode) { jiraConn = { connected: true, sites: [], error: '' }; await jbLoad(); }
+    else if ((jiraConn = AgentDeskJira.connectionFrom(await window.orca.jiraStatus())).connected) {
+      const r = await window.orca.jiraList({ filter: jiraFilter, limit: 50 });
+      if (r && r.ok === false) jiraErr = AgentDeskJira.errorText(r);
+      jiraIssues = AgentDeskJira.issuesFrom(r);
+    } else jiraIssues = [];
+  } catch (e) { jiraErr = e.message; }
+  finally { jiraBusy = false; }
+  jiraRender();
+}
+function jiraBadge(d) {
+  if (!d) return '';
+  const m = { sent: ['', '배치됨'], report: ['report', '보고 도착'], posted: ['', '등록됨'], timeout: ['', '시간 초과'], discarded: ['', '버림'] }[d.state];
+  return m ? `<span class="jira-badge ${m[0]}">${esc(t(m[1]))}</span>` : '';
+}
+function jiraRender() {
+  const a = document.activeElement;
+  if (a && a.tagName === 'TEXTAREA' && ($('jira-list').contains(a) || $('jb-drawer').contains(a))) { jiraRenderPending = true; return; }   // never wipe a draft being edited
+  jiraRenderPending = false;
+  if (!jiraBoardMode) { jiraListRender(); return; }
+  if (a?.id !== 'jb-q') jbBarRender();
+  jbColsRender(); jbDrawerRender();
+}
+function jiraListRender() {
+  const el = $('jira-list');
+  if (jiraConn && !jiraConn.connected) {
+    el.innerHTML = `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text" style="text-align:center;padding:0 16px">${esc(jiraConn.error || t('Jira가 연결되지 않았습니다. 위 연결 설정에서 Atlassian으로 로그인하거나, Orca 설정 → Jira에서 사이트를 연결하세요.'))}</span></div>`;
+    return;
+  }
+  // tickets with an open dispatch stay visible even when the current filter does not return them
+  const rows = [...jiraIssues];
+  for (const d of Object.values(jiraDispatch)) if ((d.state === 'sent' || d.state === 'report') && !rows.some(i => i.key === d.key)) rows.push({ key: d.key, summary: d.summary || '', status: '', priority: '', assignee: '', labels: [], description: '' });
+  if (!rows.length) { el.innerHTML = `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text">${esc(jiraErr || t('표시할 티켓이 없습니다'))}</span></div>`; return; }
+  el.innerHTML = (jiraErr ? `<div class="jira-meta" style="color:var(--red);padding:4px 2px">${esc(jiraErr)}</div>` : '') + rows.map(i => jiraRowHtml(i, jiraOpen.has(i.key))).join('');
+}
+function jiraDraftWarn(draft) {
+  const miss = AgentDeskJira.reportIssues(draft);
+  return miss.length ? `<div class="jd-warn" data-verbatim>⚠ ${esc(t('보고에 빠진 항목'))}: ${esc(miss.map(x => `[${x}]`).join(' '))}</div>` : '';
+}
+function jiraLink(key) { const i = jiraIssues.find(x => x.key === key); const base = String((jiraOAuth && jiraOAuth.siteUrl) || '').replace(/\/+$/, ''); return (i && i.url) || (base ? `${base}/browse/${key}` : ''); }
+async function jiraCopy(text, label) { try { await window.orca.clipboardWrite(text); showInAppToast(`${label} ${t('복사됨')}`); } catch { showInAppToast(t('복사하지 못했습니다'), 'error'); } }
+function jiraRowHtml(i, open) {
+    const d = jiraDispatch[i.key], det = jiraDetail.get(i.key);
+    const meta = [i.status, i.priority, i.assignee].filter(Boolean).join(' · ');
+    const desc = open ? `<div class="jira-desc" data-verbatim>${esc((det || i).description || '') || (det ? esc(t('설명 없음')) : esc(t('불러오는 중…')))}</div>` : '';
+    const track = d && (d.state === 'sent' || d.state === 'timeout') ? `<span class="jira-track" data-verbatim>→ ${esc(d.name || '')}</span>` : '';
+    const draft = d && d.state === 'report' ? `<div class="jira-draft"><div class="jd-head">${esc(t('댓글 초안 — 고친 뒤 등록하세요 (자동 등록 안 함)'))}</div>${jiraDraftWarn(d.draft)}<textarea data-act="draft">${esc(d.draft || '')}</textarea><div class="jd-row"><button data-act="discard">${esc(t('버리기'))}</button><button class="primary" data-act="post">${esc(t('Jira에 등록'))}</button></div></div>` : '';
+    return `<div class="jira-item${open ? ' open' : ''}" data-key="${esc(i.key)}"><div class="jira-head" data-act="toggle"><span class="jira-key">${esc(i.key)}</span><span class="jira-sum" data-verbatim>${esc(i.summary)}</span>${jiraBadge(d)}</div>${meta ? `<div class="jira-meta" data-verbatim>${esc(meta)}</div>` : ''}${desc}<div class="jira-actions"><button class="primary" data-act="wt">${esc(t('워크트리로 배치'))}</button><button data-act="more" title="${esc(t('더보기'))}">⋯</button>${track}</div>${draft}</div>`;
+}
+// ── Atlassian OAuth (3LO) connection box; the main process keeps the secret and tokens, this only sees jiraOAuthStatus() ──
+let jiraOAuth = null, jiraConnOpen = null;
+async function jiraOAuthRefresh() { try { const r = await window.orca.jiraOAuthStatus(); if (r && r.ok !== false) jiraOAuth = r; } catch {} jiraConnRender(); }
+function jiraConnRender(msg) {
+  const el = $('jira-conn'); if (!el) return;
+  const o = jiraOAuth || {}; if (jiraConnOpen == null && jiraOAuth) jiraConnOpen = !o.connected;
+  const line = o.connected ? `${t('OAuth 연결됨')}: ${o.siteUrl || o.siteName || ''}` : t('OAuth 연결 안 됨');
+  el.innerHTML = `<div class="jc-line"><span data-verbatim>${esc(line)}</span><button data-jc="toggle">${esc(t(jiraConnOpen ? '접기' : '연결 설정'))}</button></div>` + (!jiraConnOpen ? '' : `
+    ${o.encryption === false ? `<div class="jc-guide" style="color:var(--red)">${esc(t('이 시스템에서는 암호화 저장소를 쓸 수 없어 OAuth를 사용할 수 없습니다.'))}</div>` : ''}
+    <div class="jc-guide">${esc(t('developer.atlassian.com/console/myapps → OAuth 2.0 integration 만들기 → Permissions: Jira API (read:jira-work, read:jira-user, write:jira-work) → Authorization callback URL'))} <b data-verbatim>${esc(o.redirectUri || 'http://localhost:47391/callback')}</b> ${esc(t('→ Settings에서 Client ID/Secret 복사'))}</div>
+    <input type="text" id="jc-id" placeholder="Client ID" value="${esc(o.clientId || '')}" autocomplete="off" spellcheck="false">
+    <input type="password" id="jc-secret" placeholder="${esc(o.hasSecret ? t('Client Secret 저장됨 — 바꿀 때만 입력') : 'Client Secret')}" autocomplete="off">
+    ${(o.sites || []).length > 1 ? `<select id="jc-site" title="${esc(t('Jira 사이트'))}">${o.sites.map(x => `<option value="${esc(x.id)}" ${x.url === o.siteUrl ? 'selected' : ''}>${esc(x.url || x.name)}</option>`).join('')}</select>` : ''}
+    <div class="jc-row"><button data-jc="save">${esc(t('저장'))}</button><button class="primary" data-jc="login" ${o.loggingIn ? 'disabled' : ''}>${esc(t('Atlassian으로 로그인'))}</button>${o.clientId || o.connected ? `<button data-jc="logout">${esc(t('로그아웃'))}</button>` : ''}</div>
+    ${msg ? `<div class="jc-guide" data-verbatim>${esc(msg)}</div>` : ''}`);
+}
+$('jira-conn').addEventListener('change', async e => {
+  if (e.target.id !== 'jc-site') return;
+  const r = await window.orca.jiraOAuthSite(e.target.value);
+  if (r && r.ok === false) { jiraConnRender(`⚠ ${r.error}`); return; }
+  jiraOAuth = r; jiraDetail.clear(); jiraLoad();
+});
+$('jira-conn').addEventListener('click', async e => {
+  const b = e.target.closest('[data-jc]'); if (!b) return;
+  const act = b.dataset.jc;
+  if (act === 'toggle') { jiraConnOpen = !jiraConnOpen; jiraConnRender(); return; }
+  if (act === 'save') {
+    const r = await window.orca.jiraOAuthSave($('jc-id').value.trim(), $('jc-secret').value);
+    $('jc-secret').value = '';
+    if (r && r.ok === false) { jiraConnRender(`⚠ ${r.error}`); return; }
+    jiraOAuth = r; jiraConnRender(t('저장했습니다. 이제 Atlassian으로 로그인하세요.'));
+  } else if (act === 'login') {
+    b.disabled = true; jiraConnRender(t('브라우저에서 Atlassian 로그인을 마치세요… (5분 안에)'));
+    const r = await window.orca.jiraOAuthLogin();
+    if (r && r.ok === false) { await jiraOAuthRefresh(); jiraConnRender(`⚠ ${r.error}`); return; }
+    jiraOAuth = r; jiraConnOpen = false; jiraDetail.clear(); jiraLoad();
+  } else if (act === 'logout') {
+    if (!confirm(t('Atlassian 연결을 끊고 저장된 Client ID·Secret·토큰을 지울까요?'))) return;
+    jiraOAuth = await window.orca.jiraOAuthLogout(); jiraConnOpen = true; jiraDetail.clear(); jiraLoad();
+  }
+});
+
+async function jiraIssueFull(key) {
+  if (jiraDetail.has(key)) return jiraDetail.get(key);
+  const r = await window.orca.jiraIssue(key).catch(() => null);
+  const i = r && r.ok !== false ? AgentDeskJira.issueFrom(r) : null;
+  if (i) jiraDetail.set(key, i);
+  return i || jiraIssues.find(x => x.key === key) || { key, summary: jiraDispatch[key]?.summary || '', status: '', priority: '', assignee: '', labels: [], description: '' };
+}
+const jiraReportFrom = lines => AgentDeskJira.extractReport(AgentDeskStatus.responseTextFromScreen(lines) || '') || AgentDeskJira.extractReport(extractLastResponse(lines) || '') || AgentDeskJira.extractReport(lines.join('\n'));
+// guidance helpers: preset chips (분석/구현/리뷰/보고) and the last few guidance texts, one click to fill the textarea
+let jiraGuides = []; try { const g = JSON.parse(localStorage.getItem('roca-jira-guides') || '[]'); if (Array.isArray(g)) jiraGuides = g.filter(x => typeof x === 'string').slice(0, 8); } catch {}
+function jiraGuideRemember(text) { jiraGuides = AgentDeskJira.rememberGuide(jiraGuides, text, 8); try { localStorage.setItem('roca-jira-guides', JSON.stringify(jiraGuides)); } catch {} }
+function jiraGuideChipsHtml() {
+  const tp = AgentDeskJira.promptTemplates(LANG);
+  return `<div class="jira-chips" data-verbatim>${tp.map(x => `<button type="button" class="jira-chip" data-g="${escA(x.text)}" title="${escA(x.text)}">${esc(x.label)}</button>`).join('')}</div>${jiraGuides.length ? `<div class="jira-chips recent" data-verbatim><span>${esc(t('최근 지침'))}</span>${jiraGuides.slice(0, 5).map(g => `<button type="button" class="jira-chip" data-g="${escA(g)}" title="${escA(g)}">${esc(g.length > 22 ? g.slice(0, 22) + '…' : g)}</button>`).join('')}</div>` : ''}`;
+}
+function jiraGuideWire(m, ta) {
+  m.addEventListener('click', e => { const c = e.target.closest('.jira-chip'); if (!c) return; ta.value = c.dataset.g; ta.focus(); ta.dispatchEvent(new Event('input', { bubbles: true })); });
+}
+async function jiraWorktreeModal(key) {
+  const i = await jiraIssueFull(key);
+  let repos = [];
+  try { const r = await window.orca.repos(); repos = (r?.result?.repos || []).filter(x => x && x.id); } catch {}
+  const m = teamModal(`<h3>${esc(t('워크트리로 배치'))} · ${esc(key)}</h3><p data-verbatim>${esc(i.summary)}</p>
+    <label class="jira-field">${esc(t('Orca 저장소'))}<select id="jira-wt-repo">${repos.map(r => `<option value="id:${esc(r.id)}" ${'id:' + r.id === jiraRepo ? 'selected' : ''}>${esc(r.displayName || r.path || r.id)}</option>`).join('')}</select></label>
+    <label class="jira-field">${esc(t('워크트리 이름'))}<input type="text" id="jira-wt-name" value="${esc(AgentDeskJira.worktreeName(key))}"></label>
+    <label class="jira-field">${esc(t('지침 (선택)'))}<textarea id="jira-wt-guide" placeholder="${esc(t('예: 원인 분석만 하고 코드는 고치지 말 것'))}"></textarea></label>
+    ${jiraGuideChipsHtml()}
+    <label class="jira-field"><input type="checkbox" id="jira-wt-auto" checked> ${esc(t('autopilot 키워드 추가'))}</label>
+    <details class="jira-prev"><summary>${esc(t('에이전트에게 보낼 프롬프트 미리보기'))}</summary><pre class="brief" id="jira-wt-prev" data-verbatim></pre></details>
+    <div class="row"><button class="primary" id="jira-wt-go">${esc(t('만들고 시작'))}</button><button id="jira-wt-cancel">${esc(t('취소'))}</button><span id="jira-wt-msg" style="color:var(--text3)"></span></div>`);
+  m.querySelector('#jira-wt-cancel').onclick = closeTeamModal;
+  const wtPrompt = () => AgentDeskJira.worktreePrompt(i, { guidance: m.querySelector('#jira-wt-guide').value, autopilot: m.querySelector('#jira-wt-auto').checked, lang: LANG });
+  const wtPrev = () => { m.querySelector('#jira-wt-prev').textContent = wtPrompt(); };
+  m.querySelector('#jira-wt-guide').addEventListener('input', wtPrev); m.querySelector('#jira-wt-auto').addEventListener('change', wtPrev);
+  jiraGuideWire(m, m.querySelector('#jira-wt-guide')); wtPrev();
+  if (!repos.length) m.querySelector('#jira-wt-msg').textContent = t('Orca에 등록된 저장소가 없습니다');
+  m.querySelector('#jira-wt-go').onclick = async (e) => {
+    const repo = m.querySelector('#jira-wt-repo').value, name = m.querySelector('#jira-wt-name').value.trim(), msg = m.querySelector('#jira-wt-msg');
+    if (!repo) { msg.textContent = t('저장소를 고르세요'); return; }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(name)) { msg.textContent = t('이름은 영문·숫자·- _ . 만 쓸 수 있습니다'); return; }
+    const prompt = wtPrompt().replace(/\r?\n+/g, ' ').trim();
+    e.target.disabled = true; msg.textContent = t('워크트리 생성 중… (최대 3분)');
+    jiraRepo = repo; jiraSave(); jiraGuideRemember(m.querySelector('#jira-wt-guide').value);
+    const r = await window.orca.worktreeCreate({ name, repo, agent: 'claude', prompt, reference: key }).catch(err => ({ ok: false, error: err.message }));
+    if (!r || r.ok === false) { e.target.disabled = false; msg.textContent = `⚠ ${AgentDeskJira.errorText(r) || t('생성 실패')}`; return; }
+    // reply shape is not pinned down: accept the worktree id/path and the agent handle under several names
+    const res = r.result || {}, wt = res.worktree || res;
+    jiraDispatch[key] = { key, summary: i.summary.slice(0, 200), mode: 'worktree', sid: '', worktreeId: wt.worktreeId || wt.id || '', path: wt.path || wt.worktreePath || '', handle: res.launch?.outcome?.handle || res.agentTerminalHandle || '', name, sentAt: Date.now(), state: 'sent' };
+    jiraSave(); closeTeamModal(); jiraRender(); fetchData();
+    showInAppToast(`🎫 ${key} → ${name}`);
+  };
+}
+function jiraSessionModal(key) {
+  const live = sessions.filter(s => s.connected && handles.get(s.id) && !s.isSub);
+  const m = teamModal(`<h3>${esc(t('기존 세션에 연결'))} · ${esc(key)}</h3><p>${esc(t('세션은 지침을 먼저 받고, 이어서 티켓 내용을 받습니다.'))}</p>
+    <label class="jira-field">${esc(t('세션'))}<select id="jira-ss-sess">${live.map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.status === 'running' ? ' (' + esc(t('작업 중')) + ')' : ''}</option>`).join('')}</select></label>
+    <label class="jira-field">${esc(t('지침 (필수)'))}<textarea id="jira-ss-guide" placeholder="${esc(t('이 티켓을 어떻게 다룰지 먼저 알려 주세요'))}"></textarea></label>
+    ${jiraGuideChipsHtml()}
+    <div class="row"><button class="primary" id="jira-ss-go">${esc(t('보내기'))}</button><button id="jira-ss-cancel">${esc(t('취소'))}</button><span id="jira-ss-msg" style="color:var(--text3)"></span></div>`);
+  m.querySelector('#jira-ss-cancel').onclick = closeTeamModal;
+  jiraGuideWire(m, m.querySelector('#jira-ss-guide'));
+  if (!live.length) m.querySelector('#jira-ss-msg').textContent = t('연결된 세션이 없습니다');
+  m.querySelector('#jira-ss-go').onclick = async (e) => {
+    const sess = sessions.find(s => s.id === m.querySelector('#jira-ss-sess').value), msg = m.querySelector('#jira-ss-msg');
+    const guide = m.querySelector('#jira-ss-guide').value.trim();
+    if (!sess || !handles.get(sess.id)) { msg.textContent = t('세션을 고르세요'); return; }
+    if (!guide) { msg.textContent = t('지침을 입력하세요'); return; }
+    e.target.disabled = true; msg.textContent = t('보내는 중…');
+    try {
+      const h = handles.get(sess.id), i = await jiraIssueFull(key);
+      // a REPORT already on screen from earlier work must not be mistaken for this ticket's
+      let stale = ''; try { const old = jiraReportFrom(extractTail(await window.orca.terminalRead(h, true))); if (old) stale = jiraHash(old); } catch {}
+      const r = await window.orca.terminalSend(h, AgentDeskJira.sessionMessage(i, guide, LANG).replace(/\r?\n+/g, ' ').trim(), true, 15);
+      if (!r?.result?.send?.accepted) throw new Error(t('전송이 거부되었습니다 (세션이 입력 대기 상태인지 확인)'));
+      jiraDispatch[key] = { key, summary: i.summary.slice(0, 200), mode: 'session', sid: sess.id, name: sess.name, sentAt: Date.now(), state: 'sent', stale };
+      jiraSave(); jiraGuideRemember(guide); closeTeamModal(); jiraRender();
+      const ch = officeChars.get(sess.id); if (ch) ch.reactT = 1.5;
+      showInAppToast(`🎫 ${key} → ${sess.name}`);
+    } catch (err) { e.target.disabled = false; msg.textContent = `⚠ ${err.message}`; }
+  };
+}
+function jiraSessFor(d) {
+  if (d.sid) return sessions.find(s => s.id === d.sid) || null;
+  const p = String(d.path || '').replace(/\/$/, '');
+  const s = sessions.find(x => (d.worktreeId && x.id === d.worktreeId) || (d.handle && handles.get(x.id) === d.handle) || (p && (x.id.endsWith('::' + p) || x.cwd === p)));
+  if (s) { d.sid = s.id; jiraSave(); }
+  return s || null;
+}
+async function jiraCapture(d, sess, manual) {
+  const h = handles.get(sess.id);
+  if (!h) { if (manual) showInAppToast(t('세션 터미널을 찾을 수 없습니다'), 'error'); return; }
+  const rep = jiraReportFrom(extractTail(await window.orca.terminalRead(h, true).catch(() => null)));
+  if (!rep || (d.stale && jiraHash(rep) === d.stale)) { if (manual) showInAppToast(t('보고 블록을 찾지 못했습니다'), 'error'); return; }
+  d.state = 'report'; d.draft = AgentDeskJira.reportToComment(rep.slice(0, 12000), { session: sess.name, lang: LANG }); d.reportAt = Date.now();
+  jiraSave(); jiraRender();
+  showInAppToast(`🎫 ${d.key}: ${t('보고 도착 — Jira 탭에서 댓글 초안 확인')}`);
+}
+async function jiraTick() {
+  for (const d of Object.values(jiraDispatch)) {
+    if (d.state !== 'sent') continue;
+    if (Date.now() - d.sentAt > JIRA_TIMEOUT_MS) { d.state = 'timeout'; jiraSave(); jiraRender(); continue; }
+    const sess = jiraSessFor(d); if (!sess) continue;
+    const prev = d.prev;
+    if (Date.now() - d.sentAt < 8000) continue;
+    d.prev = sess.status;
+    // capture on each running→waiting edge (and once if the agent is already waiting when first seen); a permission prompt is not the end
+    if (sess.status !== 'waiting' || sess.needsInput || (prev === 'waiting' && d.tried)) continue;
+    d.tried = true;
+    try { await jiraCapture(d, sess, false); } catch {}
+  }
+}
+setInterval(jiraTick, 2500); jiraSave();
+$('jira-refresh').addEventListener('click', () => { jiraDetail.clear(); jiraLoad(); });
+$('jira-filter').addEventListener('change', e => { jiraFilter = e.target.value; jiraSave(); jiraLoad(); });
+const jiraItemFocusOut = e => { if (e.target.tagName === 'TEXTAREA' && jiraRenderPending) setTimeout(jiraRender, 0); };
+const jiraItemInput = e => {
+  const item = e.target.closest('.jira-item'); const d = item && jiraDispatch[item.dataset.key];
+  if (d && e.target.dataset.act === 'draft') { d.draft = e.target.value; jiraSave(); }
+};
+const jiraItemClick = async e => {
+  const b = e.target.closest('[data-act]'), item = e.target.closest('.jira-item'); if (!b || !item) return;
+  const key = item.dataset.key, d = jiraDispatch[key], act = b.dataset.act;
+  if (act === 'toggle') {
+    if (jiraOpen.has(key)) jiraOpen.delete(key); else { jiraOpen.add(key); if (!jiraDetail.has(key)) jiraIssueFull(key).then(() => jiraRender()); }
+    jiraRender();
+  } else if (act === 'wt') jiraWorktreeModal(key);
+  else if (act === 'more') {
+    const r = b.getBoundingClientRect(), items = [['🔗', '기존 세션에 연결', () => jiraSessionModal(key)], ['⎘', '티켓 키 복사', () => jiraCopy(key, key)]];
+    if (jiraLink(key)) items.push(['⎘', '티켓 링크 복사', () => jiraCopy(jiraLink(key), t('링크'))]);
+    if (d && d.state === 'sent') { const s = jiraSessFor(d); if (s && handles.get(s.id)) items.push(['↗', '담당 세션 터미널로 이동', () => api.switchTo(handles.get(s.id))]); }
+    if (d && (d.state === 'sent' || d.state === 'timeout')) items.push(['📄', '화면에서 보고 읽기', () => { const s = jiraSessFor(d); if (s) jiraCapture(d, s, true); else showInAppToast(t('세션을 아직 찾지 못했습니다'), 'error'); }]);
+    if (d) items.push(['✕', '배치 기록 지우기', () => { delete jiraDispatch[key]; jiraSave(); jiraRender(); }, 'danger']);
+    openItemsMenu(r.left, r.bottom + 2, key, items);
+  } else if (act === 'discard' && d) {
+    if (!confirm(`${key} ${t('댓글 초안을 버릴까요?')}`)) return;
+    d.state = 'discarded'; d.draft = ''; jiraSave(); jiraRender();
+  } else if (act === 'post' && d) {
+    const body = (item.querySelector('textarea[data-act="draft"]')?.value || '').trim();
+    if (!body) { showInAppToast(t('댓글 내용이 비어 있습니다'), 'error'); return; }
+    if (!confirm(`${key} ${t('티켓에 이 댓글을 등록할까요? 되돌릴 수 없습니다.')}`)) return;
+    b.disabled = true;
+    const r = await window.orca.jiraComment(key, body).catch(err => ({ ok: false, error: err.message }));
+    if (!r || r.ok === false) { b.disabled = false; showInAppToast(`${key}: ${AgentDeskJira.errorText(r) || t('등록 실패')}`, 'error'); return; }
+    d.state = 'posted'; d.draft = ''; jiraSave(); b.blur(); jiraRender();
+    showInAppToast(`🎫 ${key}: ${t('Jira 댓글 등록됨')}`);
+  }
+};
+for (const id of ['jira-list', 'jb-drawer']) { $(id).addEventListener('focusout', jiraItemFocusOut); $(id).addEventListener('input', jiraItemInput); $(id).addEventListener('click', jiraItemClick); }
+
+// ── Kanban board (OAuth only): columns from the agile board config or the project's statuses, cards open a drawer
+//    that hosts the same dispatch / comment-draft actions as the list. Only project key and column prefs are stored ──
+let jiraBoardMode = false;
+const jb = { projects: [], project: '', data: null, issues: [], cols: [], me: null, q: '', who: new Set(), mine: false, edit: false, drawer: '', err: '', truncated: false };
+let jbPrefs = { project: '', cols: {} };
+try { const p = JSON.parse(localStorage.getItem('roca-jira-board') || '{}'); jbPrefs.project = typeof p.project === 'string' ? p.project : ''; jbPrefs.cols = p.cols && typeof p.cols === 'object' ? p.cols : {}; } catch {}
+function jbSavePrefs() { try { localStorage.setItem('roca-jira-board', JSON.stringify(jbPrefs)); } catch {} }
+const escA = v => esc(v == null ? '' : String(v)).replace(/"/g, '&quot;');
+function jiraSetMode(board) {
+  jiraBoardMode = board;
+  $('jira-board').hidden = !board; $('jira-list').hidden = board; $('jira-filter').hidden = board;
+  if (currentPage === 'jira') { const sz = board ? { w: 1100, h: 720 } : PAGE_SIZES.jira; window.orca.resizeWindow(sz.w, sz.h, board); }
+}
+async function jbLoad() {
+  jb.err = '';
+  $('jb-cols').innerHTML = `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text">${esc(t('불러오는 중…'))}</span></div>`;
+  if (!jb.projects.length) {
+    const r = await window.orca.jiraProjects();
+    if (!r || r.ok === false) { jb.err = AgentDeskJira.errorText(r) || t('프로젝트를 불러오지 못했습니다'); return; }
+    jb.projects = (r.result && r.result.projects) || [];
+  }
+  const keys = jb.projects.map(p => p.key);
+  jb.project = keys.includes(jbPrefs.project) ? jbPrefs.project : keys.includes('EP') ? 'EP' : (keys[0] || '');
+  if (!jb.project) { jb.err = t('볼 수 있는 Jira 프로젝트가 없습니다'); return; }
+  const r = await window.orca.jiraBoard(jb.project, { mine: jb.mine });
+  if (!r || r.ok === false) { jb.err = AgentDeskJira.errorText(r) || t('보드를 불러오지 못했습니다'); jb.issues = []; jb.cols = []; return; }
+  jb.data = r.result; jb.me = r.result.me || null; jb.truncated = !!r.result.truncated;
+  jb.issues = (r.result.issues || []).map(AgentDeskJira.boardIssue).filter(Boolean);
+  jiraIssues = jb.issues;   // fallback facts for dispatch when the issue fetch fails
+  jbBuildCols();
+}
+function jbBuildCols() { jb.cols = AgentDeskJira.buildColumns(jb.data && jb.data.statuses, jbPrefs.cols[jb.project], jb.data && jb.data.boardColumns); }
+function jbAvatar(name, url) { return `<span class="jb-ava" data-verbatim><i>${esc(AgentDeskJira.initials(name))}</i>${url ? `<img src="${escA(url)}" alt="" onerror="this.remove()">` : ''}</span>`; }
+function jbBarRender() {
+  const people = new Map();
+  if (jb.me && jb.me.accountId) people.set(jb.me.accountId, { name: jb.me.displayName || '', avatar: jb.me.avatar, me: true });
+  for (const i of jb.issues) if (i.assigneeId && !people.has(i.assigneeId)) people.set(i.assigneeId, { name: i.assignee, avatar: i.avatar });
+  const open = Object.values(jiraDispatch).filter(d => d.state === 'sent' || d.state === 'report' || d.state === 'timeout');
+  $('jb-bar').innerHTML = `<select id="jb-project" title="${escA(t('Jira 프로젝트'))}">${jb.projects.map(p => `<option value="${escA(p.key)}" ${p.key === jb.project ? 'selected' : ''}>${esc(p.key)} · ${esc(p.name)}</option>`).join('')}</select>
+    <input type="text" id="jb-q" placeholder="${escA(t('보드 검색'))}" value="${escA(jb.q)}" spellcheck="false">
+    <span class="jb-chips">${[...people].map(([id, p]) => `<button class="jb-av${jb.who.has(id) ? ' on' : ''}" data-jb="who" data-id="${escA(id)}" title="${escA(p.me ? `${t('내 계정')} · ${p.name}` : p.name)}">${jbAvatar(p.name, p.avatar)}</button>`).join('')}</span>
+    <button class="jb-btn${jb.mine ? ' on' : ''}" data-jb="mine">${esc(t('내 담당만'))}</button>
+    <button class="jb-btn" data-jb="clear">${esc(t('필터 지우기'))}</button>
+    <button class="jb-btn${jb.edit ? ' on' : ''}" data-jb="edit" title="${escA(t('열 순서 바꾸기·숨기기'))}">${esc(t('열 편집'))}</button>
+    ${open.length ? `<button class="jb-btn" data-jb="dispatch">${esc(t('배치 중'))} ${open.length}</button>` : ''}`;
+}
+function jbCardHtml(i) {
+  const d = jiraDispatch[i.key], pr = AgentDeskJira.priorityIcon(i.priority), ty = AgentDeskJira.typeIcon(i.type), over = AgentDeskJira.isOverdue(i.due, i.cat);
+  return `<div class="jb-card${jb.drawer === i.key ? ' sel' : ''}" data-key="${escA(i.key)}"><div class="jb-sum" data-verbatim>${esc(i.summary)}</div>
+    ${i.due ? `<div class="jb-due${over ? ' over' : ''}">${over ? '⚠ ' : '📅 '}${esc(AgentDeskJira.formatDue(i.due, LANG))}</div>` : ''}
+    ${i.subtasks ? `<div class="jb-subs">${esc(t('하위 작업'))} ${i.subtasks.done}/${i.subtasks.total} ›</div>` : ''}
+    <div class="jb-foot"><span class="jb-type ${ty.cls}" title="${escA(i.type)}">${ty.icon}</span><span class="jb-key">${esc(i.key)}</span>${jiraBadge(d)}<span class="jb-pri ${pr.cls}" title="${escA(i.priority)}">${pr.icon}</span>${i.assignee ? `<span title="${escA(i.assignee)}">${jbAvatar(i.assignee, i.avatar)}</span>` : `<span class="jb-ava" title="${escA(t('담당자 없음'))}"><i>–</i></span>`}</div></div>`;
+}
+function jbColsRender() {
+  const el = $('jb-cols'), err = jb.err || jiraErr;
+  if (err || !jb.cols.length) { el.innerHTML = `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text" data-verbatim>${esc(err || t('표시할 열이 없습니다'))}</span></div>`; return; }
+  const groups = AgentDeskJira.groupIssues(jb.cols, AgentDeskJira.filterIssues(jb.issues, { q: jb.q, assignees: jb.who }));
+  const cols = jb.edit ? jb.cols : jb.cols.filter(c => !c.hidden);
+  el.innerHTML = cols.map((c, idx) => {
+    const list = groups.get(c.id) || [];
+    return `<div class="jb-col${c.hidden ? ' off' : ''}" data-col="${escA(c.id)}"><div class="jb-colh"><span data-verbatim>${esc(c.name)}</span><span class="jb-cnt">${c.hidden ? '–' : list.length}</span>${c.cat === 'done' ? `<span class="jb-hint">${esc(t('최근 30일'))}</span>` : ''}${jb.edit ? `<span class="jb-edit"><button data-jb="left" ${idx === 0 ? 'disabled' : ''}>◀</button><button data-jb="right" ${idx === cols.length - 1 ? 'disabled' : ''}>▶</button><button data-jb="hide">${esc(t(c.hidden ? '열 보이기' : '열 숨기기'))}</button></span>` : ''}</div><div class="jb-colb">${list.map(jbCardHtml).join('')}</div></div>`;
+  }).join('') + (jb.truncated ? `<div class="jb-hint" style="align-self:flex-end">${esc(t('최대 300개까지만 표시합니다'))}</div>` : '');
+}
+function jbDrawerRender() {
+  const el = $('jb-drawer'), key = jb.drawer;
+  if (!key) { el.hidden = true; el.innerHTML = ''; return; }
+  const bi = jb.issues.find(i => i.key === key), det = jiraDetail.get(key);
+  const base = bi || det || { key, summary: (jiraDispatch[key] && jiraDispatch[key].summary) || '', status: '', priority: '', assignee: '', labels: [], description: '' };
+  const over = bi && AgentDeskJira.isOverdue(bi.due, bi.cat);
+  el.hidden = false;
+  el.innerHTML = `<div class="jb-dhead"><span class="jira-key">${esc(key)}</span>${bi && bi.type ? `<span data-verbatim>${esc(bi.type)}</span>` : ''}<button class="jb-x" data-jb="close" title="${escA(t('닫기'))}">✕</button></div>${bi && bi.due ? `<div class="jb-due${over ? ' over' : ''}">${over ? '⚠ ' : '📅 '}${esc(AgentDeskJira.formatDue(bi.due, LANG))}</div>` : ''}${jiraRowHtml(det ? { ...base, summary: det.summary || base.summary, description: det.description } : base, true)}`;
+}
+function jbOpen(key) {
+  jb.drawer = key; jbColsRender(); jbDrawerRender();
+  if (!jiraDetail.has(key)) jiraIssueFull(key).then(() => { if (jb.drawer === key) jiraRender(); });
+}
+$('jira-board').addEventListener('click', e => {
+  const b = e.target.closest('[data-jb]');
+  if (!b) {
+    if (e.target.closest('button, a, input, select, textarea')) return;   // action buttons never open the card
+    const card = e.target.closest('.jb-card'); if (card) jbOpen(card.dataset.key);
+    return;
+  }
+  const act = b.dataset.jb, colId = b.closest('[data-col]')?.dataset.col;
+  const prefs = () => (jbPrefs.cols[jb.project] = jbPrefs.cols[jb.project] || { order: [], hidden: [] });
+  if (act === 'close') { jb.drawer = ''; jbColsRender(); jbDrawerRender(); }
+  else if (act === 'who') { const id = b.dataset.id; if (jb.who.has(id)) jb.who.delete(id); else jb.who.add(id); jbBarRender(); jbColsRender(); }
+  else if (act === 'mine') { jb.mine = !jb.mine; jiraLoad(); }
+  else if (act === 'clear') { jb.q = ''; jb.who.clear(); if (jb.mine) { jb.mine = false; jiraLoad(); } else { jbBarRender(); jbColsRender(); } }
+  else if (act === 'edit') { jb.edit = !jb.edit; jbBarRender(); jbColsRender(); }
+  else if ((act === 'left' || act === 'right') && colId) { prefs().order = AgentDeskJira.moveColumn(jb.cols, colId, act === 'left' ? -1 : 1); jbSavePrefs(); jbBuildCols(); jbColsRender(); }
+  else if (act === 'hide' && colId) { const p = prefs(), h = new Set(p.hidden || []); if (h.has(colId)) h.delete(colId); else h.add(colId); p.hidden = [...h]; jbSavePrefs(); jbBuildCols(); jbColsRender(); }
+  else if (act === 'dispatch') {
+    const r = b.getBoundingClientRect(), mark = { sent: '▶', report: '📝', timeout: '⏱' };
+    openItemsMenu(r.left, r.bottom + 2, t('배치한 티켓'), Object.values(jiraDispatch).filter(d => mark[d.state]).map(d => [mark[d.state], `${d.key} ${d.summary || ''}`.slice(0, 60), () => jbOpen(d.key)]));
+  }
+});
+document.addEventListener('keydown', e => {   // Jira board: "/" jumps to the search box
+  if (currentPage !== 'jira' || !jiraBoardMode || e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || $('team-modal')) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName || '')) return;
+  const q = $('jb-q'); if (q) { e.preventDefault(); q.focus(); q.select(); }
+});
+$('jira-board').addEventListener('input', e => { if (e.target.id === 'jb-q') { jb.q = e.target.value; jbColsRender(); } });
+$('jira-board').addEventListener('change', e => {
+  if (e.target.id !== 'jb-project') return;
+  jbPrefs.project = e.target.value; jbSavePrefs(); jb.who.clear(); jb.q = ''; jb.drawer = ''; jiraLoad();
+});
 
 // ── agent self-regulation ("노조"): the office keeps itself healthy without a human watching ──
 //   compact: a session that is waiting with ≥ threshold% context gets /compact (at most once per 30 min)
