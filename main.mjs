@@ -10,6 +10,8 @@ import { readTeamConfig, startTeamServer, fetchPeer, postNote, postHello, ensure
 import { startDiscovery } from "./team/discovery.mjs";
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { randomUUID } from "node:crypto";
+import { openPermEndpoint, ensurePrivateDir, permHookScript as permHookSh, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK } from "./perm/server.mjs";
+import { readJsonStrict, writeJsonAtomic, backupPrivate, permHookPresent, installPermHookAt, uninstallPermHookAt } from "./perm/settings.mjs";
 import * as jiraOAuth from "./jira-oauth.mjs";
 
 const exec = promisify(execFile);
@@ -147,7 +149,7 @@ function createTray() {
   });
 }
 
-app.on("before-quit", () => { app.isQuitting = true; if (slackChild) { try { slackChild.kill(); } catch {} } if (teamServer) { try { teamServer.close(); } catch {} } if (teamDiscovery) { try { teamDiscovery.stop(); } catch {} } });   // no orphan bridge that would post every reply twice
+app.on("before-quit", () => { app.isQuitting = true; stopPermServer(); if (slackChild) { try { slackChild.kill(); } catch {} } if (teamServer) { try { teamServer.close(); } catch {} } if (teamDiscovery) { try { teamDiscovery.stop(); } catch {} } });   // no orphan bridge that would post every reply twice
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { app.isQuitting = true; app.quit(); });
 
 // Finder-launched apps only see /usr/bin:/bin:/usr/sbin:/sbin, so look in the usual symlink
@@ -1034,6 +1036,7 @@ exit 0
 `;
 const HOOK_SH = IS_WIN ? HOOK_PS1 : `#!/bin/bash
 # AgentDesk hook: append the Claude Code hook payload to ~/.roca/events.jsonl and exit immediately.
+umask 077   # the log holds prompts' tool inputs: only this user may read it
 f="$HOME/.roca/events.jsonl"
 [ -n "$AGENTDESK_RECALL" ] && exit 0   # headless summarizer sessions (agentdesk-recall) are not shown as sessions
 payload=$(cat | tr -d '\n')
@@ -1086,33 +1089,32 @@ function hooksAgents() {
 function hooksInstalled() { return Object.values(hooksAgents()).some(v => v === "on"); }
 function installAgentHooks(a) {
   const cfg = AGENT_HOOKS[a];
-  const s = readJsonFile(cfg.settings);
-  if (existsSync(cfg.settings)) copyFileSync(cfg.settings, join(ROCA_DIR, `${a}-settings.backup-${Date.now()}.json`));
-  s.hooks = s.hooks || {};
+  const s = readJsonStrict(cfg.settings);   // a broken settings file throws: it is never replaced by {}
+  backupPrivate(cfg.settings, ROCA_DIR, `${a}-settings.backup-${Date.now()}.json`);
+  if (!s.hooks || typeof s.hooks !== "object" || Array.isArray(s.hooks)) s.hooks = {};
   for (const ev of cfg.events) {
     const arr = Array.isArray(s.hooks[ev]) ? s.hooks[ev].filter(e => !isOurHook(e)) : [];
     arr.push(cfg.entry());
     s.hooks[ev] = arr;
   }
-  mkdirSync(dirname(cfg.settings), { recursive: true });
-  writeFileSync(cfg.settings, JSON.stringify(s, null, 2) + "\n");
+  writeJsonAtomic(cfg.settings, s);
 }
 function uninstallAgentHooks(a) {
   const cfg = AGENT_HOOKS[a]; if (!existsSync(cfg.settings)) return;
-  const s = readJsonFile(cfg.settings);
+  const s = readJsonStrict(cfg.settings);
   if (!s.hooks) return;
   for (const ev of Object.keys(s.hooks)) {
     if (!Array.isArray(s.hooks[ev])) continue;
     s.hooks[ev] = s.hooks[ev].filter(e => !isOurHook(e));
     if (!s.hooks[ev].length) delete s.hooks[ev];
   }
-  writeFileSync(cfg.settings, JSON.stringify(s, null, 2) + "\n");
+  writeJsonAtomic(cfg.settings, s);
 }
 function installHooks(agents) {
-  mkdirSync(ROCA_DIR, { recursive: true });
+  ensurePrivateDir(ROCA_DIR);
   writeFileSync(HOOK_SCRIPT, HOOK_SH);
   if (!IS_WIN) chmodSync(HOOK_SCRIPT, 0o755);
-  if (!existsSync(EVENTS_FILE)) writeFileSync(EVENTS_FILE, "");
+  if (!existsSync(EVENTS_FILE)) writeFileSync(EVENTS_FILE, "", { mode: 0o600 });
   const list = (agents && agents.length ? agents : Object.keys(AGENT_HOOKS)).filter(a => AGENT_HOOKS[a] && agentPresent(a));
   for (const a of list) installAgentHooks(a);
   startEventsWatch();
@@ -1141,12 +1143,13 @@ function readNewEvents() {
     const out = [];
     for (const line of buf.toString("utf-8").split("\n")) {
       if (!line.trim()) continue;
-      try { out.push(JSON.parse(line.replace(/^\uFEFF/, ""))); } catch {}   // PowerShell may write a BOM
+      try { const o = JSON.parse(line.replace(/^\uFEFF/, "")); noteKnownSession(o); out.push(o); } catch {}   // PowerShell may write a BOM
     }
     return out;
   } catch { return []; }
 }
 function pushEvents(evts) {
+  if (permServer) for (const rec of evts) if (!rec.agent || rec.agent === "claude") permServer.staleFromEvent(rec.ev);
   if (evts.length && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:hook-events", evts);
 }
 function startEventsWatch() {
@@ -1155,6 +1158,87 @@ function startEventsWatch() {
   try { eventsWatcher = fsWatch(EVENTS_FILE, () => pushEvents(readNewEvents())); } catch {}
   eventsPollTimer = setInterval(() => pushEvents(readNewEvents()), 1500);   // fs.watch can miss appends on macOS
 }
+
+// ── Permission requests answered from the widget (Claude Code only, opt-in) ──
+// A second, synchronous PermissionRequest hook (~/.roca/perm-hook.sh) posts the hook input to perm/server.mjs over the
+// Unix socket ~/.roca/perm/perm.sock and prints the decision only when it is signed with this run's token
+// (~/.roca/perm/perm-token, 0600 in a 0700 directory, removed on quit). Without the socket or token, when nobody
+// answers in time, or when anything fails, the hook prints nothing and Claude Code keeps its terminal prompt.
+// Nothing is ever allowed without a button press, and no permission rule is ever saved.
+const PERM_HOOK_SCRIPT = join(ROCA_DIR, "perm-hook.sh");
+const PERM_DIR = join(ROCA_DIR, "perm");
+const PERM_CFG_FILE = join(ROCA_DIR, "perm.json");
+const PERM_TIMEOUTS = [60, 90, 180, 300];
+const permTimeout = () => { const n = Number(readJsonFile(PERM_CFG_FILE).timeoutSec); return PERM_TIMEOUTS.includes(n) ? n : PERM_TIMEOUT_DEFAULT; };
+function permHookInstalled() { return permHookPresent(CLAUDE_SETTINGS) && existsSync(PERM_HOOK_SCRIPT); }
+// session ids seen in hook events (Claude Code only): the server answers only requests from these sessions
+const knownSessions = new Set();
+function noteKnownSession(rec) {
+  const sid = rec && rec.ev && rec.ev.session_id;
+  if (typeof sid !== "string" || !sid || (rec.agent && rec.agent !== "claude")) return;
+  if (knownSessions.size > 5000) knownSessions.clear();
+  knownSessions.add(sid);
+}
+function seedKnownSessions() {
+  try {
+    if (!existsSync(EVENTS_FILE)) return;
+    for (const l of readFileSync(EVENTS_FILE, "utf-8").split("\n")) { if (l) { try { noteKnownSession(JSON.parse(l.replace(/^\uFEFF/, ""))); } catch {} } }
+  } catch {}
+}
+let permServer = null, permStarting = null;
+const toRenderer = (ch, data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(ch, data); };
+function startPermServer() {
+  if (permServer || permStarting || IS_WIN) return permStarting;
+  seedKnownSessions();
+  permStarting = openPermEndpoint({
+    dir: PERM_DIR, timeoutSec: permTimeout(),
+    // the async logging hook may not have flushed this session's first events yet: read the log once more
+    isKnownSession: (sid) => { if (!knownSessions.has(sid)) pushEvents(readNewEvents()); return knownSessions.has(sid); },
+    onRequest: (entry) => toRenderer("roca:perm-request", entry),
+    onResolved: (id, why) => toRenderer("roca:perm-resolved", { id, why }),
+  }).then(srv => { permServer = srv; console.log("[perm] decision server on", srv.socketPath); },
+          e => { console.log("[perm] server failed", e.message); })
+    .finally(() => { permStarting = null; });
+  return permStarting;
+}
+function stopPermServer() {
+  if (permServer) { const s = permServer; permServer = null; s.close().catch(() => {}); }
+  else { for (const f of [join(PERM_DIR, PERM_TOKEN), join(PERM_DIR, PERM_SOCK)]) { try { unlinkSync(f); } catch {} } }
+}
+function installPermHook() {
+  if (IS_WIN) return { ok: false, error: "macOS / Linux only" };
+  if (!agentPresent("claude")) return { ok: false, error: "Claude Code (~/.claude) not found" };
+  const t = permTimeout();
+  readJsonStrict(CLAUDE_SETTINGS);   // a broken settings.json stops here, before anything is written
+  ensurePrivateDir(ROCA_DIR);
+  writeFileSync(PERM_HOOK_SCRIPT, permHookSh(t), { mode: 0o700 }); chmodSync(PERM_HOOK_SCRIPT, 0o700);
+  installPermHookAt({ settingsFile: CLAUDE_SETTINGS, command: PERM_HOOK_SCRIPT, timeoutSec: t, backupDir: ROCA_DIR });
+  startPermServer();
+  return { ok: true, timeoutSec: t };
+}
+function uninstallPermHook() {
+  uninstallPermHookAt({ settingsFile: CLAUDE_SETTINGS });   // throws on a broken settings.json: nothing is touched
+  try { unlinkSync(PERM_HOOK_SCRIPT); } catch {}
+  stopPermServer();
+  return { ok: true };
+}
+ipcMain.handle("roca:perm-install", () => { try { return installPermHook(); } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("roca:perm-uninstall", () => { try { return uninstallPermHook(); } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("roca:perm-list", () => (permServer ? permServer.list() : []));
+ipcMain.handle("roca:perm-decide", (_e, id, behavior, message) => {
+  if (!permServer || typeof id !== "string" || !["allow", "deny", "pass"].includes(behavior)) return { ok: false };
+  return { ok: permServer.decide(id, behavior, typeof message === "string" ? message : "") };
+});
+ipcMain.handle("roca:perm-config", (_e, timeoutSec) => {
+  const n = Number(timeoutSec);
+  if (!PERM_TIMEOUTS.includes(n)) return { ok: false, error: "bad timeout" };
+  try {
+    mkdirSync(ROCA_DIR, { recursive: true }); writeFileSync(PERM_CFG_FILE, JSON.stringify({ timeoutSec: n }) + "\n");
+    if (permServer) permServer.setTimeoutSec(n);
+    if (permHookInstalled()) installPermHook();   // the hook's own timeout and curl -m follow the setting
+    return { ok: true, timeoutSec: n };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
 // new-version check against GitHub Releases, at most once a day (cached in userData); the renderer shows a badge
 const UPDATE_API = "https://api.github.com/repos/choiminu/AgentDesk/releases/latest";
 const UPDATE_CACHE = join(app.getPath("userData"), "update-check.json");
@@ -1573,7 +1657,7 @@ ipcMain.handle("orca:version", async () => {
   try { const { stdout } = await exec(orcaBin, ["--version"], { timeout: 8000, env: { ...process.env, PATH: EXEC_PATH } }); return stdout.trim(); }
   catch { return null; }
 });
-ipcMain.handle("orca:hooks-status", () => ({ installed: hooksInstalled(), agents: hooksAgents(), script: HOOK_SCRIPT, events: EVENTS_FILE }));
+ipcMain.handle("orca:hooks-status", () => ({ installed: hooksInstalled(), agents: hooksAgents(), script: HOOK_SCRIPT, events: EVENTS_FILE, permHook: permHookInstalled(), permTimeout: permTimeout(), permAvailable: !IS_WIN }));
 ipcMain.handle("orca:hooks-install", (_e, agents) => { try { return installHooks(agents); } catch (e) { return { ok: false, error: e.message }; } });
 ipcMain.handle("orca:hooks-uninstall", (_e, agents) => { try { return uninstallHooks(agents); } catch (e) { return { ok: false, error: e.message }; } });
 const TEAMS_FILE = join(ROCA_DIR, "teams.json");
@@ -1639,12 +1723,14 @@ ipcMain.handle("orca:hooks-recent", () => {
     eventsOffset = statSync(EVENTS_FILE).size;
     const cutoff = Math.floor(Date.now() / 1000) - 24 * 3600;
     const out = [];
-    for (const l of lines) { try { const o = JSON.parse(l); if (o.ts >= cutoff) out.push(o); } catch {} }
+    for (const l of lines) { try { const o = JSON.parse(l); if (o.ts >= cutoff) { noteKnownSession(o); out.push(o); } } catch {} }
     return out;
   } catch { return []; }
 });
 
 app.on("ready", () => {
+  // ~/.roca holds the event log (tool inputs), settings backups and the approval token: this user only
+  if (existsSync(ROCA_DIR)) { ensurePrivateDir(ROCA_DIR); for (const f of [EVENTS_FILE, ...readdirSync(ROCA_DIR).filter(n => /settings\.backup-\d+\.json$/.test(n)).map(n => join(ROCA_DIR, n))]) { try { chmodSync(f, 0o600); } catch {} } }
   createWindow();
   if (process.env.ROCA_HOOKS_INSTALL) { try { installHooks(); console.log("[hooks] installed"); } catch (e) { console.log("[hooks] install failed", e.message); } }
   // keep an already-installed hook script current after widget updates
@@ -1655,6 +1741,8 @@ app.on("ready", () => {
     if (Object.values(st).some(v => v === "on")) for (const [a, v] of Object.entries(st)) if (v === "off" || agentHooksPartial(a)) { installAgentHooks(a); console.log("[hooks] installed for", a); }
   } catch (e) { console.log("[hooks] extend failed", e.message); }
   startEventsWatch();
+  // widget permission approval is on: keep its hook script current and open the decision server
+  try { if (permHookInstalled()) { const sh = permHookSh(permTimeout()); if (readFileSync(PERM_HOOK_SCRIPT, "utf-8") !== sh) { writeFileSync(PERM_HOOK_SCRIPT, sh); chmodSync(PERM_HOOK_SCRIPT, 0o700); } startPermServer(); } } catch (e) { console.log("[perm] start failed", e.message); }
   createTray();
 });
 

@@ -69,6 +69,7 @@
       "preload.cjs",
       "core/**/*",
       "team/**/*",
+      "perm/**/*",
       "package.json",
       "assets/**/*"
     ],
