@@ -3,9 +3,10 @@ import { execFile, exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join, delimiter as PATH_DELIM } from "node:path";
-import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync, mkdtempSync, rmSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
+import * as jiraOAuth from "./jira-oauth.mjs";
 
 const exec = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -167,11 +168,13 @@ let orcaBin = "orca";
 let orcaBinFound = null;
 const orcaReady = findOrca().then(b => { orcaBin = b; orcaBinFound = b !== "orca"; });
 
-async function orca(...args) {
+function orca(...args) { return orcaTimed(15000, ...args); }
+// same as orca() with a caller-chosen timeout (worktree creation, Jira network calls)
+async function orcaTimed(timeout, ...args) {
   await orcaReady;
   try {
     const { stdout } = await exec(orcaBin, [...args, "--json"], {
-      timeout: 15000,
+      timeout,
       env: { ...process.env, PATH: EXEC_PATH },
     });
     return JSON.parse(stdout);
@@ -182,6 +185,7 @@ async function orca(...args) {
       error: notFound
         ? `Orca CLI를 찾을 수 없습니다 (${orcaBin}). Orca 앱이 /Applications에 설치되어 있는지 확인하세요.`
         : (err.stderr && String(err.stderr).trim()) || err.message,
+      detail: (() => { try { const j = JSON.parse(err.stdout); return String((j.error && (j.error.message || j.error)) || ""); } catch { return ""; } })(),   // the CLI prints its JSON error on stdout and exits 1
       bin: orcaBin,
     };
   }
@@ -190,6 +194,61 @@ async function orca(...args) {
 ipcMain.handle("orca:ps", () => orca("worktree", "ps"));
 ipcMain.handle("orca:terminals", () => orca("terminal", "list"));
 ipcMain.handle("orca:rate-limits", () => orca("account", "list"));
+ipcMain.handle("orca:repos", () => orca("repo", "list"));
+
+// ── Jira: Atlassian OAuth (jira-oauth.mjs) when signed in, otherwise Orca's own Jira connection; and a worktree per ticket ──
+const JIRA_KEY_RE = /^[A-Z][A-Z0-9]+-\d+$/;
+const JIRA_FILTERS = new Set(["assigned", "reported", "all", "done"]);
+const badArg = (msg) => ({ ok: false, error: msg });
+const viaOAuth = (fn) => fn().catch(e => badArg(e.message));
+ipcMain.handle("roca:jira-status", () => jiraOAuth.connected() ? jiraOAuth.connectionResult() : orca("jira", "connection"));
+ipcMain.handle("roca:jira-list", (_e, opts = {}) => {
+  const limit = Math.min(100, Math.max(1, parseInt(opts.limit, 10) || 30));
+  const jql = typeof opts.jql === "string" ? opts.jql.trim() : "";
+  if (jql && (jql.length > 2000 || jql.startsWith("-"))) return badArg("invalid JQL");
+  const filter = JIRA_FILTERS.has(opts.filter) ? opts.filter : "assigned";
+  if (jiraOAuth.connected()) return viaOAuth(() => jql ? jiraOAuth.search(jql, limit) : jiraOAuth.list(filter, limit));
+  if (jql) return orcaTimed(30000, "jira", "search", jql, "--limit", String(limit));
+  return orcaTimed(30000, "jira", "list", "--filter", filter, "--limit", String(limit));
+});
+ipcMain.handle("roca:jira-issue", (_e, key) => {
+  if (!JIRA_KEY_RE.test(key || "")) return badArg("invalid Jira key");
+  return jiraOAuth.connected() ? viaOAuth(() => jiraOAuth.issue(key)) : orcaTimed(30000, "jira", "issue", key);
+});
+ipcMain.handle("roca:jira-comment", async (_e, key, body) => {
+  if (!JIRA_KEY_RE.test(key || "")) return badArg("invalid Jira key");
+  if (typeof body !== "string" || !body.trim() || body.length > 32000) return badArg("comment body is empty or too long");
+  if (jiraOAuth.connected()) return viaOAuth(() => jiraOAuth.comment(key, body));
+  const dir = mkdtempSync(join(tmpdir(), "agentdesk-jira-"));
+  const file = join(dir, "comment.txt");
+  try {
+    writeFileSync(file, body, { mode: 0o600 });
+    return await orcaTimed(30000, "jira", "comment", "add", key, "--body-file", file);
+  } finally { try { rmSync(dir, { recursive: true, force: true }); } catch {} }
+});
+// Kanban board (OAuth only; the Orca CLI path keeps the plain list)
+ipcMain.handle("roca:jira-projects", () => jiraOAuth.connected() ? viaOAuth(() => jiraOAuth.projects()) : badArg("OAuth not connected"));
+ipcMain.handle("roca:jira-board", (_e, key, opts = {}) => jiraOAuth.connected() ? viaOAuth(() => jiraOAuth.board(String(key || ""), !!opts.mine)) : badArg("OAuth not connected"));
+// OAuth setup from the Jira tab: the renderer only ever sees status() (client id, hasSecret, site), never secrets or tokens
+const oauthCall = (fn) => { try { return Promise.resolve(fn()).catch(e => ({ ok: false, error: e.message })); } catch (e) { return { ok: false, error: e.message }; } };
+ipcMain.handle("roca:jira-oauth-status", () => oauthCall(() => jiraOAuth.status()));
+ipcMain.handle("roca:jira-oauth-save", (_e, clientId, clientSecret) => oauthCall(() => jiraOAuth.saveCredentials(clientId, clientSecret)));
+ipcMain.handle("roca:jira-oauth-login", () => oauthCall(() => jiraOAuth.login()));
+ipcMain.handle("roca:jira-oauth-logout", () => oauthCall(() => jiraOAuth.logout()));
+ipcMain.handle("roca:jira-oauth-site", (_e, cloudId) => oauthCall(() => jiraOAuth.chooseSite(String(cloudId || ""))));
+ipcMain.handle("orca:worktree-create", async (_e, opts = {}) => {
+  const name = String(opts.name || "");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(name)) return badArg("invalid worktree name");
+  const args = ["worktree", "create", "--name", name, "--no-parent"];
+  if (opts.repo) { if (typeof opts.repo !== "string" || opts.repo.startsWith("-") || opts.repo.length > 500) return badArg("invalid repo"); args.push("--repo", opts.repo); }
+  if (opts.agent) { if (!/^[a-z0-9-]{1,30}$/.test(opts.agent)) return badArg("invalid agent"); args.push("--agent", opts.agent); }
+  if (opts.prompt) { if (typeof opts.prompt !== "string" || opts.prompt.length > 20000) return badArg("prompt too long"); args.push("--prompt", opts.prompt); }
+  if (!opts.reference) return orcaTimed(180000, ...args);
+  if (!JIRA_KEY_RE.test(opts.reference)) return badArg("invalid Jira key");
+  // --reference needs a Jira site connected in Orca; without one (OAuth users) the CLI refuses up front, so retry without it
+  const r = await orcaTimed(180000, ...args, "--reference", opts.reference);
+  return r && r.ok === false && /connected Jira site/i.test(r.detail || "") ? orcaTimed(180000, ...args) : r;
+});
 
 // ── Claude Code .jsonl session reader ──
 
