@@ -8,6 +8,8 @@
 //     429 too many pending
 //     200 {"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"|"deny",...}}}
 //     200 {}  — no decision (timed out, [터미널로], stale, app quitting): Claude Code keeps its own terminal prompt
+//   POST /v1/guard        same auth; body: the PreToolUse hook's stdin JSON → 200 opts.onGuard(body) at once
+//     ({} or a PreToolUse ask / deny — see guard/guard.mjs); no long-poll, no queue
 //   every answer carries X-AD-Sig = hex HMAC-SHA256(token, body); the hook prints the body only when it verifies, so a
 //   process that took over the socket path without the token cannot answer for the widget
 // The hook prints nothing for any other status, so every failure falls back to the terminal.
@@ -18,23 +20,46 @@ import { mkdirSync, chmodSync, unlinkSync, writeFileSync, renameSync } from "nod
 import { join } from "node:path";
 import "../core/mask.js";   // globalThis.AgentDeskMask (used by core/perm.js)
 import "../core/perm.js";   // globalThis.AgentDeskPerm
+import "../core/guard.js";  // globalThis.AgentDeskGuard (outputAllowed)
 const P = globalThis.AgentDeskPerm;
+const G = globalThis.AgentDeskGuard;
+
+// a guard body cut at 2 MB is not valid JSON: take the fields the guard needs from the text. A JSON string value cannot
+// hold an unescaped quote, so `"command":"` only matches the real key; a value cut short is kept as far as it goes.
+function jsonStringAt(text, key) {
+  const m = new RegExp(`"${key}"\\s*:\\s*"`).exec(text); if (!m) return undefined;
+  let i = m.index + m[0].length, j = i;
+  while (j < text.length && text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+  let lit = text.slice(i, Math.min(j, text.length));
+  for (let k = 0; k < 8; k++) { try { return JSON.parse(`"${lit}"`); } catch { lit = lit.slice(0, -1); } }
+  return undefined;
+}
+export function guardFieldsFromPartial(text) {
+  const t = String(text || "");
+  const pick = k => { const v = jsonStringAt(t, k); return typeof v === "string" ? v : undefined; };
+  const tool_input = {};
+  for (const k of ["command", "file_path", "notebook_path"]) { const v = pick(k); if (v !== undefined) tool_input[k] = v; }
+  const out = { tool_input };
+  for (const k of ["session_id", "cwd", "tool_name", "permission_mode", "hook_event_name"]) { const v = pick(k); if (v !== undefined) out[k] = v; }
+  return out;
+}
 
 export const PERM_PATH = "/v1/permission";
+export const GUARD_PATH = "/v1/guard";
 export const PERM_MAX_PENDING = 20;
 export const PERM_MAX_BODY = 2 * 1024 * 1024;   // a Write of a large file sends its whole content
 export const PERM_TIMEOUT_DEFAULT = 90;          // seconds
 export const PERM_SOCK = "perm.sock";
 export const PERM_TOKEN = "perm-token";
 
-// ~/.roca/perm-hook.sh, registered as a synchronous PermissionRequest command hook (timeout = timeoutSec + 10).
+// ~/.roca/perm-hook.sh, registered as a synchronous PermissionRequest command hook (timeout = timeoutSec + 10), and
+// ~/.roca/guard-hook.sh (PreToolUse guardrail, timeout 3 s) — the same script around a different path and time limit.
 // The token never appears on a command line (ps shows those to every user): curl reads the header from a file
 // descriptor, and the response HMAC is computed by hand (key XOR ipad / opad, fed to openssl dgst on stdin) instead of
 // `openssl dgst -hmac <key>`. No openssl, no %header support in curl, a bad signature → nothing printed.
-export const permHookScript = (timeoutSec) => `#!/bin/bash
-# AgentDesk permission hook: ask the AgentDesk widget to allow / deny this Claude Code permission request.
-# Prints the widget's signed decision JSON; prints nothing (→ the normal terminal prompt) when the widget is not
-# running, nobody answered within ${timeoutSec}s, the answer is not signed with our token, or anything fails.
+function signedHookScript({ comment, path, maxTime, filter }) {
+  return `#!/bin/bash
+${comment}
 umask 077
 [ -n "$AGENTDESK_RECALL" ] && exit 0
 d="$HOME/.roca/perm"
@@ -43,8 +68,8 @@ sock="$d/${PERM_SOCK}"
 command -v openssl >/dev/null 2>&1 || exit 0
 tok=$(tr -dc 'a-f0-9' < "$d/${PERM_TOKEN}")
 [ \${#tok} -eq 64 ] || exit 0
-resp=$(curl -q -sf -m ${timeoutSec + 5} --connect-timeout 1 --unix-socket "$sock" -X POST -H 'Content-Type: application/json' \\
-  -H @<(printf 'X-AD-Perm-Token: %s\\n' "$tok") -w '\\n%header{x-ad-sig}' --data-binary @- http://localhost${PERM_PATH} 2>/dev/null) || exit 0
+${filter || ""}resp=$(${filter ? 'printf "%s" "$input" | ' : ""}curl -q -sf -m ${maxTime} --connect-timeout 1 --noproxy '*' --unix-socket "$sock" -X POST -H 'Content-Type: application/json' \\
+  -H @<(printf 'X-AD-Perm-Token: %s\\n' "$tok") -w '\\n%header{x-ad-sig}' --data-binary @- http://localhost${path} 2>/dev/null) || exit 0
 sig=\${resp##*$'\\n'}; body=\${resp%$'\\n'*}
 [ "$body" != "$resp" ] && [ -n "$body" ] && [ \${#sig} -eq 64 ] || exit 0
 ip=''; op=''
@@ -59,6 +84,24 @@ mac=\${mac%% *}
 printf '%s\\n' "$body"
 exit 0
 `;
+}
+export const permHookScript = (timeoutSec) => signedHookScript({ path: PERM_PATH, maxTime: timeoutSec + 5, comment:
+`# AgentDesk permission hook: ask the AgentDesk widget to allow / deny this Claude Code permission request.
+# Prints the widget's signed decision JSON; prints nothing (→ the normal terminal prompt) when the widget is not
+# running, nobody answered within ${timeoutSec}s, the answer is not signed with our token, or anything fails.` });
+// fail-open: no widget, no token, a slow or unsigned answer → nothing printed → the tool call goes on as usual
+// only the fields the guard reads are sent when jq is there (a Write's content can be megabytes); without jq, or when
+// jq fails, the whole input goes as before and the server reads at most 2 MB of it
+const GUARD_FILTER = `input=$(cat)
+if command -v jq >/dev/null 2>&1; then
+  small=$(printf '%s' "$input" | jq -c '{session_id, cwd, permission_mode, hook_event_name, tool_name, tool_input: (.tool_input | if type == "object" then {command, file_path, notebook_path} else null end)}' 2>/dev/null) && [ -n "$small" ] && input=$small
+fi
+`;
+export const guardHookScript = () => signedHookScript({ path: GUARD_PATH, maxTime: 2, filter: GUARD_FILTER, comment:
+`# AgentDesk guardrail hook (PreToolUse): ask the AgentDesk widget whether this tool call matches a dangerous-command
+# rule (~/.roca/guard.json). Prints the widget's signed answer (ask / deny); prints nothing — no effect, the tool call
+# goes through Claude Code's normal permission flow — when the widget is not running, the answer is not signed with
+# our token, takes over 2s, or anything fails.` });
 
 function tokenOk(want, got) {
   const a = Buffer.from(String(want || "")), b = Buffer.from(String(got || ""));
@@ -75,7 +118,8 @@ export function writePrivate(file, data) {
 }
 const rm = f => { try { unlinkSync(f); } catch {} };
 
-// opts: { token, timeoutSec, maxPending, isKnownSession(sid) → bool|Promise<bool>, onRequest(entry), onResolved(id, why) }
+// opts: { token, timeoutSec, maxPending, isKnownSession(sid) → bool|Promise<bool>, onRequest(entry), onResolved(id, why),
+//         onGuard(body) → PreToolUse hook output (object; {} = no effect) }
 // entry (what the renderer gets): { id, seq, sessionId, cwd, createdAt, expiresAt, summary } — never the token
 export function createPermServer(opts = {}) {
   const pending = new Map();   // id → { entry, res, timer, toolName, inputKey }
@@ -101,19 +145,47 @@ export function createPermServer(opts = {}) {
 
   const server = createServer(async (req, res) => {
     try {
-      if (req.method !== "POST" || (req.url || "").split("?")[0] !== PERM_PATH) return json(res, 404, { error: "not found" });
+      const path = (req.url || "").split("?")[0];
+      if (req.method !== "POST" || (path !== PERM_PATH && path !== GUARD_PATH)) return json(res, 404, { error: "not found" });
       // only the local hook: a browser page always sends Origin, and curl --unix-socket http://localhost sends this Host
       if (req.headers.origin) return json(res, 403, { error: "forbidden" });
       if (String(req.headers.host || "") !== "localhost") return json(res, 403, { error: "forbidden" });
       if (!tokenOk(opts.token, req.headers["x-ad-perm-token"])) return json(res, 401, { error: "unauthorized" });
       // too big: answer and close the connection without reading the rest
       const tooLarge = () => { res.shouldKeepAlive = false; json(res, 413, { error: "too large" }); };
-      if (Number(req.headers["content-length"] || 0) > PERM_MAX_BODY) return tooLarge();
-      const chunks = []; let size = 0;
-      for await (const c of req) { size += c.length; if (size > PERM_MAX_BODY) return tooLarge(); chunks.push(c); }
+      const isGuard = path === GUARD_PATH;
+      // the guardrail never refuses a big body (that would let a 2 MB Write through unchecked): the first 2 MB are read,
+      // the rest is drained, and the fields it needs are taken from what was read
+      if (!isGuard && Number(req.headers["content-length"] || 0) > PERM_MAX_BODY) return tooLarge();
+      const chunks = []; let size = 0, truncated = false;
+      for await (const c of req) {
+        if (truncated) continue;
+        if (size + c.length > PERM_MAX_BODY) {
+          if (!isGuard) return tooLarge();
+          chunks.push(c.subarray(0, PERM_MAX_BODY - size)); size = PERM_MAX_BODY; truncated = true; continue;
+        }
+        size += c.length; chunks.push(c);
+      }
+      const raw = Buffer.concat(chunks).toString("utf-8");
       let body;
-      try { body = JSON.parse(Buffer.concat(chunks).toString("utf-8")); } catch { return json(res, 400, { error: "bad json" }); }
+      try { body = JSON.parse(raw); } catch { if (!truncated) return json(res, 400, { error: "bad json" }); body = guardFieldsFromPartial(raw); }
       if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "bad json" });
+      // guardrail: answered at once. It can only add a question or a refusal, never an allow, so it does not need the
+      // known-session check. Only {} or a PreToolUse ask / deny ever leaves here; a failure answers onGuardFail()
+      if (isGuard) {
+        if (body.hook_event_name && body.hook_event_name !== "PreToolUse") return json(res, 400, { error: "not a PreToolUse" });
+        if (truncated) body.__truncated = true;
+        // whether the answer reached the hook: "finish" = written out; "close" before that = curl had given up
+        let settleFn = null, settled = false, finished = false, closed = false;
+        const fire = ok => { if (settled || !settleFn) return; settled = true; try { settleFn(ok); } catch {} };
+        res.on("finish", () => { finished = true; fire(true); });
+        res.on("close", () => { closed = true; if (!res.writableFinished) fire(false); });
+        const settle = fn => { settleFn = fn; if (finished) fire(true); else if (closed || res.destroyed || (res.socket && res.socket.destroyed)) fire(false); };
+        let out = {};
+        try { out = (opts.onGuard && await opts.onGuard(body, { settle })) || {}; }
+        catch { try { out = (opts.onGuardFail && opts.onGuardFail()) || {}; } catch { out = {}; } }
+        return json(res, 200, G.outputAllowed(out) ? out : {});
+      }
       if (body.hook_event_name && body.hook_event_name !== "PermissionRequest") return json(res, 400, { error: "not a PermissionRequest" });
       const sid = typeof body.session_id === "string" ? body.session_id.slice(0, 200) : "";
       if (!sid || !(await isKnown(sid))) return json(res, 403, { error: "unknown session" });
@@ -134,7 +206,7 @@ export function createPermServer(opts = {}) {
     }
   });
   server.requestTimeout = 15000;   // receiving the request; the long-poll answer itself is bounded by timeoutSec
-  server.maxConnections = maxPending + 10;
+  server.maxConnections = 80;   // guard calls from many sessions share the socket with up to 20 held approvals
 
   return {
     server,

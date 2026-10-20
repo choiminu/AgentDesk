@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-z+6My9KjpSUvoto1gfUkoBcEH07eoRokd1MdWPtJoso='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-M/3RqL632aEFSAY7p9KAKlSBB6EIlN72iK62O1a9M2g='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2347,6 +2347,30 @@
   .perm-btns .perm-allow { border-color: var(--green); color: var(--green); } .perm-btns .perm-deny { border-color: var(--red); color: var(--red); }
   .perm-btns button:disabled { opacity: 0.5; cursor: default; }
   .stat.perm { background: var(--yellow-dim); color: var(--yellow); cursor: pointer; font-weight: 700; }
+  .stat.guard { background: var(--red-dim); color: var(--red); cursor: pointer; font-weight: 700; }
+  .s-tool.guard { color: var(--red) !important; border-color: color-mix(in srgb, var(--red) 50%, transparent) !important; }
+  .guard-rules { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+  .guard-rule { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-hover); font-size: 10.5px; }
+  .guard-rule .tx { flex: 1; min-width: 0; }
+  .guard-rule .tx b { display: block; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .guard-rule .tx code { display: block; font-family: var(--mono); font-size: 10px; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .guard-rule .tx .err { display: block; color: var(--red); font-size: 10px; }
+  .guard-rule.off .tx b { color: var(--text3); }
+  .guard-rule .sev { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text2); cursor: pointer; flex-shrink: 0; }
+  .guard-rule .sev.block { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); }
+  .guard-rule .set-btn { padding: 2px 8px; }
+  .guard-test { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+  .guard-test input { flex: 1; min-width: 140px; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font-family: var(--mono); font-size: 10.5px; }
+  .guard-test select, .guard-edit select, .guard-edit input { background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 11px; }
+  .guard-test-out { display: block; font-size: 10px; margin-top: 4px; color: var(--text3); word-break: break-word; }
+  .guard-test-out.hit { color: var(--red); }
+  .guard-edit label { display: block; margin-top: 8px; color: var(--text2); font-size: 11px; }
+  .guard-edit input[type=text] { width: 100%; box-sizing: border-box; }
+  .guard-edit textarea { font-family: var(--mono); min-height: 60px; }
+  .guard-edit .tools { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+  .guard-edit .tools label { display: inline-flex; gap: 4px; margin: 0; align-items: center; }
+  .guard-edit .err { color: var(--red); font-size: 10.5px; min-height: 14px; margin-top: 6px; }
+  .guard-log .pr-row.deny { color: var(--red); }
   .s-detail { flex-basis: 100%; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; color: var(--text2); }
   .s-detail .d-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; }
   .s-detail .d-row b { color: var(--text3); font-weight: 600; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -2552,6 +2576,7 @@
       <span class="stat wait" title="대기 중"><span class="px-ic clock"></span><span id="nWait">0</span></span>
       <span class="stat ask" id="statAsk" title="선택 필요" hidden><span class="ask-mark">?</span><span id="nAsk">0</span></span>
       <span class="stat perm" id="statPerm" title="위젯에서 답할 수 있는 권한 요청" hidden><span id="statPermLabel">승인 대기</span> <span id="nPerm">0</span></span>
+      <span class="stat guard" id="statGuard" title="오늘 가드레일이 확인을 요청하거나 차단한 도구 호출" hidden><span id="statGuardLabel">오늘 가드</span> <span id="nGuard">0</span></span>
       <span class="stat done" title="완료"><span class="px-ic pc-off"></span><span id="nDone">0</span></span>
     </div>
     <div class="header-controls">
@@ -3035,6 +3060,28 @@ Object.assign(I18N, {
   '입력이 길어 일부만 표시합니다. 허용은 터미널에서 확인한 뒤 하세요.': 'The input is too long to show in full. Allow it from the terminal after checking it there.',
   '정확 감지(Claude Code)를 먼저 켜세요': 'Turn on exact detection (Claude Code) first', '허용함': 'Allowed', '거부함': 'Denied', '터미널로 넘김': 'Sent to the terminal',
 });
+Object.assign(I18N, {
+  '가드레일': 'Guardrail', '오늘 가드': 'Guard today', '가드': 'Guard', '가드레일 기록': 'Guardrail log', '가드레일 (위험 명령 확인)': 'Guardrail (dangerous commands)',
+  '오늘 가드레일이 확인을 요청하거나 차단한 도구 호출': 'Tool calls the guardrail asked about or blocked today',
+  'Claude Code가 Bash 명령이나 파일 수정(Edit·Write)을 하기 직전에 위험 규칙과 맞춰 봅니다. 걸리면 터미널에서 한 번 더 확인하게 하거나(경고) 막습니다(차단). 위젯이 꺼져 있으면 아무것도 막지 않습니다. 권한 승인과 별개이며, 새로 시작하는 세션부터 적용됩니다.': 'Checks each Bash command and file edit (Edit · Write) against the danger rules right before Claude Code runs it. A match asks once more in the terminal (warn) or refuses it (block). Nothing is blocked while the widget is not running. Independent of widget approval; applies to sessions started after this.',
+  '모드': 'Mode', '끔': 'Off', '경고': 'Warn', '차단': 'Block',
+  '경고: 걸리면 터미널에서 확인을 받습니다. 차단: 차단 등급 규칙은 거부하고 나머지는 확인을 받습니다.': 'Warn: a match asks in the terminal. Block: block-level rules are refused, the rest ask.',
+  '이 명령이 걸리는지': 'Would this be caught?', '판정': 'Check', '걸리지 않습니다': 'Not caught',
+  '규칙': 'Rules', '규칙 추가': 'Add rule', '기본값 복원': 'Restore defaults', '편집': 'Edit', '삭제': 'Delete', '내장': 'built-in', '사용자': 'custom',
+  '규칙 편집': 'Edit rule', '이름': 'Name', '정규식 (500자 이하, 대소문자 무시)': 'Regex (≤ 500 chars, case-insensitive)', '도구': 'Tools', '등급': 'Level',
+  'Bash는 명령 전체, 파일 도구는 대상 경로와 맞춰 봅니다.': 'Bash: the whole command. File tools: the target path.',
+  '내장 판정 대신 이 정규식을 씁니다 (사용자 규칙이 됩니다)': 'Uses this regex instead of the built-in check (becomes a custom rule)',
+  '가드레일이 차단했습니다': 'blocked by the guardrail', '가드레일 차단': 'Guardrail blocked', '기록이 없습니다': 'No entries',
+  '가드레일을 켰습니다. 새로 시작하는 Claude Code 세션부터 적용됩니다': 'Guardrail on. Applies to Claude Code sessions started from now',
+  '가드레일을 껐습니다': 'Guardrail off', '느린 정규식이라 규칙을 껐습니다': 'Rule turned off: its regex is too slow',
+  '경로': 'path', '정규식이 비어 있습니다': 'The regex is empty', '정규식 오류': 'Regex error',
+  'Claude Code 설정(~/.claude/settings.json)의 PreToolUse에 가드레일 훅을 추가합니다 (기존 훅 보존, ~/.roca/에 백업). 위젯이 꺼져 있으면 아무것도 막지 않습니다. 진행할까요?': 'Adds the guardrail hook to PreToolUse in Claude Code settings (~/.claude/settings.json; other hooks kept, backup in ~/.roca/). Nothing is blocked while the widget is not running. Continue?',
+  '느린 차단 규칙입니다 — 설정 → 가드레일에서 정규식을 고치거나 끄세요': 'Slow block rule — fix its regex or turn it off in Settings → Guardrail',
+  '시간 초과로 통과됨': 'passed (answer timed out)', '가드레일 시간 초과': 'Guardrail timed out', '파일 오류': 'File error',
+  '규칙 파일이 깨져 있습니다. 지금 화면의 설정(마지막으로 읽은 설정, 없으면 기본값)으로 덮어쓸까요?': 'The rule file is broken. Overwrite it with the settings shown here (the last config that loaded, or the defaults)?',
+  '파일을 고치기 전까지 마지막으로 읽은 설정(없으면 차단 모드)으로 동작합니다. 버튼을 누르면 파일을 덮어씁니다.': 'Until the file is fixed the last config that loaded is used (block mode if none). Pressing a button overwrites the file.',
+  '기본 규칙으로 되돌릴까요? 추가한 규칙과 편집 내용이 지워집니다 (모드는 유지).': 'Restore the default rules? Added rules and edits are removed (the mode stays).',
+});
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
   if (LANG === 'ko' || !str || !/[가-힣]/.test(str)) return str;
@@ -3457,6 +3504,7 @@ const hookSessions = new Map();   // claude session_id → state
 let hooksEnabled = false;
 // widget permission approval (opt-in): requests held by perm/server.mjs until a button here is pressed
 let permHookOn = false, permTimeoutSec = 90, permAvailable = true;
+let guardHookOn = false, guardAvailable = true;
 const permReqs = new Map();   // request id → { id, seq, sessionId, cwd, createdAt, expiresAt, summary }
 const permEls = new Map();    // request id → its panel element, kept across dashboard re-renders so a typed reason survives
 let hooksAgents = {};   // { claude: 'on'|'off'|'absent', gemini: ..., codex: ... }
@@ -3503,6 +3551,7 @@ async function refreshHooksStatus() {
     hooksEnabled = !!r.installed;
     hooksAgents = r.agents || {};
     permHookOn = !!r.permHook; permTimeoutSec = r.permTimeout || 90; permAvailable = r.permAvailable !== false;
+    guardHookOn = !!r.guardHook; guardAvailable = r.guardAvailable !== false;
     const btn = $('hooks-toggle');
     btn.classList.toggle('on', hooksEnabled);
     btn.textContent = hooksEnabled ? '정확 감지 켜짐' : '정확 감지 꺼짐';
@@ -3644,6 +3693,162 @@ $('statPerm').addEventListener('click', () => {
 setInterval(() => { if (permReqs.size) permTick(); }, 1000);
 // requests that arrived while this page was not loaded (reload, dev tools)
 hooksReady.then(async () => { try { for (const r of await window.orca.permList()) permAdd(r); permMount(); } catch {} });
+
+// ── dangerous-command guardrail (PreToolUse): hits from ~/.roca/guard-log.jsonl, rules from ~/.roca/guard.json ──
+let guardEntries = [];            // last hits (oldest first), from the log and live
+let guardCfg = null;              // { mode, rules, errors, fileError, file, hook, available, defaults }
+let guardTestOut = null;          // last test result for the settings box
+const guardToastAt = new Map();   // rule id → last toast time (one per rule per 30 s)
+const guardSod = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const guardToday = () => { const t0 = guardSod(); return guardEntries.filter(e => e.decision && Number(e.at) >= t0); };
+function guardCountFor(sid) { return sid ? guardToday().filter(e => e.session_id === sid).length : 0; }
+function guardSidOf(s) { if (s.sessionId) return s.sessionId; const hk = hookStateFor(s.id); return hk ? hk.sid : ''; }
+function guardBadge(s) {
+  const n = guardCountFor(guardSidOf(s)); if (!n) return '';
+  return `<span class="s-tool guard" data-guard-log="1" title="${esc(t('오늘 가드레일이 확인을 요청하거나 차단한 도구 호출'))}">${esc(t('가드'))} ${n}</span>`;
+}
+function guardStat() {
+  const n = guardToday().length;
+  $('nGuard').textContent = n; $('statGuard').hidden = n === 0; $('statGuardLabel').textContent = t('오늘 가드');
+}
+function guardSessName(e) { const s = permSessionOf(e.session_id); return s ? s.name : ((e.cwd || '').split('/').filter(Boolean).pop() || String(e.session_id || '').slice(0, 8)); }
+function guardLogShow() {
+  const rows = guardEntries.slice(-300).reverse();
+  const when = at => new Date(Number(at) || 0).toLocaleString(LANG === 'ko' ? 'ko-KR' : 'en-US');
+  const m = teamModal(`<h3>${esc(t('가드레일 기록'))}</h3><p>~/.roca/guard-log.jsonl</p>
+    <div class="peer-last peer-rlog guard-log">${rows.length ? rows.map(e => e.type === 'rule-disabled' || e.type === 'rule-slow'
+      ? `<span class="pr-row">${esc(when(e.at))} · ${esc(e.label || e.rule)} · ${esc(e.type === 'rule-slow' ? t('느린 차단 규칙입니다 — 설정 → 가드레일에서 정규식을 고치거나 끄세요') : t('느린 정규식이라 규칙을 껐습니다'))}</span>`
+      : `<span class="pr-row${e.decision === 'deny' || e.decision === 'late-pass' ? ' deny' : ''}">${esc(when(e.at))} · ${esc(guardSessName(e))} · ${esc(e.tool || '')} · ${esc(e.label || e.rule)} · <code>${esc(e.summary || '')}</code> · <b>${esc(e.decision === 'deny' ? t('차단') : e.decision === 'late-pass' ? t('시간 초과로 통과됨') : t('경고'))}</b></span>`).join('') : esc(t('기록이 없습니다'))}</div>
+    <div class="row"><span style="margin-left:auto"></span><button id="glog-close">${esc(t('닫기'))}</button></div>`);
+  m.querySelector('#glog-close').onclick = closeTeamModal;
+}
+$('statGuard').addEventListener('click', guardLogShow);
+document.addEventListener('click', e => { if (e.target.closest('[data-guard-log]')) { e.stopPropagation(); guardLogShow(); } }, true);
+window.orca.onGuardHit(e => {
+  if (!e || typeof e !== 'object') return;
+  guardEntries.push(e); if (guardEntries.length > 2000) guardEntries.splice(0, guardEntries.length - 2000);
+  guardStat(); renderDashboard();
+  // a refusal, or an answer that came too late for the hook (the call went through): one toast + OS notification per rule
+  // per 30 s. The OS notification carries the rule name only — never the command (it may hold secrets).
+  if (e.decision === 'deny' || e.decision === 'late-pass') {
+    const key = `${e.decision}:${e.rule}`, last = guardToastAt.get(key) || 0;
+    if (Date.now() - last > 30000) {
+      guardToastAt.set(key, Date.now());
+      const what = e.decision === 'deny' ? t('가드레일이 차단했습니다') : t('시간 초과로 통과됨');
+      showInAppToast(`🛡 ${guardSessName(e)}: ${what} · ${e.label || e.rule}`, 'error');
+      window.orca.notify(e.decision === 'deny' ? t('가드레일 차단') : t('가드레일 시간 초과'), `${guardSessName(e)}: ${e.label || e.rule}${e.decision === 'late-pass' ? ' · ' + t('시간 초과로 통과됨') : ''}`);
+    }
+  }
+});
+window.orca.onGuardRuleDisabled(info => {
+  showInAppToast(`🛡 ${t('느린 정규식이라 규칙을 껐습니다')}: ${(info && (info.label || info.id)) || ''}`, 'error');
+  guardEntries.push({ at: Date.now(), type: 'rule-disabled', rule: info && info.id, label: info && info.label });
+  guardCfg = null; if (currentPage === 'settings') settingsRender();
+});
+window.orca.onGuardRuleSlow(info => {
+  showInAppToast(`🛡 ${t('느린 차단 규칙입니다 — 설정 → 가드레일에서 정규식을 고치거나 끄세요')}: ${(info && (info.label || info.id)) || ''}`, 'error');
+  guardEntries.push({ at: Date.now(), type: 'rule-slow', rule: info && info.id, label: info && info.label });
+  guardCfg = null; if (currentPage === 'settings') settingsRender();
+});
+hooksReady.then(async () => { try { const l = await window.orca.guardLog(1000); if (Array.isArray(l)) { guardEntries = l.filter(e => e && typeof e === 'object'); guardStat(); renderDashboard(); } } catch {} });
+setInterval(guardStat, 60000);   // the "today" count resets at midnight
+async function guardLoad() { try { guardCfg = await window.orca.guardConfig(); } catch { guardCfg = null; } return guardCfg; }
+async function guardSave(patch) {
+  if (guardCfg && guardCfg.fileError && !confirm(t('규칙 파일이 깨져 있습니다. 지금 화면의 설정(마지막으로 읽은 설정, 없으면 기본값)으로 덮어쓸까요?'))) return null;
+  let r; try { r = await window.orca.guardSave(patch); } catch (err) { r = { ok: false, error: err.message }; }
+  if (!r || !r.ok) { showInAppToast(`${t('작업 실패')}: ${(r && r.error) || ''}`, 'error'); return null; }
+  guardCfg = r; return r;
+}
+function guardSectionHtml(row, seg, sw) {
+  if (!guardAvailable) return '';
+  const g = guardCfg;
+  const head = `<h2>${esc(t('가드레일'))}</h2>
+    ${row(t('가드레일 (위험 명령 확인)'), t('Claude Code가 Bash 명령이나 파일 수정(Edit·Write)을 하기 직전에 위험 규칙과 맞춰 봅니다. 걸리면 터미널에서 한 번 더 확인하게 하거나(경고) 막습니다(차단). 위젯이 꺼져 있으면 아무것도 막지 않습니다. 권한 승인과 별개이며, 새로 시작하는 세션부터 적용됩니다.'), sw('guard-hook', guardHookOn))}`;
+  if (!g) return head;
+  const errBy = new Map((g.errors || []).map(e => [e.index, e.error]));
+  const rules = (g.rules || []).map((r, i) => `<div class="guard-rule${r.enabled === false ? ' off' : ''}">
+      <button class="switch ${r.enabled !== false ? 'on' : ''}" data-set="guard-rule-toggle" data-i="${i}" title="${esc(r.enabled !== false ? t('켜짐') : t('꺼짐'))}"></button>
+      <div class="tx" title="${esc((r.label || r.id) + '\n' + (r.pattern || r.id))}"><b>${esc(r.label || r.id)} <span style="color:var(--text3);font-weight:400">· ${esc((r.tools || []).join('|'))} · ${esc(r.builtin ? t('내장') : t('사용자'))}</span></b>
+        <code>${esc(r.pattern || r.id)}</code>${r.disabledReason ? `<span class="err">${esc(r.disabledReason)}</span>` : ''}${r.slowNote ? `<span class="err">${esc(r.slowNote)}</span>` : ''}${errBy.has(i) ? `<span class="err">${esc(errBy.get(i))}</span>` : ''}</div>
+      <button class="sev ${r.severity === 'block' ? 'block' : ''}" data-set="guard-rule-sev" data-i="${i}">${esc(r.severity === 'block' ? t('차단') : t('경고'))}</button>
+      <button class="set-btn" data-set="guard-rule-edit" data-i="${i}">${esc(t('편집'))}</button>
+      <button class="set-btn" data-set="guard-rule-del" data-i="${i}">${esc(t('삭제'))}</button>
+    </div>`).join('');
+  const out = guardTestOut ? (guardTestOut.hit ? `<span class="guard-test-out hit">${esc(guardTestOut.hit.label)} · ${esc(guardTestOut.decision === 'deny' ? t('차단') : guardTestOut.decision === 'ask' ? t('경고') : t('끔'))} · ${esc(guardTestOut.summary || '')}</span>` : `<span class="guard-test-out">${esc(t('걸리지 않습니다'))}</span>`) : '';
+  return head + `
+    ${g.fileError ? row('guard.json', g.fileError, '') : ''}
+    ${row(t('모드'), g.fileError ? `${t('파일 오류')} — ${t('파일을 고치기 전까지 마지막으로 읽은 설정(없으면 차단 모드)으로 동작합니다. 버튼을 누르면 파일을 덮어씁니다.')}` : t('경고: 걸리면 터미널에서 확인을 받습니다. 차단: 차단 등급 규칙은 거부하고 나머지는 확인을 받습니다.'), seg('guard-mode', g.fileError ? '' : g.mode, [['off', t('끔')], ['warn', t('경고')], ['block', t('차단')]]))}
+    <div class="set-row"><div class="tx"><b>${esc(t('이 명령이 걸리는지'))}</b><div class="guard-test"><select id="guard-test-tool"><option value="Bash">Bash</option><option value="Write">Edit / Write (${esc(t('경로'))})</option></select><input id="guard-test-in" spellcheck="false" placeholder="git push --force origin main"><button class="set-btn" data-set="guard-test">${esc(t('판정'))}</button></div>${out}</div></div>
+    <div class="set-row"><div class="tx"><b>${esc(t('규칙'))} (${(g.rules || []).length})</b><span>${esc(t('Bash는 명령 전체, 파일 도구는 대상 경로와 맞춰 봅니다.'))} ${esc(g.file || '')}</span></div><div class="set-inline"><button class="set-btn" data-set="guard-rule-add">${esc(t('규칙 추가'))}</button><button class="set-btn" data-set="guard-reset">${esc(t('기본값 복원'))}</button></div></div>
+    <div class="guard-rules">${rules}</div>`;
+}
+const GUARD_TOOLS = ['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'];
+function guardRuleEdit(i) {
+  const rules = (guardCfg && guardCfg.rules) || [];
+  const isNew = i == null || !rules[i];
+  const r = isNew ? { id: '', label: '', pattern: '', tools: ['Bash'], enabled: true, severity: 'warn' } : rules[i];
+  const m = teamModal(`<h3>${esc(t(isNew ? '규칙 추가' : '규칙 편집'))}</h3><div class="guard-edit">
+    <label>${esc(t('이름'))}<input type="text" id="ge-label" maxlength="120" value="${esc(r.label || '')}"></label>
+    <label>${esc(t('정규식 (500자 이하, 대소문자 무시)'))}<textarea id="ge-pattern" maxlength="500" spellcheck="false">${esc(r.pattern || '')}</textarea></label>
+    ${r.builtin ? `<p>${esc(t('내장 판정 대신 이 정규식을 씁니다 (사용자 규칙이 됩니다)'))}</p>` : ''}
+    <label>${esc(t('도구'))}</label><div class="tools">${GUARD_TOOLS.map(x => `<label><input type="checkbox" value="${x}" ${(r.tools || []).includes(x) ? 'checked' : ''}>${x}</label>`).join('')}</div>
+    <label>${esc(t('등급'))} <select id="ge-sev"><option value="warn" ${r.severity !== 'block' ? 'selected' : ''}>${esc(t('경고'))}</option><option value="block" ${r.severity === 'block' ? 'selected' : ''}>${esc(t('차단'))}</option></select></label>
+    <div class="err" id="ge-err"></div></div>
+    <div class="row"><span style="margin-left:auto"></span><button id="ge-cancel">${esc(t('취소'))}</button><button class="primary" id="ge-save">${esc(t('저장'))}</button></div>`);
+  m.querySelector('#ge-cancel').onclick = closeTeamModal;
+  m.querySelector('#ge-save').onclick = async () => {
+    const err = m.querySelector('#ge-err');
+    const label = m.querySelector('#ge-label').value.trim(), pattern = m.querySelector('#ge-pattern').value;
+    const tools = [...m.querySelectorAll('.tools input:checked')].map(x => x.value);
+    if (!label) { err.textContent = t('이름') + '?'; return; }
+    if (!tools.length) { err.textContent = t('도구') + '?'; return; }
+    const keepBuiltin = r.builtin && pattern === (r.pattern || '');
+    if (!keepBuiltin) {
+      if (!pattern.trim()) { err.textContent = t('정규식이 비어 있습니다'); return; }
+      if (pattern.length > 500) { err.textContent = '500+'; return; }
+      try { new RegExp(pattern, 'i'); } catch (e2) { err.textContent = `${t('정규식 오류')}: ${e2.message}`; return; }
+    }
+    const id = isNew ? `user-${Date.now().toString(36)}` : r.id;
+    const next = { id, label, pattern, tools, enabled: r.enabled !== false, severity: m.querySelector('#ge-sev').value === 'block' ? 'block' : 'warn' };
+    if (keepBuiltin) next.builtin = true;
+    const list = rules.slice(); if (isNew) list.push(next); else list[i] = next;
+    const res = await guardSave({ rules: list });
+    if (!res) return;
+    const bad = (res.errors || []).find(e => e.id === id);
+    if (bad) { err.textContent = bad.error; return; }
+    closeTeamModal(); settingsRender();
+  };
+}
+async function guardSettingsClick(name, b, v) {
+  if (name === 'guard-hook') {
+    if (!guardHookOn) {
+      if (!confirm(t('Claude Code 설정(~/.claude/settings.json)의 PreToolUse에 가드레일 훅을 추가합니다 (기존 훅 보존, ~/.roca/에 백업). 위젯이 꺼져 있으면 아무것도 막지 않습니다. 진행할까요?'))) return;
+      const r = await window.orca.guardInstall();
+      showInAppToast(r.ok ? t('가드레일을 켰습니다. 새로 시작하는 Claude Code 세션부터 적용됩니다') : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
+    } else {
+      const r = await window.orca.guardUninstall();
+      showInAppToast(r.ok ? t('가드레일을 껐습니다') : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
+    }
+    await refreshHooksStatus(); await guardLoad(); settingsRender(); return;
+  }
+  if (!guardCfg) await guardLoad();
+  if (!guardCfg) return;
+  const rules = (guardCfg.rules || []).slice(), i = Number(b.dataset.i);
+  if (name === 'guard-mode' && v) await guardSave({ mode: v });
+  else if (name === 'guard-rule-toggle' && rules[i]) { const on = rules[i].enabled === false; rules[i] = { ...rules[i], enabled: on }; if (on) delete rules[i].disabledReason; await guardSave({ rules }); }
+  else if (name === 'guard-rule-sev' && rules[i]) { rules[i] = { ...rules[i], severity: rules[i].severity === 'block' ? 'warn' : 'block' }; await guardSave({ rules }); }
+  else if (name === 'guard-rule-del' && rules[i]) { if (!await teamConfirm(t('삭제'), `${rules[i].label || rules[i].id}`, t('삭제'))) return; rules.splice(i, 1); await guardSave({ rules }); }
+  else if (name === 'guard-rule-edit') { guardRuleEdit(i); return; }
+  else if (name === 'guard-rule-add') { guardRuleEdit(null); return; }
+  else if (name === 'guard-reset') { if (!await teamConfirm(t('기본값 복원'), t('기본 규칙으로 되돌릴까요? 추가한 규칙과 편집 내용이 지워집니다 (모드는 유지).'), t('기본값 복원'))) return; await guardSave({ rules: guardCfg.defaults || [] }); }
+  else if (name === 'guard-test') {
+    const tool = ($('guard-test-tool') || {}).value || 'Bash', text = ($('guard-test-in') || {}).value || '';
+    try { guardTestOut = await window.orca.guardTest(tool, text); } catch { guardTestOut = null; }
+    settingsRender(); const inp = $('guard-test-in'); if (inp) { inp.value = text; } const sel = $('guard-test-tool'); if (sel) sel.value = tool;
+    return;
+  }
+  settingsRender();
+}
 
 let orcaAvailable = true;
 // data-source mode: 'auto' picks Orca when its CLI answers, otherwise hooks; 'orca' / 'hooks' force one
@@ -3954,6 +4159,7 @@ function renderCard(s) {
             ${s.loop ? `<span class="s-tool loop" title="${esc((s.loop.reason === 'fail' ? t('도구 호출이 연속으로 실패하고 있습니다') : t('같은 도구 호출을 반복하고 있습니다')) + ': ' + s.loop.tool + ' ' + (s.loop.input || ''))}">${esc(t(s.loop.reason === 'fail' ? '연속 실패' : '반복 시도'))} ${s.loop.count}×</span>` : ''}
             ${s.ext && s.ext.compacting ? `<span class="s-tool">${esc(t('정리 중'))}</span>` : ''}
             ${s.ext && s.ext.denied ? `<span class="s-tool loop">${esc(t('거부'))} ${s.ext.denied}</span>` : ''}
+            ${guardBadge(s)}
             ${s.ext && s.ext.tTotal ? `<span class="s-tool">${esc(t('작업'))} ${s.ext.tDone}/${s.ext.tTotal}</span>` : ''}
             ${s.tool ? `<span class="s-tool">${esc(s.tool)}</span>` : ''}
             ${s.hookOnly ? `<span class="s-tool" title="${esc(t(s.connected ? '터미널로 연결됨' : (s.ended ? '클릭하면 터미널에서 claude --resume 으로 다시 엽니다' : '읽기 전용 (터미널 없음)')))}">${s.connected ? esc(terminalKind(handles.get(s.id)) === 'tmux' ? 'tmux' : t('터미널')) : (s.ended ? '▶ ' + t('다시 열기') : t('읽기 전용'))}</span>` : ''}
@@ -8579,7 +8785,8 @@ function settingsRender() {
   const body = $('settings-body'); if (!body) return;
   const seg = (name, val, opts) => `<div class="seg" data-set="${name}">${opts.map(([v, l]) => `<button data-v="${v}" class="${String(val) === String(v) ? 'on' : ''}">${esc(l)}</button>`).join('')}</div>`;
   const sw = (name, on) => `<button class="switch ${on ? 'on' : ''}" data-set="${name}" data-v="${on ? '0' : '1'}"></button>`;
-  const row = (title, desc, ctl) => `<div class="set-row"><div class="tx"><b>${esc(title)}</b>${desc ? `<span>${esc(desc)}</span>` : ''}</div>${ctl}</div>`;
+  // descId: the description's element id, for text updated later in place (always escaped text, never markup)
+  const row = (title, desc, ctl, descId) => `<div class="set-row"><div class="tx"><b>${esc(title)}</b>${desc ? `<span${descId ? ` id="${esc(descId)}"` : ''}>${esc(desc)}</span>` : ''}</div>${ctl}</div>`;
   let soundOn = false; try { soundOn = localStorage.getItem('roca-office-sound') === '1'; } catch {}
   const zoom = (() => { try { return localStorage.getItem('roca-office-zoom') || 'auto'; } catch { return 'auto'; } })();
   body.innerHTML = `
@@ -8592,12 +8799,13 @@ function settingsRender() {
     ${permAvailable && permHookOn ? row(t('승인 대기 시간'), t('이 시간이 지나면 위젯 패널이 닫히고 터미널 질문만 남습니다. 터미널 질문도 함께 뜹니다. 먼저 답한 쪽이 적용됩니다.'), seg('perm-timeout', String(permTimeoutSec), [['60', '60s'], ['90', '90s'], ['180', '180s'], ['300', '300s']])) : ''}
     ${row(t('진행 요약 한 줄'), t('작업 중·대기 중 세션의 최근 대화를 Haiku가 한 문장으로 요약해 카드에 표시합니다 (세션당 5분에 한 번).'), sw('now-summary', nowEnabled))}
     ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
+    ${guardSectionHtml(row, seg, sw)}
     <h2>${esc(t('슬랙 창구'))}</h2>
     ${row(t('브리지 상태'), inboxStatus.configured ? (inboxStatus.running ? t('연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.') : `${t('설정 파일은 있지만 브리지가 꺼져 있습니다.')}${inboxStatus.lastError ? ` (${esc(inboxStatus.lastError)})` : ''}`) : t('~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.'), inboxStatus.configured ? `<button class="set-btn" data-set="inbox-restart">${esc(t('재시작'))}</button>` : '')}
     ${row(t('접수 담당 세션'), t('슬랙 요청을 처음 받아 처리하거나 다른 세션에 넘길 세션입니다. 연결된 세션 중에서 고르세요.'), `<select class="theme-btn" data-set="inbox-owner" style="width:auto;max-width:150px;padding:0 6px;font-size:11px"><option value="">${esc(t('지정 안 함'))}</option>${sessions.filter(s => s.connected && handles.get(s.id)).map(s => `<option value="${esc(s.id)}" ${s.id === inboxOwner ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>`)}
     ${row(t('접수 기록'), inboxLog.length ? `${inboxLog.length}${t('건')}${inboxPending.length ? ` · ${t('보류')} ${inboxPending.length}` : ''} · ${t('최근')}: ${esc(inboxLog[0].type)} ${esc(trunc(inboxLog[0].text, 40))}` : t('아직 받은 요청이 없습니다.'), `<button class="set-btn" data-set="inbox-log">${esc(t('보기'))}</button>`)}
     <h2>${esc(t('팀 공유'))}</h2>
-    ${row(t('같은 망의 팀원 세션'), `<span id="set-team-status">${esc(teamSettingsText())}</span>`, `<button class="set-btn" data-set="team-config">${esc(t(teamStatus.configured ? '설정 파일 열기' : '팀 공유 켜기'))}</button>`)}
+    ${row(t('같은 망의 팀원 세션'), teamSettingsText(), `<button class="set-btn" data-set="team-config">${esc(t(teamStatus.configured ? '설정 파일 열기' : '팀 공유 켜기'))}</button>`, 'set-team-status')}
     ${teamStatus.configured && !teamStatus.error && teamStatus.hasToken ? row(t('공유 끄기'), teamStatus.shared ? t('이 PC를 127.0.0.1 전용으로 되돌리고 자동 발견을 끕니다. 팀 토큰과 팀원 목록은 남고, 초대 코드를 다시 만들면 켜집니다.') : t('공유가 꺼져 있습니다 (이 PC만). 초대 코드를 만들면 다시 켜집니다.'), teamStatus.shared ? `<button class="set-btn" data-set="team-share-off">${esc(t('공유 끄기'))}</button>` : '') : ''}
     ${teamStatus.configured && !teamStatus.error && teamStatus.hasToken ? row(t('사무실 망'), `${teamStatus.paused ? t('지금 망은 사무실 망이 아니라 공유를 멈췄습니다.') + ' ' : ''}${t('이 대역에 있을 때만 공유합니다')}: ${(teamStatus.homeSubnets || []).map(x => x + '.0/24').join(', ') || t('지정 안 됨 (모든 망)')}`, `<button class="set-btn" data-set="team-home-add">${esc(t('이 망을 사무실 망으로 추가'))}</button>`) : ''}
     ${teamStatus.configured && !teamStatus.error && teamStatus.hasToken ? row(t('토큰 재발급'), t('새 팀 토큰을 만듭니다. 지금 팀원은 모두 연결이 끊기고, 새 초대 코드를 받아 다시 합류해야 합니다. 팀원을 내보낼 때 쓰세요.'), `<button class="set-btn" data-set="team-rotate">${esc(t('재발급'))}</button>`) : ''}
@@ -8621,6 +8829,7 @@ function settingsRender() {
     ${row(t('업데이트 자동 확인'), t('꺼 두면 위젯이 GitHub에 접속하지 않습니다.'), sw('update-auto', updateAuto))}
     ${row(t('온보딩 다시 보기'), t('소개, 환경 점검, 사용 팁을 다시 표시합니다.'), `<button class="set-btn" data-set="onboarding">${esc(t('열기'))}</button>`)}
     <div class="set-meta" id="settings-meta"></div>`;
+  if (guardAvailable && !guardCfg) guardLoad().then(c => { if (c && currentPage === 'settings') settingsRender(); });
   (async () => {
     let v = ''; try { v = await window.orca.appVersion(); } catch {}
     let st = null; try { st = await window.orca.hooksStatus(); } catch {}
@@ -8653,6 +8862,7 @@ $('settings-body').addEventListener('click', async (e) => {
     }
     await refreshHooksStatus(); settingsRender();
   }
+  else if (name.startsWith('guard-')) await guardSettingsClick(name, b, v);
   else if (name === 'perm-timeout' && v) { const r = await window.orca.permConfig(Number(v)); if (!r.ok) showInAppToast(`${t('작업 실패')}: ${r.error || ''}`, 'error'); await refreshHooksStatus(); settingsRender(); }
   else if (name === 'peer-office') { peerOfficeOn = !peerOfficeOn; try { localStorage.setItem('roca-office-peers', peerOfficeOn ? '1' : '0'); } catch {} settingsRender(); }
   else if (name === 'zoom' && v) { const sel = $('office-zoom'); sel.value = v; sel.dispatchEvent(new Event('change')); settingsRender(); }

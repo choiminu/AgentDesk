@@ -102,6 +102,16 @@ The two kinds are told apart by the `TERM_PROGRAM` the hook script records (`Orc
 </details>
 
 <details>
+<summary>Guardrail — dangerous-command check (Claude Code)</summary>
+
+Settings → **Guardrail** (off by default) adds a synchronous `PreToolUse` hook (`~/.roca/guard-hook.sh`, matcher `Bash|Edit|Write|MultiEdit|NotebookEdit`) that checks each Bash command and each file tool's **target path** against `~/.roca/guard.json`. Warn mode asks once more in the terminal; block mode refuses block-level rules. It uses the same Unix socket, token and signed answers as widget approval.
+
+- Out of scope: MCP tools (`mcp__*`) and every other tool, file contents, and commands hidden behind variables or written to a script first. It is a seatbelt, not a sandbox.
+- Fail-open: with the widget not running, or no answer within 2 s, nothing is blocked (late answers are logged as "late-pass").
+
+</details>
+
+<details>
 <summary>Exact detection via Claude Code hooks</summary>
 
 Turning on Exact detection adds widget hooks to every agent CLI installed on the Mac: `~/.claude/settings.json` (Claude Code), `~/.gemini/settings.json` (Gemini CLI) and `~/.codex/hooks.json` (Codex CLI). Existing hooks are kept and the previous files are backed up under `~/.roca/`. A CLI installed later is picked up on the next widget start. The hook script `~/.roca/hook.sh` appends each event as one JSON line to `~/.roca/events.jsonl` and exits immediately; the widget tails that file. Claude Code reloads hook settings live, so running sessions are covered too. Turning it off removes only the widget's entries.

@@ -112,6 +112,21 @@ npm start
 </details>
 
 <details>
+<summary>가드레일 — 위험 명령 확인 (Claude Code)</summary>
+
+⚙ 설정 → **가드레일**을 켜면(기본 꺼짐, 권한 승인과 별개) Claude Code가 Bash 명령을 실행하거나 파일을 고치기(Edit·Write·MultiEdit·NotebookEdit) 직전에 위험 규칙(`~/.roca/guard.json`)과 맞춰 봅니다. 모드는 끔·경고(기본)·차단입니다.
+
+- **경고**: 걸리면 터미널에서 한 번 더 확인을 받습니다(`--allowedTools`로 허용했거나 bypassPermissions 모드여도 묻습니다). **차단**: 차단 등급 규칙은 거부하고, 이유가 Claude에게 전달됩니다. 경고 등급 규칙은 확인을 받습니다.
+- 내장 규칙은 Bash 명령 전체(256KB까지)를, 파일 도구는 **대상 경로만** 봅니다(내용은 보지 않음). 사용자 규칙은 명령의 앞 4,000자와 뒤 4,000자만 보므로, 그보다 긴 명령은 (끔 모드가 아니면) 확인을 받습니다. 2MB가 넘는 입력에서 대상 경로를 찾지 못해도 확인을 받습니다. `allowRepos`에 넣은 경로 안에서는 파일 경로 규칙만 건너뜁니다(Bash는 항상 검사).
+- **범위 밖**: MCP 도구(`mcp__*`)·WebFetch·Read 등 다른 도구, 그리고 셸 변수로 바꾼 명령(`x=rm; $x -rf /`)이나 스크립트 파일에 써 두고 실행하는 방식은 잡지 못합니다. 샌드박스가 아니라 안전벨트입니다.
+- **위젯이 꺼져 있거나 응답이 2초를 넘으면 아무것도 막지 않습니다**(fail-open). 훅이 응답을 받기 전에 끊긴 판정은 기록에 "시간 초과로 통과됨"으로 남습니다.
+- 사용자 규칙의 정규식은 500자 이하, 한 번에 20ms 제한으로 실행합니다. 시간을 넘긴 차단 등급 규칙은 그 호출에서 확인을 받고, 서로 다른 입력에서 2번 넘기면 "느린 규칙"으로 표시만 합니다(끄는 것은 사용자). 경고 등급 규칙은 2번 넘기면 꺼집니다.
+- 기록: `~/.roca/guard-log.jsonl`(0600, 최근 2,000줄, 비밀값 마스킹). 대시보드 "오늘 가드 N"과 세션 카드 "가드 N" 배지에서 볼 수 있습니다.
+- 동작: `~/.claude/settings.json`의 `PreToolUse`(matcher `Bash|Edit|Write|MultiEdit|NotebookEdit`)에 동기 훅 `~/.roca/guard-hook.sh`(제한 시간 3초)를 추가하고, 권한 승인과 같은 Unix 소켓·토큰·응답 HMAC 검증을 씁니다. `jq`가 있으면 판정에 필요한 필드만 보냅니다. 팀원의 원격 입력도 같은 규칙 파일로 검사합니다(내장 규칙은 항상 적용).
+
+</details>
+
+<details>
 <summary>훅 기반 정확 감지</summary>
 
 정확 감지를 켜면 이 Mac에 설치된 모든 에이전트 CLI에 위젯 훅이 추가됩니다: `~/.claude/settings.json`(Claude Code), `~/.gemini/settings.json`(Gemini CLI), `~/.codex/hooks.json`(Codex CLI). 기존 훅은 보존되고 이전 파일은 `~/.roca/`에 백업됩니다. 나중에 설치한 CLI는 다음 위젯 시작 때 자동으로 포함됩니다. 훅 스크립트 `~/.roca/hook.sh`는 이벤트를 `~/.roca/events.jsonl`에 한 줄씩 덧붙이고 즉시 종료하며, 위젯이 이 파일을 감시합니다. Claude Code는 훅 설정을 즉시 다시 읽으므로 실행 중인 세션에도 적용됩니다. 끄면 위젯 항목만 제거됩니다.

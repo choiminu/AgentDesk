@@ -19,6 +19,8 @@ const SECRET_RES = [
   [/\bAIza[0-9A-Za-z_-]{30,256}\b/g, '[MASKED]'], [/\beyJ[A-Za-z0-9_-]{20,4096}\.[A-Za-z0-9_-]{20,4096}\.[A-Za-z0-9_-]{10,4096}\b/g, '[MASKED]'],
   [/(Bearer[ \t]{1,8})[A-Za-z0-9._~+\/=-]{8,1024}/gi, '$1[MASKED]'],
   [/((?:password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret)[ \t]{0,8}[=:][ \t]{0,8}["']?)[^\s"'&]{6,256}/gi, '$1[MASKED]'],
+  // mysql / mariadb -p<password> (only when written right after -p: "-p secret" prompts and the next word is a database)
+  [/((?:^|\s)-p)(?:'[^']{0,256}'|"[^"]{0,256}"|[^\s'"]\S{0,255})/g, '$1[MASKED]'],
   // database / broker URIs: the whole URI (host names and database names are internal too)
   [/\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|mariadb|redis|amqp|jdbc:[a-z]{1,20}):\/\/[^\s"'<>]{1,2048}/gi, '[MASKED URI]'],
   // card / account numbers: 12-19 digits in a row, optionally grouped by spaces or dashes

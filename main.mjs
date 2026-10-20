@@ -12,8 +12,9 @@ import { createDelegationStore, createRemoteLog, createEventThrottle, remoteMess
 import "./core/status.js";   // globalThis.AgentDeskStatus (responseTextFromScreen) for a delegated session's last answer
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { randomUUID } from "node:crypto";
-import { openPermEndpoint, ensurePrivateDir, permHookScript as permHookSh, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK } from "./perm/server.mjs";
-import { readJsonStrict, writeJsonAtomic, backupPrivate, permHookPresent, installPermHookAt, uninstallPermHookAt } from "./perm/settings.mjs";
+import { openPermEndpoint, ensurePrivateDir, permHookScript as permHookSh, guardHookScript, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK } from "./perm/server.mjs";
+import { readJsonStrict, writeJsonAtomic, backupPrivate, permHookPresent, installPermHookAt, uninstallPermHookAt, guardHookPresent, installGuardHookAt, uninstallGuardHookAt } from "./perm/settings.mjs";
+import { createGuardHandler, createGuardLog, writeGuardConfig, defaultGuardConfig, GUARD_MODES } from "./guard/guard.mjs";
 import * as jiraOAuth from "./jira-oauth.mjs";
 
 const exec = promisify(execFile);
@@ -1193,6 +1194,7 @@ function seedKnownSessions() {
 }
 let permServer = null, permStarting = null;
 const toRenderer = (ch, data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(ch, data); };
+// the socket server is shared with the guardrail (POST /v1/guard): it runs while either hook is installed
 function startPermServer() {
   if (permServer || permStarting || IS_WIN) return permStarting;
   seedKnownSessions();
@@ -1202,6 +1204,8 @@ function startPermServer() {
     isKnownSession: (sid) => { if (!knownSessions.has(sid)) pushEvents(readNewEvents()); return knownSessions.has(sid); },
     onRequest: (entry) => toRenderer("roca:perm-request", entry),
     onResolved: (id, why) => toRenderer("roca:perm-resolved", { id, why }),
+    onGuard: (body, meta) => guardHandler.handle(body, meta),
+    onGuardFail: () => guardHandler.failOutput(),
   }).then(srv => { permServer = srv; console.log("[perm] decision server on", srv.socketPath); },
           e => { console.log("[perm] server failed", e.message); })
     .finally(() => { permStarting = null; });
@@ -1225,7 +1229,7 @@ function installPermHook() {
 function uninstallPermHook() {
   uninstallPermHookAt({ settingsFile: CLAUDE_SETTINGS });   // throws on a broken settings.json: nothing is touched
   try { unlinkSync(PERM_HOOK_SCRIPT); } catch {}
-  stopPermServer();
+  if (!guardHookInstalled()) stopPermServer();
   return { ok: true };
 }
 ipcMain.handle("roca:perm-install", () => { try { return installPermHook(); } catch (e) { return { ok: false, error: e.message }; } });
@@ -1245,6 +1249,61 @@ ipcMain.handle("roca:perm-config", (_e, timeoutSec) => {
     return { ok: true, timeoutSec: n };
   } catch (e) { return { ok: false, error: e.message }; }
 });
+// ── Dangerous-command guardrail (Claude Code PreToolUse, opt-in, independent of the approval toggle above) ──
+// ~/.roca/guard-hook.sh posts each Bash / Edit / Write / MultiEdit / NotebookEdit call to POST /v1/guard on the same
+// socket and token; guard/guard.mjs matches it against ~/.roca/guard.json and answers {} / ask / deny at once.
+// Widget not running, no token, any error → the hook prints nothing and the call goes on as usual (fail-open).
+const GUARD_HOOK_SCRIPT = join(ROCA_DIR, "guard-hook.sh");
+const GUARD_FILE = join(ROCA_DIR, "guard.json");
+const guardLog = createGuardLog(join(ROCA_DIR, "guard-log.jsonl"));
+const guardHandler = createGuardHandler({
+  file: GUARD_FILE, log: guardLog,
+  onHit: (entry) => toRenderer("roca:guard-hit", entry),
+  onRuleDisabled: (info) => toRenderer("roca:guard-rule-disabled", info),
+  onRuleSlow: (info) => toRenderer("roca:guard-rule-slow", info),
+});
+function guardHookInstalled() { return guardHookPresent(CLAUDE_SETTINGS) && existsSync(GUARD_HOOK_SCRIPT); }
+function installGuardHook() {
+  if (IS_WIN) return { ok: false, error: "macOS / Linux only" };
+  if (!agentPresent("claude")) return { ok: false, error: "Claude Code (~/.claude) not found" };
+  readJsonStrict(CLAUDE_SETTINGS);   // a broken settings.json stops here, before anything is written
+  ensurePrivateDir(ROCA_DIR);
+  guardHandler.config();             // creates ~/.roca/guard.json (0600) with the default rules when missing
+  writeFileSync(GUARD_HOOK_SCRIPT, guardHookScript(), { mode: 0o700 }); chmodSync(GUARD_HOOK_SCRIPT, 0o700);
+  installGuardHookAt({ settingsFile: CLAUDE_SETTINGS, command: GUARD_HOOK_SCRIPT, backupDir: ROCA_DIR });
+  startPermServer();
+  return { ok: true };
+}
+function uninstallGuardHook() {
+  uninstallGuardHookAt({ settingsFile: CLAUDE_SETTINGS });   // throws on a broken settings.json: nothing is touched
+  try { unlinkSync(GUARD_HOOK_SCRIPT); } catch {}
+  if (!permHookInstalled()) stopPermServer();
+  return { ok: true };
+}
+const guardView = () => ({ ...guardHandler.config(), file: GUARD_FILE, hook: guardHookInstalled(), available: !IS_WIN, defaults: defaultGuardConfig().rules });
+ipcMain.handle("roca:guard-install", () => { try { return installGuardHook(); } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("roca:guard-uninstall", () => { try { return uninstallGuardHook(); } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("roca:guard-config", () => guardView());
+// { mode?, rules?, allowRepos? } merged over the current file; invalid rules are kept in the file and reported
+ipcMain.handle("roca:guard-save", (_e, patch) => {
+  const p = patch && typeof patch === "object" ? patch : {};
+  try {
+    const cur = guardHandler.config();
+    if (p.mode != null && !GUARD_MODES.includes(p.mode)) return { ok: false, error: "bad mode" };
+    if (p.rules != null && !Array.isArray(p.rules)) return { ok: false, error: "bad rules" };
+    ensurePrivateDir(ROCA_DIR);
+    writeGuardConfig(GUARD_FILE, { mode: p.mode ?? cur.mode, rules: p.rules ?? cur.rules, allowRepos: Array.isArray(p.allowRepos) ? p.allowRepos : cur.allowRepos });
+    guardHandler.reload();
+    return { ok: true, ...guardView() };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+ipcMain.handle("roca:guard-test", (_e, tool, text, mode) => {
+  const tl = ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"].includes(tool) ? tool : "Bash";
+  const s = String(text == null ? "" : text).slice(0, 20000);
+  try { return { ok: true, ...guardHandler.test(tl, tl === "Bash" ? { command: s } : tl === "NotebookEdit" ? { notebook_path: s } : { file_path: s }, mode) }; }
+  catch (e) { return { ok: false, error: e.message }; }
+});
+ipcMain.handle("roca:guard-log", (_e, n) => guardLog.read(Math.min(Number(n) || 500, 2000)));
 // new-version check against GitHub Releases, at most once a day (cached in userData); the renderer shows a badge
 const UPDATE_API = "https://api.github.com/repos/choiminu/AgentDesk/releases/latest";
 const UPDATE_CACHE = join(app.getPath("userData"), "update-check.json");
@@ -1437,6 +1496,8 @@ function teamAutoRevoke() {
 const teamEventThrottle = createEventThrottle();
 let teamBlockNotifyAt = 0;
 const teamRemoteHandlers = {
+  // the guardrail's rule file (built-ins always, plus the user's rules) instead of the fixed table
+  guard: (text) => guardHandler.remote(text),
   async input({ delegation, text }) {
     // the latest snapshot, by full local id: exactly one session, else refuse
     const session = resolveDelegatedSession(teamSnapshot.sessions, delegation.localId);
@@ -1813,7 +1874,7 @@ ipcMain.handle("orca:version", async () => {
   try { const { stdout } = await exec(orcaBin, ["--version"], { timeout: 8000, env: { ...process.env, PATH: EXEC_PATH } }); return stdout.trim(); }
   catch { return null; }
 });
-ipcMain.handle("orca:hooks-status", () => ({ installed: hooksInstalled(), agents: hooksAgents(), script: HOOK_SCRIPT, events: EVENTS_FILE, permHook: permHookInstalled(), permTimeout: permTimeout(), permAvailable: !IS_WIN }));
+ipcMain.handle("orca:hooks-status", () => ({ installed: hooksInstalled(), agents: hooksAgents(), script: HOOK_SCRIPT, events: EVENTS_FILE, permHook: permHookInstalled(), permTimeout: permTimeout(), permAvailable: !IS_WIN, guardHook: guardHookInstalled(), guardAvailable: !IS_WIN }));
 ipcMain.handle("orca:hooks-install", (_e, agents) => { try { return installHooks(agents); } catch (e) { return { ok: false, error: e.message }; } });
 ipcMain.handle("orca:hooks-uninstall", (_e, agents) => { try { return uninstallHooks(agents); } catch (e) { return { ok: false, error: e.message }; } });
 const TEAMS_FILE = join(ROCA_DIR, "teams.json");
@@ -1899,6 +1960,8 @@ app.on("ready", () => {
   startEventsWatch();
   // widget permission approval is on: keep its hook script current and open the decision server
   try { if (permHookInstalled()) { const sh = permHookSh(permTimeout()); if (readFileSync(PERM_HOOK_SCRIPT, "utf-8") !== sh) { writeFileSync(PERM_HOOK_SCRIPT, sh); chmodSync(PERM_HOOK_SCRIPT, 0o700); } startPermServer(); } } catch (e) { console.log("[perm] start failed", e.message); }
+  // guardrail is on: same — keep its hook script current and open the (shared) socket server
+  try { if (guardHookInstalled()) { const sh = guardHookScript(); if (readFileSync(GUARD_HOOK_SCRIPT, "utf-8") !== sh) { writeFileSync(GUARD_HOOK_SCRIPT, sh); chmodSync(GUARD_HOOK_SCRIPT, 0o700); } startPermServer(); } } catch (e) { console.log("[guard] start failed", e.message); }
   createTray();
 });
 

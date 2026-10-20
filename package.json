@@ -70,6 +70,7 @@
       "core/**/*",
       "team/**/*",
       "perm/**/*",
+      "guard/**/*",
       "package.json",
       "assets/**/*"
     ],
