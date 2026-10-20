@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+Tl+rUi+lnMNFbloNDmYRacLi8bGKU/a9xrK5JUNIgg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0RFMGIqmPSBwj27GqogC2UydA8jRbQ6uiAbRAm5xrpU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2315,6 +2315,30 @@
   .s-expand:hover { background: var(--surface-hover); color: var(--text); }
   .session.expanded .s-expand { transform: rotate(90deg); }
   .session.expanded { flex-wrap: wrap; }
+  /* permission request panel (Claude Code PermissionRequest answered from the widget) */
+  .session.has-perm { flex-wrap: wrap; }
+  .perm-panel { flex-basis: 100%; margin-top: 8px; padding: 8px; border: 1px solid var(--yellow); border-radius: var(--radius-md); background: var(--yellow-dim); display: flex; flex-direction: column; gap: 6px; font-size: 10.5px; color: var(--text); cursor: default; }
+  .perm-orphans { margin: 6px 10px 0; display: flex; flex-direction: column; gap: 6px; }
+  .perm-orphans[hidden] { display: none; }
+  .perm-orphans .perm-panel { margin-top: 0; }
+  .perm-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .perm-head b { color: var(--yellow); }
+  .perm-head code, .perm-file code { font-family: var(--mono); font-size: 10px; padding: 0 4px; border-radius: 4px; background: var(--surface-hover); }
+  .perm-sess { font-weight: 600; } .perm-more { color: var(--text3); } .perm-left { margin-left: auto; font-family: var(--mono); color: var(--text3); }
+  .perm-desc { color: var(--text2); }
+  .perm-code { margin: 0; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-all; font-family: var(--mono); font-size: 10px; padding: 6px; border-radius: 6px; background: var(--surface); color: var(--text); }
+  .perm-file { word-break: break-all; } .perm-add { color: var(--green); font-family: var(--mono); } .perm-del { color: var(--red); font-family: var(--mono); }
+  .perm-reason { font: inherit; font-size: 10.5px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  .perm-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .perm-panel.full .perm-code { max-height: none; }
+  .perm-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .perm-full { font: inherit; font-size: 10px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; }
+  .perm-cut { color: var(--red); font-size: 10px; }
+  .perm-btns button { font: inherit; font-size: 10.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); cursor: pointer; }
+  .perm-btns button:focus-visible, .perm-reason:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .perm-btns .perm-allow { border-color: var(--green); color: var(--green); } .perm-btns .perm-deny { border-color: var(--red); color: var(--red); }
+  .perm-btns button:disabled { opacity: 0.5; cursor: default; }
+  .stat.perm { background: var(--yellow-dim); color: var(--yellow); cursor: pointer; font-weight: 700; }
   .s-detail { flex-basis: 100%; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; color: var(--text2); }
   .s-detail .d-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; }
   .s-detail .d-row b { color: var(--text3); font-weight: 600; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -2519,6 +2543,7 @@
       <span class="stat run" title="작업 중"><span class="px-ic pc-on"></span><span id="nRun">0</span></span>
       <span class="stat wait" title="대기 중"><span class="px-ic clock"></span><span id="nWait">0</span></span>
       <span class="stat ask" id="statAsk" title="선택 필요" hidden><span class="ask-mark">?</span><span id="nAsk">0</span></span>
+      <span class="stat perm" id="statPerm" title="위젯에서 답할 수 있는 권한 요청" hidden><span id="statPermLabel">승인 대기</span> <span id="nPerm">0</span></span>
       <span class="stat done" title="완료"><span class="px-ic pc-off"></span><span id="nDone">0</span></span>
     </div>
     <div class="header-controls">
@@ -2552,6 +2577,7 @@
     </div>
     <div class="filters" id="filters" hidden></div>
     <div class="brief-card" id="brief-card" hidden></div>
+    <div class="perm-orphans" id="perm-orphans" hidden></div>
     <div class="list" id="list"></div>
     <div id="chat-panel" class="chat-panel">
       <div class="chat-header">
@@ -2990,6 +3016,16 @@ Object.assign(I18N, {
   '배치한 티켓': 'Dispatched tickets', '하위 작업': 'Subtasks', '담당자 없음': 'Unassigned', '표시할 열이 없습니다': 'No columns to show', '최근 30일': 'last 30 days', '열 보이기': 'Show column', '열 숨기기': 'Hide column',
   '최대 300개까지만 표시합니다': 'Showing at most 300 issues', '프로젝트를 불러오지 못했습니다': 'Could not load projects', '볼 수 있는 Jira 프로젝트가 없습니다': 'No Jira projects visible to you', '보드를 불러오지 못했습니다': 'Could not load the board',
   '티켓에 이 댓글을 등록할까요? 되돌릴 수 없습니다.': ': post this comment to the ticket? This cannot be undone.', '등록 실패': 'Post failed', 'Jira 댓글 등록됨': 'Jira comment posted',
+  '권한 요청': 'Permission request', '승인 대기': 'Pending approval', '이번만 허용': 'Allow once', '허용': 'Allow', '터미널로': 'Ask in terminal', '거부 이유 (선택)': 'Reason for denying (optional)',
+  '위젯에서 권한 승인': 'Approve permissions in the widget', '승인 대기 시간': 'Approval wait', '권한 승인 요청': 'Permission request', '이미 처리되었거나 만료된 요청입니다': 'Already answered or expired',
+  '응답 시간이 지나 터미널에서 묻습니다': 'No answer in time — asking in the terminal', '위젯에서 답할 수 있는 권한 요청': 'Permission requests you can answer here',
+  'Claude Code가 도구 권한을 물을 때 세션 카드에 [허용] [거부] [터미널로] 버튼을 띄웁니다. 터미널 질문도 함께 뜹니다. 먼저 답한 쪽이 적용됩니다. 버튼을 누르기 전에는 아무것도 허용되지 않고, 위젯이 꺼져 있거나 대기 시간이 지나면 터미널 질문만 남습니다. 정확 감지(Claude Code)가 켜져 있어야 하며, 새로 시작하는 세션부터 적용됩니다.': 'When Claude Code asks for a tool permission, the session card shows [Allow] [Deny] [Ask in terminal]. The terminal question appears too; whichever is answered first applies. Nothing is allowed until you press a button; when the widget is closed or the wait runs out, only the terminal question remains. Needs exact detection (Claude Code) on; applies to sessions started from now on.',
+  '이 시간이 지나면 위젯 패널이 닫히고 터미널 질문만 남습니다. 터미널 질문도 함께 뜹니다. 먼저 답한 쪽이 적용됩니다.': 'After this time the widget panel closes and only the terminal question remains. The terminal question appears too; whichever is answered first applies.',
+  'Claude Code 설정(~/.claude/settings.json)의 PermissionRequest에 위젯 승인 훅을 추가합니다 (기존 훅 보존, ~/.roca/에 백업). 버튼을 눌러야만 허용·거부되고, 저장되는 허용 규칙은 없습니다. 진행할까요?': 'Adds the widget approval hook to PermissionRequest in ~/.claude/settings.json (existing hooks kept, backup in ~/.roca/). Requests are only allowed or denied when you press a button, and no allow rule is ever saved. Continue?',
+  '위젯 권한 승인을 켰습니다. 새로 시작하는 Claude Code 세션부터 적용됩니다': 'Widget approval is on. It applies to Claude Code sessions started from now on', '위젯 권한 승인을 껐습니다': 'Widget approval is off',
+  '전체 보기': 'Show all', '전체를 볼 수 없어 터미널에서 확인하세요': 'Not all of it can be shown — check it in the terminal',
+  '입력이 길어 일부만 표시합니다. 허용은 터미널에서 확인한 뒤 하세요.': 'The input is too long to show in full. Allow it from the terminal after checking it there.',
+  '정확 감지(Claude Code)를 먼저 켜세요': 'Turn on exact detection (Claude Code) first', '허용함': 'Allowed', '거부함': 'Denied', '터미널로 넘김': 'Sent to the terminal',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -3410,6 +3446,10 @@ async function fetchData() {
 // ══════════════════════════════════════════
 const hookSessions = new Map();   // claude session_id → state
 let hooksEnabled = false;
+// widget permission approval (opt-in): requests held by perm/server.mjs until a button here is pressed
+let permHookOn = false, permTimeoutSec = 90, permAvailable = true;
+const permReqs = new Map();   // request id → { id, seq, sessionId, cwd, createdAt, expiresAt, summary }
+const permEls = new Map();    // request id → its panel element, kept across dashboard re-renders so a typed reason survives
 let hooksAgents = {};   // { claude: 'on'|'off'|'absent', gemini: ..., codex: ... }
 const AGENT_LABELS = { claude: 'Claude Code', gemini: 'Gemini CLI', codex: 'Codex CLI', opencode: 'OpenCode' };
 function hooksAgentsSummary() {
@@ -3453,6 +3493,7 @@ async function refreshHooksStatus() {
     const r = await window.orca.hooksStatus();
     hooksEnabled = !!r.installed;
     hooksAgents = r.agents || {};
+    permHookOn = !!r.permHook; permTimeoutSec = r.permTimeout || 90; permAvailable = r.permAvailable !== false;
     const btn = $('hooks-toggle');
     btn.classList.toggle('on', hooksEnabled);
     btn.textContent = hooksEnabled ? '정확 감지 켜짐' : '정확 감지 꺼짐';
@@ -3481,6 +3522,119 @@ const hooksReady = refreshHooksStatus().then(async () => {
   if (!hooksEnabled) return;
   for (const rec of await window.orca.hooksRecent()) applyHookEvent(rec);
 }).catch(() => {});
+
+// ── permission requests: one panel per session (oldest request first), on its card or above the list ──
+function permSessionOf(sid) {
+  return sessions.find(x => x.sessionId === sid) || sessions.find(x => { const hk = hookStateFor(x.id); return hk && hk.sid === sid; }) || null;
+}
+function permName(r) { const s = permSessionOf(r.sessionId); return s ? s.name : ((r.cwd || '').split('/').filter(Boolean).pop() || String(r.sessionId).slice(0, 8)); }
+function permSorted() { return [...permReqs.values()].sort((a, b) => a.createdAt - b.createdAt || a.seq - b.seq); }
+const PERM_ARM_MS = 800;   // a panel that just appeared (or moved, or replaced the one before) ignores clicks this long
+function permArm(el) {
+  el.querySelectorAll('.perm-btns button').forEach(b => { b.disabled = true; });
+  clearTimeout(el._armT);
+  el._armT = setTimeout(() => {
+    if (el.dataset.busy) return;
+    el.querySelectorAll('.perm-btns button').forEach(b => { b.disabled = b.dataset.perm === 'allow' && el.dataset.truncated === '1'; });
+  }, PERM_ARM_MS);
+}
+function permPanel(r) {
+  let el = permEls.get(r.id);
+  if (el) return el;
+  const sm = r.summary || {};
+  const pre = text => `<pre class="perm-code">${esc(text)}</pre>`;
+  const body = sm.kind === 'edit'
+    ? `<div class="perm-file"><code>${esc(sm.filePath)}</code> <span class="perm-add">+${esc(sm.added)}</span> <span class="perm-del">-${esc(sm.removed)}</span>${sm.edits != null ? ` <span class="perm-more">edits ×${esc(sm.edits)}</span>` : ''}</div>${sm.preview ? pre(sm.preview) : ''}`
+    : pre(sm.kind === 'bash' ? sm.command : sm.text);
+  const desc = sm.kind === 'bash' ? (sm.desc || '') : '';
+  const cut = !!sm.truncated;
+  el = document.createElement('div'); el.className = 'perm-panel'; el.dataset.permId = r.id; el.dataset.truncated = cut ? '1' : '0';
+  el.innerHTML = `<div class="perm-head"><b>${esc(t('권한 요청'))}</b><code>${esc(sm.tool)}</code><span class="perm-sess"></span><span class="perm-more"></span><span class="perm-left"></span></div>
+    ${desc ? `<div class="perm-desc">${esc(desc)}</div>` : ''}${body}
+    <div class="perm-tools"><button class="perm-full" data-perm-ui="full">${esc(t('전체 보기'))}</button>${cut ? `<span class="perm-cut">${esc(t('입력이 길어 일부만 표시합니다. 허용은 터미널에서 확인한 뒤 하세요.'))}</span>` : ''}</div>
+    <input class="perm-reason" maxlength="300" spellcheck="false" placeholder="${esc(t('거부 이유 (선택)'))}">
+    <div class="perm-btns"><button class="perm-allow" data-perm="allow"${cut ? ` title="${esc(t('전체를 볼 수 없어 터미널에서 확인하세요'))}"` : ''}>${esc(t(sm.hasSuggestions ? '이번만 허용' : '허용'))}</button><button class="perm-deny" data-perm="deny">${esc(t('거부'))}</button><button class="perm-pass" data-perm="pass">${esc(t('터미널로'))}</button></div>`;
+  // own the clicks and keys: the card's click opens chat / selects, and the dashboard has single-key shortcuts
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    if (e.target.closest('[data-perm-ui="full"]')) { el.classList.toggle('full'); e.target.textContent = t(el.classList.contains('full') ? '접기' : '전체 보기'); return; }
+    const b = e.target.closest('[data-perm]');
+    if (b && !b.disabled) permDecide(r.id, b.dataset.perm, el.querySelector('.perm-reason').value, el);
+  });
+  el.addEventListener('keydown', e => e.stopPropagation());
+  el.addEventListener('dblclick', e => e.stopPropagation());
+  permEls.set(r.id, el);
+  permArm(el);
+  return el;
+}
+function permMount() {
+  const box = $('perm-orphans'); if (!box) return;
+  const active = document.activeElement;
+  const focusedPanel = active && active.closest ? active.closest('.perm-panel') : null;
+  const heads = new Map();   // session id → [requests]
+  for (const r of permSorted()) { if (!heads.has(r.sessionId)) heads.set(r.sessionId, []); heads.get(r.sessionId).push(r); }
+  const shown = new Set();
+  for (const [sid, list] of heads) {
+    const r = list[0], el = permPanel(r); shown.add(r.id);
+    el.querySelector('.perm-more').textContent = list.length > 1 ? `+${list.length - 1} ${t('승인 대기')}` : '';
+    const s = permSessionOf(sid);
+    const card = s ? $('list').querySelector(`.session[data-id="${CSS.escape(s.id)}"]`) : null;
+    el.querySelector('.perm-sess').textContent = card ? '' : permName(r);
+    // re-attaching to the re-rendered card keeps the place; moving between the card and the box re-arms the delay
+    const where = card ? 'card:' + s.id : 'box';
+    if (el._where && el._where !== where) permArm(el);
+    el._where = where;
+    if (card) { card.classList.add('has-perm'); if (el.parentNode !== card) card.appendChild(el); }
+    else if (el.parentNode !== box) box.appendChild(el);
+  }
+  for (const [id, el] of permEls) {
+    if (shown.has(id)) continue;
+    el.remove(); if (!permReqs.has(id)) permEls.delete(id);
+  }
+  box.hidden = !box.children.length;
+  if (focusedPanel && focusedPanel.isConnected && document.activeElement !== active) { try { active.focus(); } catch {} }
+  permTick();
+}
+function permTick() {
+  const now = Date.now();
+  for (const [id, el] of permEls) { const r = permReqs.get(id); if (r) el.querySelector('.perm-left').textContent = `${Math.max(0, Math.ceil((r.expiresAt - now) / 1000))}s`; }
+  const n = permReqs.size;
+  $('nPerm').textContent = n; $('statPerm').hidden = n === 0; $('statPermLabel').textContent = t('승인 대기');
+}
+async function permDecide(id, behavior, reason, el) {
+  if (!permReqs.has(id)) return;
+  if (el) { el.dataset.busy = '1'; el.querySelectorAll('.perm-btns button').forEach(b => { b.disabled = true; }); }
+  let r = { ok: false };
+  try { r = await window.orca.permDecide(id, behavior, behavior === 'deny' ? String(reason || '').slice(0, 300) : ''); } catch {}
+  const req = permReqs.get(id);
+  permReqs.delete(id); permMount();
+  if (!r.ok) { showInAppToast(t('이미 처리되었거나 만료된 요청입니다'), 'error'); return; }
+  if (req) showInAppToast(`${t(behavior === 'allow' ? '허용함' : behavior === 'deny' ? '거부함' : '터미널로 넘김')}: ${permName(req)} · ${req.summary ? req.summary.tool : ''}`);
+}
+function permAdd(r) {
+  if (!r || typeof r.id !== 'string' || permReqs.has(r.id)) return false;
+  permReqs.set(r.id, r); return true;
+}
+window.orca.onPermRequest(r => {
+  if (!permAdd(r)) return;
+  const name = permName(r), sm = r.summary || {};
+  window.orca.notify(t('권한 승인 요청'), `${name}: ${sm.tool || ''} ${trunc(sm.kind === 'bash' ? sm.command : sm.text || '', 80)}`);
+  showInAppToast(`🔐 ${name}: ${t('권한 요청')} · ${sm.tool || ''}`);
+  permMount();
+});
+window.orca.onPermResolved(({ id, why }) => {
+  const r = permReqs.get(id); if (!r) return;
+  permReqs.delete(id); permMount();
+  if (why === 'timeout') showInAppToast(`${permName(r)}: ${t('응답 시간이 지나 터미널에서 묻습니다')}`, 'error');
+});
+$('statPerm').addEventListener('click', () => {
+  showPage('dashboard');
+  // focus goes to [터미널로], never to [허용]: an Enter / Space meant for something else must not allow anything
+  const el = document.querySelector('.perm-panel'); if (el) { el.scrollIntoView({ block: 'center' }); const b = el.querySelector('.perm-pass'); if (b) b.focus(); }
+});
+setInterval(() => { if (permReqs.size) permTick(); }, 1000);
+// requests that arrived while this page was not loaded (reload, dev tools)
+hooksReady.then(async () => { try { for (const r of await window.orca.permList()) permAdd(r); permMount(); } catch {} });
 
 let orcaAvailable = true;
 // data-source mode: 'auto' picks Orca when its CLI answers, otherwise hooks; 'orca' / 'hooks' force one
@@ -3838,6 +3992,7 @@ function renderDashboard() {
       : '세션이 없습니다';
     const emptyIcon = tab === 'running' ? '⏳' : tab === 'done' ? '🎉' : '📭';
     $('list').innerHTML = `<div class="empty"><span class="empty-icon">${emptyIcon}</span><span class="empty-text">${emptyMsg}</span></div>${hiddenNote}`;
+    permMount();
     return;
   }
   items.sort((a, b) => {
@@ -3884,6 +4039,7 @@ function renderDashboard() {
   if (location.hash.includes('list-bottom')) setTimeout(() => { $('list').scrollTop = $('list').scrollHeight; }, 50);
   for (const id of expandedIds) { const s = sessions.find(x => x.id === id); if (s && $('list').querySelector(`.d-notes[data-notes-for="${CSS.escape(id)}"]`)) loadNotesFor(s); }
   if (officeAsk && officeAsk.anchor) officeAskPlace();
+  permMount();
 }
 // recall notes for an expanded card (per session, cached a minute)
 const notesCache = new Map();
@@ -8267,6 +8423,8 @@ function settingsRender() {
     ${row(t('테마'), t('시스템 설정을 따르거나 라이트/다크로 고정합니다.'), seg('theme', currentTheme, [['system', t('시스템')], ['light', t('라이트')], ['dark', t('다크')]]))}
     <h2>${esc(t('감지와 알림'))}</h2>
     ${row(t('정확 감지 (에이전트 훅)'), (() => { const s = hooksAgentsSummary(); return (hooksEnabled ? t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 세션도 표시됩니다.') : t('꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.')) + (s.on.length ? ` · ${t('켜짐')}: ${s.on.join(', ')}` : '') + (s.off.length ? ` · ${t('꺼짐')}: ${s.off.join(', ')}` : ''); })(), sw('hooks', hooksEnabled))}
+    ${permAvailable ? row(t('위젯에서 권한 승인'), t('Claude Code가 도구 권한을 물을 때 세션 카드에 [허용] [거부] [터미널로] 버튼을 띄웁니다. 터미널 질문도 함께 뜹니다. 먼저 답한 쪽이 적용됩니다. 버튼을 누르기 전에는 아무것도 허용되지 않고, 위젯이 꺼져 있거나 대기 시간이 지나면 터미널 질문만 남습니다. 정확 감지(Claude Code)가 켜져 있어야 하며, 새로 시작하는 세션부터 적용됩니다.'), sw('perm-hook', permHookOn)) : ''}
+    ${permAvailable && permHookOn ? row(t('승인 대기 시간'), t('이 시간이 지나면 위젯 패널이 닫히고 터미널 질문만 남습니다. 터미널 질문도 함께 뜹니다. 먼저 답한 쪽이 적용됩니다.'), seg('perm-timeout', String(permTimeoutSec), [['60', '60s'], ['90', '90s'], ['180', '180s'], ['300', '300s']])) : ''}
     ${row(t('진행 요약 한 줄'), t('작업 중·대기 중 세션의 최근 대화를 Haiku가 한 문장으로 요약해 카드에 표시합니다 (세션당 5분에 한 번).'), sw('now-summary', nowEnabled))}
     ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
     <h2>${esc(t('슬랙 창구'))}</h2>
@@ -8316,6 +8474,20 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'theme' && v) applyTheme(v);
   else if (name === 'hooks') { $('hooks-toggle').click(); setTimeout(settingsRender, 600); }
   else if (name === 'sound') { $('office-sound').click(); settingsRender(); }
+  else if (name === 'perm-hook') {
+    if (!permHookOn) {
+      if (hooksAgents.claude !== 'on') { showInAppToast(t('정확 감지(Claude Code)를 먼저 켜세요'), 'error'); return; }
+      if (!confirm(t('Claude Code 설정(~/.claude/settings.json)의 PermissionRequest에 위젯 승인 훅을 추가합니다 (기존 훅 보존, ~/.roca/에 백업). 버튼을 눌러야만 허용·거부되고, 저장되는 허용 규칙은 없습니다. 진행할까요?'))) return;
+      const r = await window.orca.permInstall();
+      showInAppToast(r.ok ? t('위젯 권한 승인을 켰습니다. 새로 시작하는 Claude Code 세션부터 적용됩니다') : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
+    } else {
+      const r = await window.orca.permUninstall();
+      showInAppToast(r.ok ? t('위젯 권한 승인을 껐습니다') : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
+      permReqs.clear(); permMount();
+    }
+    await refreshHooksStatus(); settingsRender();
+  }
+  else if (name === 'perm-timeout' && v) { const r = await window.orca.permConfig(Number(v)); if (!r.ok) showInAppToast(`${t('작업 실패')}: ${r.error || ''}`, 'error'); await refreshHooksStatus(); settingsRender(); }
   else if (name === 'peer-office') { peerOfficeOn = !peerOfficeOn; try { localStorage.setItem('roca-office-peers', peerOfficeOn ? '1' : '0'); } catch {} settingsRender(); }
   else if (name === 'zoom' && v) { const sel = $('office-zoom'); sel.value = v; sel.dispatchEvent(new Event('change')); settingsRender(); }
   else if (name === 'onboarding') { onboardStep = 0; onboardOpen(); }
