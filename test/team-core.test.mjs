@@ -11,6 +11,18 @@ test('publicSessionId matches what sanitizeSessions sends', () => {
   }
 });
 
+test('publicSessionId: s_ + 24 hex of sha256(full id) — Orca worktrees of one repo differ, no path leaves, stable on re-sanitize', async () => {
+  const { createHash } = await import('node:crypto');
+  const a = '3a17eda1-0000-4000-8000-000000000000::/Users/neo/project/payout', b = '3a17eda1-0000-4000-8000-000000000000::/Users/neo/project/main';
+  assert.notEqual(T.publicSessionId(a), T.publicSessionId(b), 'same repo id before "::", different worktrees');
+  assert.equal(T.publicSessionId(a), 's_' + createHash('sha256').update(a).digest('hex').slice(0, 24));
+  assert.match(T.publicSessionId(a), T.PUBLIC_ID_RE);
+  assert.ok(!T.publicSessionId(a).includes('Users') && !T.publicSessionId(a).includes('3a17eda1'));
+  assert.equal(T.publicSessionId(T.publicSessionId(a)), T.publicSessionId(a), 'a teammate\'s id is kept when sanitized again');
+  assert.equal(sanitizeSessions(sanitizeSessions([{ id: a }]))[0].id, T.publicSessionId(a));
+  for (const x of ['', 'abc', '한글 경로 ✓', 'x'.repeat(5000)]) assert.equal(T.sha256hex(x), createHash('sha256').update(x).digest('hex'), `sha256 of ${x.slice(0, 10)}`);
+});
+
 const mine = [
   { id: 'm1', name: 'wt-pay', repo: 'payments', branch: 'feat/x', status: 'running', files: ['src/ChargebackDBWrap.java', 'README.md'] },
   { id: 'm2', name: 'wt-doc', repo: 'docs', branch: 'main', status: 'waiting', files: [] },
@@ -80,5 +92,4 @@ test('clean: control / line-separator characters out, whitespace collapsed, boun
   assert.equal(T.clean(' a\n\n b\u2028c\u0000 '), 'a b c');
   assert.equal(T.clean('x'.repeat(50), 10), 'x'.repeat(10));
   assert.equal(T.clean(null), '');
-  assert.equal(T.publicSessionId('y'.repeat(200)).length, 80);
 });
