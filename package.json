@@ -68,6 +68,7 @@
       "widget.html",
       "preload.cjs",
       "core/**/*",
+      "diff/**/*",
       "team/**/*",
       "perm/**/*",
       "guard/**/*",

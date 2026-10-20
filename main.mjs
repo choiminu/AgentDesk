@@ -16,6 +16,7 @@ import { openPermEndpoint, ensurePrivateDir, permHookScript as permHookSh, guard
 import { readJsonStrict, writeJsonAtomic, backupPrivate, permHookPresent, installPermHookAt, uninstallPermHookAt, guardHookPresent, installGuardHookAt, uninstallGuardHookAt } from "./perm/settings.mjs";
 import { createGuardHandler, createGuardLog, writeGuardConfig, defaultGuardConfig, GUARD_MODES } from "./guard/guard.mjs";
 import * as jiraOAuth from "./jira-oauth.mjs";
+import { diffStat, diffFile, insideRepo, setGitPath } from "./diff/git.mjs";   // also loads core/diff.js (globalThis.AgentDeskDiff)
 
 const exec = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -1180,8 +1181,16 @@ const permTimeout = () => { const n = Number(readJsonFile(PERM_CFG_FILE).timeout
 function permHookInstalled() { return permHookPresent(CLAUDE_SETTINGS) && existsSync(PERM_HOOK_SCRIPT); }
 // session ids seen in hook events (Claude Code only): the server answers only requests from these sessions
 const knownSessions = new Set();
+// every directory a hook session reported (any agent): the diff view only reads a hook session's cwd when it is here
+const hookCwds = new Map();   // session_id → Set(cwd)
 function noteKnownSession(rec) {
   const sid = rec && rec.ev && rec.ev.session_id;
+  if (typeof sid === "string" && sid) for (const c of [rec.ev.cwd, rec.ev.new_cwd]) {
+    if (typeof c !== "string" || !c) continue;
+    if (hookCwds.size > 5000) hookCwds.clear();
+    if (!hookCwds.has(sid)) hookCwds.set(sid, new Set());
+    hookCwds.get(sid).add(c);
+  }
   if (typeof sid !== "string" || !sid || (rec.agent && rec.agent !== "claude")) return;
   if (knownSessions.size > 5000) knownSessions.clear();
   knownSessions.add(sid);
@@ -1866,6 +1875,98 @@ ipcMain.handle("roca:recall-notes", async (_e, cwd, limit) => {
     const own = await run(["--worktree", cwd.split("/").filter(Boolean).pop()]);
     return own.length ? own : await run([]);
   } catch { return []; }
+});
+// ── worktree diff view + review comments (diff/git.mjs, core/diff.js). The renderer names a session id only: the directory
+//    comes from what this process learned itself (Orca `worktree ps`, hook events), file paths must be in the last stat. ──
+setGitPath(EXEC_PATH);
+let diffPsCache = { at: 0, list: [] }, diffSeedAt = 0;
+async function orcaWorktreeList() {
+  if (Date.now() - diffPsCache.at < 10000) return diffPsCache.list;
+  const r = await orca("worktree", "ps");
+  const list = r && r.ok !== false && r.result && Array.isArray(r.result.worktrees) ? r.result.worktrees : [];
+  diffPsCache = { at: Date.now(), list };
+  return list;
+}
+async function diffSessionCwd(sessionId) {
+  const id = typeof sessionId === "string" ? sessionId : "";
+  if (!id || id.length > 4096) return "";
+  const m = id.match(/^hook:([^:]+)::(.+)$/);
+  if (m) {
+    // the event log may hold it from before this run (re-read at most every 30 s: the id comes from the renderer)
+    if (!hookCwds.has(m[1]) && Date.now() - diffSeedAt > 30000) { diffSeedAt = Date.now(); seedKnownSessions(); }
+    const seen = hookCwds.get(m[1]);
+    return seen && seen.has(m[2]) ? m[2] : "";
+  }
+  const w = (await orcaWorktreeList()).find(x => x && x.worktreeId === id);
+  return w ? String(w.path || String(w.worktreeId).split("::").pop() || "") : "";
+}
+const diffCache = new Map();   // session id → { scope (requested), top, fullBase, paths: Map(path → entry), at }
+const diffStatSeq = AgentDeskDiff.createSeq();   // per session: the newest stat request wins
+const diffFails = new Map();    // session id → { n, until }: failed stats back off 60 s, then 5 min
+// what the renderer sees of a failure: no absolute path, no git stderr (that goes to the log only)
+function diffErr(where, e) {
+  console.error(`[diff] ${where}: ${e && e.message ? e.message : e}`);
+  return e && (e.killed || e.signal === "SIGTERM" || e.code === "ETIMEDOUT") ? "시간 초과" : "git 실행 실패";
+}
+ipcMain.handle("roca:diff-stat", async (_e, req = {}) => {
+  const sessionId = req && typeof req.sessionId === "string" ? req.sessionId : "", scope = req && req.scope === "branch" ? "branch" : "working";
+  const seq = diffStatSeq.next(sessionId);
+  const fail = diffFails.get(sessionId);
+  if (fail && Date.now() < fail.until) return { ok: false, error: "git 실행 실패", backoff: true, retryAt: fail.until };
+  try {
+    const cwd = await diffSessionCwd(sessionId);
+    if (!cwd) return { ok: true, empty: true, reason: "unknown-session", files: [], untracked: [], total: { add: 0, del: 0, files: 0 } };
+    const r = await diffStat(cwd, scope);
+    diffFails.delete(sessionId);
+    if (!diffStatSeq.isLatest(sessionId, seq)) return { ok: false, stale: true };   // a newer request (other scope) is on its way
+    if (r.empty) { diffCache.delete(sessionId); return r; }
+    if (diffCache.size > 200) diffCache.clear();
+    diffCache.set(sessionId, { scope, top: r.top, fullBase: r.fullBase, paths: r.paths, at: Date.now() });
+    const { top, paths, fullBase, ...out } = r;   // the absolute path stays here
+    return { ...out, requested: scope };
+  } catch (e) {
+    const n = ((diffFails.get(sessionId) || {}).n || 0) + 1;
+    if (diffFails.size > 500) diffFails.clear();
+    diffFails.set(sessionId, { n, until: Date.now() + (n >= 2 ? 300000 : 60000) });
+    return { ok: false, error: diffErr("stat", e) };
+  }
+});
+ipcMain.handle("roca:diff-file", async (_e, req = {}) => {
+  try {
+    const c = diffCache.get(req && req.sessionId);
+    if (!c) return { ok: false, stale: true, error: "no diff-stat for this session" };
+    // the cached list belongs to the other scope (the toggle raced): the renderer asks for the stat again
+    if ((req.scope === "branch" ? "branch" : "working") !== c.scope) return { ok: false, stale: true, error: "scope changed" };
+    if (!AgentDeskDiff.pathAllowed(req.path, c.paths)) return { ok: false, error: "path not in the last diff-stat" };
+    return await diffFile(c.top, c.fullBase, c.paths.get(req.path));
+  } catch (e) { return { ok: false, error: diffErr("file", e) }; }
+});
+ipcMain.handle("roca:diff-open-file", (_e, req = {}) => {
+  const c = diffCache.get(req && req.sessionId);
+  if (!c || !AgentDeskDiff.pathAllowed(req.path, c.paths)) return { ok: false, error: "path not in the last diff-stat" };
+  const real = insideRepo(c.top, req.path);
+  if (!real) return { ok: false, error: "not found inside the repository" };
+  shell.showItemInFolder(real);
+  return { ok: true };
+});
+ipcMain.handle("roca:diff-comment-send", async (_e, req = {}) => {
+  try {
+    // the same function (same filter, same order) as the renderer's preview; paths only have to be plain relative
+    // paths — no file is read, a comment on a file that left the list since is still sent
+    const msg = AgentDeskDiff.commentMessage(req.comments, req.summary, req.lang === "en" ? "en" : "ko");
+    if (!msg.count) return { ok: false, error: "no comments", sent: [], dropped: msg.dropped };
+    const session = resolveDelegatedSession(teamSnapshot.sessions, req.sessionId);
+    const h = session && typeof session.handle === "string" ? session.handle : "";
+    if (!h) return { ok: false, error: "no terminal for this session", sent: [], dropped: msg.dropped };
+    // fail closed: an unreadable screen, a choice / permission prompt (Enter would pick an option) or a draft at the
+    // ❯ prompt (the text would be merged into it) → not sent. A running turn is fine: Claude Code queues the message.
+    let tail = null;
+    try { const res = await terminalRead(h, true); tail = res && res.result && res.result.terminal && res.result.terminal.tail; } catch { tail = null; }
+    if (!screenAllowsInput(tail, { anyTurn: true })) return { ok: false, busy: true, error: "busy", sent: [], dropped: msg.dropped };
+    const r = await terminalSend(h, msg.text, true, 15);
+    if (!r || r.ok === false) { console.error(`[diff] send: ${(r && r.error) || "send failed"}`); return { ok: false, error: "전송 실패", sent: [], dropped: msg.dropped }; }
+    return { ok: true, count: msg.count, sent: msg.sent, dropped: msg.dropped, accepted: !!(r.result && r.result.send && r.result.send.accepted) };
+  } catch (e) { console.error(`[diff] send: ${e.message}`); return { ok: false, error: "전송 실패", sent: [], dropped: [] }; }
 });
 ipcMain.handle("roca:open-external", (_e, url) => { if (/^https:\/\/github\.com\//.test(String(url))) shell.openExternal(url); });
 
