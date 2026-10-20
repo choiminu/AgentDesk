@@ -6,9 +6,9 @@ import { dirname, join, delimiter as PATH_DELIM } from "node:path";
 import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync, mkdtempSync, rmSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
-import { readTeamConfig, startTeamServer, fetchPeer, postNote, postHello, ensureInstanceId, addPeerToConfig, validateNote, setTeamFields, newTeamToken, encodeInvite, decodeInvite, TEAM_CFG } from "./team/peer.mjs";
+import { readTeamConfig, startTeamServer, fetchPeer, postNote, postHello, ensureInstanceId, addPeerToConfig, removePeerFromConfig, upsertPeer, classifyMove, onHomeNetwork, withHomeSubnets, UUID_RE, validateNote, setTeamFields, newTeamToken, rotateTeamToken, encodeInvite, decodeInvite, writeTeamJson, isShared, sameSubnet, TEAM_CFG } from "./team/peer.mjs";
 import { startDiscovery } from "./team/discovery.mjs";
-import { defaultTeamConfig, defaultName, lanAddress, nodeRunner } from "./team/setup.mjs";
+import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { randomUUID } from "node:crypto";
 import * as jiraOAuth from "./jira-oauth.mjs";
 
@@ -85,8 +85,13 @@ function createWindow() {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,   // the preload only uses contextBridge / ipcRenderer / webUtils
     },
   });
+  // the widget is one local page: no pop-up windows, no navigating away (a dropped file or a stray link included)
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.webContents.on("will-navigate", (e) => e.preventDefault());
+  if (!app.isPackaged) import("./scripts/csp-hash.mjs").then(m => { const r = m.checkWidgetCsp(join(__dirname, "widget.html")); if (!r.ok) console.error(`[csp] widget.html inline script hash is stale — the page will not run. Fix: node scripts/csp-hash.mjs --write`); }).catch(() => {});
 
   mainWindow.loadFile("widget.html", process.env.ROCA_START_PAGE ? { hash: process.env.ROCA_START_PAGE } : undefined);
   if (process.env.ROCA_SHOT) {
@@ -941,7 +946,13 @@ ipcMain.handle("orca:clipboard-write", (_e, text) => { clipboard.writeText(text)
 
 // ── Port Monitor ──
 const execAsync = promisify(execCb);
+let scannedPids = new Set();   // PIDs from the last port scan: the only ones orca:kill-process may signal
 ipcMain.handle("orca:scan-ports", async () => {
+  const ports = await scanPorts();
+  scannedPids = new Set(ports.map(p => p.pid).filter(Boolean));
+  return ports;
+});
+async function scanPorts() {
   if (IS_WIN) return [];
   if (IS_LINUX) {
     try {
@@ -980,9 +991,11 @@ ipcMain.handle("orca:scan-ports", async () => {
     ports.sort((a, b) => a.port - b.port);
     return ports;
   } catch { return []; }
-});
+}
 
 ipcMain.handle("orca:kill-process", async (_e, pid) => {
+  // only a PID the port monitor itself listed (never this app, never an arbitrary number from the page)
+  if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid || !scannedPids.has(pid)) throw new Error("not a listed process");
   try {
     process.kill(pid, "SIGTERM");
     return true;
@@ -1006,6 +1019,8 @@ function hookCommand(agent) {
 const EVENTS_FILE = join(ROCA_DIR, "events.jsonl");
 const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
 const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "Notification", "PermissionRequest", "SubagentStart", "SubagentStop", "SessionEnd", "PostCompact"];
+// extended events (Claude Code 2.1.x docs); an older Claude Code may ignore or warn about unknown keys
+const HOOK_EVENTS_EXT = ["StopFailure", "PermissionDenied", "TaskCreated", "TaskCompleted", "PreCompact", "CwdChanged"];
 const HOOK_PS1 = `param([string]$Agent = "claude")
 # AgentDesk hook (Windows): append the agent's hook payload to %USERPROFILE%\\.roca\\events.jsonl and exit immediately.
 $f = Join-Path $env:USERPROFILE ".roca\\events.jsonl"
@@ -1037,7 +1052,7 @@ exit 0
 //   gemini: ~/.gemini/settings.json  "hooks" (BeforeAgent/AfterAgent/BeforeTool/AfterTool…, timeout in ms)
 //   codex:  ~/.codex/hooks.json      "hooks" (same event names as Claude Code)
 const AGENT_HOOKS = {
-  claude: { label: "Claude Code", dir: join(homedir(), ".claude"), settings: CLAUDE_SETTINGS, events: HOOK_EVENTS,
+  claude: { label: "Claude Code", dir: join(homedir(), ".claude"), settings: CLAUDE_SETTINGS, events: [...HOOK_EVENTS, ...HOOK_EVENTS_EXT],
             entry: () => ({ hooks: [{ type: "command", command: hookCommand("claude"), timeout: 5, async: true }] }) },
   gemini: { label: "Gemini CLI", dir: join(homedir(), ".gemini"), settings: join(homedir(), ".gemini", "settings.json"),
             events: ["SessionStart", "SessionEnd", "BeforeAgent", "AfterAgent", "BeforeTool", "AfterTool", "Notification", "PreCompress"],
@@ -1269,30 +1284,38 @@ ipcMain.handle("roca:inbox-restart", () => { if (slackChild) { try { slackChild.
 // session notes written by recall/ (MongoDB) for a checkout: spawn the CLI, which knows the worktree/repo rules; [] when unavailable
 const RECALL_CLI = [join(__dirname, "recall", "cli.mjs"), join(homedir(), "project", "agentdesk-internal", "recall", "cli.mjs"), join(homedir(), "orca-widget", "recall", "cli.mjs")].find(p => existsSync(p)) || null;
 // ── team sharing: publish my sessions on the office network, poll teammates', find them by UDP beacon, take notes — see team/*.mjs ──
-let teamCfg = null, teamServer = null, teamServerKey = "", teamStatus = { configured: false, listening: false, error: "", name: "", port: 0, instanceId: "", peers: {}, discovered: [], discovery: false };
+let teamCfg = null, teamServer = null, teamServerKey = "", teamStatus = { configured: false, listening: false, error: "", name: "", port: 0, instanceId: "", peers: {}, discovered: [], discovery: false, shared: false, pending: [] };
 let teamSnapshot = { at: 0, sessions: [] };
 let teamDiscovery = null, teamDiscoveryKey = "";
-// first run: write a team.json of our own (name = login name, no token, no peers) so the beacon and the invite flow work
-// without hand-editing. Only once per install — deleting team.json later turns team sharing off and keeps it off.
+// first run: write a team.json of our own (name = login name, no token, no peers, 127.0.0.1 only, no beacon) so the
+// invite flow works without hand-editing. Nothing is visible on the network until the user creates or joins a team.
+// Only once per install — deleting team.json later turns team sharing off and keeps it off.
 const TEAM_AUTOCREATED = join(app.getPath("userData"), "team-autocreated");
+const teamWriteDefault = () => writeTeamJson(TEAM_CFG, defaultTeamConfig({ name: defaultName(), instanceId: randomUUID() }));
 function teamFirstRun() {
   if (existsSync(TEAM_AUTOCREATED)) return;
   try {
-    if (!existsSync(TEAM_CFG)) { mkdirSync(dirname(TEAM_CFG), { recursive: true }); writeFileSync(TEAM_CFG, JSON.stringify(defaultTeamConfig({ name: defaultName(), instanceId: randomUUID() }), null, 2) + "\n", { mode: 0o600 }); }
+    if (!existsSync(TEAM_CFG)) teamWriteDefault();
     writeFileSync(TEAM_AUTOCREATED, String(Date.now()));
   } catch {}
 }
 const teamFound = new Map();      // instanceId → { name, host, id, at } heard through the beacon
 const teamPeerState = new Map();  // peer name → { etag, theirAt, fails, nextAt, ... } (connection quality + backoff)
+// signed hellos wait here until the user says [추가] / [무시]: a new teammate, or a known one at a new address
+const teamPendingHellos = new Map();   // `${host}|${instanceId}` → { key, name, host, instanceId, kind: 'new'|'move', existing, from, at }
+const teamHelloIgnored = new Set();    // keys the user ignored this run (not asked again until restart)
 const TEAM_NOTES = join(homedir(), ".agentdesk", "team-notes.jsonl");
 let teamNotes = [];               // newest last, at most 100: { id, at, to, toName, from, text, state: 'new'|'sent'|'ignored' }
 try { teamNotes = readFileSync(TEAM_NOTES, "utf-8").split("\n").filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(n => n && n.id).slice(-100); } catch {}
-function teamNotesSave() { try { mkdirSync(dirname(TEAM_NOTES), { recursive: true }); writeFileSync(TEAM_NOTES, teamNotes.map(n => JSON.stringify(n)).join("\n") + (teamNotes.length ? "\n" : ""), { mode: 0o600 }); } catch {} }
+// ~/.agentdesk is private to this user (0700) and the notes file 0600, also when it already existed
+function teamPrivateDir() { const d = dirname(TEAM_NOTES); mkdirSync(d, { recursive: true, mode: 0o700 }); try { chmodSync(d, 0o700); } catch {} }
+function teamNotesWrite(data, append) { teamPrivateDir(); writeFileSync(TEAM_NOTES, data, { mode: 0o600, ...(append ? { flag: "a" } : {}) }); try { chmodSync(TEAM_NOTES, 0o600); } catch {} }
+function teamNotesSave() { try { teamNotesWrite(teamNotes.map(n => JSON.stringify(n)).join("\n") + (teamNotes.length ? "\n" : "")); } catch {} }
 function teamOnNote(note) {
   const n = { ...note, state: "new" };
   teamNotes.push(n);
   if (teamNotes.length > 100) { teamNotes = teamNotes.slice(-100); teamNotesSave(); }
-  else { try { mkdirSync(dirname(TEAM_NOTES), { recursive: true }); writeFileSync(TEAM_NOTES, JSON.stringify(n) + "\n", { flag: "a", mode: 0o600 }); } catch {} }
+  else { try { teamNotesWrite(JSON.stringify(n) + "\n", true); } catch {} }
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:team-note", n);
 }
 ipcMain.on("roca:team-publish", (_e, sessions) => { teamSnapshot = { at: Date.now(), sessions: Array.isArray(sessions) ? sessions : [] }; });
@@ -1300,14 +1323,21 @@ function teamStopDiscovery() { if (teamDiscovery) { try { teamDiscovery.stop(); 
 function teamReload() {
   let cfg = readTeamConfig();
   teamStatus.configured = !!cfg; teamStatus.error = cfg && cfg.error ? cfg.error : "";
-  if (!cfg || cfg.error) { teamCfg = null; teamStopDiscovery(); if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; teamStatus.listening = false; } return; }
+  if (!cfg || cfg.error) { teamCfg = null; teamStatus.shared = false; teamStopDiscovery(); if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; teamStatus.listening = false; } return; }
   if (!cfg.instanceId) { try { cfg = { ...cfg, instanceId: ensureInstanceId() }; } catch {} }
   teamCfg = cfg; teamStatus.name = cfg.name; teamStatus.port = cfg.port; teamStatus.instanceId = cfg.instanceId || ""; teamStatus.hasToken = !!cfg.token;
+  // away from the office network(s) remembered at create / join: no beacon, server back on 127.0.0.1, nobody polled —
+  // until an interface is on one of them again (checked every 30 s)
+  const home = onHomeNetwork(cfg.homeSubnets);
+  teamStatus.paused = isShared(cfg) && !home; teamStatus.shared = isShared(cfg) && home;
+  teamStatus.bind = teamStatus.shared ? cfg.bind : "127.0.0.1"; teamStatus.homeSubnets = cfg.homeSubnets || null;
   for (const k of [...teamPeerState.keys()]) if (!cfg.peers.some(p => p.name === k)) teamPeerState.delete(k);
-  // beacon: on unless team.json says "discovery": false; restarted when the advertised name/port changes
-  const dKey = cfg.discovery === false ? "" : `${cfg.name}:${cfg.port}:${cfg.instanceId}`;
+  // the page's peer list follows team.json right away (a removed teammate disappears; sharing off → nobody is polled)
+  teamStatus.peers = Object.fromEntries(cfg.peers.map(p => [p.name, teamStatus.shared && teamStatus.peers[p.name] ? teamStatus.peers[p.name] : { name: p.name, host: p.host, ok: false, error: teamStatus.shared ? "" : teamStatus.paused ? "paused" : "sharing off", sessions: [], fails: 0 }]));
+  // beacon: only while sharing, and unless team.json says "discovery": false; restarted when the advertised name/port changes
+  const dKey = !teamStatus.shared || cfg.discovery === false ? "" : `${cfg.name}:${cfg.port}:${cfg.instanceId}`;
   if (dKey !== teamDiscoveryKey) {
-    teamStopDiscovery();
+    teamStopDiscovery(); teamFound.clear();
     if (dKey) {
       try {
         teamDiscovery = startDiscovery({ name: cfg.name, port: cfg.port, id: cfg.instanceId, onPeer: p => teamFound.set(p.id, p), onError: () => teamStopDiscovery() });
@@ -1315,43 +1345,71 @@ function teamReload() {
       } catch { teamStopDiscovery(); }
     }
   }
-  const key = `${cfg.bind}:${cfg.port}`;
+  const key = `${teamStatus.bind}:${cfg.port}`;
   if (teamServer && teamServerKey === key) return;
   if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; }
-  // the server reads teamCfg on every request through this live view, so a token / name edit applies without a restart
-  const live = { get name() { return teamCfg ? teamCfg.name : cfg.name; }, get token() { return teamCfg ? teamCfg.token : cfg.token; }, get instanceId() { return teamCfg ? teamCfg.instanceId : cfg.instanceId; } };
+  // the server reads teamCfg on every request through this live view, so a token / name / peer edit applies without a restart
+  const live = { get name() { return teamCfg ? teamCfg.name : cfg.name; }, get token() { return teamCfg ? teamCfg.token : cfg.token; }, get instanceId() { return teamCfg ? teamCfg.instanceId : cfg.instanceId; }, get peers() { return teamCfg ? teamCfg.peers : cfg.peers; } };
   const srv = startTeamServer(live, () => teamSnapshot, { onNote: teamOnNote, onHello: teamOnHello });
   srv.once("error", (e) => { teamStatus.listening = false; teamStatus.error = `listen ${key}: ${e.code || e.message}`; teamServer = null; });
-  srv.listen(cfg.port, cfg.bind, () => { teamStatus.listening = true; teamStatus.error = ""; });
+  srv.listen(cfg.port, teamStatus.bind, () => { teamStatus.listening = true; teamStatus.error = ""; });
   teamServer = srv; teamServerKey = key;
 }
-// a teammate who joined with my invite code (or added me from discovery) says hello: they become / stay my peer.
-// Same instanceId → only the address is updated (their IP changed).
+// a teammate who joined with my invite code (or added me from discovery) says hello with a valid signature. A new
+// teammate, or a known instance at a new address, waits for the user's [추가] / [무시]; only filling in the instance id
+// of an address I already have is applied directly.
 function teamOnHello(peer) {
-  const r = addPeerToConfig(TEAM_CFG, peer);
-  if (r.ok && (r.added || r.updated)) { teamReload(); if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:team-joined", { name: r.name, added: r.added }); }
-  return r;
+  if (!teamCfg) return { ok: false, error: "team sharing is off" };
+  const r = upsertPeer(teamCfg.peers, peer);
+  if (r.change === "none") return { ok: true };
+  if (r.change === "updated") { addPeerToConfig(TEAM_CFG, peer); teamReload(); return { ok: true }; }
+  const key = `${peer.host}|${peer.instanceId || ""}`;
+  if (teamHelloIgnored.has(key) || teamPendingHellos.has(key) || teamMoveChecks.has(key)) return { ok: true, pending: true };
+  const item = { key, name: peer.name, host: peer.host, instanceId: peer.instanceId || "", kind: r.change === "moved" ? "move" : "new", existing: r.change === "moved" ? r.name : "", from: r.from || "", at: Date.now() };
+  if (item.kind === "new") { teamQueueHello(item); return { ok: true, pending: true }; }
+  // "I moved": if the old address still answers a signed ping as that instance, this hello is someone else claiming
+  // the seat → refused (log only). Only a silent old address becomes a change request.
+  teamMoveChecks.add(key);
+  classifyMove({ oldHost: item.from, instanceId: item.instanceId }, teamCfg.token)
+    .then(v => { if (v === "reject") console.log(`[team] hello from ${item.host} claims @${item.existing} (${item.from} still answers) — refused`); else teamQueueHello({ ...item, oldSilent: true }); })
+    .catch(() => {}).finally(() => teamMoveChecks.delete(key));
+  return { ok: true, pending: true };
+}
+const teamMoveChecks = new Set();   // move hellos whose old address is being checked
+function teamQueueHello(item) {
+  if (!teamCfg || teamPendingHellos.has(item.key)) return;
+  if (teamPendingHellos.size >= 20) teamPendingHellos.delete(teamPendingHellos.keys().next().value);
+  teamPendingHellos.set(item.key, item);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:team-hello", item);
 }
 const teamHelloSent = new Set();   // peers greeted this run (so they learn my current IP)
 function teamSayHello(p) {
-  if (!teamCfg || !teamCfg.token || teamHelloSent.has(p.name)) return;
+  if (!teamCfg || !teamCfg.token || !teamStatus.shared || teamHelloSent.has(p.name) || !sameSubnet(p.host)) return;
   teamHelloSent.add(p.name);
   postHello(p, teamCfg.token, { name: teamCfg.name, port: teamCfg.port, instanceId: teamCfg.instanceId }).then(r => { if (!r.ok) teamHelloSent.delete(p.name); });
 }
-// 3 s polling with a conditional GET (304 when nothing changed); after 3 failures in a row a peer is polled every 15 s
+// 3 s polling with a conditional GET (304 when nothing changed); after 3 failures in a row a peer is polled every 15 s.
+// Only while sharing, and only teammates on my own network (/24): at home or in a café nobody is asked.
 let teamPolling = false;
 async function teamPoll() {
-  if (!teamCfg || !teamCfg.token || teamPolling) return;   // no token = not in a team yet: nothing to ask for
+  if (!teamCfg || !teamCfg.token || !teamStatus.shared || teamPolling) return;   // not in a team / sharing off / away from the office
   teamPolling = true;
   try {
     const now = Date.now();
-    const due = teamCfg.peers.filter(p => { const st = teamPeerState.get(p.name); return !st || now >= (st.nextAt || 0) || st.host !== p.host; });
+    const offnet = new Set(teamCfg.peers.filter(p => !sameSubnet(p.host)).map(p => p.name));
+    // a peer that answered as another instance than the one I registered stays stopped until its entry changes
+    const stopped = p => { const st = teamPeerState.get(p.name); return !!(st && st.mismatch && st.host === p.host && st.expectId === (p.instanceId || "")); };
+    const due = teamCfg.peers.filter(p => { if (offnet.has(p.name) || stopped(p)) return false; const st = teamPeerState.get(p.name); return !st || now >= (st.nextAt || 0) || st.host !== p.host; });
     const results = await Promise.all(due.map(p => { const st = teamPeerState.get(p.name); const same = st && st.host === p.host; return fetchPeer(p, teamCfg.token, same ? { etag: st.etag, since: st.theirAt } : {}).then(r => ({ r, p })); }));
     for (const { r, p } of results) {
       const prev = teamPeerState.get(p.name) || {};
-      const st = { ...(prev.host === p.host ? prev : {}), name: p.name, host: p.host, checkedAt: Date.now() };
-      if (r.ok) {
-        st.ok = true; st.error = ""; st.fails = 0; st.lastOk = r.at; st.at = r.at; st.rtt = r.rtt; st.nextAt = Date.now() + 3000 - 200;
+      const st = { ...(prev.host === p.host ? prev : {}), name: p.name, host: p.host, checkedAt: Date.now(), offnet: false };
+      if (r.ok && !r.notModified && p.instanceId && r.instanceId && r.instanceId !== p.instanceId) {
+        // the beacon / invite / hello said instance A lives here, the signed reply says B: do not show B as A
+        Object.assign(st, { ok: false, mismatch: true, expectId: p.instanceId, error: "identity mismatch", sessions: [], etag: "", theirAt: 0, fails: (prev.fails || 0) + 1 });
+        console.log(`[team] ${p.name} @ ${p.host}: answered as another instance — polling stopped`);
+      } else if (r.ok) {
+        st.ok = true; st.mismatch = false; st.error = ""; st.fails = 0; st.lastOk = r.at; st.at = r.at; st.rtt = r.rtt; st.nextAt = Date.now() + 3000 - 200;
         if (r.etag) st.etag = r.etag;
         teamSayHello(p);
         if (!r.notModified) { st.sessions = r.sessions; st.theirAt = r.theirAt; st.remoteName = r.remoteName; st.instanceId = r.instanceId; }
@@ -1364,13 +1422,14 @@ async function teamPoll() {
       st.backoff = !st.ok && st.fails >= 3;
       teamPeerState.set(p.name, st);
     }
+    for (const p of teamCfg.peers) if (offnet.has(p.name)) teamPeerState.set(p.name, { name: p.name, host: p.host, ok: false, offnet: true, error: "other network", sessions: [], fails: 0, checkedAt: now });
     const peers = {};
     for (const p of teamCfg.peers) { const st = teamPeerState.get(p.name); peers[p.name] = st ? { ...st, sessions: st.sessions || [] } : { name: p.name, host: p.host, ok: false, error: "", sessions: [], fails: 0 }; }
     teamStatus.peers = peers;
   } finally { teamPolling = false; }
 }
 function teamDiscoveredList() {
-  if (!teamCfg) return [];
+  if (!teamCfg || !teamDiscovery) return [];
   const hosts = new Set(teamCfg.peers.map(p => p.host)), ids = new Set([...teamPeerState.values(), ...teamCfg.peers].map(s => s.instanceId).filter(Boolean));
   for (const [id, p] of teamFound) if (Date.now() - p.at > 20000) teamFound.delete(id);
   return [...teamFound.values()].filter(p => p.id !== teamCfg.instanceId && !hosts.has(p.host) && !ids.has(p.id));
@@ -1378,13 +1437,12 @@ function teamDiscoveredList() {
 setTimeout(() => { teamFirstRun(); teamReload(); teamPoll(); }, 3000);
 setInterval(teamReload, 30000);
 setInterval(teamPoll, 1000);   // each peer keeps its own 3 s / 15 s schedule (nextAt)
-ipcMain.handle("roca:team-status", () => ({ ...teamStatus, ip: lanAddress(), discovered: teamDiscoveredList(), notesNew: teamNotes.filter(n => n.state === "new").length }));
-// "turn on": the same token-less team.json a first run writes (join or create a team with an invite code afterwards)
+ipcMain.handle("roca:team-status", () => ({ ...teamStatus, ip: lanAddress(), discovered: teamDiscoveredList(), pending: [...teamPendingHellos.values()], notesNew: teamNotes.filter(n => n.state === "new").length }));
+// "turn on": the same token-less, local-only team.json a first run writes (create or join a team afterwards)
 ipcMain.handle("roca:team-setup", () => {
   try {
     if (existsSync(TEAM_CFG)) { teamReload(); return { ok: true, created: false, file: TEAM_CFG }; }
-    mkdirSync(dirname(TEAM_CFG), { recursive: true });
-    writeFileSync(TEAM_CFG, JSON.stringify(defaultTeamConfig({ name: defaultName(), instanceId: randomUUID() }), null, 2) + "\n", { mode: 0o600 });
+    teamWriteDefault();
     teamReload(); return { ok: true, created: true, file: TEAM_CFG };
   } catch (e) { return { ok: false, error: e.message }; }
 });
@@ -1392,25 +1450,42 @@ ipcMain.handle("roca:team-rename", (_e, name) => {
   const n = String(name || "").trim().replace(/[^\w.\-가-힣]/g, "").slice(0, 40); if (!n || !teamCfg) return { ok: false, error: "bad name" };
   try { setTeamFields(TEAM_CFG, { name: n }); teamReload(); teamHelloSent.clear(); return { ok: true, name: n }; } catch (e) { return { ok: false, error: e.message }; }
 });
-// invite code → clipboard only (it carries the token: never returned to the page, logged or stored anywhere else)
-ipcMain.handle("roca:team-invite-create", () => {
+// invite code → clipboard only (it carries the token: never returned to the page, logged or stored anywhere else).
+// Creating the team (or re-inviting after "stop sharing") makes this PC visible on the network: the page must have
+// shown the warning and pass { confirmed: true }.
+ipcMain.handle("roca:team-invite-create", (_e, opts) => {
   if (!teamCfg) return { ok: false, error: "team sharing is off" };
   const ip = lanAddress(); if (!ip) return { ok: false, error: "no office-network address" };
+  const goingPublic = !isShared(teamCfg);
+  if (!goingPublic && teamStatus.paused) return { ok: false, error: "not on the office network (Settings → add this network)" };
+  if (goingPublic && !(opts && opts.confirmed === true)) return { ok: false, needConfirm: true, goingPublic: true };
   try {
-    if (!teamCfg.token) { setTeamFields(TEAM_CFG, { token: newTeamToken() }); teamReload(); }
+    const fields = { ...(teamCfg.token ? {} : { token: newTeamToken() }), ...(goingPublic ? { ...SHARE_ON, homeSubnets: withHomeSubnets(teamCfg.homeSubnets) } : {}) };
+    if (Object.keys(fields).length) { setTeamFields(TEAM_CFG, fields); teamReload(); }
     clipboard.writeText(encodeInvite({ token: teamCfg.token, inviter: { name: teamCfg.name, host: `${ip}:${teamCfg.port}`, instanceId: teamCfg.instanceId } }));
     return { ok: true, host: `${ip}:${teamCfg.port}`, name: teamCfg.name };
   } catch (e) { return { ok: false, error: e.message }; }
 });
-// join: save the token + the inviter as a peer, check the connection, then say hello so the inviter adds me back
-ipcMain.handle("roca:team-invite-join", async (_e, code) => {
+// join: save the token + the inviter as a peer, check the connection, then say hello so the inviter can add me back.
+// Leaving another team or going public needs { confirmed: true } after the page has shown what will happen.
+ipcMain.handle("roca:team-invite-join", async (_e, code, opts) => {
   const inv = decodeInvite(code); if (inv.error) return { ok: false, error: inv.error };
+  const otherToken = !!(teamCfg && teamCfg.token && teamCfg.token !== inv.token);
+  // the inviter is already one of my teammates → the same team with a reissued token (keep the list); otherwise I leave my team
+  const renew = otherToken && teamCfg.peers.some(p => (inv.inviter.instanceId && p.instanceId === inv.inviter.instanceId) || p.host === inv.inviter.host);
+  const leaving = otherToken && !renew ? teamCfg.peers.map(p => p.name) : null;
+  const goingPublic = !teamCfg || !isShared(teamCfg);
+  if ((otherToken || goingPublic) && !(opts && opts.confirmed === true)) return { ok: false, needConfirm: true, leaving, renew, goingPublic, inviter: inv.inviter.name };
   try {
-    if (!existsSync(TEAM_CFG)) { mkdirSync(dirname(TEAM_CFG), { recursive: true }); writeFileSync(TEAM_CFG, JSON.stringify(defaultTeamConfig({ name: defaultName(), instanceId: randomUUID() }), null, 2) + "\n", { mode: 0o600 }); }
-    setTeamFields(TEAM_CFG, { token: inv.token });
+    if (!existsSync(TEAM_CFG)) teamWriteDefault();
+    // another team's teammates are not mine any more: their entries go with the old token
+    setTeamFields(TEAM_CFG, { token: inv.token, ...SHARE_ON, homeSubnets: withHomeSubnets(teamCfg && !leaving ? teamCfg.homeSubnets : []), ...(leaving ? { peers: [] } : {}) });
+    if (renew) { teamPeerState.clear(); teamHelloSent.clear(); }
+    if (leaving) { teamPeerState.clear(); teamPendingHellos.clear(); teamHelloSent.clear(); }
     const r = addPeerToConfig(TEAM_CFG, inv.inviter); if (!r.ok) return r;
     teamReload(); if (!teamCfg) return { ok: false, error: teamStatus.error || "team.json" };
     const peer = { name: r.name, host: inv.inviter.host };
+    if (!sameSubnet(peer.host)) return { ok: true, connected: false, name: r.name, error: "other network" };
     const f = await fetchPeer(peer, teamCfg.token);
     if (!f.ok) return { ok: true, connected: false, name: r.name, error: f.error };
     teamHelloSent.delete(peer.name); teamSayHello(peer); setTimeout(teamPoll, 200);
@@ -1418,15 +1493,55 @@ ipcMain.handle("roca:team-invite-join", async (_e, code) => {
   } catch (e) { return { ok: false, error: e.message }; }
 });
 ipcMain.handle("roca:team-open-config", () => { shell.showItemInFolder(TEAM_CFG); return true; });
-// add a discovered teammate to team.json peers (the token is not touched; both sides still need the same one)
+// add a discovered teammate to team.json peers. Nothing is sent to them here: the token never leaves this PC and no
+// hello goes out — polling (signed) shows whether they are in the same team; they add me through their own confirmation.
 ipcMain.handle("roca:team-add-peer", (_e, peer) => {
   if (!teamCfg) return { ok: false, error: "team sharing is off" };
   try {
-    const r = addPeerToConfig(TEAM_CFG, peer || {});
-    // same team (same token) → the hello makes them add me back; another team's PC answers 401 and nothing more happens
-    if (r.ok) { teamReload(); teamHelloSent.delete(r.name); teamSayHello({ name: r.name, host: String(peer.host) }); setTimeout(teamPoll, 100); }
+    const p = peer && typeof peer === "object" ? peer : {};
+    // the beacon's instance id is kept: the first signed reply must come from that instance (else "identity mismatch")
+    const id = typeof p.id === "string" && UUID_RE.test(p.id) ? p.id.toLowerCase() : "";
+    if (id && teamCfg.peers.some(x => x.instanceId === id)) return { ok: false, error: "already listed" };
+    const r = addPeerToConfig(TEAM_CFG, { name: String(p.name || ""), host: String(p.host || ""), ...(id ? { instanceId: id } : {}) });
+    if (r.ok) { teamReload(); setTimeout(teamPoll, 100); }
     return r;
   } catch (e) { return { ok: false, error: e.message }; }
+});
+// [추가] / [무시] on a pending hello
+ipcMain.handle("roca:team-hello-decide", (_e, key, accept) => {
+  const p = teamPendingHellos.get(String(key)); if (!p) return { ok: false, error: "no such request" };
+  teamPendingHellos.delete(p.key);
+  if (accept !== true) { teamHelloIgnored.add(p.key); return { ok: true, ignored: true }; }
+  try {
+    const r = addPeerToConfig(TEAM_CFG, { name: p.name, host: p.host, instanceId: p.instanceId });
+    if (r.ok) { teamReload(); teamHelloSent.delete(r.name); setTimeout(teamPoll, 100); }
+    return r;
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+// remove a teammate from my list (to lock them out for good, reissue the token as well)
+ipcMain.handle("roca:team-remove-peer", (_e, name) => {
+  if (!teamCfg) return { ok: false, error: "team sharing is off" };
+  try {
+    const n = String(name || ""), r = removePeerFromConfig(TEAM_CFG, n);
+    if (r.ok) { teamPeerState.delete(n); teamHelloSent.delete(n); teamReload(); }
+    return r;
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+// "add this network as an office network": sharing resumes here too
+ipcMain.handle("roca:team-home-add", () => {
+  if (!teamCfg) return { ok: false, error: "team sharing is off" };
+  try { const homeSubnets = withHomeSubnets(teamCfg.homeSubnets); setTeamFields(TEAM_CFG, { homeSubnets }); teamReload(); return { ok: true, homeSubnets }; } catch (e) { return { ok: false, error: e.message }; }
+});
+// "stop sharing": back to 127.0.0.1 and no beacon (the token and peers stay; creating an invite code turns it on again)
+ipcMain.handle("roca:team-share-off", () => {
+  if (!teamCfg) return { ok: false, error: "team sharing is off" };
+  try { setTeamFields(TEAM_CFG, SHARE_OFF); teamPeerState.clear(); teamReload(); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; }
+});
+// new team token: every teammate's signature stops matching; they join again with a new invite code
+ipcMain.handle("roca:team-token-rotate", (_e, opts) => {
+  if (!teamCfg || !teamCfg.token) return { ok: false, error: "not in a team" };
+  if (!(opts && opts.confirmed === true)) return { ok: false, needConfirm: true };
+  try { rotateTeamToken(TEAM_CFG); teamPeerState.clear(); teamPendingHellos.clear(); teamHelloSent.clear(); teamReload(); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; }
 });
 ipcMain.handle("roca:team-notes", () => teamNotes.slice().reverse());
 ipcMain.handle("roca:team-note-update", (_e, id, state) => {
@@ -1434,10 +1549,12 @@ ipcMain.handle("roca:team-note-update", (_e, id, state) => {
   n.state = state; n.doneAt = Date.now(); teamNotesSave(); return { ok: true };
 });
 ipcMain.handle("roca:team-note-send", async (_e, msg) => {
-  if (!teamCfg) return { ok: false, error: "team sharing is off" };
+  if (!teamCfg || !teamStatus.shared) return { ok: false, error: teamStatus.paused ? "not on the office network" : "team sharing is off" };
   const peer = teamCfg.peers.find(p => p.name === (msg && msg.peer)); if (!peer) return { ok: false, error: "unknown peer" };
+  if (!sameSubnet(peer.host)) return { ok: false, error: "other network" };
   const v = validateNote({ to: msg.to, toName: msg.toName, from: teamCfg.name, text: msg.text }); if (v.error) return { ok: false, error: v.error };
-  return postNote(peer, teamCfg.token, v.note);
+  // "from" is ignored by the receiver (it uses my registered name there); the port tells two PCs on one IP apart
+  return postNote(peer, teamCfg.token, { ...v.note, port: teamCfg.port });
 });
 ipcMain.handle("roca:recall-notes", async (_e, cwd, limit) => {
   if (!RECALL_CLI || !cwd || !existsSync(cwd)) return [];

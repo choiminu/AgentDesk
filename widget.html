@@ -1,5 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
+<!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+Tl+rUi+lnMNFbloNDmYRacLi8bGKU/a9xrK5JUNIgg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2820,7 +2822,9 @@ for (const part of location.hash.replace('#', '').split(',')) { const m = part.m
 // ── Shared utilities ──
 const POLL = 5000;
 const $ = id => document.getElementById(id);
-function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+// HTML-escape for text and for quoted attribute values alike (& < > " ')
+const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ESC_MAP[c]); }
 function trunc(s, n) { return !s ? '' : s.length > n ? s.slice(0, n) + '…' : s; }
 
 // ══════════════════════════════════════════
@@ -2945,6 +2949,8 @@ const I18N = {
   '항상 Orca CLI로 세션을 읽고 Orca 터미널로 제어합니다': 'Always reads sessions with the Orca CLI and controls them through Orca terminals',
   'Orca를 쓰지 않고 Claude Code 훅으로 세션을 찾습니다. tmux 안의 세션만 채팅·지시 가능': 'Never calls Orca; finds sessions via Claude Code hooks. Only sessions inside tmux can be chatted with or directed', '자동': 'Auto', '훅 전용': 'Hooks only', '⚠ 문맥 갱신 필요': '⚠ stale brief', '⚠ 브리프가 갱신되어 문맥이 오래되었습니다': '⚠ Brief was updated; this member has stale context', '(응답 없음)': '(no reply)', '● 작업 중': '● Working',
   'Orca 버전': 'Orca version', '은(는) 지원 범위 밖입니다. 1.4 이상으로 업데이트하면 화면 기반 상태 판독과 채팅이 동작합니다.': ' is not supported. Update to 1.4 or newer for screen-based status and chat.',
+  '팀원 등록 요청': 'Teammate requests', '지금은 이 PC 안에서만 열려 있습니다. 팀을 만들거나 합류하면 같은 네트워크에 내 이름과 세션 상태가 공개됩니다.': 'Right now this is open on this PC only. Creating or joining a team shows your name and session status on the same network.', '공유 꺼짐 (이 PC만)': 'sharing off (this PC only)', '공유 꺼짐': 'sharing off', '다른 네트워크 — 폴링 안 함': 'other network — not polled', '다른 네트워크': 'other network', '같은 네트워크에 내 이름과 세션 상태가 공개됩니다. 사무실 망에서만 켜세요.': 'Your name and session status become visible on this network. Turn it on only on the office network.', '우리 팀 만들기': 'Create our team', '공개하고 계속': 'Share and continue', '계속할까요?': 'Continue?', '확인': 'OK', '합류를 취소했습니다': 'Join cancelled', '초대한 사람이 등록 요청을 수락하면 서로 보입니다': 'you see each other once the inviter accepts your request', '공유 끄기': 'Stop sharing', '이 PC를 127.0.0.1 전용으로 되돌리고 자동 발견을 끕니다. 팀 토큰과 팀원 목록은 남고, 초대 코드를 다시 만들면 켜집니다.': 'Back to 127.0.0.1 only, discovery off. The team token and teammates stay; creating an invite code turns sharing on again.', '공유가 꺼져 있습니다 (이 PC만). 초대 코드를 만들면 다시 켜집니다.': 'Sharing is off (this PC only). Creating an invite code turns it on again.', '토큰 재발급': 'Reissue token', '새 팀 토큰을 만듭니다. 지금 팀원은 모두 연결이 끊기고, 새 초대 코드를 받아 다시 합류해야 합니다. 팀원을 내보낼 때 쓰세요.': 'Creates a new team token. Every current teammate is disconnected and must join again with a new invite code. Use it to remove someone from the team.', '재발급': 'Reissue', '삭제': 'Remove', '작업 실패': 'Failed', '공유를 껐습니다. 이 PC 안에서만 열려 있습니다': 'Sharing is off. Open on this PC only', '지금 팀원은 모두 연결이 끊깁니다. 새 초대 코드를 만들어 팀원에게 1:1 로 다시 전달해야 합니다. 계속할까요?': 'Every current teammate gets disconnected. You have to create a new invite code and send it to each teammate 1:1 again. Continue?', '새 토큰을 만들었습니다. 초대 코드를 다시 만들어 팀원에게 전달하세요': 'New token created. Create a new invite code and send it to your teammates', '팀원 삭제': 'Remove teammate',
+  '사무실 망 아님 — 공유 일시 중지': 'not on the office network — sharing paused', '신원 불일치 — 폴링 중지': 'identity mismatch — polling stopped', '사무실 망': 'Office network', '지금 망은 사무실 망이 아니라 공유를 멈췄습니다.': 'This network is not an office network, so sharing is paused.', '이 대역에 있을 때만 공유합니다': 'Shares only while on', '지정 안 됨 (모든 망)': 'not set (any network)', '이 망을 사무실 망으로 추가': 'Add this network as an office network',
 };
 Object.assign(I18N, {
   '프롬프트 존': 'Prompt zones', '존 프롬프트 보내기': 'Send zone prompt', '이 내용으로 보내기': 'Send this', '다음부터 이 존은 확인 없이 바로 보내기': 'Skip this confirmation for this zone from now on',
@@ -3383,6 +3389,7 @@ async function fetchData() {
         loop: hk && finalStatus !== 'done' ? loopStateFor(hk) : null,
         transcript: hk ? hk.transcript : '',
         files: hk ? AgentDeskStatus.touchedFiles(hk) : [],   // repo-relative, last 10 min — for the team conflict check
+        ext: hookExtFor(hk),
       };
     });
     for (const h of hookOnly) sessions.push(await hookOnlySession(h));
@@ -3430,6 +3437,12 @@ function hookStateFor(worktreeId) {
   }
   if (!best || Date.now() - best.last > HOOK_STALE_MS) return null;
   return best;
+}
+// local-only extras from newer hook events (never sent to team peers: sanitizeSessions whitelists fields)
+function hookExtFor(st) {
+  if (!st) return null;
+  const tasks = st.tasks || [];
+  return { err: st.lastError ? st.lastError.reason : '', compacting: !!st.compacting, denied: (st.denied || []).length, tDone: tasks.filter(x => x.state === 'done').length, tTotal: tasks.length };
 }
 function hookSubagentsFor(st) {
   if (!st) return null;
@@ -3530,6 +3543,7 @@ async function hookOnlySession(h) {
     loop: finalStatus !== 'done' ? loopStateFor(st) : null,
     transcript: st.transcript || '',
     files: AgentDeskStatus.touchedFiles(st),
+    ext: hookExtFor(st),
   };
 }
 function showModeBanner(orcaOk, hookOnlyCount, paneCount) {
@@ -3588,8 +3602,9 @@ function applyStatusTransitions() {
         }
         if (prev === 'running' && s.status === 'error' && !notifiedDone.has(s.id)) {
           notifiedDone.add(s.id);
-          window.orca.notify(t('오류 발생'), `${s.name} (${s.agent})`);
-          showInAppToast(s.name, 'session-error');
+          const why = s.ext && s.ext.err ? trunc(s.ext.err, 80) : '';
+          window.orca.notify(t('오류 발생'), `${s.name} (${s.agent})${why ? ': ' + why : ''}`);
+          if (why) showInAppToast(`⚠ ${t('세션')} ${s.name}: ${t('응답 실패')} — ${why}`, 'error'); else showInAppToast(s.name, 'session-error');
         }
         if (s.needsInput && !notifiedWaiting.has(s.id)) {
           notifiedWaiting.add(s.id);
@@ -3680,6 +3695,7 @@ async function screenTick() {
       const hkSubs = hk ? hookSubagentsFor(hk) : [];
       const subs = hkSubs.length ? hkSubs : (screenAgentsCache.get(s.id) || []);
       if (JSON.stringify(subs) !== JSON.stringify(s.subagents || [])) { s.subagents = subs; changed = true; }
+      const ext = hookExtFor(hk); if (JSON.stringify(ext) !== JSON.stringify(s.ext || null)) { s.ext = ext; changed = true; }
     }
     if (changed) { applyStatusTransitions(); updateCounters(); renderDashboard(); }
   } catch (e) { console.warn('[screenTick]', e); }
@@ -3762,7 +3778,7 @@ function renderCard(s) {
     </div>`;
   }
   return `<div class="session${changed ? ' pulse' : ''}${expanded ? ' expanded' : ''}${s.id === selectedId ? ' selected' : ''}${s.stuck ? ' stuck' : ''}" data-id="${esc(s.id)}" data-handle="${esc(h || '')}">
-        <span class="s-icon ${s.status}" title="${s.needsInput ? '선택 필요' : ''}${s.viaHooks ? ' (hooks)' : ''}">${s.needsInput ? '<span class="px-ic clock"></span><span class="px-badge q">?</span>' : statusIcon(s.status)}</span>
+        <span class="s-icon ${s.status}" title="${esc(s.status === 'error' && s.ext && s.ext.err ? trunc(s.ext.err, 200) : (s.needsInput ? '선택 필요' : '') + (s.viaHooks ? ' (hooks)' : ''))}">${s.needsInput ? '<span class="px-ic clock"></span><span class="px-badge q">?</span>' : statusIcon(s.status)}</span>
         <div class="s-info">
           <div class="s-name">${isPinned ? '📌 ' : ''}${esc(s.name)}</div>
           <div class="s-meta">
@@ -3771,6 +3787,9 @@ function renderCard(s) {
             ${timeLabel}
             ${s.stuck ? `<span class="s-tool stuck" title="${esc(t('30분 넘게 도구 호출이나 응답이 없습니다'))}">${esc(t('응답 없음'))} ${timeAgo(s.stuckSince)}</span>` : ''}
             ${s.loop ? `<span class="s-tool loop" title="${esc((s.loop.reason === 'fail' ? t('도구 호출이 연속으로 실패하고 있습니다') : t('같은 도구 호출을 반복하고 있습니다')) + ': ' + s.loop.tool + ' ' + (s.loop.input || ''))}">${esc(t(s.loop.reason === 'fail' ? '연속 실패' : '반복 시도'))} ${s.loop.count}×</span>` : ''}
+            ${s.ext && s.ext.compacting ? `<span class="s-tool">${esc(t('정리 중'))}</span>` : ''}
+            ${s.ext && s.ext.denied ? `<span class="s-tool loop">${esc(t('거부'))} ${s.ext.denied}</span>` : ''}
+            ${s.ext && s.ext.tTotal ? `<span class="s-tool">${esc(t('작업'))} ${s.ext.tDone}/${s.ext.tTotal}</span>` : ''}
             ${s.tool ? `<span class="s-tool">${esc(s.tool)}</span>` : ''}
             ${s.hookOnly ? `<span class="s-tool" title="${esc(t(s.connected ? '터미널로 연결됨' : (s.ended ? '클릭하면 터미널에서 claude --resume 으로 다시 엽니다' : '읽기 전용 (터미널 없음)')))}">${s.connected ? esc(terminalKind(handles.get(s.id)) === 'tmux' ? 'tmux' : t('터미널')) : (s.ended ? '▶ ' + t('다시 열기') : t('읽기 전용'))}</span>` : ''}
             ${s.ctxPct != null ? `<span class="s-tool ctx-chip ${ctxCls}" title="컨텍스트 사용량">ctx ${s.ctxPct}%</span>` : ''}
@@ -7963,12 +7982,17 @@ function teamPublishSnapshot() {
 function peerConflictBadges(list, withButton) {
   return (list || []).map(c => `<span class="s-tool peer-conflict ${c.level}" title="${esc(c.repo)}${c.branch ? ' · ' + esc(c.branch) : ''}${c.files.length ? ' · ' + esc(c.files.join(', ')) : ''}">${esc(AgentDeskTeam.conflictLabel(c, LANG))}</span>${withButton ? `<button class="s-tool peer-warn-btn" data-act="peer-warn" data-key="${esc(AgentDeskTeam.conflictKey(c))}" title="${esc(t('내 세션에 충돌 주의 문구를 보냅니다'))}">${esc(t('세션에 알리기'))}</button>` : ''}`).join('');
 }
+const PEER_STATUSES = ['running', 'waiting', 'done', 'error'];
 function teamPeerCard(s, owner) {
-  const ctxCls = s.ctxPct >= 90 ? 'crit' : s.ctxPct >= 75 ? 'warn' : '';
+  // teammate data: the main process already sanitized it, and this card trusts nothing it puts into markup either
+  const status = PEER_STATUSES.includes(s.status) ? s.status : 'done';
+  const ctxPct = Number.isFinite(s.ctxPct) ? Math.min(100, Math.max(0, Math.round(s.ctxPct))) : null;
+  const subs = Number.isInteger(s.subagents) && s.subagents > 0 ? s.subagents : 0;
+  const ctxCls = ctxPct >= 90 ? 'crit' : ctxPct >= 75 ? 'warn' : '';
   const timeLabel = s.needsInput && s.askSince ? `<span class="s-time ask">${esc(t('대기'))} ${timeAgo(s.askSince)}</span>` : (s.time ? `<span class="s-time">${timeAgo(s.time)}</span>` : '');
   const cf = peerConflicts.filter(c => c.owner === owner && c.peer === s.id);
   return `<div class="session${s.stuck ? ' stuck' : ''}" data-peer="${esc(owner)}" data-id="${esc(s.id)}">
-        <span class="s-icon ${s.status}">${s.needsInput ? '<span class="px-ic clock"></span><span class="px-badge q">?</span>' : statusIcon(s.status)}</span>
+        <span class="s-icon ${status}">${s.needsInput ? '<span class="px-ic clock"></span><span class="px-badge q">?</span>' : statusIcon(status)}</span>
         <div class="s-info">
           <div class="s-name">${esc(s.name)}${s.jira ? ` <span class="s-tool">${esc(s.jira)}</span>` : ''}</div>
           <div class="s-meta">
@@ -7978,8 +8002,8 @@ function teamPeerCard(s, owner) {
             ${s.stuck ? `<span class="s-tool stuck">${esc(t('응답 없음'))} ${timeAgo(s.stuckSince)}</span>` : ''}
             ${s.loop ? `<span class="s-tool loop">${esc(t(s.loop.reason === 'fail' ? '연속 실패' : '반복 시도'))} ${esc(s.loop.tool || '')}</span>` : ''}
             ${s.tool ? `<span class="s-tool">${esc(s.tool)}</span>` : ''}
-            ${s.ctxPct != null ? `<span class="s-tool ctx-chip ${ctxCls}">ctx ${s.ctxPct}%</span>` : ''}
-            ${s.subagents ? `<span class="s-tool">🤖${s.subagents}</span>` : ''}
+            ${ctxPct != null ? `<span class="s-tool ctx-chip ${ctxCls}">ctx ${ctxPct}%</span>` : ''}
+            ${subs ? `<span class="s-tool">🤖${subs}</span>` : ''}
             ${cf.map(c => `<span class="s-tool peer-conflict ${c.level}" title="${esc(c.files.join(', ') || c.branch)}">⚠ ${esc(t(c.level === 'file' ? '내 세션과 같은 파일' : '내 세션과 같은 브랜치'))} · ${esc(c.mineName)}</span>`).join('')}
           </div>
           ${s.now ? `<div class="s-prompt s-now">${esc(s.now)}</div>` : ''}
@@ -8001,11 +8025,22 @@ function peerNotesHtml() {
     ${open.map(n => { const s = peerLocalSession(n.to); return `<div class="peer-note"><div><b>@${esc(n.from)}</b> → ${esc(s ? s.name : (n.toName || n.to))} <span class="s-time">${timeAgo(n.at)}</span></div><div class="pn-text">${esc(n.text)}</div>
       <div class="pn-actions"><button class="set-btn" data-team="note-deliver" data-id="${esc(n.id)}" ${s && handles.get(s.id) ? '' : `disabled title="${esc(t('세션 터미널을 찾을 수 없습니다'))}"`}>${esc(t('세션에 전달'))}</button><button class="set-btn" data-team="note-ignore" data-id="${esc(n.id)}">${esc(t('무시'))}</button></div></div>`; }).join('')}`;
 }
+// signed hellos waiting for [추가] / [무시]: a new teammate, or a known one reporting a new address
+function peerPendingHtml() {
+  const list = teamStatus.pending || [];
+  if (!list.length) return '';
+  const ipOf = h => String(h || '').split(':')[0];
+  const msg = p => p.kind === 'move'
+    ? (LANG === 'en' ? `@${p.existing} reports a new address: ${p.from} → ${p.host} (the old address did not answer, so this is a change request)` : `@${p.existing} 의 주소가 바뀌었다고 알려 왔습니다: ${p.from} → ${p.host} (이전 주소가 응답하지 않아 변경 요청으로 처리됨)`)
+    : (LANG === 'en' ? `${p.name} (${ipOf(p.host)}) asked to join your team list` : `${p.name}(${ipOf(p.host)})이 팀원 등록을 요청했습니다`);
+  return `<div class="group-header"><span>${esc(t('팀원 등록 요청'))}</span><span class="gh-count">${list.length}</span><span class="gh-line"></span></div>
+    ${list.map(p => `<div class="peer-disc">${esc(msg(p))}<button class="set-btn" data-team="hello-accept" data-key="${esc(p.key)}">${esc(t('추가'))}</button><button class="set-btn" data-team="hello-ignore" data-key="${esc(p.key)}">${esc(t('무시'))}</button></div>`).join('')}`;
+}
 function peerDiscoveredHtml() {
   const list = teamStatus.discovered || [];
   if (!list.length) return '';
   return `<div class="group-header"><span>${esc(t('발견됨'))}</span><span class="gh-count">${list.length}</span><span class="gh-line"></span></div>
-    ${list.map(p => `<div class="peer-disc">${esc(t('발견됨'))}: <b>${esc(p.name)}</b> @ ${esc(p.host)}<button class="set-btn" data-team="add-peer" data-name="${esc(p.name)}" data-host="${esc(p.host)}">${esc(t('추가'))}</button></div>`).join('')}`;
+    ${list.map(p => `<div class="peer-disc">${esc(t('발견됨'))}: <b>${esc(p.name)}</b> @ ${esc(p.host)}<button class="set-btn" data-team="add-peer" data-name="${esc(p.name)}" data-host="${esc(p.host)}" data-id="${esc(p.id)}">${esc(t('추가'))}</button></div>`).join('')}`;
 }
 function peerLocalSession(publicId) { return sessions.find(s => AgentDeskTeam.publicSessionId(s.id) === publicId) || null; }
 function teamRender() {
@@ -8027,20 +8062,22 @@ function teamRender() {
       <div class="po-btns"><button class="set-btn primary" data-team="invite-create">${esc(t('우리 팀 만들기 (초대 코드 생성)'))}</button><button class="set-btn" data-team="invite-join">${esc(t('초대 코드로 합류'))}</button></div>
       <p>${esc(t('초대 코드에는 팀 비밀 토큰이 들어 있습니다. Slack DM 등 1:1 로만 전달하세요.'))}</p>
       <div class="po-me">${esc(t('내 이름'))} <input id="peer-name" value="${esc(st.name)}" maxlength="40" spellcheck="false"><button class="set-btn" data-team="rename">${esc(t('저장'))}</button></div>
-      <div class="po-me">${esc(t('내 주소'))} <code>${esc(st.ip || '—')}:${st.port}</code> ${st.listening ? '' : `<span class="off">${esc(t('서버 꺼짐'))}</span>`}</div>
-    </div>` + peerDiscoveredHtml();
+      <div class="po-me">${esc(t('내 주소'))} <code>${esc(st.ip || '—')}:${esc(st.port)}</code> ${st.listening ? '' : `<span class="off">${esc(t('서버 꺼짐'))}</span>`}</div>
+      <p>${esc(t('지금은 이 PC 안에서만 열려 있습니다. 팀을 만들거나 합류하면 같은 네트워크에 내 이름과 세션 상태가 공개됩니다.'))}</p>
+    </div>`;
     return;
   }
   const peers = Object.values(st.peers || {}).sort((a, b) => a.name.localeCompare(b.name));
   const up = peers.filter(p => p.ok).length;
-  bar.innerHTML = `<b>${esc(st.name)}</b> · ${st.listening ? `${esc(t('공유 중'))} :${st.port}` : `<span class="off">${esc(t('서버 꺼짐'))}</span>`} · ${esc(t('팀원'))} ${up}/${peers.length}${st.discovery ? ` · ${esc(t('자동 발견 켜짐'))}` : ''}`;
-  let html = peerNotesHtml() + peerDiscoveredHtml() + peerBoardHtml(peers);
+  bar.innerHTML = `<b>${esc(st.name)}</b> · ${st.paused ? `<span class="off">${esc(t('사무실 망 아님 — 공유 일시 중지'))}</span>` : !st.shared ? `<span class="off">${esc(t('공유 꺼짐 (이 PC만)'))}</span>` : st.listening ? `${esc(t('공유 중'))} :${esc(st.port)}` : `<span class="off">${esc(t('서버 꺼짐'))}</span>`} · ${esc(t('팀원'))} ${up}/${peers.length}${st.discovery ? ` · ${esc(t('자동 발견 켜짐'))}` : ''}`;
+  let html = peerPendingHtml() + peerNotesHtml() + peerDiscoveredHtml() + peerBoardHtml(peers);
   if (!peers.length) html += `<div class="empty"><span class="empty-icon">👥</span><span class="empty-text">${esc(t('team.json 의 peers 가 비어 있습니다'))}</span></div>`;
   const ord = { running: 0, waiting: 1, error: 2, done: 3 };
   for (const p of peers) {
     const items = (p.sessions || []).filter(s => !s.isSub).sort((a, b) => (a.needsInput ? -1 : 0) - (b.needsInput ? -1 : 0) || (ord[a.status] ?? 9) - (ord[b.status] ?? 9) || (b.time || 0) - (a.time || 0));
-    const q = p.ok ? `${p.rtt != null ? ` · ${p.rtt}ms` : ''}` : `${p.fails ? ` · ${esc(t('실패'))} ${p.fails}${p.backoff ? ` (${esc(t('15초 간격'))})` : ''}` : ''}`;
-    const state = p.ok ? `${esc(t('연결됨'))} · ${timeAgo(p.at)}${q}` : `<span class="off">${esc(t('연결 안 됨'))}${p.error ? ` · ${esc(p.error)}` : ''}${p.lastOk ? ` · ${esc(t('마지막'))} ${timeAgo(p.lastOk)}` : ''}${q}</span>`;
+    const q = p.ok ? `${p.rtt != null ? ` · ${esc(p.rtt)}ms` : ''}` : `${p.fails ? ` · ${esc(t('실패'))} ${esc(p.fails)}${p.backoff ? ` (${esc(t('15초 간격'))})` : ''}` : ''}`;
+    const perr = p.offnet ? t('다른 네트워크 — 폴링 안 함') : p.error === 'sharing off' ? t('공유 꺼짐') : p.error === 'paused' ? t('사무실 망 아님 — 공유 일시 중지') : p.mismatch ? t('신원 불일치 — 폴링 중지') : p.error;
+    const state = p.ok ? `${esc(t('연결됨'))} · ${timeAgo(p.at)}${q}` : `<span class="off">${esc(t('연결 안 됨'))}${perr ? ` · ${esc(perr)}` : ''}${p.lastOk ? ` · ${esc(t('마지막'))} ${timeAgo(p.lastOk)}` : ''}${q}</span>`;
     const renamed = p.remoteName && p.remoteName !== p.name ? ` <span class="gh-peer-state" title="instance ${esc(String(p.instanceId || '').slice(0, 8))}">(${esc(p.remoteName)})</span>` : '';
     html += `<div class="group-header"><span>@${esc(p.name)}</span>${renamed}<span class="gh-count">${items.length}</span><span class="gh-line"></span><span class="gh-peer-state${p.ok ? '' : ' off'}">${state}</span></div>`;
     if (!items.length) html += `<div class="empty" style="padding:6px 12px"><span class="empty-text">${esc(t(p.ok ? '세션 없음' : '세션 정보를 받지 못했습니다'))}</span></div>`;
@@ -8115,8 +8152,22 @@ if (window.orca.onTeamNote) window.orca.onTeamNote(note => {
 peerNotesLoad();
 // invite code: made and copied by the main process (it carries the token, so the page never sees it); joining sends
 // the pasted code straight to the main process and nothing keeps it afterwards
+const TEAM_SHARE_WARN = '같은 네트워크에 내 이름과 세션 상태가 공개됩니다. 사무실 망에서만 켜세요.';
+// a yes / no question in the team modal; resolves false when cancelled
+function teamConfirm(title, body, okLabel) {
+  return new Promise(resolve => {
+    const m = teamModal(`<h3>${esc(title)}</h3><p>${esc(body)}</p><div class="row"><span style="margin-left:auto"></span><button id="team-confirm-no">${esc(t('취소'))}</button><button class="primary" id="team-confirm-yes">${esc(okLabel || t('확인'))}</button></div>`);
+    const done = v => { closeTeamModal(); resolve(v); };
+    m.querySelector('#team-confirm-no').onclick = () => done(false);
+    m.querySelector('#team-confirm-yes').onclick = () => done(true);
+  });
+}
 async function peerInviteCreate() {
-  const r = await window.orca.teamInviteCreate().catch(e => ({ ok: false, error: e.message }));
+  let r = await window.orca.teamInviteCreate().catch(e => ({ ok: false, error: e.message }));
+  if (r.needConfirm) {
+    if (!await teamConfirm(t('우리 팀 만들기'), t(TEAM_SHARE_WARN), t('공개하고 계속'))) return;
+    r = await window.orca.teamInviteCreate({ confirmed: true }).catch(e => ({ ok: false, error: e.message }));
+  }
   if (r.ok) showInAppToast(t('초대 코드를 클립보드에 복사했습니다. Slack DM 등 1:1 로만 전달하세요'));
   else showInAppToast(`${t('초대 코드를 만들지 못했습니다')}: ${r.error || ''}`, 'error');
   teamPageTick();
@@ -8130,20 +8181,36 @@ function peerInviteJoin() {
   m.querySelector('#peer-invite-cancel').onclick = closeTeamModal;
   m.querySelector('#peer-invite-go').onclick = async () => {
     const btn = m.querySelector('#peer-invite-go'); btn.disabled = true; m.querySelector('#peer-invite-msg').textContent = t('연결 확인 중');
-    const r = await window.orca.teamInviteJoin(ta.value).catch(e => ({ ok: false, error: e.message }));
+    const code = ta.value;
+    let r = await window.orca.teamInviteJoin(code).catch(e => ({ ok: false, error: e.message }));
+    if (r.needConfirm) {
+      // leaving my current team and / or becoming visible on the network: say so before anything changes
+      const lines = [];
+      if (r.renew) lines.push(LANG === 'en' ? `Switch to the new token of @${r.inviter}'s team (your teammate list stays).` : `@${r.inviter} 팀의 새 토큰으로 바꿉니다(팀원 목록은 유지).`);
+      if (r.leaving) lines.push(LANG === 'en' ? `You leave your current team${r.leaving.length ? ` (${r.leaving.map(n => '@' + n).join(', ')})` : ''} and join @${r.inviter}'s team.` : `현재 팀${r.leaving.length ? `(${r.leaving.map(n => '@' + n).join(', ')})` : ''}을 떠나 @${r.inviter}의 팀에 합류합니다.`);
+      if (r.goingPublic) lines.push(t(TEAM_SHARE_WARN));
+      lines.push(t('계속할까요?'));
+      if (!await teamConfirm(t('초대 코드로 합류'), lines.join(' '), t('합류'))) { showInAppToast(t('합류를 취소했습니다')); return; }
+      r = await window.orca.teamInviteJoin(code, { confirmed: true }).catch(e => ({ ok: false, error: e.message }));
+      if (!r.ok) { showInAppToast(`${t('합류 실패')}: ${r.error || ''}`, 'error'); return; }
+    }
     ta.value = '';
     if (!r.ok) { btn.disabled = false; m.querySelector('#peer-invite-msg').textContent = `${t('합류 실패')}: ${r.error || ''}`; return; }
     closeTeamModal();
-    showInAppToast(r.connected ? `${t('연결됨')} @${r.name}` : `${t('합류했지만 아직 연결되지 않았습니다')} @${r.name}: ${r.error || ''}`, r.connected ? undefined : 'error');
+    showInAppToast(r.connected ? `${t('연결됨')} @${r.name} — ${t('초대한 사람이 등록 요청을 수락하면 서로 보입니다')}` : `${t('합류했지만 아직 연결되지 않았습니다')} @${r.name}: ${r.error === 'other network' ? t('다른 네트워크') : r.error || ''}`, r.connected ? undefined : 'error');
     teamPageTick();
   };
 }
+if (window.orca.onTeamHello) window.orca.onTeamHello(req => {
+  if (req) showInAppToast(req.kind === 'move' ? (LANG === 'en' ? `👥 @${req.existing} reports a new address — check the Team tab` : `👥 @${req.existing} 의 주소 변경 요청 — 팀 탭에서 확인하세요`) : (LANG === 'en' ? `👥 ${req.name} asked to join your team list — check the Team tab` : `👥 ${req.name} 이 팀원 등록을 요청했습니다 — 팀 탭에서 확인하세요`));
+  teamPageTick();
+});
 if (window.orca.onTeamJoined) window.orca.onTeamJoined(info => { if (info && info.added) showInAppToast(`👥 @${info.name} ${LANG === 'en' ? 'joined the team' : '팀에 합류했습니다'}`); teamPageTick(); });
 async function teamPageTick() {
   try { teamStatus = await window.orca.teamStatus(); } catch { return; }
   peerUpdateConflicts();
   const asks = Object.values(teamStatus.peers || {}).reduce((n, p) => n + (p.sessions || []).filter(s => s.needsInput && s.status !== 'done').length, 0);
-  const notesNew = peerNotes.filter(n => n.state === 'new').length;
+  const notesNew = peerNotes.filter(n => n.state === 'new').length + (teamStatus.pending || []).length;
   const badge = $('badge-team'); if (badge) { badge.textContent = asks + notesNew; badge.hidden = asks + notesNew === 0; badge.title = notesNew ? `${t('받은 메모')} ${notesNew}` : ''; }
   if (currentPage === 'team') teamRender();
   if (currentPage === 'settings') { const el = $('set-team-status'); if (el) el.textContent = teamSettingsText(); }
@@ -8166,9 +8233,15 @@ $('team-list').addEventListener('click', async (e) => {
   else if (act === 'note') peerNoteCompose(b.dataset.peer, b.dataset.id);
   else if (act === 'note-deliver') peerNoteDeliver(b.dataset.id);
   else if (act === 'note-ignore') peerNoteSet(b.dataset.id, 'ignored');
+  else if (act === 'hello-accept' || act === 'hello-ignore') {
+    b.disabled = true;
+    const r = await window.orca.teamHelloDecide(b.dataset.key, act === 'hello-accept').catch(err => ({ ok: false, error: err.message }));
+    if (act === 'hello-accept') showInAppToast(r.ok ? `${t('팀원 추가')}: ${r.name || ''}` : `${t('추가 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
+    teamPageTick();
+  }
   else if (act === 'add-peer') {
     b.disabled = true;
-    const r = await window.orca.teamAddPeer({ name: b.dataset.name, host: b.dataset.host }).catch(err => ({ ok: false, error: err.message }));
+    const r = await window.orca.teamAddPeer({ name: b.dataset.name, host: b.dataset.host, id: b.dataset.id }).catch(err => ({ ok: false, error: err.message }));
     showInAppToast(r.ok ? `${r.added ? t('팀원 추가') : t('이미 등록된 주소')}: ${r.name || b.dataset.name}` : `${t('추가 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
     teamPageTick();
   } else if (act === 'board-copy') {
@@ -8202,6 +8275,10 @@ function settingsRender() {
     ${row(t('접수 기록'), inboxLog.length ? `${inboxLog.length}${t('건')}${inboxPending.length ? ` · ${t('보류')} ${inboxPending.length}` : ''} · ${t('최근')}: ${esc(inboxLog[0].type)} ${esc(trunc(inboxLog[0].text, 40))}` : t('아직 받은 요청이 없습니다.'), `<button class="set-btn" data-set="inbox-log">${esc(t('보기'))}</button>`)}
     <h2>${esc(t('팀 공유'))}</h2>
     ${row(t('같은 망의 팀원 세션'), `<span id="set-team-status">${esc(teamSettingsText())}</span>`, `<button class="set-btn" data-set="team-config">${esc(t(teamStatus.configured ? '설정 파일 열기' : '팀 공유 켜기'))}</button>`)}
+    ${teamStatus.configured && !teamStatus.error && teamStatus.hasToken ? row(t('공유 끄기'), teamStatus.shared ? t('이 PC를 127.0.0.1 전용으로 되돌리고 자동 발견을 끕니다. 팀 토큰과 팀원 목록은 남고, 초대 코드를 다시 만들면 켜집니다.') : t('공유가 꺼져 있습니다 (이 PC만). 초대 코드를 만들면 다시 켜집니다.'), teamStatus.shared ? `<button class="set-btn" data-set="team-share-off">${esc(t('공유 끄기'))}</button>` : '') : ''}
+    ${teamStatus.configured && !teamStatus.error && teamStatus.hasToken ? row(t('사무실 망'), `${teamStatus.paused ? t('지금 망은 사무실 망이 아니라 공유를 멈췄습니다.') + ' ' : ''}${t('이 대역에 있을 때만 공유합니다')}: ${(teamStatus.homeSubnets || []).map(x => x + '.0/24').join(', ') || t('지정 안 됨 (모든 망)')}`, `<button class="set-btn" data-set="team-home-add">${esc(t('이 망을 사무실 망으로 추가'))}</button>`) : ''}
+    ${teamStatus.configured && !teamStatus.error && teamStatus.hasToken ? row(t('토큰 재발급'), t('새 팀 토큰을 만듭니다. 지금 팀원은 모두 연결이 끊기고, 새 초대 코드를 받아 다시 합류해야 합니다. 팀원을 내보낼 때 쓰세요.'), `<button class="set-btn" data-set="team-rotate">${esc(t('재발급'))}</button>`) : ''}
+    ${teamStatus.configured && !teamStatus.error ? Object.values(teamStatus.peers || {}).sort((a, b) => a.name.localeCompare(b.name)).map(p => row(`@${p.name}`, p.host, `<button class="set-btn" data-set="team-remove" data-name="${esc(p.name)}">${esc(t('삭제'))}</button>`)).join('') : ''}
     ${teamStatus.configured && !teamStatus.error ? row(t('팀 초대 코드'), t('코드에는 팀 비밀 토큰이 들어 있습니다. Slack DM 등 1:1 로만 전달하세요. 코드는 클립보드로만 복사되고 어디에도 저장되지 않습니다.'), `<div class="set-inline"><button class="set-btn" data-set="team-invite">${esc(t('초대 코드 만들기'))}</button><button class="set-btn" data-set="team-join">${esc(t('초대 코드 붙여넣기'))}</button></div>`) : ''}
     <h2>${esc(t('아침 브리핑'))}</h2>
     ${row(t('매일 생성'), `${t('지정 시각이 지나면 어제 노트·활동·Jira 마감 티켓으로 브리핑을 만들어 화이트보드와 대시보드에 적습니다.')}${briefJira ? '' : ` ${t('Jira 연동은 ~/.agentdesk/jira.json(baseUrl·email·token)을 두면 켜집니다.')}`}`, seg('brief-time', briefCfg.enabled ? briefCfg.time : 'off', [['off', t('끔')], ['07:30', '07:30'], ['08:30', '08:30'], ['09:30', '09:30']]))}
@@ -8249,6 +8326,21 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'team-config') { const r = await window.orca.teamSetup(); if (r.ok) { if (r.created) showInAppToast(t('팀 공유를 켰습니다. 팀 탭에서 팀을 만들거나 초대 코드로 합류하세요')); else window.orca.teamOpenConfig(); teamPageTick(); } }
   else if (name === 'team-invite') peerInviteCreate();
   else if (name === 'team-join') peerInviteJoin();
+  else if (name === 'team-home-add') { const r = await window.orca.teamHomeAdd(); showInAppToast(r.ok ? `${t('사무실 망')}: ${(r.homeSubnets || []).map(x => x + '.0/24').join(', ')}` : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error'); await teamPageTick(); settingsRender(); }
+  else if (name === 'team-share-off') { const r = await window.orca.teamShareOff(); showInAppToast(r.ok ? t('공유를 껐습니다. 이 PC 안에서만 열려 있습니다') : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error'); await teamPageTick(); settingsRender(); }
+  else if (name === 'team-rotate') {
+    if (!await teamConfirm(t('토큰 재발급'), t('지금 팀원은 모두 연결이 끊깁니다. 새 초대 코드를 만들어 팀원에게 1:1 로 다시 전달해야 합니다. 계속할까요?'), t('재발급'))) return;
+    const r = await window.orca.teamTokenRotate({ confirmed: true });
+    showInAppToast(r.ok ? t('새 토큰을 만들었습니다. 초대 코드를 다시 만들어 팀원에게 전달하세요') : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
+    await teamPageTick(); settingsRender();
+  }
+  else if (name === 'team-remove') {
+    const n = b.dataset.name;
+    if (!await teamConfirm(t('팀원 삭제'), LANG === 'en' ? `Remove @${n} from your list. They keep the team token until you reissue it.` : `@${n} 을 목록에서 지웁니다. 팀 토큰을 재발급하기 전까지 그 사람은 여전히 토큰을 갖고 있습니다.`, t('삭제'))) return;
+    const r = await window.orca.teamRemovePeer(n);
+    showInAppToast(r.ok ? `${t('삭제')}: @${n}` : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
+    await teamPageTick(); settingsRender();
+  }
   else if (name === 'inbox-restart') { b.disabled = true; await window.orca.inboxRestart(); setTimeout(async () => { await inboxRefreshStatus(); settingsRender(); }, 4000); }
   else if (name === 'inbox-log') {
     const lines = inboxLog.map(l => `${new Date(l.t).toLocaleString(LANG === 'ko' ? 'ko-KR' : 'en-US')} · ${l.type} · ${l.text}`).join('\n');
@@ -8669,7 +8761,9 @@ async function jbLoad() {
   jbBuildCols();
 }
 function jbBuildCols() { jb.cols = AgentDeskJira.buildColumns(jb.data && jb.data.statuses, jbPrefs.cols[jb.project], jb.data && jb.data.boardColumns); }
-function jbAvatar(name, url) { return `<span class="jb-ava" data-verbatim><i>${esc(AgentDeskJira.initials(name))}</i>${url ? `<img src="${escA(url)}" alt="" onerror="this.remove()">` : ''}</span>`; }
+// a broken avatar image just disappears (no inline onerror: the CSP forbids inline handlers)
+document.addEventListener('error', e => { const el = e.target; if (el && el.tagName === 'IMG' && el.closest && el.closest('.jb-ava')) el.remove(); }, true);
+function jbAvatar(name, url) { return `<span class="jb-ava" data-verbatim><i>${esc(AgentDeskJira.initials(name))}</i>${url ? `<img src="${escA(url)}" alt="">` : ''}</span>`; }
 function jbBarRender() {
   const people = new Map();
   if (jb.me && jb.me.accountId) people.set(jb.me.accountId, { name: jb.me.displayName || '', avatar: jb.me.avatar, me: true });
