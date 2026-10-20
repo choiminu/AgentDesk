@@ -116,6 +116,8 @@ function applyHookEvent(rec, sessions) {
   if (rec.term) st.term = rec.term;   // TERM_PROGRAM of the launching terminal (Orca, iTerm.app, tmux, Apple_Terminal)
   st.agent = rec.agent || st.agent || 'claude';   // which CLI emitted the event (claude / gemini / codex)
   if (ev.transcript_path) st.transcript = ev.transcript_path;
+  // Claude Code reports its permission mode with every hook payload (default / acceptEdits / plan / bypassPermissions)
+  if (typeof ev.permission_mode === 'string') st.permissionMode = ev.permission_mode.slice(0, 40);
   st.last = Math.max(st.last, ts);
   // runMs accumulates time spent in 'running'; askAt/askMs/askN measure how long needs-input prompts waited for the user
   const setStatus = (v) => { if (st.status !== v) { if (st.status === 'running' && ts > st.since) st.runMs += ts - st.since; st.status = v; st.since = ts; } };

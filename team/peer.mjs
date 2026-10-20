@@ -8,6 +8,15 @@
 //                                          caller's IP (403 when there is none); 429 past 10 notes a minute from one IP
 //   POST /v1/hello     (signed)         ← { name, port, instanceId }  → the caller (its IP + port) is handed to onHello,
 //                                          which queues it for the user's confirmation
+// Phase 3 — per-session delegation (team/remote.mjs). Only a session its owner delegated to one teammate (instance id),
+// with a random per-delegation grant that only that teammate receives (inside its signed /v1/sessions answer):
+//   POST /v1/sessions/:id/input     (signed) ← { grant, text ≤ 4000 }  → 200 { ok, accepted } | 403 not delegated / blocked
+//                                              | 409 busy (not waiting for input, or another input in flight) | 429 (20/min/session)
+//   POST /v1/sessions/:id/interrupt (signed) ← { grant }               → 200 { ok }
+//   POST /v1/sessions/:id/last      (signed) ← { grant }               → { text ≤ 8000 (masked), at } — the last answer only
+// :id is the public id (s_ + 24 hex of sha256(local id)). The grant must belong to the one teammate registered at the
+// caller's IP (two registered instances at one IP → 403 "ambiguous teammate", and no grants in /v1/sessions either). Permission prompts, closing terminals, worktrees and
+// delegation itself have no remote endpoint.
 // Signing (no token ever crosses the wire): request headers X-AD-Ts (ms), X-AD-Nonce (16 random bytes, hex) and
 //   X-AD-Sig = HMAC-SHA256(token, METHOD \n host \n path \n ts \n nonce \n sha256(body))   (host = the peer's "ip:port",
 //   also sent as the Host header; the server only accepts its own address and port, so a request cannot be relayed)
@@ -22,8 +31,11 @@ import { homedir, networkInterfaces } from "node:os";
 import { join, basename, dirname } from "node:path";
 import "../core/mask.js";   // globalThis.AgentDeskMask
 import "../core/team.js";   // globalThis.AgentDeskTeam (clean, publicSessionId)
+import "../core/guard.js";  // globalThis.AgentDeskGuard (isDangerous)
+import { validateRemoteText, resolveDelegatedSession, permissionOk, hostIpv4, GRANT_RE, REMOTE_RATE, REMOTE_LAST_MAX } from "./remote.mjs";
 const { mask } = globalThis.AgentDeskMask;
-const { clean, publicSessionId } = globalThis.AgentDeskTeam;
+const { clean, publicSessionId, PUBLIC_ID_RE } = globalThis.AgentDeskTeam;
+const { isDangerous } = globalThis.AgentDeskGuard;
 
 export const TEAM_CFG = join(homedir(), ".agentdesk", "team.json");
 export const TEAM_EXAMPLE = {
@@ -187,7 +199,7 @@ export function sameSubnet(host, ifaces = networkInterfaces()) {
 //    push markup, oversized text or odd types into my UI either. ──
 const STATUSES = new Set(["running", "waiting", "done", "error"]);
 const AGENTS = new Set(["claude", "gemini", "codex", ""]);
-const BOOL_FIELDS = ["needsInput", "stuck", "ended", "isSub", "hookOnly"];
+const BOOL_FIELDS = ["needsInput", "stuck", "ended", "isSub", "hookOnly", "delegated"];
 const TIME_FIELDS = ["time", "askSince", "stuckSince"];
 const JIRA_KEY = /^[A-Z][A-Z0-9]+-\d+$/;
 // cut first (4× the kept length is enough for a masked token to still be recognised), then mask, then bound
@@ -314,6 +326,15 @@ function readBody(req, limit) {
     req.on("error", reject);
   });
 }
+// phase 3: /v1/sessions/<public session id>/(input|interrupt|last)
+const REMOTE_PATH_RE = /^\/v1\/sessions\/([^/]{1,320})\/(input|interrupt|last)$/;
+const REMOTE_BODY_MAX = 24 * 1024;   // 4,000 characters of Hangul are 12 KB of UTF-8, plus the JSON around them
+// a session's last answer as it may leave (server) or enter (client): masked, line breaks kept, other control characters
+// gone, at most REMOTE_LAST_MAX characters
+export function lastText(v) {
+  return mask(String(v ?? "").slice(0, REMOTE_LAST_MAX * 4)).replace(/\r\n?/g, "\n").split("\n")
+    .map(l => l.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ").replace(/\s+$/, "")).join("\n").trim().slice(0, REMOTE_LAST_MAX);
+}
 // note fields: "from" is filled in by the receiving server (the registered peer at the caller's IP), never trusted
 export function validateNote(body) {
   const n = body && typeof body === "object" ? body : {};
@@ -333,6 +354,9 @@ export function startTeamServer(cfg, getSnapshot, opts = {}) {
   const now = opts.now || Date.now;
   const guard = opts.nonceGuard || createNonceGuard();
   const noteTimes = new Map();   // caller IP → timestamps within the last minute
+  const store = opts.delegations || null;   // phase 3: team/remote.mjs createDelegationStore (null → no remote endpoints)
+  const remoteTimes = new Map();            // session id → input / interrupt timestamps within the last minute
+  const inflight = new Set();               // sessions with a remote input being typed right now
   let cache = { snap: null, body: "", etag: "" };
   const server = createServer(async (req, res) => {
     // set as soon as the request carries well-formed signing headers and I have a token: from then on every answer
@@ -347,7 +371,10 @@ export function startTeamServer(cfg, getSnapshot, opts = {}) {
     const host = String(req.headers.host || "");
     if (!validHostHeader(req.headers.host)) { req.resume(); return json(400, { error: "bad host" }); }
     let url; try { url = new URL(req.url, "http://x"); } catch { req.resume(); return json(400, { error: "bad url" }); }
-    const known = ["/v1/ping", "/v1/sessions", "/v1/notes", "/v1/hello"].includes(url.pathname);
+    const rm = REMOTE_PATH_RE.exec(url.pathname);
+    let remoteSid = "";
+    if (rm) { try { remoteSid = decodeURIComponent(rm[1]); } catch { remoteSid = ""; } }
+    const known = ["/v1/ping", "/v1/sessions", "/v1/notes", "/v1/hello"].includes(url.pathname) || (rm && PUBLIC_ID_RE.test(remoteSid));
     if (!known) { req.resume(); return json(404, { error: "not found" }); }
     const ts = String(req.headers["x-ad-ts"] || ""), nonce = String(req.headers["x-ad-nonce"] || "");
     const signedReq = !!req.headers["x-ad-sig"];
@@ -358,7 +385,7 @@ export function startTeamServer(cfg, getSnapshot, opts = {}) {
     if (!isMyHost(host, req.socket.localPort, opts.ifaces)) { req.resume(); return json(401, { error: "wrong host" }); }
     // the body is part of the signature, so it is read (small limit) before the check
     let raw;
-    try { raw = await readBody(req, url.pathname === "/v1/notes" ? 4096 : 2048); }
+    try { raw = await readBody(req, url.pathname === "/v1/notes" ? 4096 : rm && rm[2] === "input" ? REMOTE_BODY_MAX : 2048); }
     catch (e) { return json(e.code === 413 ? 413 : 400, { error: e.code === 413 ? "too large" : "bad body" }, { Connection: "close" }); }
     const v = verifyRequest(cfg.token, { method: req.method, host, path: req.url, headers: req.headers, body: raw, ip: remoteIp(req) }, guard);
     if (!v.ok) return json(v.error === "busy-ip" ? 429 : v.error === "busy" ? 503 : 401, { error: v.error });
@@ -387,16 +414,69 @@ export function startTeamServer(cfg, getSnapshot, opts = {}) {
       try { opts.onNote && opts.onNote(note); } catch {}
       return json(202, { ok: true, id: note.id });
     }
+    // the teammate I registered at the caller's address: delegations are matched against its instance id only. Two
+    // registered instances at one address cannot be told apart → no delegation is served to that address at all.
+    // Every entry at that (normalised) IP counts, with or without an instance id.
+    const caller = (() => { const ip = hostIpv4(remoteIp(req)); const at = ip ? (cfg.peers || []).filter(p => hostIpv4(p.host) === ip) : []; return { ids: at.filter(p => p.instanceId).map(p => String(p.instanceId)), ambiguous: at.length > 1 }; })();
+    if (rm) return remoteRoute(rm[2], req.method, remoteSid, raw, caller, json);
     if (req.method !== "GET") return json(405, { error: "GET only" });
     const snap = getSnapshot() || {};
-    if (cache.snap !== snap) {
-      const body = JSON.stringify(sanitizeSessions(snap.sessions));
-      cache = { snap, body, etag: `"${createHash("sha1").update(body).digest("hex").slice(0, 20)}"` };
+    const dver = store ? store.changedAt : 0;
+    if (cache.snap !== snap || cache.dver !== dver) {
+      const body = JSON.stringify(sanitizeSessions(snap.sessions).map(o => { delete o.delegated; if (store && store.isDelegated(o.id)) o.delegated = true; return o; }));
+      cache = { snap, dver, body };
     }
+    // a delegation's grant goes only to the teammate it was made for, inside this signed answer
+    const dl = store && !caller.ambiguous ? store.forInstances(caller.ids) : [];
+    const dlJson = dl.length ? JSON.stringify(dl) : "";
+    const etag = `"${createHash("sha1").update(cache.body + "\n" + dlJson).digest("hex").slice(0, 20)}"`;
+    const at = Math.max(Number(snap.at) || 0, dver);
     const since = Number(url.searchParams.get("since")) || 0;
-    if ((since && snap.at && since >= snap.at) || req.headers["if-none-match"] === cache.etag) return send(304, "", { ETag: cache.etag });
-    return send(200, `{"name":${JSON.stringify(cfg.name)},"at":${Number(snap.at) || 0},"instanceId":${JSON.stringify(cfg.instanceId || "")},"sessions":${cache.body}}`, { "Content-Type": "application/json", ETag: cache.etag });
+    if ((since && at && since >= at) || req.headers["if-none-match"] === etag) return send(304, "", { ETag: etag });
+    return send(200, `{"name":${JSON.stringify(cfg.name)},"at":${at},"instanceId":${JSON.stringify(cfg.instanceId || "")},"sessions":${cache.body}${dlJson ? `,"delegations":${dlJson}` : ""}}`, { "Content-Type": "application/json", ETag: etag });
   });
+  // ── phase 3: input / interrupt / last answer for a delegated session ──
+  // every action is a POST with the grant in the (signed) body — never in a URL
+  async function remoteRoute(action, method, sid, raw, caller, json) {
+    const remote = opts.remote || {};
+    if (!store) return json(404, { error: "not found" });
+    if (method !== "POST") return json(405, { error: "POST only" });
+    let body; try { body = JSON.parse(raw); } catch { return json(400, { error: "bad json" }); }
+    if (!body || typeof body !== "object") return json(400, { error: "bad json" });
+    if (!caller.ids.length) return json(403, { error: "not a registered teammate" });
+    if (caller.ambiguous) return json(403, { error: "ambiguous teammate" });
+    const d = store.match(sid, body.grant, caller.ids);
+    if (!d) return json(403, { error: "not delegated" });
+    // the delegated session by its full local id — exactly one, else it cannot be placed (fail closed)
+    const session = resolveDelegatedSession(((getSnapshot() || {}).sessions) || [], d.localId);
+    const event = e => { try { remote.event && remote.event({ sessionId: sid, peer: d.peerName, instanceId: d.instanceId, sessionName: d.name, ...e }); } catch {} };
+    if (action === "last") {
+      if (!session) return json(409, { error: "busy" });
+      let r = null; try { r = remote.last ? await remote.last({ sessionId: sid, delegation: d, session }) : null; } catch { r = null; }
+      return json(200, { text: lastText(r && r.text), at: Number(r && r.at) || 0 });
+    }
+    let text = "";
+    if (action === "input") { const v = validateRemoteText(body.text); if (v.error) return json(400, { error: v.error }); text = v.text; }
+    if (!noteRateCheck(remoteTimes, sid, now(), REMOTE_RATE)) { event({ kind: action, result: "rate", text }); return json(429, { error: "too many requests" }); }
+    if (action === "input") {
+      const g = isDangerous(text);
+      if (g.blocked) { event({ kind: "input", result: "blocked", rule: g.rule, ruleLabel: g.label, text }); return json(403, { error: "blocked", rule: g.rule }); }
+      // only a session that sits at its prompt: not running, not on a permission / choice prompt, not gone
+      // and only while Claude Code still asks before risky tools (a known, safe permission mode)
+      const idle = session && session.status === "waiting" && session.needsInput !== true && session.ended !== true && permissionOk(session);
+      if (!idle || inflight.has(sid)) { event({ kind: "input", result: "busy", text }); return json(409, { error: "busy" }); }
+      inflight.add(sid);
+      let r; try { r = remote.input ? await remote.input({ sessionId: sid, delegation: d, session, text }) : { ok: false, error: "no handler" }; } catch (e) { r = { ok: false, error: e.message }; } finally { inflight.delete(sid); }
+      if (r && r.busy) { event({ kind: "input", result: "busy", text }); return json(409, { error: "busy" }); }
+      event({ kind: "input", result: r && r.ok ? (r.accepted ? "accepted" : "sent") : "error", text, ...(r && !r.ok ? { error: r.error } : {}) });
+      return r && r.ok ? json(200, { ok: true, accepted: !!r.accepted }) : json(503, { error: "session terminal unavailable" });
+    }
+    if (!session) { event({ kind: "interrupt", result: "busy" }); return json(409, { error: "busy" }); }
+    let r; try { r = remote.interrupt ? await remote.interrupt({ sessionId: sid, delegation: d, session }) : { ok: false }; } catch (e) { r = { ok: false, error: e.message }; }
+    if (r && r.unsupported) { event({ kind: "interrupt", result: "unsupported" }); return json(409, { error: "unsupported" }); }
+    event({ kind: "interrupt", result: r && r.ok ? "accepted" : "error", ...(r && !r.ok ? { error: r.error } : {}) });
+    return r && r.ok ? json(200, { ok: true }) : json(503, { error: "session terminal unavailable" });
+  }
   server.requestTimeout = 10000;
   server.headersTimeout = 5000;
   server.maxConnections = 50;
@@ -446,7 +526,7 @@ export async function fetchPeer(peer, token, opts = {}) {
     if (r.status === 304) return { name: peer.name, ok: true, notModified: true, at: Date.now(), rtt, etag: r.headers.get("etag") || o.etag || "" };
     if (!r.ok) return { name: peer.name, ok: false, rtt, error: `HTTP ${r.status}` };
     const d = parseJson(text);
-    return { name: peer.name, ok: true, at: Date.now(), rtt, etag: r.headers.get("etag") || "", theirAt: Number(d.at) || 0, remoteName: cleanName(d.name || ""), instanceId: uuidOr(d.instanceId), sessions: sanitizeSessions(d.sessions) };
+    return { name: peer.name, ok: true, at: Date.now(), rtt, etag: r.headers.get("etag") || "", theirAt: Number(d.at) || 0, remoteName: cleanName(d.name || ""), instanceId: uuidOr(d.instanceId), sessions: sanitizeSessions(d.sessions), delegations: sanitizeDelegations(d.delegations) };
   } catch (e) {
     return { name: peer.name, ok: false, error: errText(e) };
   }
@@ -461,6 +541,38 @@ export async function postNote(peer, token, note, timeoutMs = 4000) {
     if (r.ok) return { ok: true };
     return { ok: false, status: r.status, error: r.status === 429 ? "too many notes" : r.status === 403 ? "not registered on their side" : parseJson(text).error || `HTTP ${r.status}` };
   } catch (e) { return { ok: false, error: errText(e) }; }
+}
+
+// sessions a teammate delegated to me (from their signed answer): only well-formed entries, at most 50
+export function sanitizeDelegations(list) {
+  return (Array.isArray(list) ? list : []).filter(x => x && typeof x === "object" && typeof x.sessionId === "string" && typeof x.grant === "string" && GRANT_RE.test(x.grant)).slice(0, 50)
+    .map(x => ({ sessionId: publicSessionId(x.sessionId), grant: x.grant, name: text(x.name, 120), repo: text(x.repo, 120), branch: text(x.branch, 120) })).filter(x => x.sessionId);
+}
+// ── phase 3 client: act on a session a teammate delegated to me (grant from their /v1/sessions answer) ──
+const remotePath = (sessionId, action) => `/v1/sessions/${encodeURIComponent(publicSessionId(sessionId))}/${action}`;
+async function remoteCall(peer, token, method, path, body, timeoutMs) {
+  try {
+    const { r, text: t, signed, redirect } = await signedFetch(peer, token, method, path, body, { timeoutMs });
+    if (redirect) return { ok: false, error: "redirect refused" };
+    if (r.status === 401) return { ok: false, status: 401, error: authError(signed, t) };
+    if (!signed) return { ok: false, status: r.status, error: "bad signature" };
+    const d = parseJson(t);
+    if (r.ok) return { ok: true, status: r.status, d };
+    return { ok: false, status: r.status, error: typeof d.error === "string" ? clean(d.error, 80) : `HTTP ${r.status}`, ...(typeof d.rule === "string" ? { rule: clean(d.rule, 40) } : {}) };
+  } catch (e) { return { ok: false, error: errText(e) }; }
+}
+// input waits for the owner's terminal to take the text (up to ~20 s on their side)
+export async function remoteInput(peer, token, sessionId, grant, text, timeoutMs = 30000) {
+  const r = await remoteCall(peer, token, "POST", remotePath(sessionId, "input"), JSON.stringify({ grant, text }), timeoutMs);
+  return r.ok ? { ok: true, accepted: !!r.d.accepted } : r;
+}
+export async function remoteInterrupt(peer, token, sessionId, grant, timeoutMs = 15000) {
+  const r = await remoteCall(peer, token, "POST", remotePath(sessionId, "interrupt"), JSON.stringify({ grant }), timeoutMs);
+  return r.ok ? { ok: true } : r;
+}
+export async function remoteLast(peer, token, sessionId, grant, timeoutMs = 15000) {
+  const r = await remoteCall(peer, token, "POST", remotePath(sessionId, "last"), JSON.stringify({ grant }), timeoutMs);
+  return r.ok ? { ok: true, text: lastText(r.d.text), at: Number(r.d.at) || 0 } : r;
 }
 
 export async function postHello(peer, token, me, timeoutMs = 4000) {

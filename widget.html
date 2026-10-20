@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-0RFMGIqmPSBwj27GqogC2UydA8jRbQ6uiAbRAm5xrpU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-z+6My9KjpSUvoto1gfUkoBcEH07eoRokd1MdWPtJoso='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -519,6 +519,14 @@
   .peer-note .pn-text { margin: 4px 0; white-space: pre-wrap; color: var(--text); }
   .peer-note .pn-actions, .peer-disc { display: flex; gap: 6px; align-items: center; }
   .peer-disc .set-btn { margin-left: auto; }
+  .peer-deleg { color: #c99a1a; border-color: #c99a1a; }
+  .peer-rlog { display: flex; flex-direction: column; gap: 2px; }
+  .peer-rlog .pr-row { word-break: break-word; }
+  .peer-rlog .pr-row.blocked { color: var(--red); }
+  .peer-last { white-space: pre-wrap; word-break: break-word; max-height: 50vh; overflow: auto; font-family: var(--mono); font-size: 11px; color: var(--text); background: var(--bg-solid); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px; user-select: text; }
+  .deleg-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+  .peer-r-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+  .peer-r-btns .set-btn { font-size: var(--fs-xs); padding: 1px 6px; }
   .office-peer-pop { pointer-events: auto; white-space: normal; max-width: 280px; z-index: 6; }
   .office-peer-pop .pp-row { display: flex; gap: 6px; margin-top: 6px; }
   .office-peer-pop button { font: inherit; font-size: var(--fs-xs); background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 2px 8px; cursor: pointer; }
@@ -3426,6 +3434,7 @@ async function fetchData() {
         transcript: hk ? hk.transcript : '',
         files: hk ? AgentDeskStatus.touchedFiles(hk) : [],   // repo-relative, last 10 min — for the team conflict check
         ext: hookExtFor(hk),
+        permissionMode: hk ? (hk.permissionMode || '') : '',
       };
     });
     for (const h of hookOnly) sessions.push(await hookOnlySession(h));
@@ -3698,6 +3707,7 @@ async function hookOnlySession(h) {
     transcript: st.transcript || '',
     files: AgentDeskStatus.touchedFiles(st),
     ext: hookExtFor(st),
+    permissionMode: st.permissionMode || '',
   };
 }
 function showModeBanner(orcaOk, hookOnlyCount, paneCount) {
@@ -3928,6 +3938,7 @@ function renderCard(s) {
       <div class="d-row"><b>${esc(t('최근 도구'))}</b><span>${tools.length ? tools.map(x => `<code>${esc(x.tool)}</code>${x.input ? ' ' + esc(trunc(x.input, 36)) : ''}`).join(' · ') : (s.tool ? `<code>${esc(s.tool)}</code>` : '—')}</span></div>
       <div class="d-row"><b>${esc(t('위치'))}</b><span>${esc(s.cwd || s.repo || '—')}${s.branch ? ` · ${esc(s.branch)}` : ''}${s.sessionId ? ` · ${esc(String(s.sessionId).slice(0, 8))}` : ''}</span></div>
       ${s.ctxPct != null ? `<div class="d-row"><b>${esc(t('컨텍스트'))}</b><span><div class="d-ctx" title="${s.ctxPct}%"><i class="${ctxCls}" style="width:${Math.min(100, s.ctxPct)}%"></i></div></span></div>` : ''}
+      ${peerRemoteRowsHtml(s.id)}
       <div class="d-row d-notes" data-notes-for="${esc(s.id)}"><b>${esc(t('지난 노트'))}</b><span>${esc(t('불러오는 중…'))}</span></div>
     </div>`;
   }
@@ -3949,6 +3960,7 @@ function renderCard(s) {
             ${s.ctxPct != null ? `<span class="s-tool ctx-chip ${ctxCls}" title="컨텍스트 사용량">ctx ${s.ctxPct}%</span>` : ''}
             ${(s.subagents || []).filter(a => a.state === 'running').length ? `<span class="s-tool" title="${esc((s.subagents || []).filter(a => a.state === 'running').map(a => a.name).join(', '))}">🤖${(s.subagents || []).filter(a => a.state === 'running').length}</span>` : ''}
             ${peerConflictBySid.has(s.id) ? peerConflictBadges(peerConflictBySid.get(s.id), hasHandle) : ''}
+            ${peerDelegBadges(s)}
           </div>
           ${!expanded ? (nowSummaries.get(s.id) ? `<div class="s-prompt s-now" title="${esc(t('지금 하는 일 (5분마다 갱신)'))}">${esc(nowSummaries.get(s.id))}</div>` : (peek ? `<div class="s-prompt">${esc(trunc(peek, 120))}</div>` : '')) : ''}
         </div>
@@ -3960,6 +3972,7 @@ function renderCard(s) {
           ${hasHandle ? `<button class="s-act" data-act="tpl" data-id="${esc(s.id)}" title="${esc(t('템플릿 프롬프트 보내기'))}">🧩</button>` : ''}
           <button class="s-act ${isPinned ? 'pinned' : ''}" data-act="pin" data-id="${esc(s.id)}" title="${isPinned ? '고정 해제' : '고정'}">📌</button>
           <button class="s-act" data-act="copy-id" data-id="${esc(s.id)}" title="세션 ID 복사">📋</button>
+          <button class="s-act" data-act="menu" data-id="${esc(s.id)}" title="${esc(t('더보기'))}">⋯</button>
           ${hasHandle ? `<button class="s-act" data-act="interrupt" data-h="${esc(h)}" title="인터럽트">⏸</button>` : ''}
           ${(s.status === 'done' || s.status === 'error') ? `<button class="s-act" data-act="hide" data-id="${esc(s.id)}" title="${esc(t(hiddenSessions.has(s.id) ? '다시 표시' : '목록에서 숨기기'))}">${hiddenSessions.has(s.id) ? '👁' : '🙈'}</button>` : ''}
           ${hasHandle ? `<button class="s-act danger" data-act="close" data-h="${esc(h)}" title="종료">✕</button>` : ''}
@@ -4098,6 +4111,9 @@ $('list').addEventListener('click', async e => {
     e.stopPropagation();
     const act = actBtn.dataset.act;
     if (act === 'peer-warn') { peerWarnSession(actBtn.dataset.key); return; }
+    if (act === 'peer-revoke') { peerRevoke(actBtn.dataset.id, actBtn.dataset.iid); return; }
+    if (act === 'peer-extend') { const r = await window.orca.teamDelegateExtend({ sessionId: actBtn.dataset.id, instanceId: actBtn.dataset.iid }).catch(err => ({ ok: false, error: err.message })); showInAppToast(r.ok ? t('위임을 2시간 연장했습니다') : `${t('연장 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error'); await teamPageTick(); renderDashboard(); return; }
+    if (act === 'menu') { const ms = sessions.find(ss => ss.id === actBtn.dataset.id); if (ms) { const r = actBtn.getBoundingClientRect(); openSessionMenu(r.left, r.bottom + 4, ms); } return; }
     if (act === 'ask') {
       const row = actBtn.closest('.session'); const s = sessions.find(ss => ss.id === actBtn.dataset.id);
       if (s && row) dashAskOpen(s, row);
@@ -5360,6 +5376,7 @@ function openSessionMenu(x, y, sess) {
   if (officeChars.has(sess.id)) items.push(['🎨', '캐릭터 바꾸기', () => { officeSetSkin(sess.id, officeSkin(sess.id) + 1); const c = officeChars.get(sess.id); if (c) c.reactT = 1.2; }]);
   if (handle && (sess.status === 'running' || sess.status === 'waiting')) items.push(['⏸', '인터럽트 (Esc)', () => api.interrupt(handle)]);
   for (const it of (typeof teamMenuItems === 'function' ? teamMenuItems(sess) : [])) items.push(it);
+  for (const it of peerDelegateMenuItems(sess)) items.push(it);
   for (const it of (typeof zoneMenuItems === 'function' ? zoneMenuItems(sess) : [])) items.push(it);
   if (handle) items.push(['✕', '세션 종료', async () => { if (confirm(`${sess.name} ${t('세션을 종료할까요?')}`)) { await api.close(handle); fetchData(); } }, 'danger']);
   openItemsMenu(x, y, sess.name, items);
@@ -6488,6 +6505,14 @@ function officeDrawPeerWarn(ctx, x, y, level, now) {
   for (let r = 0; r < 8; r++) ctx.fillRect(x - Math.floor(r / 2), y + 1 + r, 1 + Math.floor(r / 2) * 2, 1);
   ctx.fillStyle = '#12141c'; ctx.fillRect(x, y + 3, 1, 3); ctx.fillRect(x, y + 7, 1, 1);
 }
+// a small gold key next to a teammate's character: that session is delegated to me (input / interrupt / last answer)
+function officeDrawKey(ctx, x, y) {
+  x = Math.round(x); y = Math.round(y);
+  ctx.fillStyle = 'rgba(12,14,22,0.9)'; ctx.fillRect(x - 1, y - 1, 12, 7);
+  ctx.fillStyle = '#F2C037';
+  ctx.fillRect(x, y, 4, 5); ctx.fillRect(x + 4, y + 2, 6, 1); ctx.fillRect(x + 7, y + 3, 1, 2); ctx.fillRect(x + 9, y + 3, 1, 2);
+  ctx.fillStyle = '#12141c'; ctx.fillRect(x + 1, y + 1, 2, 3);
+}
 function officeDrawPeerSeat(ctx, im, seat, area, now, bob, pcFrame) {
   const { sx, sy, deskX, deskY, sess } = seat, off = area.off;
   const st = sess ? sess.status : 'empty';
@@ -6524,6 +6549,7 @@ function officeDrawPeerSeat(ctx, im, seat, area, now, bob, pcFrame) {
   ctx.fillStyle = off ? '#8a8a96' : area.color; ctx.fillRect(seat.chairX - 6, seat.chairY + 8, 12, 2);   // teammate colour bar above the name
   const cf = peerConflicts.find(c => c.owner === area.peer.name && c.peer === sess.id);
   if (cf) officeDrawPeerWarn(ctx, seat.chairX - 14, headY - 2, cf.level, now);
+  if (!off && peerDelegatedToMe(area.peer.name, sess.id)) officeDrawKey(ctx, seat.chairX + 10, headY - 1);
   officePeerSeats.push({ x: sx, y: sy, w: OFFICE.SEAT_W * OFFICE.T, h: OFFICE.SEAT_H * OFFICE.T, sess, owner: area.peer.name, off, chairX: seat.chairX, chairY: seat.chairY });
 }
 function officeDrawPeerZone(ctx, im, zone, worldW, originX, xs, now, bob, pcFrame, zItems) {
@@ -6566,9 +6592,18 @@ function officePeerPopOpen(ps, e) {
   officePeerPopClose(); $('office-tip').hidden = true;
   const wrap = $('office-wrap'), wr = wrap.getBoundingClientRect();
   const el = document.createElement('div'); el.id = 'office-peer-pop'; el.className = 'office-tip office-peer-pop';
-  el.innerHTML = peerTipHtml(ps) + `<div class="pp-row"><button data-pp="note">✉ ${esc(t('메모 남기기'))}</button><button data-pp="close">${esc(t('닫기'))}</button></div>`;
+  const dg = peerDelegatedToMe(ps.owner, ps.sess.id), canInput = ps.sess.status === 'waiting' && ps.sess.needsInput !== true && ps.sess.ended !== true;
+  el.innerHTML = peerTipHtml(ps) + (dg ? `<div class="pp-row"><button data-pp="r-input" ${canInput ? '' : `disabled title="${esc(t('입력 대기 상태일 때만 보낼 수 있습니다'))}"`}>🔑 ${esc(t('입력'))}</button><button data-pp="r-stop">${esc(t('중단'))}</button><button data-pp="r-last">${esc(t('마지막 응답'))}</button></div>` : '')
+    + `<div class="pp-row"><button data-pp="note">✉ ${esc(t('메모 남기기'))}</button><button data-pp="close">${esc(t('닫기'))}</button></div>`;
   el.style.left = (e.clientX - wr.left + 12) + 'px'; el.style.top = (e.clientY - wr.top + wrap.scrollTop + 12) + 'px';
-  el.addEventListener('click', ev => { const b = ev.target.closest('[data-pp]'); if (!b) return; officePeerPopClose(); if (b.dataset.pp === 'note') peerNoteCompose(ps.owner, ps.sess.id); });
+  el.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-pp]'); if (!b || b.disabled) return; officePeerPopClose();
+    const a = b.dataset.pp;
+    if (a === 'note') peerNoteCompose(ps.owner, ps.sess.id);
+    else if (a === 'r-input') peerRemoteInputCompose(ps.owner, ps.sess.id);
+    else if (a === 'r-stop') peerRemoteInterrupt(ps.owner, ps.sess.id);
+    else if (a === 'r-last') peerRemoteLastShow(ps.owner, ps.sess.id);
+  });
   wrap.appendChild(el);
 }
 document.addEventListener('mousedown', e => { const el = $('office-peer-pop'); if (el && !el.contains(e.target)) officePeerPopClose(); });
@@ -8126,12 +8161,12 @@ function peerJiraMap() {
 function peerMySessions() {
   const cutoff = Date.now() - 86400000, jira = peerJiraMap();
   return sessions.filter(s => (s.status !== 'done' && s.status !== 'error') || (s.time || 0) > cutoff)
-    .map(s => ({ ...s, now: nowSummaries.get(s.id) || '', report: peerReports.get(s.id) || null, jira: jira.get(s.id) || '' }));
+    .map(s => ({ ...s, now: nowSummaries.get(s.id) || '', report: peerReports.get(s.id) || null, jira: jira.get(s.id) || '', handle: (s.connected && handles.get(s.id)) || '' }));
 }
 function teamPublishSnapshot() {
   if (!window.orca.teamPublish) return;
   const snap = peerMySessions();
-  const key = JSON.stringify(snap.map(s => [s.id, s.status, s.needsInput, s.tool, s.ctxPct, s.now, s.files, s.report && s.report.at, s.jira]));
+  const key = JSON.stringify(snap.map(s => [s.id, s.status, s.needsInput, s.tool, s.ctxPct, s.now, s.files, s.report && s.report.at, s.jira, s.ended, s.handle]));
   if (key === teamLastPublish) return;   // the main process keeps the last snapshot; only resend on change
   teamLastPublish = key; window.orca.teamPublish(snap);
 }
@@ -8147,6 +8182,8 @@ function teamPeerCard(s, owner) {
   const ctxCls = ctxPct >= 90 ? 'crit' : ctxPct >= 75 ? 'warn' : '';
   const timeLabel = s.needsInput && s.askSince ? `<span class="s-time ask">${esc(t('대기'))} ${timeAgo(s.askSince)}</span>` : (s.time ? `<span class="s-time">${timeAgo(s.time)}</span>` : '');
   const cf = peerConflicts.filter(c => c.owner === owner && c.peer === s.id);
+  const dg = peerDelegatedToMe(owner, s.id);
+  const canInput = status === 'waiting' && s.needsInput !== true && s.ended !== true;
   return `<div class="session${s.stuck ? ' stuck' : ''}" data-peer="${esc(owner)}" data-id="${esc(s.id)}">
         <span class="s-icon ${status}">${s.needsInput ? '<span class="px-ic clock"></span><span class="px-badge q">?</span>' : statusIcon(status)}</span>
         <div class="s-info">
@@ -8161,8 +8198,10 @@ function teamPeerCard(s, owner) {
             ${ctxPct != null ? `<span class="s-tool ctx-chip ${ctxCls}">ctx ${ctxPct}%</span>` : ''}
             ${subs ? `<span class="s-tool">🤖${subs}</span>` : ''}
             ${cf.map(c => `<span class="s-tool peer-conflict ${c.level}" title="${esc(c.files.join(', ') || c.branch)}">⚠ ${esc(t(c.level === 'file' ? '내 세션과 같은 파일' : '내 세션과 같은 브랜치'))} · ${esc(c.mineName)}</span>`).join('')}
+            ${dg ? `<span class="s-tool peer-deleg">🔑 ${esc(t('나에게 위임됨'))}</span>` : ''}
           </div>
           ${s.now ? `<div class="s-prompt s-now">${esc(s.now)}</div>` : ''}
+          ${dg ? `<div class="peer-r-btns"><button class="set-btn" data-team="r-input" data-peer="${esc(owner)}" data-id="${esc(s.id)}" ${canInput ? '' : `disabled title="${esc(t('입력 대기 상태일 때만 보낼 수 있습니다'))}"`}>${esc(t('입력'))}</button><button class="set-btn" data-team="r-stop" data-peer="${esc(owner)}" data-id="${esc(s.id)}">${esc(t('중단'))}</button><button class="set-btn" data-team="r-last" data-peer="${esc(owner)}" data-id="${esc(s.id)}">${esc(t('마지막 응답'))}</button></div>` : ''}
         </div>
         <div class="s-actions" style="opacity:1"><button class="s-act" data-team="note" data-peer="${esc(owner)}" data-id="${esc(s.id)}" title="${esc(t('메모 남기기'))}">✉</button></div>
       </div>`;
@@ -8226,6 +8265,8 @@ function teamRender() {
   const peers = Object.values(st.peers || {}).sort((a, b) => a.name.localeCompare(b.name));
   const up = peers.filter(p => p.ok).length;
   bar.innerHTML = `<b>${esc(st.name)}</b> · ${st.paused ? `<span class="off">${esc(t('사무실 망 아님 — 공유 일시 중지'))}</span>` : !st.shared ? `<span class="off">${esc(t('공유 꺼짐 (이 PC만)'))}</span>` : st.listening ? `${esc(t('공유 중'))} :${esc(st.port)}` : `<span class="off">${esc(t('서버 꺼짐'))}</span>`} · ${esc(t('팀원'))} ${up}/${peers.length}${st.discovery ? ` · ${esc(t('자동 발견 켜짐'))}` : ''}`;
+  const toMe = peers.reduce((n, p) => n + (p.delegatedToMe || []).length, 0);
+  bar.innerHTML += ` · ${esc(t('내가 위임한'))} ${(st.delegations || []).length} · ${esc(t('나에게 위임된'))} ${toMe}`;
   let html = peerPendingHtml() + peerNotesHtml() + peerDiscoveredHtml() + peerBoardHtml(peers);
   if (!peers.length) html += `<div class="empty"><span class="empty-icon">👥</span><span class="empty-text">${esc(t('team.json 의 peers 가 비어 있습니다'))}</span></div>`;
   const ord = { running: 0, waiting: 1, error: 2, done: 3 };
@@ -8306,6 +8347,127 @@ if (window.orca.onTeamNote) window.orca.onTeamNote(note => {
   teamPageTick();
 });
 peerNotesLoad();
+// ── phase 3: session delegation (remote input). Mine: which teammate may type into / interrupt which of my sessions
+//    (main keeps the grants; the page sees names only). Theirs: sessions a teammate delegated to me. ──
+let peerRemoteLog = [], peerBlockToastAt = 0;   // newest first: { at, kind: delegate|revoke|input|interrupt, result, sessionId, sessionName, peer, text, rule, reason }
+const PEER_REMOTE_RESULT = { accepted: '수락', sent: '전송', blocked: '차단', busy: '대기 중 아님', rate: '횟수 초과', error: '실패' };
+function peerDelegationsOf(localId) { return ((teamStatus && teamStatus.delegations) || []).filter(d => d.localId === localId); }
+// main's reasons for refusing a delegation, in words
+const PEER_DELEG_ERR = { 'Claude Code sessions only': 'Claude Code 세션만 위임할 수 있습니다', 'permission checks off/unknown': '권한 모드를 알 수 없거나 꺼져 있어 위임할 수 없습니다 — 정확 감지(hook)가 켜진 Claude Code 세션만 위임할 수 있습니다', 'teammate address is not an IP': '팀원 주소가 IP가 아니라 위임할 수 없습니다', 'an unidentified teammate is on the same network': '같은 망에 식별되지 않은 팀원 항목(호스트 이름·instance id 없음)이 있어 위임할 수 없습니다', 'another teammate shares this address': '같은 주소(IP)에 다른 팀원이 있어 위임할 수 없습니다', 'teammate not connected': '팀원이 연결되어 있지 않습니다', 'unknown session': '세션을 찾을 수 없습니다', 'no terminal': '세션 터미널을 찾을 수 없습니다', 'unknown teammate': '팀원 식별자(instance id)가 아직 없습니다' };
+function peerDelegatedToMe(owner, sid) { const p = ((teamStatus && teamStatus.peers) || {})[owner]; return !!(p && (p.delegatedToMe || []).some(d => d.sessionId === sid)); }
+function peerDelegBadges(s) {
+  return peerDelegationsOf(s.id).map(d => {
+    const left = Math.max(0, (Number(d.expiresAt) || 0) - Date.now());
+    const leftLabel = `${Math.floor(left / 3600000)}h ${Math.floor(left / 60000) % 60}m`;
+    return `<span class="s-tool peer-deleg" title="${esc(t('팀원이 이 세션에 입력·중단할 수 있습니다. 시간이 지나면 저절로 해제됩니다'))}">🔑 ${esc(LANG === 'en' ? `delegated to ${d.peerName}` : `${d.peerName}에게 위임 중`)} · ${esc(leftLabel)}</span><button class="s-tool peer-warn-btn" data-act="peer-extend" data-id="${esc(s.id)}" data-iid="${esc(d.instanceId)}" title="${esc(t('지금부터 2시간으로 연장'))}">${esc(t('연장'))}</button><button class="s-tool peer-warn-btn" data-act="peer-revoke" data-id="${esc(s.id)}" data-iid="${esc(d.instanceId)}">${esc(t('회수'))}</button>`;
+  }).join('');
+}
+function peerRemoteRowHtml(e) {
+  const hm = new Date(Number(e.at) || 0).toLocaleTimeString(LANG === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+  const what = e.kind === 'input' ? String(e.text || '') : e.kind === 'interrupt' ? t('중단') : e.kind === 'delegate' ? t('위임') : e.kind === 'revoke' ? `${t('회수')}${e.reason ? ' · ' + e.reason : ''}` : String(e.kind || '');
+  const res = e.result ? ` · ${t(PEER_REMOTE_RESULT[e.result] || String(e.result))}${e.rule ? ` (${e.rule})` : ''}` : '';
+  return `<span class="pr-row${e.result === 'blocked' ? ' blocked' : ''}">${esc(hm)} @${esc(e.peer || '')} ${esc(trunc(what, 80))}${esc(res)}</span>`;
+}
+function peerRemoteRowsHtml(localId) {
+  const pid = AgentDeskTeam.publicSessionId(localId);
+  const rows = peerRemoteLog.filter(e => e.sessionId === pid && (e.kind === 'input' || e.kind === 'interrupt')).slice(0, 20);
+  if (!rows.length && !peerDelegationsOf(localId).length) return '';
+  return `<div class="d-row"><b>${esc(t('원격 입력 기록'))}</b><span>${rows.length ? `<span class="peer-rlog">${rows.map(peerRemoteRowHtml).join('')}</span>` : '—'}</span></div>`;
+}
+function peerDelegateMenuItems(sess) {
+  const st = teamStatus;
+  if (!st || !st.configured || st.error || !st.hasToken || !st.shared || sess.ended) return [];
+  const items = [['🔑', '팀원에게 위임…', () => sess.agent !== 'claude' ? showInAppToast(t('정확 감지(hook)가 켜진 Claude Code 세션만 위임할 수 있습니다'), 'error') : peerDelegatePick(sess)]];
+  for (const d of peerDelegationsOf(sess.id)) items.push(['↩', LANG === 'en' ? `Revoke ${d.peerName}` : `${d.peerName} 위임 회수`, () => peerRevoke(sess.id, d.instanceId)]);
+  return items;
+}
+function peerDelegatePick(sess) {
+  const peers = Object.values(teamStatus.peers || {}).filter(p => p.ok && p.instanceId).sort((a, b) => a.name.localeCompare(b.name));
+  if (!peers.length) { showInAppToast(t('연결된 팀원이 없습니다'), 'error'); return; }
+  const already = new Set(peerDelegationsOf(sess.id).map(d => d.instanceId));
+  const m = teamModal(`<h3>${esc(t('팀원에게 위임'))} · ${esc(sess.name)}</h3><p>${esc(t('이 세션에 입력·중단을 맡길 팀원을 고르세요. 연결된 팀원만 보입니다.'))}</p>
+    <div class="deleg-list">${peers.map(p => `<button class="set-btn" data-iid="${esc(p.instanceId)}" data-name="${esc(p.name)}" ${already.has(p.instanceId) ? 'disabled' : ''}>@${esc(p.name)}${already.has(p.instanceId) ? ' · ' + esc(t('위임 중')) : ''}</button>`).join('')}</div>
+    <div class="row"><span style="margin-left:auto"></span><button id="deleg-cancel">${esc(t('취소'))}</button></div>`);
+  m.querySelector('#deleg-cancel').onclick = closeTeamModal;
+  m.querySelector('.deleg-list').addEventListener('click', async ev => {
+    const b = ev.target.closest('button[data-iid]'); if (!b || b.disabled) return;
+    const name = b.dataset.name, iid = b.dataset.iid;
+    const body = LANG === 'en' ? `${name} will be able to type into this session and interrupt it. They cannot approve permissions or close the terminal. Every input is logged.` : `${name}이 이 세션에 직접 입력하고 중단할 수 있게 됩니다. 권한 승인·터미널 닫기는 할 수 없습니다. 입력은 모두 기록됩니다.`;
+    if (!await teamConfirm(t('세션 위임'), body, t('위임'))) return;
+    const r = await window.orca.teamDelegate({ sessionId: sess.id, instanceId: iid }).catch(e => ({ ok: false, error: e.message }));
+    showInAppToast(r.ok ? (LANG === 'en' ? `🔑 ${sess.name} delegated to ${name}` : `🔑 ${sess.name} 을 ${name}에게 위임했습니다`) : `${t('위임 실패')}: ${t(PEER_DELEG_ERR[r.error] || r.error || '')}`, r.ok ? undefined : 'error');
+    await teamPageTick(); renderDashboard();
+  });
+}
+async function peerRevoke(localId, iid) {
+  const r = await window.orca.teamRevoke({ sessionId: localId, ...(iid ? { instanceId: iid } : {}) }).catch(e => ({ ok: false, error: e.message }));
+  showInAppToast(r.ok ? `${t('위임을 회수했습니다')} (${r.revoked || 0})` : `${t('회수 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
+  await teamPageTick(); renderDashboard();
+}
+function peerRemoteLogShow() {
+  const rows = peerRemoteLog.slice(0, 200);
+  const m = teamModal(`<h3>${esc(t('원격 입력 기록'))}</h3><p>${esc(t('위임·회수·원격 입력·중단·차단 기록입니다 (~/.agentdesk/team-remote.jsonl).'))}</p>
+    <div class="peer-last peer-rlog">${rows.length ? rows.map(e => `<span class="pr-row${e.result === 'blocked' ? ' blocked' : ''}">${esc(new Date(Number(e.at) || 0).toLocaleString(LANG === 'ko' ? 'ko-KR' : 'en-US'))} · ${esc(e.sessionName || e.sessionId || '')} · ${peerRemoteRowHtml(e)}</span>`).join('') : esc(t('기록이 없습니다'))}</div>
+    <div class="row"><button id="rlog-file">${esc(t('파일 위치 열기'))}</button><span style="margin-left:auto"></span><button id="rlog-close">${esc(t('닫기'))}</button></div>`);
+  m.querySelector('#rlog-close').onclick = closeTeamModal;
+  m.querySelector('#rlog-file').onclick = () => window.orca.teamRemoteOpenLog();
+}
+function peerSessionOf(owner, sid) { const p = (teamStatus.peers || {})[owner]; return (p && (p.sessions || []).find(x => x.id === sid)) || null; }
+function peerRemoteResult(r) {
+  if (r.ok) return [r.accepted ? t('입력을 보냈습니다') : t('입력을 보냈습니다 (수락 미확인)'), undefined];
+  if (r.status === 409 && r.error === 'unsupported') return [t('이 세션(Terminal.app 탭)은 원격 중단을 지원하지 않습니다'), 'error'];
+  if (r.status === 409) return [t('상대 세션이 입력 대기 상태가 아닙니다 (빈 프롬프트에서만 받습니다)'), 'error'];
+  if (r.status === 403 && r.error === 'ambiguous teammate') return [t('상대 쪽에서 내 주소에 팀원이 둘 이상 등록되어 있어 거절되었습니다'), 'error'];
+  if (r.status === 403 && r.error === 'blocked') return [`${t('위험한 입력으로 차단되었습니다')}: ${r.rule || ''}`, 'error'];
+  if (r.status === 403) return [t('위임되지 않은 세션입니다 (회수되었을 수 있습니다)'), 'error'];
+  if (r.status === 429) return [t('1분에 20번까지만 보낼 수 있습니다'), 'error'];
+  return [`${t('원격 입력 실패')}: ${r.error || ''}`, 'error'];
+}
+function peerRemoteInputCompose(owner, sid) {
+  const s = peerSessionOf(owner, sid);
+  const m = teamModal(`<h3>${esc(t('원격 입력'))} · @${esc(owner)} / ${esc(s ? s.name : sid)}</h3>
+    <p>${esc(t('원격 입력은 모두 상대 화면에 기록됩니다. 줄바꿈은 한 줄로 합쳐서 보냅니다.'))}</p>
+    <textarea id="peer-rin-text" maxlength="4000"></textarea>
+    <div class="row"><span id="peer-rin-count" style="color:var(--text3)">0/4000</span><span style="margin-left:auto"></span><button id="peer-rin-cancel">${esc(t('취소'))}</button><button class="primary" id="peer-rin-send">${esc(t('보내기'))}</button></div>`);
+  const ta = m.querySelector('#peer-rin-text'); ta.focus();
+  ta.addEventListener('input', () => { m.querySelector('#peer-rin-count').textContent = `${[...ta.value].length}/4000`; });
+  m.querySelector('#peer-rin-cancel').onclick = closeTeamModal;
+  m.querySelector('#peer-rin-send').onclick = async () => {
+    const text = ta.value.trim(); if (!text) return;
+    const btn = m.querySelector('#peer-rin-send'); btn.disabled = true;
+    const r = await window.orca.teamRemoteInput({ peer: owner, sessionId: sid, text }).catch(e => ({ ok: false, error: e.message }));
+    const [msg, kind] = peerRemoteResult(r);
+    if (r.ok) closeTeamModal(); else btn.disabled = false;
+    showInAppToast(`@${owner}: ${msg}`, kind);
+  };
+}
+async function peerRemoteInterrupt(owner, sid) {
+  const s = peerSessionOf(owner, sid);
+  if (!await teamConfirm(t('원격 중단'), LANG === 'en' ? `Interrupt @${owner}'s ${s ? s.name : sid} (Esc)?` : `@${owner} 의 ${s ? s.name : sid} 세션을 중단(Esc)할까요?`, t('중단'))) return;
+  const r = await window.orca.teamRemoteInterrupt({ peer: owner, sessionId: sid }).catch(e => ({ ok: false, error: e.message }));
+  showInAppToast(r.ok ? `@${owner}: ${t('중단을 보냈습니다')}` : `@${owner}: ${peerRemoteResult(r)[0]}`, r.ok ? undefined : 'error');
+}
+async function peerRemoteLastShow(owner, sid) {
+  const s = peerSessionOf(owner, sid);
+  const r = await window.orca.teamRemoteLast({ peer: owner, sessionId: sid }).catch(e => ({ ok: false, error: e.message }));
+  if (!r.ok) { showInAppToast(`@${owner}: ${peerRemoteResult(r)[0]}`, 'error'); return; }
+  const m = teamModal(`<h3>${esc(t('마지막 응답'))} · @${esc(owner)} / ${esc(s ? s.name : sid)}</h3>
+    <div class="peer-last">${esc(r.text || t('응답이 없습니다'))}</div>
+    <div class="row"><span style="margin-left:auto"></span><button id="peer-last-close">${esc(t('닫기'))}</button></div>`);
+  m.querySelector('#peer-last-close').onclick = closeTeamModal;
+}
+if (window.orca.teamRemoteLog) window.orca.teamRemoteLog(200).then(l => { if (Array.isArray(l)) peerRemoteLog = l; }).catch(() => {});
+if (window.orca.onTeamRemote) window.orca.onTeamRemote(e => {
+  if (!e || typeof e !== 'object') return;
+  peerRemoteLog.unshift(e); if (peerRemoteLog.length > 500) peerRemoteLog.length = 500;
+  const who = String(e.peer || '?'), name = String(e.sessionName || e.sessionId || '');
+  if (e.result === 'blocked' && Date.now() - peerBlockToastAt < 30000) {}   // one alert per 30 s; the log keeps every one
+  else if (e.result === 'blocked' && (peerBlockToastAt = Date.now())) showInAppToast(LANG === 'en' ? `Blocked ${who}'s remote input: ${e.ruleLabel || e.rule || ''}` : `${who}의 원격 입력을 차단했습니다: ${e.ruleLabel || e.rule || ''}`, 'error');
+  else if (e.kind === 'input' && (e.result === 'accepted' || e.result === 'sent')) showInAppToast(`🔑 @${who} → ${name}: ${trunc(String(e.text || ''), 60)}`);
+  else if (e.kind === 'interrupt' && e.result === 'accepted') showInAppToast(`🔑 @${who} → ${name}: ${t('중단')}`);
+  else if (e.kind === 'revoke' && e.reason !== 'revoked by owner') showInAppToast(`${name}: ${t('위임이 해제되었습니다')} (${e.reason || ''})`);
+  teamPageTick().then(() => renderDashboard()).catch(() => {});
+});
 // invite code: made and copied by the main process (it carries the token, so the page never sees it); joining sends
 // the pasted code straight to the main process and nothing keeps it afterwards
 const TEAM_SHARE_WARN = '같은 네트워크에 내 이름과 세션 상태가 공개됩니다. 사무실 망에서만 켜세요.';
@@ -8388,6 +8550,9 @@ $('team-list').addEventListener('click', async (e) => {
   else if (act === 'rename') { const v = ($('peer-name') || {}).value || ''; const r = await window.orca.teamRename(v); showInAppToast(r.ok ? `${t('이름 변경')}: ${r.name}` : `${t('이름 변경 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error'); if (document.activeElement) document.activeElement.blur(); teamPageTick(); }
   else if (act === 'note') peerNoteCompose(b.dataset.peer, b.dataset.id);
   else if (act === 'note-deliver') peerNoteDeliver(b.dataset.id);
+  else if (act === 'r-input') peerRemoteInputCompose(b.dataset.peer, b.dataset.id);
+  else if (act === 'r-stop') peerRemoteInterrupt(b.dataset.peer, b.dataset.id);
+  else if (act === 'r-last') peerRemoteLastShow(b.dataset.peer, b.dataset.id);
   else if (act === 'note-ignore') peerNoteSet(b.dataset.id, 'ignored');
   else if (act === 'hello-accept' || act === 'hello-ignore') {
     b.disabled = true;
@@ -8436,6 +8601,7 @@ function settingsRender() {
     ${teamStatus.configured && !teamStatus.error && teamStatus.hasToken ? row(t('공유 끄기'), teamStatus.shared ? t('이 PC를 127.0.0.1 전용으로 되돌리고 자동 발견을 끕니다. 팀 토큰과 팀원 목록은 남고, 초대 코드를 다시 만들면 켜집니다.') : t('공유가 꺼져 있습니다 (이 PC만). 초대 코드를 만들면 다시 켜집니다.'), teamStatus.shared ? `<button class="set-btn" data-set="team-share-off">${esc(t('공유 끄기'))}</button>` : '') : ''}
     ${teamStatus.configured && !teamStatus.error && teamStatus.hasToken ? row(t('사무실 망'), `${teamStatus.paused ? t('지금 망은 사무실 망이 아니라 공유를 멈췄습니다.') + ' ' : ''}${t('이 대역에 있을 때만 공유합니다')}: ${(teamStatus.homeSubnets || []).map(x => x + '.0/24').join(', ') || t('지정 안 됨 (모든 망)')}`, `<button class="set-btn" data-set="team-home-add">${esc(t('이 망을 사무실 망으로 추가'))}</button>`) : ''}
     ${teamStatus.configured && !teamStatus.error && teamStatus.hasToken ? row(t('토큰 재발급'), t('새 팀 토큰을 만듭니다. 지금 팀원은 모두 연결이 끊기고, 새 초대 코드를 받아 다시 합류해야 합니다. 팀원을 내보낼 때 쓰세요.'), `<button class="set-btn" data-set="team-rotate">${esc(t('재발급'))}</button>`) : ''}
+    ${teamStatus.configured && !teamStatus.error && teamStatus.hasToken ? row(t('위임 중인 세션'), (teamStatus.delegations || []).length ? (teamStatus.delegations || []).map(d => `${d.name || d.sessionId} → @${d.peerName}`).join(', ') : t('위임한 세션이 없습니다. 세션 카드 ⋯ 메뉴 → 팀원에게 위임…'), `<div class="set-inline"><button class="set-btn" data-set="team-revoke-all" ${(teamStatus.delegations || []).length ? '' : 'disabled'}>${esc(t('전체 회수'))}</button><button class="set-btn" data-set="team-remote-log">${esc(t('원격 입력 기록'))}</button></div>`) : ''}
     ${teamStatus.configured && !teamStatus.error ? Object.values(teamStatus.peers || {}).sort((a, b) => a.name.localeCompare(b.name)).map(p => row(`@${p.name}`, p.host, `<button class="set-btn" data-set="team-remove" data-name="${esc(p.name)}">${esc(t('삭제'))}</button>`)).join('') : ''}
     ${teamStatus.configured && !teamStatus.error ? row(t('팀 초대 코드'), t('코드에는 팀 비밀 토큰이 들어 있습니다. Slack DM 등 1:1 로만 전달하세요. 코드는 클립보드로만 복사되고 어디에도 저장되지 않습니다.'), `<div class="set-inline"><button class="set-btn" data-set="team-invite">${esc(t('초대 코드 만들기'))}</button><button class="set-btn" data-set="team-join">${esc(t('초대 코드 붙여넣기'))}</button></div>`) : ''}
     <h2>${esc(t('아침 브리핑'))}</h2>
@@ -8499,6 +8665,12 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'team-invite') peerInviteCreate();
   else if (name === 'team-join') peerInviteJoin();
   else if (name === 'team-home-add') { const r = await window.orca.teamHomeAdd(); showInAppToast(r.ok ? `${t('사무실 망')}: ${(r.homeSubnets || []).map(x => x + '.0/24').join(', ')}` : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error'); await teamPageTick(); settingsRender(); }
+  else if (name === 'team-revoke-all') {
+    if (!await teamConfirm(t('전체 회수'), t('위임한 세션을 모두 회수합니다. 팀원은 더 이상 입력·중단할 수 없습니다.'), t('회수'))) return;
+    const r = await window.orca.teamRevoke({}); showInAppToast(r.ok ? `${t('위임을 회수했습니다')} (${r.revoked || 0})` : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
+    await teamPageTick(); settingsRender(); renderDashboard();
+  }
+  else if (name === 'team-remote-log') peerRemoteLogShow();
   else if (name === 'team-share-off') { const r = await window.orca.teamShareOff(); showInAppToast(r.ok ? t('공유를 껐습니다. 이 PC 안에서만 열려 있습니다') : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error'); await teamPageTick(); settingsRender(); }
   else if (name === 'team-rotate') {
     if (!await teamConfirm(t('토큰 재발급'), t('지금 팀원은 모두 연결이 끊깁니다. 새 초대 코드를 만들어 팀원에게 1:1 로 다시 전달해야 합니다. 계속할까요?'), t('재발급'))) return;

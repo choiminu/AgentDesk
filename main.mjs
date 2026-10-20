@@ -6,8 +6,10 @@ import { dirname, join, delimiter as PATH_DELIM } from "node:path";
 import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync, mkdtempSync, rmSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
-import { readTeamConfig, startTeamServer, fetchPeer, postNote, postHello, ensureInstanceId, addPeerToConfig, removePeerFromConfig, upsertPeer, classifyMove, onHomeNetwork, withHomeSubnets, UUID_RE, validateNote, setTeamFields, newTeamToken, rotateTeamToken, encodeInvite, decodeInvite, writeTeamJson, isShared, sameSubnet, TEAM_CFG } from "./team/peer.mjs";
+import { readTeamConfig, startTeamServer, fetchPeer, postNote, postHello, remoteInput, remoteInterrupt, remoteLast, ensureInstanceId, addPeerToConfig, removePeerFromConfig, upsertPeer, classifyMove, onHomeNetwork, withHomeSubnets, UUID_RE, validateNote, setTeamFields, newTeamToken, rotateTeamToken, encodeInvite, decodeInvite, writeTeamJson, isShared, sameSubnet, TEAM_CFG } from "./team/peer.mjs";
 import { startDiscovery } from "./team/discovery.mjs";
+import { createDelegationStore, createRemoteLog, createEventThrottle, remoteMessage, validateRemoteText, resolveDelegatedSession, screenAllowsInput, remoteInterruptAllowed, canDelegate, autoRevokeReasons, permissionOk, REMOTE_LOG } from "./team/remote.mjs";
+import "./core/status.js";   // globalThis.AgentDeskStatus (responseTextFromScreen) for a delegated session's last answer
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { randomUUID } from "node:crypto";
 import { openPermEndpoint, ensurePrivateDir, permHookScript as permHookSh, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK } from "./perm/server.mjs";
@@ -737,13 +739,16 @@ ipcMain.handle("orca:terminal-switch", async (_e, handle) => {
   return result;
 });
 
-ipcMain.handle("orca:terminal-interrupt", async (_e, handle) => {
+// shared by the IPC handlers below and team remote input (phase 3)
+async function terminalInterrupt(handle) {
   if (isTmux(handle)) { try { await tmux("send-keys", "-t", paneOf(handle), "Escape"); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } }
   if (isTerm(handle)) return withTarget(handle, termInterrupt);
   return orca("terminal", "send", "--terminal", handle, "--interrupt");
-});
+}
+ipcMain.handle("orca:terminal-interrupt", (_e, handle) => terminalInterrupt(handle));
 
-ipcMain.handle("orca:terminal-send", (_e, handle, text, enter, waitSubmit) => {
+ipcMain.handle("orca:terminal-send", (_e, handle, text, enter, waitSubmit) => terminalSend(handle, text, enter, waitSubmit));
+function terminalSend(handle, text, enter, waitSubmit) {
   if (isTmux(handle)) return tmuxSend(paneOf(handle), text, enter).catch(err => ({ ok: false, error: err.message }));
   if (isTerm(handle)) return withTarget(handle, tg => termSend(tg, text, enter)).catch(err => ({ ok: false, error: err.message }));
   const args = ["terminal", "send", "--terminal", handle, "--text", text];
@@ -754,7 +759,7 @@ ipcMain.handle("orca:terminal-send", (_e, handle, text, enter, waitSubmit) => {
     timeout: timeoutMs,
     env: { ...process.env, PATH: EXEC_PATH },
   }).then(({ stdout }) => JSON.parse(stdout)).catch(err => ({ ok: false, error: err.message }));
-});
+}
 
 ipcMain.handle("orca:terminal-wait", (_e, handle, condition, timeoutMs) => {
   if (isTmux(handle)) return tmuxWaitIdle(paneOf(handle), timeoutMs);
@@ -767,7 +772,8 @@ ipcMain.handle("orca:terminal-wait", (_e, handle, condition, timeoutMs) => {
   }).then(({ stdout }) => JSON.parse(stdout)).catch(err => ({ ok: false, error: err.message }));
 });
 
-ipcMain.handle("orca:terminal-read", async (_e, handle, screen, cursor, limit) => {
+ipcMain.handle("orca:terminal-read", (_e, handle, screen, cursor, limit) => terminalRead(handle, screen, cursor, limit));
+async function terminalRead(handle, screen, cursor, limit) {
   if (isTmux(handle)) return tmuxCapture(paneOf(handle)).catch(err => ({ ok: false, error: err.message }));
   if (isTerm(handle)) return withTarget(handle, termRead).catch(err => ({ ok: false, error: err.message }));
   const args = ["terminal", "read", "--terminal", handle];
@@ -778,7 +784,7 @@ ipcMain.handle("orca:terminal-read", async (_e, handle, screen, cursor, limit) =
   const tail = res?.result?.terminal?.tail;
   if (process.env.ROCA_DEBUG) console.log(`[terminal-read] screen=${!!screen} tail=${Array.isArray(tail) ? tail.length : 'none'}`);
   return res;
-});
+}
 
 ipcMain.handle("orca:terminal-close", async (_e, handle) => {
   if (isTmux(handle)) { try { await tmux("kill-pane", "-t", paneOf(handle)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } }
@@ -1402,14 +1408,89 @@ function teamOnNote(note) {
   else { try { teamNotesWrite(JSON.stringify(n) + "\n", true); } catch {} }
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:team-note", n);
 }
-ipcMain.on("roca:team-publish", (_e, sessions) => { teamSnapshot = { at: Date.now(), sessions: Array.isArray(sessions) ? sessions : [] }; });
+ipcMain.on("roca:team-publish", (_e, sessions) => {
+  teamSnapshot = { at: Date.now(), sessions: Array.isArray(sessions) ? sessions : [] };
+  teamAutoRevoke();   // a delegated session that ended (or left the list) is no longer delegated
+});
+// ── phase 3: per-session delegation (team/remote.mjs). In memory only: a restart, the session ending, the teammate
+//    leaving my list, a new team token or "stop sharing" ends it. Every create / revoke / input / interrupt / block is
+//    logged to ~/.agentdesk/team-remote.jsonl and shown to me right away. ──
+const teamDelegations = createDelegationStore();
+const teamRemoteLog = createRemoteLog();
+const teamGrants = new Map();   // peer name → [{ sessionId, grant, name, repo, branch }] delegated TO me (never sent to the page)
+let teamDelegToken = null;
+function teamRemoteEvent(entry) {
+  const e = teamRemoteLog.append(entry);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:team-remote", e);
+  return e;
+}
+function teamRevoke(list, reason) { for (const d of list || []) teamRemoteEvent({ kind: "revoke", sessionId: d.sessionId, sessionName: d.name, peer: d.peerName, instanceId: d.instanceId, reason: d.reason || reason }); }
+// session gone, teammate removed / sharing an address / answering as another instance / unreachable 3× and 120 s
+function teamAutoRevoke() {
+  if (!teamDelegations.size) return;
+  const ended = autoRevokeReasons(teamDelegations.list(), { sessions: teamSnapshot.sessions || [], peers: teamCfg ? teamCfg.peers : [], stateOf: name => teamPeerState.get(name) || null });
+  if (!ended.length) return;
+  const keys = new Set(ended.map(d => `${d.sessionId}|${d.instanceId}`));
+  teamDelegations.removeWhere(d => keys.has(`${d.sessionId}|${d.instanceId}`));
+  teamRevoke(ended);
+}
+const teamEventThrottle = createEventThrottle();
+let teamBlockNotifyAt = 0;
+const teamRemoteHandlers = {
+  async input({ delegation, text }) {
+    // the latest snapshot, by full local id: exactly one session, else refuse
+    const session = resolveDelegatedSession(teamSnapshot.sessions, delegation.localId);
+    const h = session && typeof session.handle === "string" ? session.handle : "";
+    if (!h || !permissionOk(session)) return { ok: false, busy: true };
+    // the published status can be a moment old: look at the screen once more, so the Enter never lands on a
+    // permission / choice prompt (it would pick the highlighted option), in a running turn or on the owner's draft.
+    // A screen that cannot be read counts as "not ready" (fail closed).
+    let tail = null;
+    try { const res = await terminalRead(h, true); tail = res && res.result && res.result.terminal && res.result.terminal.tail; } catch { tail = null; }
+    if (!screenAllowsInput(tail)) return { ok: false, busy: true };
+    const r = await terminalSend(h, remoteMessage(delegation.peerName, text), true, 15);
+    return r && r.ok !== false ? { ok: true, accepted: !!(r.result && r.result.send && r.result.send.accepted) } : { ok: false, error: (r && r.error) || "send failed" };
+  },
+  async interrupt({ delegation }) {
+    const session = resolveDelegatedSession(teamSnapshot.sessions, delegation.localId);
+    const h = session && typeof session.handle === "string" ? session.handle : "";
+    if (!h) return { ok: false, error: "no terminal" };
+    // a Terminal.app tab is interrupted by bringing it to the front and pressing Esc — that key could land in another app
+    if (!remoteInterruptAllowed(h)) return { ok: false, unsupported: true };
+    const r = await terminalInterrupt(h);
+    return r && r.ok !== false ? { ok: true } : { ok: false, error: (r && r.error) || "interrupt failed" };
+  },
+  // the last answer only: read from the screen (as the inbox / Jira report do), else the transcript's last message
+  async last({ session }) {
+    if (!session) return { text: "", at: 0 };
+    let text = "";
+    const h = typeof session.handle === "string" ? session.handle : "";
+    if (h) { try { const res = await terminalRead(h, true); const tail = res && res.result && res.result.terminal && res.result.terminal.tail; if (Array.isArray(tail)) text = AgentDeskStatus.responseTextFromScreen(tail) || ""; } catch {} }
+    return { text: text || String(session.lastMsg || ""), at: Number(session.time) || 0 };
+  },
+  // repeated rate / busy / blocked events: one per session and result a minute; a desktop alert at most every 30 s
+  event(e) {
+    const ev = teamEventThrottle.pass(e); if (!ev) return null;
+    const entry = teamRemoteEvent(ev);
+    if (ev.result === "blocked" && Date.now() - teamBlockNotifyAt > 30000) {
+      teamBlockNotifyAt = Date.now();
+      try { new Notification({ title: "원격 입력 차단", body: `${ev.peer}의 원격 입력을 차단했습니다: ${ev.ruleLabel || ev.rule}` }).show(); } catch {}
+    }
+    return entry;
+  },
+};
 function teamStopDiscovery() { if (teamDiscovery) { try { teamDiscovery.stop(); } catch {} teamDiscovery = null; } teamDiscoveryKey = ""; teamStatus.discovery = false; }
 function teamReload() {
   let cfg = readTeamConfig();
   teamStatus.configured = !!cfg; teamStatus.error = cfg && cfg.error ? cfg.error : "";
-  if (!cfg || cfg.error) { teamCfg = null; teamStatus.shared = false; teamStopDiscovery(); if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; teamStatus.listening = false; } return; }
+  if (!cfg || cfg.error) { teamCfg = null; teamStatus.shared = false; teamRevoke(teamDelegations.clear(), "team sharing off"); teamGrants.clear(); teamStopDiscovery(); if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; teamStatus.listening = false; } return; }
   if (!cfg.instanceId) { try { cfg = { ...cfg, instanceId: ensureInstanceId() }; } catch {} }
   teamCfg = cfg; teamStatus.name = cfg.name; teamStatus.port = cfg.port; teamStatus.instanceId = cfg.instanceId || ""; teamStatus.hasToken = !!cfg.token;
+  // delegations end with a new team token, and with the teammate leaving my list; grants from a removed teammate go too
+  if (teamDelegToken !== null && teamDelegToken !== cfg.token) { teamRevoke(teamDelegations.clear(), "token changed"); teamGrants.clear(); }
+  teamDelegToken = cfg.token;
+  teamAutoRevoke();   // teammate removed from team.json, or now sharing an address with another entry
+  for (const k of [...teamGrants.keys()]) if (!cfg.peers.some(p => p.name === k)) teamGrants.delete(k);
   // away from the office network(s) remembered at create / join: no beacon, server back on 127.0.0.1, nobody polled —
   // until an interface is on one of them again (checked every 30 s)
   const home = onHomeNetwork(cfg.homeSubnets);
@@ -1434,7 +1515,7 @@ function teamReload() {
   if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; }
   // the server reads teamCfg on every request through this live view, so a token / name / peer edit applies without a restart
   const live = { get name() { return teamCfg ? teamCfg.name : cfg.name; }, get token() { return teamCfg ? teamCfg.token : cfg.token; }, get instanceId() { return teamCfg ? teamCfg.instanceId : cfg.instanceId; }, get peers() { return teamCfg ? teamCfg.peers : cfg.peers; } };
-  const srv = startTeamServer(live, () => teamSnapshot, { onNote: teamOnNote, onHello: teamOnHello });
+  const srv = startTeamServer(live, () => teamSnapshot, { onNote: teamOnNote, onHello: teamOnHello, delegations: teamDelegations, remote: teamRemoteHandlers });
   srv.once("error", (e) => { teamStatus.listening = false; teamStatus.error = `listen ${key}: ${e.code || e.message}`; teamServer = null; });
   srv.listen(cfg.port, teamStatus.bind, () => { teamStatus.listening = true; teamStatus.error = ""; });
   teamServer = srv; teamServerKey = key;
@@ -1484,24 +1565,39 @@ async function teamPoll() {
     // a peer that answered as another instance than the one I registered stays stopped until its entry changes
     const stopped = p => { const st = teamPeerState.get(p.name); return !!(st && st.mismatch && st.host === p.host && st.expectId === (p.instanceId || "")); };
     const due = teamCfg.peers.filter(p => { if (offnet.has(p.name) || stopped(p)) return false; const st = teamPeerState.get(p.name); return !st || now >= (st.nextAt || 0) || st.host !== p.host; });
-    const results = await Promise.all(due.map(p => { const st = teamPeerState.get(p.name); const same = st && st.host === p.host; return fetchPeer(p, teamCfg.token, same ? { etag: st.etag, since: st.theirAt } : {}).then(r => ({ r, p })); }));
+    // a teammate I delegated to is fetched in full (no ETag / since) at least once a minute: a 304 carries no instance
+    // id, so the identity check below would never run for it otherwise
+    const delegated = new Set(teamDelegations.list().map(d => d.instanceId));
+    const results = await Promise.all(due.map(p => {
+      const st = teamPeerState.get(p.name); const same = st && st.host === p.host;
+      const full = !same || (p.instanceId && delegated.has(p.instanceId) && now - (st.fullAt || 0) > 60000);
+      return fetchPeer(p, teamCfg.token, full ? {} : { etag: st.etag, since: st.theirAt }).then(r => ({ r, p }));
+    }));
     for (const { r, p } of results) {
       const prev = teamPeerState.get(p.name) || {};
       const st = { ...(prev.host === p.host ? prev : {}), name: p.name, host: p.host, checkedAt: Date.now(), offnet: false };
       if (r.ok && !r.notModified && p.instanceId && r.instanceId && r.instanceId !== p.instanceId) {
         // the beacon / invite / hello said instance A lives here, the signed reply says B: do not show B as A
-        Object.assign(st, { ok: false, mismatch: true, expectId: p.instanceId, error: "identity mismatch", sessions: [], etag: "", theirAt: 0, fails: (prev.fails || 0) + 1 });
+        Object.assign(st, { ok: false, mismatch: true, expectId: p.instanceId, error: "identity mismatch", sessions: [], delegatedToMe: [], etag: "", theirAt: 0, fails: (prev.fails || 0) + 1 });
+        teamGrants.delete(p.name);
         console.log(`[team] ${p.name} @ ${p.host}: answered as another instance — polling stopped`);
       } else if (r.ok) {
         st.ok = true; st.mismatch = false; st.error = ""; st.fails = 0; st.lastOk = r.at; st.at = r.at; st.rtt = r.rtt; st.nextAt = Date.now() + 3000 - 200;
         if (r.etag) st.etag = r.etag;
         teamSayHello(p);
-        if (!r.notModified) { st.sessions = r.sessions; st.theirAt = r.theirAt; st.remoteName = r.remoteName; st.instanceId = r.instanceId; }
+        if (!r.notModified) {
+          st.fullAt = Date.now();
+          st.sessions = r.sessions; st.theirAt = r.theirAt; st.remoteName = r.remoteName; st.instanceId = r.instanceId;
+          // grants stay in the main process; the page only learns which sessions it may act on
+          const dl = r.delegations || [];
+          if (dl.length) teamGrants.set(p.name, dl); else teamGrants.delete(p.name);
+          st.delegatedToMe = dl.map(d => ({ sessionId: d.sessionId, name: d.name, repo: d.repo, branch: d.branch }));
+        }
       } else {
         st.ok = false; st.error = r.error; st.fails = (prev.fails || 0) + 1; st.rtt = r.rtt ?? null; st.etag = ""; st.theirAt = 0;
         st.nextAt = Date.now() + (st.fails >= 3 ? 15000 : 3000) - 200;
         // keep the last good snapshot for a while so a blip does not empty the list
-        if (!(st.lastOk && Date.now() - st.lastOk < 60000)) st.sessions = [];
+        if (!(st.lastOk && Date.now() - st.lastOk < 60000)) { st.sessions = []; st.delegatedToMe = []; teamGrants.delete(p.name); }
       }
       st.backoff = !st.ok && st.fails >= 3;
       teamPeerState.set(p.name, st);
@@ -1510,6 +1606,7 @@ async function teamPoll() {
     const peers = {};
     for (const p of teamCfg.peers) { const st = teamPeerState.get(p.name); peers[p.name] = st ? { ...st, sessions: st.sessions || [] } : { name: p.name, host: p.host, ok: false, error: "", sessions: [], fails: 0 }; }
     teamStatus.peers = peers;
+    teamAutoRevoke();   // identity mismatch, or unreachable for 3 polls and 120 s
   } finally { teamPolling = false; }
 }
 function teamDiscoveredList() {
@@ -1521,7 +1618,7 @@ function teamDiscoveredList() {
 setTimeout(() => { teamFirstRun(); teamReload(); teamPoll(); }, 3000);
 setInterval(teamReload, 30000);
 setInterval(teamPoll, 1000);   // each peer keeps its own 3 s / 15 s schedule (nextAt)
-ipcMain.handle("roca:team-status", () => ({ ...teamStatus, ip: lanAddress(), discovered: teamDiscoveredList(), pending: [...teamPendingHellos.values()], notesNew: teamNotes.filter(n => n.state === "new").length }));
+ipcMain.handle("roca:team-status", () => ({ ...teamStatus, ip: lanAddress(), discovered: teamDiscoveredList(), pending: [...teamPendingHellos.values()], notesNew: teamNotes.filter(n => n.state === "new").length, delegations: teamDelegations.list() }));
 // "turn on": the same token-less, local-only team.json a first run writes (create or join a team afterwards)
 ipcMain.handle("roca:team-setup", () => {
   try {
@@ -1597,6 +1694,8 @@ ipcMain.handle("roca:team-hello-decide", (_e, key, accept) => {
   teamPendingHellos.delete(p.key);
   if (accept !== true) { teamHelloIgnored.add(p.key); return { ok: true, ignored: true }; }
   try {
+    // an instance that moved to a new address: whatever was delegated to it ends (it asks again from the new seat)
+    if (p.kind === "move" && p.instanceId) teamRevoke(teamDelegations.removeWhere(d => d.instanceId === p.instanceId), "teammate moved");
     const r = addPeerToConfig(TEAM_CFG, { name: p.name, host: p.host, instanceId: p.instanceId });
     if (r.ok) { teamReload(); teamHelloSent.delete(r.name); setTimeout(teamPoll, 100); }
     return r;
@@ -1619,7 +1718,7 @@ ipcMain.handle("roca:team-home-add", () => {
 // "stop sharing": back to 127.0.0.1 and no beacon (the token and peers stay; creating an invite code turns it on again)
 ipcMain.handle("roca:team-share-off", () => {
   if (!teamCfg) return { ok: false, error: "team sharing is off" };
-  try { setTeamFields(TEAM_CFG, SHARE_OFF); teamPeerState.clear(); teamReload(); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; }
+  try { setTeamFields(TEAM_CFG, SHARE_OFF); teamPeerState.clear(); teamRevoke(teamDelegations.clear(), "sharing off"); teamGrants.clear(); teamReload(); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; }
 });
 // new team token: every teammate's signature stops matching; they join again with a new invite code
 ipcMain.handle("roca:team-token-rotate", (_e, opts) => {
@@ -1639,6 +1738,63 @@ ipcMain.handle("roca:team-note-send", async (_e, msg) => {
   const v = validateNote({ to: msg.to, toName: msg.toName, from: teamCfg.name, text: msg.text }); if (v.error) return { ok: false, error: v.error };
   // "from" is ignored by the receiver (it uses my registered name there); the port tells two PCs on one IP apart
   return postNote(peer, teamCfg.token, { ...v.note, port: teamCfg.port });
+});
+// ── phase 3 IPC: delegate / revoke my sessions; act on sessions delegated to me ──
+ipcMain.handle("roca:team-delegate", (_e, req) => {
+  if (!teamCfg || !teamCfg.token || !teamStatus.shared) return { ok: false, error: teamStatus.paused ? "not on the office network" : "team sharing is off" };
+  const r = req && typeof req === "object" ? req : {};
+  const peer = teamCfg.peers.find(p => p.instanceId && p.instanceId === String(r.instanceId || "")) || null;
+  // the session by its full local id (exactly one), a connected teammate alone at its address, a Claude Code session
+  // that does not run with permission checks off
+  const s = resolveDelegatedSession(teamSnapshot.sessions, String(r.sessionId || ""));
+  const why = canDelegate({ peer, peers: teamCfg.peers, state: peer ? teamPeerState.get(peer.name) : null, session: s });
+  if (why) return { ok: false, error: why };
+  try {
+    const d = teamDelegations.add({ localId: s.id, instanceId: peer.instanceId, peerName: peer.name, name: s.name || "", repo: s.repo ? String(s.repo).split("/").filter(Boolean).pop() : "", branch: s.branch || "" });
+    teamRemoteEvent({ kind: "delegate", sessionId: d.sessionId, sessionName: d.name, peer: peer.name, instanceId: peer.instanceId });
+    return { ok: true, delegation: d };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+// { sessionId?, instanceId? }: one pair, every teammate of one session, or (empty) everything
+ipcMain.handle("roca:team-revoke", (_e, req) => {
+  const r = req && typeof req === "object" ? req : {};
+  const lid = r.sessionId ? String(r.sessionId) : "", iid = r.instanceId ? String(r.instanceId) : "";
+  const gone = teamDelegations.removeWhere(d => (!lid || d.localId === lid) && (!iid || d.instanceId === iid));
+  teamRevoke(gone, "revoked by owner");
+  return { ok: true, revoked: gone.length };
+});
+// [연장] on the owner's card: another 2 hours
+ipcMain.handle("roca:team-delegate-extend", (_e, req) => {
+  const r = req && typeof req === "object" ? req : {};
+  const d = teamDelegations.extend(String(r.sessionId || ""), String(r.instanceId || ""));
+  if (!d) return { ok: false, error: "not delegated" };
+  teamRemoteEvent({ kind: "extend", sessionId: d.sessionId, sessionName: d.name, peer: d.peerName, instanceId: d.instanceId });
+  return { ok: true, expiresAt: d.expiresAt };
+});
+ipcMain.handle("roca:team-remote-log", (_e, n) => teamRemoteLog.recent(Math.min(500, Math.max(1, Number(n) || 200))));
+ipcMain.handle("roca:team-remote-open-log", () => { shell.showItemInFolder(REMOTE_LOG); return true; });
+function teamGrantFor(peerName, sessionId) {
+  if (!teamCfg || !teamCfg.token || !teamStatus.shared) return { error: teamStatus.paused ? "not on the office network" : "team sharing is off" };
+  const peer = teamCfg.peers.find(p => p.name === String(peerName || "")); if (!peer) return { error: "unknown peer" };
+  if (!sameSubnet(peer.host)) return { error: "other network" };
+  const g = (teamGrants.get(peer.name) || []).find(x => x.sessionId === String(sessionId || ""));
+  return g ? { peer, grant: g.grant, sessionId: g.sessionId } : { error: "not delegated" };
+}
+ipcMain.handle("roca:team-remote-input", async (_e, msg) => {
+  const m = msg && typeof msg === "object" ? msg : {};
+  const v = validateRemoteText(m.text); if (v.error) return { ok: false, error: v.error };
+  const g = teamGrantFor(m.peer, m.sessionId); if (g.error) return { ok: false, error: g.error };
+  return remoteInput(g.peer, teamCfg.token, g.sessionId, g.grant, v.text);
+});
+ipcMain.handle("roca:team-remote-interrupt", async (_e, msg) => {
+  const m = msg && typeof msg === "object" ? msg : {};
+  const g = teamGrantFor(m.peer, m.sessionId); if (g.error) return { ok: false, error: g.error };
+  return remoteInterrupt(g.peer, teamCfg.token, g.sessionId, g.grant);
+});
+ipcMain.handle("roca:team-remote-last", async (_e, msg) => {
+  const m = msg && typeof msg === "object" ? msg : {};
+  const g = teamGrantFor(m.peer, m.sessionId); if (g.error) return { ok: false, error: g.error };
+  return remoteLast(g.peer, teamCfg.token, g.sessionId, g.grant);
 });
 ipcMain.handle("roca:recall-notes", async (_e, cwd, limit) => {
   if (!RECALL_CLI || !cwd || !existsSync(cwd)) return [];

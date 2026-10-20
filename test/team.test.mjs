@@ -33,7 +33,7 @@ test('readTeamConfig: missing → null, example token → error, valid → norma
 
 test('sanitizeSessions drops prompts, tool inputs and full paths', () => {
   const [o] = sanitizeSessions([{ id: 'wt1::/Users/x/project/agentdesk', name: 'front-desk', status: 'running', prompt: 'SECRET prompt', toolInput: '/Users/x/.env', repo: '/Users/x/project/agentdesk', cwd: '/Users/x/project/agentdesk', now: 'reading README', subagents: [{ state: 'running' }, { state: 'done' }], loop: { reason: 'fail', tool: 'Bash', input: 'rm -rf' }, ctxPct: 42 }]);
-  assert.deepEqual(o, { id: 'wt1', name: 'front-desk', status: 'running', ctxPct: 42, repo: 'agentdesk', cwd: 'agentdesk', now: 'reading README', loop: { reason: 'fail', tool: 'Bash' }, subagents: 1 });
+  assert.deepEqual(o, { id: globalThis.AgentDeskTeam.publicSessionId('wt1::/Users/x/project/agentdesk'), name: 'front-desk', status: 'running', ctxPct: 42, repo: 'agentdesk', cwd: 'agentdesk', now: 'reading README', loop: { reason: 'fail', tool: 'Bash' }, subagents: 1 });
   assert.ok(!JSON.stringify(o).includes('SECRET') && !JSON.stringify(o).includes('/Users/'));
 });
 
@@ -50,17 +50,17 @@ test('sanitizeSessions forces types, lengths and characters (a modified teammate
   assert.equal(o.ctxPct, undefined, 'non-numeric ctx dropped');
   assert.deepEqual([o.needsInput, o.stuck, o.ended, o.isSub, o.hookOnly], [false, false, false, false, true], 'booleans: only true is true');
   assert.equal(o.time, undefined); assert.equal(o.askSince, undefined); assert.equal(o.stuckSince, 1700000000000);
-  assert.equal(o.id.length, 80); assert.equal(o.name.length, 120); assert.equal(o.branch.length, 120); assert.equal(o.tool.length, 40);
+  assert.match(o.id, /^s_[0-9a-f]{24}$/); assert.equal(o.name.length, 120); assert.equal(o.branch.length, 120); assert.equal(o.tool.length, 40);
   assert.ok(!/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(o.name), 'control / line-separator characters removed');
   assert.equal(o.now.length, 200); assert.equal(o.report.text.length, 200); assert.equal(o.report.at, 0);
   assert.equal(o.files.length, 20); assert.ok(o.files.every(f => f.length <= 200));
-  assert.equal(o.jira, undefined); assert.equal(o.subagents, 7); assert.equal(o.parentId, 'p');
+  assert.equal(o.jira, undefined); assert.equal(o.subagents, 7); assert.equal(o.parentId, globalThis.AgentDeskTeam.publicSessionId('p::/Users/x'));
   assert.equal(sanitizeSessions([{ ctxPct: 140.6 }])[0].ctxPct, 100);
   assert.equal(sanitizeSessions([{ ctxPct: -3 }])[0].ctxPct, 0);
   assert.equal(sanitizeSessions([{ agent: 'codex', status: 'waiting' }])[0].agent, 'codex');
   assert.equal(sanitizeSessions([{ subagents: '9' }])[0].subagents, 0);
   assert.equal(sanitizeSessions(Array.from({ length: 500 }, (_, i) => ({ id: `s${i}` }))).length, SESSIONS_MAX);
-  assert.deepEqual(sanitizeSessions([null, 'x', 5, { id: 'ok' }]).map(s => s.id), ['ok']);
+  assert.deepEqual(sanitizeSessions([null, 'x', 5, { id: 'ok' }]).map(s => s.id), [globalThis.AgentDeskTeam.publicSessionId('ok')]);
 });
 
 test('sanitizeSessions masks secrets in free text', () => {
@@ -167,7 +167,7 @@ test('server: ping is open without name or instance id, sessions need a signatur
     assert.deepEqual([bad.ok, bad.error], [false, 'token mismatch']);
     const good = await fetchPeer({ name: 'p', host }, 't0k');
     assert.equal(good.ok, true); assert.equal(good.remoteName, 'neo'); assert.equal(good.theirAt, 123); assert.equal(good.instanceId, ID.a);
-    assert.deepEqual(good.sessions, [{ id: 'a', name: 'x', status: 'waiting', repo: '', cwd: '', subagents: 0 }]);
+    assert.deepEqual(good.sessions, [{ id: globalThis.AgentDeskTeam.publicSessionId('a'), name: 'x', status: 'waiting', repo: '', cwd: '', subagents: 0 }]);
     const down = await fetchPeer({ name: 'q', host: '127.0.0.1:1' }, 't0k');
     assert.equal(down.ok, false); assert.ok(down.error);
     // a replayed request (same headers) is refused
