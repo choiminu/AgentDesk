@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-sZzI0tqUX0Y2n+xbn0+QrTvnIY8g9T9bWCqK2uDmikY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-gr8VA9ltEeEGtusPGaihMKiMyWao+vmExHi0lED40hA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -500,6 +500,11 @@
   .team-bar { padding: 8px 12px 0; font-size: var(--fs-xs); color: var(--text3); line-height: 1.4; }
   .team-bar b { color: var(--text2); font-weight: 600; }
   .team-bar .off { color: var(--red); }
+  .group-header .gh-safety { display: inline-flex; flex-wrap: wrap; gap: 4px; text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .safety-chip { border: 1px solid var(--border-subtle); border-radius: 4px; padding: 0 4px; max-width: none; }
+  .safety-chip.bad { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); opacity: 1; }
+  .safety-chip.warn { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, transparent); opacity: 1; }
+  .safety-chip.unk { color: var(--text3); opacity: .6; }
   .peer-conflict.file { color: var(--red); border-color: var(--red); }
   .peer-conflict.branch { color: #c99a1a; }
   .peer-warn-btn { cursor: pointer; background: transparent; font: inherit; }
@@ -2112,6 +2117,8 @@
   .jb-due.over { color: var(--red); }
   .jb-subs { font-size: var(--fs-xs); color: var(--text3); margin-top: 4px; }
   .jb-cost { font-size: var(--fs-xs); color: var(--yellow); margin-top: 5px; }
+  .jb-peer { font-size: var(--fs-xs); margin-top: 5px; }
+  .jira-peer { color: var(--accent); overflow-wrap: anywhere; }
   .jira-cost { color: var(--yellow); }
   .jb-foot { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-size: var(--fs-xs); }
   .jb-key { font-family: var(--mono); color: var(--text2); }
@@ -3007,6 +3014,7 @@
 <script src="core/team.js"></script>
 <script src="core/diff.js"></script>
 <script src="core/usage.js"></script>
+<script src="core/notify.js"></script>
 <script>
 // dev: ROCA_START_PAGE=…,set:<localStorage key>=<url-encoded value> presets a setting before anything reads it
 for (const part of location.hash.replace('#', '').split(',')) { const m = part.match(/^set:([a-z0-9-]+)=(.*)$/i); if (m) { try { localStorage.setItem(m[1], decodeURIComponent(m[2])); } catch {} } }
@@ -3235,6 +3243,20 @@ Object.assign(I18N, {
   '개발 실행(npm start)은 목록에 "Electron"으로, DMG로 설치한 앱은 "AgentDesk"로 표시됩니다.': 'A dev run (npm start) is listed as "Electron"; the app installed from the DMG is listed as "AgentDesk".',
   '버튼을 누르면 "개인정보 보호 및 보안" 화면이 열립니다. 아래쪽의 "로컬 네트워크"를 누른 뒤 이 앱의 스위치를 켜세요.': 'The button opens "Privacy & Security". Scroll to "Local Network", open it, and turn this app on.',
   '로컬 네트워크 권한이 꺼져 있습니다 — 팀 탭의 [권한 설정 열기]를 누르세요': 'Local Network access is off — press [Open permission settings] in the Team tab',
+  // alerts for delegated sessions and reminders; teammates working on a Jira ticket
+  '입력 가능': 'Ready for input', '주인 승인 필요': 'Owner approval needed', '다시 알림': 'Reminder', '위임 세션': 'Delegated session',
+  '승인은 주인만 할 수 있습니다. 팀 탭에서 ✉ 메모로 알려 주세요': 'Only the owner can approve. Leave them a ✉ note from the Team tab',
+  '재알림 간격(분)': 'Re-alert interval (min)', '응답 없음 기준(분)': 'No-response threshold (min)',
+  '승인 대기·응답 없음이 계속되면 이 간격마다 토스트와 데스크톱 알림을 다시 띄웁니다(단순 입력 대기는 처음 한 번만 알림). 내 세션과 나에게 위임된 팀원 세션에 적용되고, 세션당 한 시간에 최대 2번입니다. 0이면 끕니다.': 'While a session keeps waiting for approval or not responding, the toast and desktop notification repeat at this interval (a plain wait for input alerts once only). Applies to your sessions and teammate sessions delegated to you, at most twice an hour per session. 0 turns it off.',
+  '작업 중인 세션에 이 시간 동안 도구 호출이나 응답이 없으면 응답 없음으로 표시하고 알립니다.': 'A working session with no tool call or reply for this long is marked "no response" and alerts you.',
+  '재알림 간격은 0~240 사이의 정수(분)입니다': 'The re-alert interval is a whole number of minutes from 0 to 240', '응답 없음 기준은 1~600 사이의 정수(분)입니다': 'The no-response threshold is a whole number of minutes from 1 to 600',
+  '가드 꺼짐 (hook 없음)': 'guard off (no hook)', '가드 꺼짐': 'guard off', '권한 hook 켜짐': 'permission hook on', '권한 hook 꺼짐': 'permission hook off', '오늘 차단·경고': 'blocked / warned today', '가드 상태 알 수 없음': 'guard status unknown',
+  '안전 상태 없음': 'no safety status', '신원 모호': 'ambiguous identity', '팀원 PC의 자기 신고 값입니다 (검증되지 않음)': 'Self-reported by the teammate\'s PC (not verified)', '팀원에게 보내는 자기 신고 값입니다 (검증되지 않음)': 'Self-reported value sent to teammates (not verified)',
+  '같은 주소에 팀원이 둘 이상 등록되어 안전 상태를 받지 않았습니다': 'More than one teammate is registered at that address, so no safety status was received',
+  '구버전이거나, 상대 쪽에서 내 주소에 팀원이 둘 이상 등록되어 있으면 안전 상태가 오지 않습니다': 'No safety status comes from an older version, or when the teammate has more than one teammate registered at my address',
+'가드 hook이 설치되어 있지 않습니다': 'The guard hook is not installed', '규칙 동일': 'same rules', '규칙 다름': 'different rules', '규칙 해시': 'rule hash',
+  '안전 상태': 'Safety', '팀원의 가드가 꺼졌습니다': 'teammate\'s guard was turned off',
+  '팀원 세션이 이 티켓을 작업 중입니다': 'A teammate\'s session is working on this ticket', '팀원이 작업 중인 티켓': 'A teammate is on this ticket', '그래도 배치': 'Dispatch anyway',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -3540,7 +3562,8 @@ function statusIcon(s) {
 
 const persistentToasts = new Map();
 
-function showInAppToast(name, type, sessionId) {
+// onClick: the toast becomes a button (stays 10 s) — e.g. jump to the teammate's card
+function showInAppToast(name, type, sessionId, onClick) {
   const el = document.createElement('div');
   // session events (done / error / waiting) get a status suffix; every other call passes its own finished message
   const mark = /^\p{Extended_Pictographic}/u.test(name) ? '' : null;
@@ -3556,7 +3579,8 @@ function showInAppToast(name, type, sessionId) {
     el.style.cursor = 'pointer';
     el.addEventListener('click', () => { el.remove(); persistentToasts.delete(sessionId); });
   } else {
-    setTimeout(() => el.remove(), 5000);
+    if (onClick) { el.style.cursor = 'pointer'; el.addEventListener('click', () => { el.remove(); onClick(); }); }
+    setTimeout(() => el.remove(), onClick ? 10000 : 5000);
   }
 }
 
@@ -4149,9 +4173,44 @@ function applyStatusTransitions() {
         if (s.status === 'running') notifiedDone.delete(s.id);
       }
     }
+    notifyMineTick();
     for (const s of sessions) prevStatuses.set(s.id, s.status);
     isFirstFetch = false;
 }
+// "no response" alerts and reminders (core/notify.js). done / error / needs-input already alert once above.
+// Delegated teammate sessions go through notifyPeersTick (team tick); both share notifyFire.
+const NOTIFY_LABEL_PEER = { input: '입력 가능', ask: '주인 승인 필요', done: '완료', error: '오류', stuck: '응답 없음' };
+const NOTIFY_LABEL_MINE = { input: '입력 대기', ask: '선택 필요', stuck: '응답 없음' };
+function notifyFire(ev, name, owner, id) {
+  // names come from teammates / terminal titles and reach OS notifications: no bidi controls
+  name = AgentDeskNotify.cleanText(name); owner = owner ? AgentDeskNotify.cleanText(owner) : owner;
+  // desktop notifications: one per teammate per minute (toasts are not throttled; peerAlerts already caps them)
+  const desktop = !owner || AgentDeskNotify.cooldownOk(notifyPeers, owner, Date.now(), 60000);
+  if (ev.kind === 'more' || ev.kind === 'capped') {
+    const text = ev.kind === 'capped' ? (LANG === 'en' ? `@${owner}: too many delegated-session alerts this hour — paused for now` : `@${owner}: 위임 세션 알림이 시간당 상한에 도달해 잠시 멈춥니다`)
+      : LANG === 'en' ? `@${owner}: ${ev.count} more delegated-session alerts` : `@${owner}: 위임 세션 알림 외 ${ev.count}건`;
+    if (desktop) window.orca.notify(t('위임 세션'), text);
+    showInAppToast(`🔑 ${text}`, undefined, undefined, () => teamFocusCard(owner, ''));
+    return;
+  }
+  const label = t((owner ? NOTIFY_LABEL_PEER : NOTIFY_LABEL_MINE)[ev.kind] || ev.kind);
+  const again = ev.repeat ? `${t('다시 알림')} · ` : '';
+  const who = owner ? `@${owner} ${name}` : name;
+  const hint = owner && ev.kind === 'ask' ? ` — ${t('승인은 주인만 할 수 있습니다. 팀 탭에서 ✉ 메모로 알려 주세요')}` : '';
+  if (desktop) window.orca.notify(owner ? `${again}${t('위임 세션')} ${label}` : `${again}${label}`, `${who}${hint}`);
+  showInAppToast(`${owner ? '🔑' : '🔔'} ${again}${who}: ${label}${hint}`, ev.kind === 'error' || ev.kind === 'stuck' ? 'error' : undefined, undefined, owner ? () => teamFocusCard(owner, id) : undefined);
+}
+function notifyMineTick() {
+  const now = Date.now(), keep = new Set();
+  for (const s of sessions) {
+    if (s.isSub || hiddenSessions.has(s.id)) continue;
+    keep.add(s.id);
+    const ev = AgentDeskNotify.observe(notifyMine, s.id, AgentDeskNotify.stateOf(s), now, { remindMs: notifyCfg.remindMin * 60000, maxPerHour: NOTIFY_MAX_PER_HOUR });
+    if (ev && (ev.repeat || ev.kind === 'stuck')) notifyFire(ev, s.name, null, s.id);
+  }
+  AgentDeskNotify.prune(notifyMine, keep);
+}
+setInterval(notifyMineTick, 30000);   // reminders come due while nothing changes
 
 const lastCounts = {};
 // footer line computed from hook sessions active today: session count, time spent running, average wait on needs-input
@@ -4253,7 +4312,13 @@ function showOrcaError(msg) {
   el.innerHTML = `<b>Orca CLI 호출 실패</b><span>${esc(String(msg))}</span><span>Orca 앱이 실행 중인지, 터미널에서 <code>orca --version</code>이 동작하는지 확인하세요.</span>`;
 }
 // ── dashboard state: collapsed older-done list, per-repo folds, expanded cards, hidden sessions, filters, keyboard selection ──
-const STUCK_MS = 30 * 60 * 1000;          // running with no hook event for this long → "no response" badge
+// alerts: re-alert interval for sessions left asking / stuck (0 = off) and the "no response" threshold
+let notifyCfg = { remindMin: 15, stuckMin: 30 };
+try { const c = JSON.parse(localStorage.getItem('roca-notify') || '{}'); if (Number.isInteger(c.remindMin) && c.remindMin >= 0 && c.remindMin <= 240) notifyCfg.remindMin = c.remindMin; if (Number.isInteger(c.stuckMin) && c.stuckMin >= 1 && c.stuckMin <= 600) notifyCfg.stuckMin = c.stuckMin; } catch {}
+function notifySave() { try { localStorage.setItem('roca-notify', JSON.stringify(notifyCfg)); } catch {} }
+let STUCK_MS = notifyCfg.stuckMin * 60 * 1000;   // running with no hook event for this long → "no response" badge
+const NOTIFY_MAX_PER_HOUR = 2;
+const notifyMine = AgentDeskNotify.createTracker(), notifyPeers = AgentDeskNotify.createTracker();
 const DONE_RECENT_MS = 24 * 60 * 60 * 1000;
 let showOlderDone = false, showHidden = false, filterAgent = 'all', selectedId = null;
 const doneRepoOpen = new Set(), expandedIds = new Set(), ctxWarned = new Set();
@@ -4313,7 +4378,7 @@ function renderCard(s) {
             <span class="s-agent ${s.agent}">${esc(s.agent)}</span>
             <span class="s-branch">${esc(s.branch)}</span>
             ${timeLabel}
-            ${s.stuck ? `<span class="s-tool stuck" title="${esc(t('30분 넘게 도구 호출이나 응답이 없습니다'))}">${esc(t('응답 없음'))} ${timeAgo(s.stuckSince)}</span>` : ''}
+            ${s.stuck ? `<span class="s-tool stuck" title="${esc(LANG === 'en' ? `No tool call or reply for over ${notifyCfg.stuckMin} minutes` : `${notifyCfg.stuckMin}분 넘게 도구 호출이나 응답이 없습니다`)}">${esc(t('응답 없음'))} ${timeAgo(s.stuckSince)}</span>` : ''}
             ${s.loop ? `<span class="s-tool loop" title="${esc((s.loop.reason === 'fail' ? t('도구 호출이 연속으로 실패하고 있습니다') : t('같은 도구 호출을 반복하고 있습니다')) + ': ' + s.loop.tool + ' ' + (s.loop.input || ''))}">${esc(t(s.loop.reason === 'fail' ? '연속 실패' : '반복 시도'))} ${s.loop.count}×</span>` : ''}
             ${s.ext && s.ext.compacting ? `<span class="s-tool">${esc(t('정리 중'))}</span>` : ''}
             ${s.ext && s.ext.denied ? `<span class="s-tool loop">${esc(t('거부'))} ${s.ext.denied}</span>` : ''}
@@ -9013,7 +9078,7 @@ function peerMySessions() {
 function teamPublishSnapshot() {
   if (!window.orca.teamPublish) return;
   const snap = peerMySessions();
-  const key = JSON.stringify(snap.map(s => [s.id, s.status, s.needsInput, s.tool, s.ctxPct, s.now, s.files, s.report && s.report.at, s.jira, s.ended, s.handle]));
+  const key = JSON.stringify(snap.map(s => [s.id, s.status, s.needsInput, s.tool, s.ctxPct, s.now, s.files, s.report && s.report.at, s.jira, s.ended, s.handle, Math.floor((s.stuckSince || 0) / 60000)]));   // stuckSince by the minute: a session repeating one tool still refreshes teammates' view at most once a minute
   if (key === teamLastPublish) return;   // the main process keeps the last snapshot; only resend on change
   teamLastPublish = key; window.orca.teamPublish(snap);
 }
@@ -9021,6 +9086,61 @@ function peerConflictBadges(list, withButton) {
   return (list || []).map(c => `<span class="s-tool peer-conflict ${c.level}" title="${esc(c.repo)}${c.branch ? ' · ' + esc(c.branch) : ''}${c.files.length ? ' · ' + esc(c.files.join(', ')) : ''}">${esc(AgentDeskTeam.conflictLabel(c, LANG))}</span>${withButton ? `<button class="s-tool peer-warn-btn" data-act="peer-warn" data-key="${esc(AgentDeskTeam.conflictKey(c))}" title="${esc(t('내 세션에 충돌 주의 문구를 보냅니다'))}">${esc(t('세션에 알리기'))}</button>` : ''}`).join('');
 }
 const PEER_STATUSES = ['running', 'waiting', 'done', 'error'];
+// safety status (guard / permission hooks, rule-set hash, today's blocks) — mine from teamStatus.safety, a teammate's
+// from peers[name].safety (undefined: an older version, or nothing received). Every value is re-checked here.
+const SAFETY_GUARDS = ['none', 'off', 'warn', 'block', 'unknown'];   // unknown: malformed on the sender's side (grey, never alerts)
+const safetyValid = sf => !!(sf && typeof sf === 'object' && SAFETY_GUARDS.includes(sf.guard));
+const safetyGuardOff = g => g === 'none' || g === 'off';
+const safetyBlocks = sf => Number.isInteger(sf.blocksToday) && sf.blocksToday >= 0 ? sf.blocksToday : 0;
+const safetyHash = sf => typeof sf.rulesHash === 'string' && /^[0-9a-f]{12}$/.test(sf.rulesHash) ? sf.rulesHash : '';
+function safetyGuardLabel(g) { return g === 'none' ? t('가드 꺼짐 (hook 없음)') : g === 'off' ? t('가드 꺼짐') : g === 'unknown' ? t('가드 상태 알 수 없음') : `${t('가드')} ${g}`; }
+// the team bar: "🛡 가드 warn · 권한 hook 켜짐 · 오늘 차단 N", red when the guard is off / not installed
+function teamSafetyBar(sf) {
+  if (!safetyValid(sf)) return '';
+  const bad = safetyGuardOff(sf.guard);
+  return ` · <span class="${bad ? 'off' : ''}" title="${esc(t('팀원에게 보내는 자기 신고 값입니다 (검증되지 않음)'))}">🛡 ${esc(safetyGuardLabel(sf.guard))}</span> · <span class="${sf.perm === true ? '' : 'off'}">${esc(t(sf.perm === true ? '권한 hook 켜짐' : '권한 hook 꺼짐'))}</span> · ${esc(t('오늘 차단·경고'))} ${safetyBlocks(sf)}`;
+}
+// chips in a teammate's header; nothing while it is not connected. Missing safety is shown neutrally: an older
+// version and "two teammates registered at my address on their side" (they then leave it out) look the same here.
+// Every value is the teammate's own report — never used for delegation or remote-input decisions.
+function peerSafetyChips(p) {
+  if (!p.ok) return '';
+  const sf = p.safety;
+  const self = t('팀원 PC의 자기 신고 값입니다 (검증되지 않음)');
+  if (!safetyValid(sf)) return `<span class="gh-safety"><span class="s-tool safety-chip unk" title="${esc(p.ambiguous === true ? t('같은 주소에 팀원이 둘 이상 등록되어 안전 상태를 받지 않았습니다') : t('구버전이거나, 상대 쪽에서 내 주소에 팀원이 둘 이상 등록되어 있으면 안전 상태가 오지 않습니다'))}">${esc(t(p.ambiguous === true ? '신원 모호' : '안전 상태 없음'))}</span></span>`;
+  const chip = (cls, text, title) => `<span class="s-tool safety-chip ${cls}" title="${esc(title ? `${title} · ${self}` : self)}">${esc(text)}</span>`;
+  const mine = safetyValid(teamStatus.safety) ? safetyHash(teamStatus.safety) : '', theirs = safetyHash(sf);
+  return `<span class="gh-safety">${chip(safetyGuardOff(sf.guard) ? 'bad' : sf.guard === 'unknown' ? 'unk' : '', `🛡 ${sf.guard === 'none' ? t('가드 꺼짐') : safetyGuardLabel(sf.guard)}`, sf.guard === 'none' ? t('가드 hook이 설치되어 있지 않습니다') : '')}${sf.perm === true ? '' : chip('bad', t('권한 hook 꺼짐'))}${chip('', `${t('오늘 차단·경고')} ${safetyBlocks(sf)}`)}${mine && theirs ? (mine === theirs ? chip('', t('규칙 동일'), `${t('규칙 해시')} ${theirs}`) : chip('warn', t('규칙 다름'), `${t('규칙 해시')} ${theirs} ≠ ${mine}`)) : ''}</span>`;
+}
+// one short cell for the team board ("—" for a teammate that is not connected: no stale value)
+function safetyCell(sf, connected = true) {
+  if (!connected || !safetyValid(sf)) return '—';
+  return [safetyGuardLabel(sf.guard), sf.perm === true ? '' : t('권한 hook 꺼짐'), `${t('오늘 차단·경고')} ${safetyBlocks(sf)}`].filter(Boolean).join(' · ');
+}
+// a teammate's guard turning off (warn/block → off/none) toasts once. The first snapshot, and the first after a
+// reconnect or an unknown state, is a silent baseline (the core/notify.js tracker pattern). At most one toast per
+// teammate every 10 minutes, so a guard flipped on and off repeatedly cannot flood the screen.
+const peerSafetySeen = new Map();     // peer name → last guard value
+const peerSafetyToastAt = new Map();  // peer name → last "guard off" toast time
+const PEER_SAFETY_COOLDOWN = 10 * 60000;
+function peerSafetyAlerts() {
+  const names = new Set();
+  for (const p of Object.values(teamStatus.peers || {})) {
+    if (!p || typeof p.name !== 'string') continue;
+    names.add(p.name);
+    if (!p.ok || !safetyValid(p.safety) || p.safety.guard === 'unknown') { peerSafetySeen.delete(p.name); continue; }   // the next known value is a baseline
+    const prev = peerSafetySeen.get(p.name), g = p.safety.guard;
+    peerSafetySeen.set(p.name, g);
+    if (prev !== undefined && !safetyGuardOff(prev) && safetyGuardOff(g)) {
+      const now = Date.now();
+      const last = peerSafetyToastAt.get(p.name);
+      if (last != null && now - last < PEER_SAFETY_COOLDOWN) continue;
+      peerSafetyToastAt.set(p.name, now);
+      showInAppToast(`@${p.name} — ${t('팀원의 가드가 꺼졌습니다')} (${safetyGuardLabel(g)})`, 'error');
+    }
+  }
+  for (const n of [...peerSafetySeen.keys()]) if (!names.has(n)) peerSafetySeen.delete(n);
+}
 function teamPeerCard(s, owner) {
   // teammate data: the main process already sanitized it, and this card trusts nothing it puts into markup either
   const status = PEER_STATUSES.includes(s.status) ? s.status : 'done';
@@ -9031,7 +9151,8 @@ function teamPeerCard(s, owner) {
   const cf = peerConflicts.filter(c => c.owner === owner && c.peer === s.id);
   const dg = peerDelegatedToMe(owner, s.id);
   const canInput = status === 'waiting' && s.needsInput !== true && s.ended !== true;
-  return `<div class="session${s.stuck ? ' stuck' : ''}" data-peer="${esc(owner)}" data-id="${esc(s.id)}">
+  const stuck = AgentDeskNotify.stateOf(s, { now: Date.now(), stuckMs: STUCK_MS }) === 'stuck';   // my threshold, as for the alerts
+  return `<div class="session${stuck ? ' stuck' : ''}" data-peer="${esc(owner)}" data-id="${esc(s.id)}">
         <span class="s-icon ${status}">${s.needsInput ? '<span class="px-ic clock"></span><span class="px-badge q">?</span>' : statusIcon(status)}</span>
         <div class="s-info">
           <div class="s-name">${esc(s.name)}${s.jira ? ` <span class="s-tool">${esc(s.jira)}</span>` : ''}</div>
@@ -9039,7 +9160,7 @@ function teamPeerCard(s, owner) {
             ${s.agent ? `<span class="s-agent ${esc(s.agent)}">${esc(s.agent)}</span>` : ''}
             ${s.repo ? `<span class="s-branch">${esc(s.repo)}${s.branch ? ' · ' + esc(s.branch) : ''}</span>` : (s.branch ? `<span class="s-branch">${esc(s.branch)}</span>` : '')}
             ${timeLabel}
-            ${s.stuck ? `<span class="s-tool stuck">${esc(t('응답 없음'))} ${timeAgo(s.stuckSince)}</span>` : ''}
+            ${stuck ? `<span class="s-tool stuck">${esc(t('응답 없음'))} ${timeAgo(s.stuckSince)}</span>` : ''}
             ${s.loop ? `<span class="s-tool loop">${esc(t(s.loop.reason === 'fail' ? '연속 실패' : '반복 시도'))} ${esc(s.loop.tool || '')}</span>` : ''}
             ${s.tool ? `<span class="s-tool">${esc(s.tool)}</span>` : ''}
             ${ctxPct != null ? `<span class="s-tool ctx-chip ${ctxCls}">ctx ${ctxPct}%</span>` : ''}
@@ -9056,8 +9177,9 @@ function teamPeerCard(s, owner) {
 function peerBoardHtml(peers) {
   const rows = AgentDeskTeam.boardRows({ name: teamStatus.name || (LANG === 'en' ? 'me' : '나'), mine: true, sessions: peerMySessions() }, peers.map(p => ({ name: p.name, sessions: p.sessions || [] })));
   const hm = at => at ? new Date(at).toLocaleTimeString(LANG === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : '';
+  const peerByName = new Map(peers.map(p => [p.name, p]));
   return `<div class="group-header"><span>${esc(t('오늘 팀'))}</span><span class="gh-count">${rows.length}</span><span class="gh-line"></span>${rows.length ? `<button class="set-btn" data-team="board-copy">${esc(t('복사'))}</button>` : ''}</div>
-    ${rows.length ? `<table class="peer-board"><thead><tr><th>${esc(t('팀원'))}</th><th>${esc(t('세션'))}</th><th>${esc(t('티켓'))}</th><th>${esc(t('한 일'))}</th><th>${esc(t('시각'))}</th></tr></thead><tbody>${rows.map(r => `<tr${r.mine ? ' class="mine"' : ''}><td>${esc(r.owner)}</td><td>${esc(r.session)}</td><td>${esc(r.ticket)}</td><td>${esc(r.done || t('진행 중'))}</td><td>${hm(r.at)}</td></tr>`).join('')}</tbody></table>`
+    ${rows.length ? `<table class="peer-board"><thead><tr><th>${esc(t('팀원'))}</th><th>${esc(t('세션'))}</th><th>${esc(t('티켓'))}</th><th>${esc(t('한 일'))}</th><th>${esc(t('시각'))}</th><th>${esc(t('안전 상태'))}</th></tr></thead><tbody>${rows.map(r => `<tr${r.mine ? ' class="mine"' : ''}><td>${esc(r.owner)}</td><td>${esc(r.session)}</td><td>${esc(r.ticket)}</td><td>${esc(r.done || t('진행 중'))}</td><td>${hm(r.at)}</td><td>${esc(r.mine ? safetyCell(teamStatus.safety) : safetyCell((peerByName.get(r.owner) || {}).safety, (peerByName.get(r.owner) || {}).ok === true))}</td></tr>`).join('')}</tbody></table>`
       : `<div class="empty" style="padding:6px 12px"><span class="empty-text">${esc(t('오늘 보고나 배치된 티켓이 아직 없습니다'))}</span></div>`}`;
 }
 function peerNotesHtml() {
@@ -9125,7 +9247,7 @@ function teamRender() {
   const up = peers.filter(p => p.ok).length;
   bar.innerHTML = `<b>${esc(st.name)}</b> · ${st.paused ? `<span class="off">${esc(t('사무실 망 아님 — 공유 일시 중지'))}</span>` : !st.shared ? `<span class="off">${esc(t('공유 꺼짐 (이 PC만)'))}</span>` : st.listening ? `${esc(t('공유 중'))} :${esc(st.port)}` : `<span class="off">${esc(t('서버 꺼짐'))}</span>`} · ${esc(t('팀원'))} ${up}/${peers.length}${st.discovery ? ` · ${esc(t('자동 발견 켜짐'))}` : ''}`;
   const toMe = peers.reduce((n, p) => n + (p.delegatedToMe || []).length, 0);
-  bar.innerHTML += ` · ${esc(t('내가 위임한'))} ${(st.delegations || []).length} · ${esc(t('나에게 위임된'))} ${toMe}`;
+  bar.innerHTML += ` · ${esc(t('내가 위임한'))} ${(st.delegations || []).length} · ${esc(t('나에게 위임된'))} ${toMe}${teamSafetyBar(st.safety)}`;
   let html = peerLocalNetHtml() + peerPendingHtml() + peerNotesHtml() + peerDiscoveredHtml() + peerBoardHtml(peers);
   if (!peers.length) html += `<div class="empty"><span class="empty-icon">👥</span><span class="empty-text">${esc(t('team.json 의 peers 가 비어 있습니다'))}</span></div>`;
   const ord = { running: 0, waiting: 1, error: 2, done: 3 };
@@ -9135,7 +9257,7 @@ function teamRender() {
     const perr = p.offnet ? t('다른 네트워크 — 폴링 안 함') : p.error === 'sharing off' ? t('공유 꺼짐') : p.error === 'paused' ? t('사무실 망 아님 — 공유 일시 중지') : p.mismatch ? t('신원 불일치 — 폴링 중지') : p.localNetDenied && st.localNetwork === 'denied' ? `${t('로컬 네트워크 권한 필요')} (${p.error})` : p.error;
     const state = p.ok ? `${esc(t('연결됨'))} · ${timeAgo(p.at)}${q}` : `<span class="off">${esc(t('연결 안 됨'))}${perr ? ` · ${esc(perr)}` : ''}${p.lastOk ? ` · ${esc(t('마지막'))} ${timeAgo(p.lastOk)}` : ''}${q}</span>`;
     const renamed = p.remoteName && p.remoteName !== p.name ? ` <span class="gh-peer-state" title="instance ${esc(String(p.instanceId || '').slice(0, 8))}">(${esc(p.remoteName)})</span>` : '';
-    html += `<div class="group-header"><span>@${esc(p.name)}</span>${renamed}<span class="gh-count">${items.length}</span><span class="gh-line"></span><span class="gh-peer-state${p.ok ? '' : ' off'}">${state}</span></div>`;
+    html += `<div class="group-header"><span>@${esc(p.name)}</span>${renamed}<span class="gh-count">${items.length}</span>${peerSafetyChips(p)}<span class="gh-line"></span><span class="gh-peer-state${p.ok ? '' : ' off'}">${state}</span></div>`;
     if (!items.length) html += `<div class="empty" style="padding:6px 12px"><span class="empty-text">${esc(t(p.ok ? '세션 없음' : '세션 정보를 받지 못했습니다'))}</span></div>`;
     for (const s of items) html += teamPeerCard(s, p.name);
   }
@@ -9488,9 +9610,25 @@ if (window.orca.onTeamHello) window.orca.onTeamHello(req => {
   teamPageTick();
 });
 if (window.orca.onTeamJoined) window.orca.onTeamJoined(info => { if (info && info.added) showInAppToast(`👥 @${info.name} ${LANG === 'en' ? 'joined the team' : '팀에 합류했습니다'}`); teamPageTick(); });
+function notifyPeersTick() {
+  const st = teamStatus, peers = st && st.configured && !st.error ? st.peers || {} : {};
+  const evs = AgentDeskNotify.peerAlerts(notifyPeers, peers, Date.now(), { remindMs: notifyCfg.remindMin * 60000, stuckMs: STUCK_MS, maxPerHour: NOTIFY_MAX_PER_HOUR });
+  for (const ev of evs) notifyFire(ev, ev.name, ev.owner, ev.id);
+}
+// a delegated-session alert's toast opens the Team tab on that card
+function teamFocusCard(owner, id) {
+  showPage('team'); teamRender();
+  const el = id ? $('team-list').querySelector(`.session[data-peer="${CSS.escape(owner)}"][data-id="${CSS.escape(id)}"]`) : null;
+  if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('pulse'); }
+}
+let jiraWorkersSig = '';
 async function teamPageTick() {
   try { teamStatus = await window.orca.teamStatus(); } catch { return; }
   peerUpdateConflicts();
+  peerSafetyAlerts();
+  notifyPeersTick();
+  const jw = JSON.stringify([...jiraWorkersMap()]);
+  if (jw !== jiraWorkersSig) { jiraWorkersSig = jw; if (currentPage === 'jira') jiraRender(); }
   const asks = Object.values(teamStatus.peers || {}).reduce((n, p) => n + (p.sessions || []).filter(s => s.needsInput && s.status !== 'done').length, 0);
   const notesNew = peerNotes.filter(n => n.state === 'new').length + (teamStatus.pending || []).length;
   const badge = $('badge-team'); if (badge) { badge.textContent = asks + notesNew; badge.hidden = asks + notesNew === 0; badge.title = notesNew ? `${t('받은 메모')} ${notesNew}` : ''; }
@@ -9559,6 +9697,8 @@ function settingsRender() {
     ${permAvailable && permHookOn ? row(t('승인 대기 시간'), t('이 시간이 지나면 위젯 패널이 닫히고 터미널 질문만 남습니다. 터미널 질문도 함께 뜹니다. 먼저 답한 쪽이 적용됩니다.'), seg('perm-timeout', String(permTimeoutSec), [['60', '60s'], ['90', '90s'], ['180', '180s'], ['300', '300s']])) : ''}
     ${row(t('진행 요약 한 줄'), t('작업 중·대기 중 세션의 최근 대화를 Haiku가 한 문장으로 요약해 카드에 표시합니다 (세션당 5분에 한 번).'), sw('now-summary', nowEnabled))}
     ${row(t('알림음'), t('에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.'), sw('sound', soundOn))}
+    ${row(t('재알림 간격(분)'), t('승인 대기·응답 없음이 계속되면 이 간격마다 토스트와 데스크톱 알림을 다시 띄웁니다(단순 입력 대기는 처음 한 번만 알림). 내 세션과 나에게 위임된 팀원 세션에 적용되고, 세션당 한 시간에 최대 2번입니다. 0이면 끕니다.'), `<div class="set-inline"><input id="set-remind" type="number" min="0" max="240" step="1" value="${notifyCfg.remindMin}" style="width:52px"><button class="set-btn" data-set="notify-remind">${esc(t('저장'))}</button></div>`)}
+    ${row(t('응답 없음 기준(분)'), t('작업 중인 세션에 이 시간 동안 도구 호출이나 응답이 없으면 응답 없음으로 표시하고 알립니다.'), `<div class="set-inline"><input id="set-stuck" type="number" min="1" max="600" step="1" value="${notifyCfg.stuckMin}" style="width:52px"><button class="set-btn" data-set="notify-stuck">${esc(t('저장'))}</button></div>`)}
     ${row(t('한도 경고'), t('5시간·주간 한도 사용률이 임계값을 넘으면 토스트와 데스크톱 알림을 한 번 띄웁니다 (레벨별 한 번, 리셋 후 다시).'), sw('usage-alert', usageAlert.on))}
     ${row(t('한도 경고 임계값'), t('두 값(%) — 앞 값에서 노랑, 뒤 값에서 빨강. 한도 막대 색에도 쓰입니다.'), `<div class="set-inline"><input id="set-usage-l1" type="number" min="1" max="100" value="${usageAlert.levels[0]}" style="width:52px"><input id="set-usage-l2" type="number" min="1" max="100" value="${usageAlert.levels[1]}" style="width:52px"><button class="set-btn" data-set="usage-levels">${esc(t('저장'))}</button></div>`)}
     ${guardSectionHtml(row, seg, sw)}
@@ -9633,6 +9773,13 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'update-open') { if (updateInfo && updateInfo.url) window.orca.openExternal(updateInfo.url); }
   else if (name === 'update-check') { b.disabled = true; b.textContent = t('확인 중…'); await checkForUpdate(true); settingsRender(); }
   else if (name === 'usage-alert') { usageAlert.on = !usageAlert.on; usageAlertSave(); settingsRender(); }
+  else if (name === 'notify-remind' || name === 'notify-stuck') {
+    const remind = name === 'notify-remind', n = Number($(remind ? 'set-remind' : 'set-stuck').value);
+    if (!(Number.isInteger(n) && (remind ? n >= 0 && n <= 240 : n >= 1 && n <= 600))) { showInAppToast(t(remind ? '재알림 간격은 0~240 사이의 정수(분)입니다' : '응답 없음 기준은 1~600 사이의 정수(분)입니다'), 'error'); return; }
+    if (remind) notifyCfg.remindMin = n; else { notifyCfg.stuckMin = n; STUCK_MS = n * 60000; }
+    notifySave(); settingsRender();
+    showInAppToast(remind ? `${t('재알림 간격(분)')}: ${n || t('끔')}` : `${t('응답 없음 기준(분)')}: ${n}`);
+  }
   else if (name === 'usage-levels') {
     const a = Math.round(Number($('set-usage-l1').value)), b2 = Math.round(Number($('set-usage-l2').value));
     if (!(a >= 1 && b2 <= 100 && a < b2)) { showInAppToast(t('임계값은 1~100 사이, 앞 값이 더 작아야 합니다'), 'error'); return; }
@@ -9862,13 +10009,31 @@ function jiraDraftWarn(draft) {
 const jiraMaskedText = n => LANG === 'ko' ? `비밀 패턴 ${n}곳을 [MASKED]로 바꿨습니다` : `Replaced ${n} secret pattern(s) with [MASKED]`;
 function jiraLink(key) { const i = jiraIssues.find(x => x.key === key); const base = String((jiraOAuth && jiraOAuth.siteUrl) || '').replace(/\/+$/, ''); return (i && i.url) || (base ? `${base}/browse/${key}` : ''); }
 async function jiraCopy(text, label) { try { await window.orca.clipboardWrite(text); showInAppToast(`${label} ${t('복사됨')}`); } catch { showInAppToast(t('복사하지 못했습니다'), 'error'); } }
+// teammates whose live sessions carry this ticket key (teamStatus.peers[*].sessions[*].jira) — recomputed per team tick
+let jiraWorkersCache = { src: null, map: new Map() };
+function jiraWorkersMap() {
+  const st = teamStatus;
+  if (!st || !st.configured || st.error) return new Map();
+  if (jiraWorkersCache.src !== st) jiraWorkersCache = { src: st, map: AgentDeskJira.ticketWorkers(st.peers) };
+  return jiraWorkersCache.map;
+}
+function jiraWorkersFor(key) { return jiraWorkersMap().get(key) || []; }
+function jiraWorkersHtml(key, cls) {
+  const names = jiraWorkersFor(key);
+  return names.length ? `<div class="${cls} jira-peer" data-verbatim title="${escA(t('팀원 세션이 이 티켓을 작업 중입니다'))}">👤 ${esc(names.join(', '))} ${esc(t('작업 중'))}</div>` : '';
+}
+async function jiraPeerConfirm(key) {
+  const names = jiraWorkersFor(key); if (!names.length) return true;
+  const who = names.join(', ');
+  return teamConfirm(t('팀원이 작업 중인 티켓'), LANG === 'en' ? `${who} ${names.length > 1 ? 'are' : 'is'} already working on ${key}. Dispatch anyway?` : `${who}이(가) 이미 ${key} 작업 중입니다. 그래도 배치할까요?`, t('그래도 배치'));
+}
 function jiraRowHtml(i, open) {
     const d = jiraDispatch[i.key], det = jiraDetail.get(i.key);
     const meta = [i.status, i.priority, i.assignee].filter(Boolean).join(' · ');
     const desc = open ? `<div class="jira-desc" data-verbatim>${esc((det || i).description || '') || (det ? esc(t('설명 없음')) : esc(t('불러오는 중…')))}</div>` : '';
     const track = d && (d.state === 'sent' || d.state === 'timeout') ? `<span class="jira-track" data-verbatim>→ ${esc(d.name || '')}</span>` : '';
     const draft = d && d.state === 'report' ? `<div class="jira-draft"><div class="jd-head">${esc(t('댓글 초안 — 고친 뒤 등록하세요 (자동 등록 안 함)'))}</div>${jiraDraftWarn(d.draft)}${d.masked ? `<div class="jd-mask">🔒 ${esc(jiraMaskedText(d.masked))}</div>` : ''}<textarea data-act="draft">${esc(d.draft || '')}</textarea><div class="jd-row"><button data-act="discard">${esc(t('버리기'))}</button><button class="primary" data-act="post">${esc(t('Jira에 등록'))}</button></div></div>` : '';
-    return `<div class="jira-item${open ? ' open' : ''}" data-key="${esc(i.key)}"><div class="jira-head" data-act="toggle"><span class="jira-key">${esc(i.key)}</span><span class="jira-sum" data-verbatim>${esc(i.summary)}</span>${jiraBadge(d)}</div>${meta ? `<div class="jira-meta" data-verbatim>${esc(meta)}</div>` : ''}${ticketCostText(i.key) ? `<div class="jira-meta jira-cost" title="${esc(ticketCostTip(i.key))}">${esc(ticketCostText(i.key))}</div>` : ''}${desc}<div class="jira-actions"><button class="primary" data-act="wt">${esc(t('워크트리로 배치'))}</button><button data-act="more" title="${esc(t('더보기'))}">⋯</button>${track}</div>${draft}</div>`;
+    return `<div class="jira-item${open ? ' open' : ''}" data-key="${esc(i.key)}"><div class="jira-head" data-act="toggle"><span class="jira-key">${esc(i.key)}</span><span class="jira-sum" data-verbatim>${esc(i.summary)}</span>${jiraBadge(d)}</div>${meta ? `<div class="jira-meta" data-verbatim>${esc(meta)}</div>` : ''}${jiraWorkersHtml(i.key, 'jira-meta')}${ticketCostText(i.key) ? `<div class="jira-meta jira-cost" title="${esc(ticketCostTip(i.key))}">${esc(ticketCostText(i.key))}</div>` : ''}${desc}<div class="jira-actions"><button class="primary" data-act="wt">${esc(t('워크트리로 배치'))}</button><button data-act="more" title="${esc(t('더보기'))}">⋯</button>${track}</div>${draft}</div>`;
 }
 // ── Atlassian OAuth (3LO) connection box; the main process keeps the secret and tokens, this only sees jiraOAuthStatus() ──
 let jiraOAuth = null, jiraConnOpen = null;
@@ -9931,6 +10096,7 @@ function jiraGuideWire(m, ta) {
   m.addEventListener('click', e => { const c = e.target.closest('.jira-chip'); if (!c) return; ta.value = c.dataset.g; ta.focus(); ta.dispatchEvent(new Event('input', { bubbles: true })); });
 }
 async function jiraWorktreeModal(key) {
+  if (!await jiraPeerConfirm(key)) return;
   const i = await jiraIssueFull(key);
   let repos = [];
   try { const r = await window.orca.repos(); repos = (r?.result?.repos || []).filter(x => x && x.id); } catch {}
@@ -9964,7 +10130,8 @@ async function jiraWorktreeModal(key) {
     showInAppToast(`🎫 ${key} → ${name}`);
   };
 }
-function jiraSessionModal(key) {
+async function jiraSessionModal(key) {
+  if (!await jiraPeerConfirm(key)) return;
   const live = sessions.filter(s => s.connected && handles.get(s.id) && !s.isSub);
   const m = teamModal(`<h3>${esc(t('기존 세션에 연결'))} · ${esc(key)}</h3><p>${esc(t('세션은 지침을 먼저 받고, 이어서 티켓 내용을 받습니다.'))}</p>
     <label class="jira-field">${esc(t('세션'))}<select id="jira-ss-sess">${live.map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.status === 'running' ? ' (' + esc(t('작업 중')) + ')' : ''}</option>`).join('')}</select></label>
@@ -10120,6 +10287,7 @@ function jbCardHtml(i) {
     ${i.due ? `<div class="jb-due${over ? ' over' : ''}">${over ? '⚠ ' : '📅 '}${esc(AgentDeskJira.formatDue(i.due, LANG))}</div>` : ''}
     ${i.subtasks ? `<div class="jb-subs">${esc(t('하위 작업'))} ${i.subtasks.done}/${i.subtasks.total} ›</div>` : ''}
     ${ticketCostText(i.key) ? `<div class="jb-cost" title="${escA(ticketCostTip(i.key))}">${esc(ticketCostText(i.key))}</div>` : ''}
+    ${jiraWorkersHtml(i.key, 'jb-peer')}
     <div class="jb-foot"><span class="jb-type ${ty.cls}" title="${escA(i.type)}">${ty.icon}</span><span class="jb-key">${esc(i.key)}</span>${jiraBadge(d)}<span class="jb-pri ${pr.cls}" title="${escA(i.priority)}">${pr.icon}</span>${i.assignee ? `<span title="${escA(i.assignee)}">${jbAvatar(i.assignee, i.avatar)}</span>` : `<span class="jb-ava" title="${escA(t('담당자 없음'))}"><i>–</i></span>`}</div></div>`;
 }
 function jbColsRender() {

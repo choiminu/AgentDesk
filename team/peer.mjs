@@ -2,7 +2,8 @@
 // and polls the peers listed in ~/.agentdesk/team.json. No WebSocket, no inbound control — a peer can only look,
 // and (phase 2) leave a short note that lands in the receiver's inbox; it is never typed into a session by itself.
 //   GET  /v1/ping                       → { at }   (open; signed → { at, instanceId })
-//   GET  /v1/sessions  (signed)         → { name, at, instanceId, sessions: [...] }  (sanitized: no prompts, tool inputs or full paths)
+//   GET  /v1/sessions  (signed)         → { name, at, instanceId, sessions: [...], safety? }  (sanitized: no prompts, tool inputs or full paths;
+//                                          safety = { guard, perm, rulesHash, blocksToday } — never a rule body / label / pattern)
 //        ?since=<at> / If-None-Match     → 304 with no body when nothing changed
 //   POST /v1/notes     (signed)         ← { to, toName?, text ≤ 500, port? }  → 202; "from" is the registered peer at the
 //                                          caller's IP (403 when there is none); 429 past 10 notes a minute from one IP
@@ -40,7 +41,7 @@ import "../core/team.js";   // globalThis.AgentDeskTeam (clean, publicSessionId)
 import "../core/guard.js";  // globalThis.AgentDeskGuard (isDangerous)
 import { validateRemoteText, resolveDelegatedSession, permissionOk, hostIpv4, GRANT_RE, REMOTE_RATE, REMOTE_LAST_MAX, REMOTE_SCREEN_RATE, REMOTE_SCREEN_LINES, REMOTE_SCREEN_LINE_MAX, REMOTE_SCREEN_BYTES, REMOTE_SCREEN_LOG_MS, REMOTE_SCREEN_CACHE_MS } from "./remote.mjs";
 const { mask, secretRanges } = globalThis.AgentDeskMask;
-const { clean, publicSessionId, PUBLIC_ID_RE } = globalThis.AgentDeskTeam;
+const { clean, publicSessionId, PUBLIC_ID_RE, sanitizeSafety } = globalThis.AgentDeskTeam;
 const { isDangerous } = globalThis.AgentDeskGuard;
 
 export const TEAM_CFG = join(homedir(), ".agentdesk", "team.json");
@@ -436,6 +437,7 @@ export function validateNote(body) {
 
 // cfg is read on every request (a live view in the app): { name, token, instanceId, peers }.
 // opts.onNote(note) receives accepted notes; opts.onHello(peer) a signed greeting (returns { ok, pending? });
+// opts.safety() → this PC's safety summary (core/team.js safetySummary), served in /v1/sessions as `safety`;
 // opts.now() is injectable for the rate-limit test (signatures always use the real clock); opts.ifaces for isMyHost
 export function startTeamServer(cfg, getSnapshot, opts = {}) {
   const now = opts.now || Date.now;
@@ -448,6 +450,10 @@ export function startTeamServer(cfg, getSnapshot, opts = {}) {
   const screenReads = new Map();            // session id → { p, done, at }: the read in flight, or the last one (reused for REMOTE_SCREEN_CACHE_MS)
   const screenLogged = new Map();           // "session id|instance id" → when a "screen viewed" event was last logged
   let cache = { snap: null, body: "", etag: "" };
+  // the last safety JSON served and when it last changed (bumps `at` for ?since=: a server re-created on a bind change
+  // starts empty, and its first safety counts as a change so a client's old ?since= cannot hide it); the callback's
+  // answer is reused for 1 s
+  let safetyLast = null, safetyAt = 0, safetyMemo = { at: -Infinity, json: "" };
   const server = createServer(async (req, res) => {
     // set as soon as the request carries well-formed signing headers and I have a token: from then on every answer
     // (401 / 304 / 4xx included) is signed over its status, my address and the request's ts / nonce
@@ -519,11 +525,23 @@ export function startTeamServer(cfg, getSnapshot, opts = {}) {
     // a delegation's grant goes only to the teammate it was made for, inside this signed answer
     const dl = store && !caller.ambiguous ? store.forInstances(caller.ids) : [];
     const dlJson = dl.length ? JSON.stringify(dl) : "";
-    const etag = `"${createHash("sha1").update(cache.body + "\n" + dlJson).digest("hex").slice(0, 20)}"`;
-    const at = Math.max(Number(snap.at) || 0, dver);
+    // safety status: left out for an ambiguous caller (same rule as grants), when there is no callback, or on any error
+    let sfJson = "";
+    if (opts.safety) {
+      const t = now();
+      if (t - safetyMemo.at >= 1000 || t < safetyMemo.at) {
+        let j = ""; try { const sf = sanitizeSafety(opts.safety()); j = sf ? JSON.stringify(sf) : ""; } catch { j = ""; }
+        safetyMemo = { at: t, json: j };
+      }
+      sfJson = safetyMemo.json;
+      if (sfJson && sfJson !== safetyLast) { safetyAt = t; safetyLast = sfJson; }
+      if (caller.ambiguous) sfJson = "";
+    }
+    const etag = `"${createHash("sha1").update(cache.body + "\n" + dlJson + "\n" + sfJson).digest("hex").slice(0, 20)}"`;
+    const at = Math.max(Number(snap.at) || 0, dver, safetyAt);
     const since = Number(url.searchParams.get("since")) || 0;
     if ((since && at && since >= at) || req.headers["if-none-match"] === etag) return send(304, "", { ETag: etag });
-    return send(200, `{"name":${JSON.stringify(cfg.name)},"at":${at},"instanceId":${JSON.stringify(cfg.instanceId || "")},"sessions":${cache.body}${dlJson ? `,"delegations":${dlJson}` : ""}}`, { "Content-Type": "application/json", ETag: etag });
+    return send(200, `{"name":${JSON.stringify(cfg.name)},"at":${at},"instanceId":${JSON.stringify(cfg.instanceId || "")},"sessions":${cache.body}${dlJson ? `,"delegations":${dlJson}` : ""}${sfJson ? `,"safety":${sfJson}` : ""}}`, { "Content-Type": "application/json", ETag: etag });
   });
   // ── phase 3: input / interrupt / last answer for a delegated session ──
   // every action is a POST with the grant in the (signed) body — never in a URL
@@ -646,7 +664,7 @@ export async function fetchPeer(peer, token, opts = {}) {
     if (r.status === 304) return { name: peer.name, ok: true, notModified: true, at: Date.now(), rtt, etag: r.headers.get("etag") || o.etag || "" };
     if (!r.ok) return { name: peer.name, ok: false, rtt, error: `HTTP ${r.status}` };
     const d = parseJson(text);
-    return { name: peer.name, ok: true, at: Date.now(), rtt, etag: r.headers.get("etag") || "", theirAt: Number(d.at) || 0, remoteName: cleanName(d.name || ""), instanceId: uuidOr(d.instanceId), sessions: sanitizeSessions(d.sessions), delegations: sanitizeDelegations(d.delegations) };
+    return { name: peer.name, ok: true, at: Date.now(), rtt, etag: r.headers.get("etag") || "", theirAt: Number(d.at) || 0, remoteName: cleanName(d.name || ""), instanceId: uuidOr(d.instanceId), sessions: sanitizeSessions(d.sessions), delegations: sanitizeDelegations(d.delegations), safety: sanitizeSafety(d.safety) || undefined };
   } catch (e) {
     return { name: peer.name, ok: false, error: errText(e) };
   }

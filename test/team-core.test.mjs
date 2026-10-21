@@ -92,4 +92,7 @@ test('clean: control / line-separator characters out, whitespace collapsed, boun
   assert.equal(T.clean(' a\n\n b\u2028c\u0000 '), 'a b c');
   assert.equal(T.clean('x'.repeat(50), 10), 'x'.repeat(10));
   assert.equal(T.clean(null), '');
+  // bidirectional overrides / isolates are removed (U+202A–202E, U+2066–2069)
+  assert.equal(T.clean('a\u202eb\u202ac\u2066d\u2069e\u202d'), 'a b c d e');
+  assert.ok(![...T.clean('x\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069y')].some(ch => /[\u202a-\u202e\u2066-\u2069]/.test(ch)));
 });

@@ -13,6 +13,7 @@ import { createDelegationStore, createRemoteLog, createEventThrottle, remoteMess
 import "./core/status.js";   // globalThis.AgentDeskStatus (responseTextFromScreen) for a delegated session's last answer
 import "./core/mask.js";
 import "./core/outbound.js";   // globalThis.AgentDeskOutbound: Jira comment / Slack reply bodies, masked and checked
+import "./core/team.js";       // globalThis.AgentDeskTeam: safetySummary for the team snapshot's safety status
 import "./core/timeline.js";   // globalThis.AgentDeskTimeline: the card's [타임라인] tab (details masked here)
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { randomUUID } from "node:crypto";
@@ -1253,8 +1254,8 @@ function uninstallPermHook() {
   if (!guardHookInstalled()) stopPermServer();
   return { ok: true };
 }
-ipcMain.handle("roca:perm-install", () => { try { return installPermHook(); } catch (e) { return { ok: false, error: e.message }; } });
-ipcMain.handle("roca:perm-uninstall", () => { try { return uninstallPermHook(); } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("roca:perm-install", () => { try { return installPermHook(); } catch (e) { return { ok: false, error: e.message }; } finally { safetyHooksCache.at = 0; } });
+ipcMain.handle("roca:perm-uninstall", () => { try { return uninstallPermHook(); } catch (e) { return { ok: false, error: e.message }; } finally { safetyHooksCache.at = 0; } });
 ipcMain.handle("roca:perm-list", () => (permServer ? permServer.list() : []));
 ipcMain.handle("roca:perm-decide", (_e, id, behavior, message) => {
   if (!permServer || typeof id !== "string" || !["allow", "deny", "pass"].includes(behavior)) return { ok: false };
@@ -1301,9 +1302,21 @@ function uninstallGuardHook() {
   if (!permHookInstalled()) stopPermServer();
   return { ok: true };
 }
+// team safety status (served to teammates in /v1/sessions, shown as teamStatus.safety): hook on/off, a hash of the
+// enabled rules and today's block count — no rule body. The log and the hooks' presence in settings.json are read from
+// disk at most once a minute; the hook install / uninstall handlers reset the hook cache (safetyHooksCache.at = 0).
+let guardLogCache = { at: 0, entries: [] };
+let safetyHooksCache = { at: 0, guard: false, perm: false };
+function teamSafety() {
+  const t = Date.now();
+  if (t - guardLogCache.at > 60000) guardLogCache = { at: t, entries: guardLog.read(2000) };
+  if (t - safetyHooksCache.at > 60000) safetyHooksCache = { at: t, guard: guardHookInstalled(), perm: permHookInstalled() };
+  let guardCfg = null; try { guardCfg = guardHandler.config(); } catch {}
+  return globalThis.AgentDeskTeam.safetySummary({ guardCfg, guardHookInstalled: safetyHooksCache.guard, permHookInstalled: safetyHooksCache.perm, guardLogEntries: guardLogCache.entries, now: t });
+}
 const guardView = () => ({ ...guardHandler.config(), file: GUARD_FILE, hook: guardHookInstalled(), available: !IS_WIN, defaults: defaultGuardConfig().rules });
-ipcMain.handle("roca:guard-install", () => { try { return installGuardHook(); } catch (e) { return { ok: false, error: e.message }; } });
-ipcMain.handle("roca:guard-uninstall", () => { try { return uninstallGuardHook(); } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("roca:guard-install", () => { try { return installGuardHook(); } catch (e) { return { ok: false, error: e.message }; } finally { safetyHooksCache.at = 0; } });
+ipcMain.handle("roca:guard-uninstall", () => { try { return uninstallGuardHook(); } catch (e) { return { ok: false, error: e.message }; } finally { safetyHooksCache.at = 0; } });
 ipcMain.handle("roca:guard-config", () => guardView());
 // { mode?, rules?, allowRepos? } merged over the current file; invalid rules are kept in the file and reported
 ipcMain.handle("roca:guard-save", (_e, patch) => {
@@ -1617,7 +1630,7 @@ function teamReload() {
   if (teamServer) { try { teamServer.close(); } catch {} teamServer = null; }
   // the server reads teamCfg on every request through this live view, so a token / name / peer edit applies without a restart
   const live = { get name() { return teamCfg ? teamCfg.name : cfg.name; }, get token() { return teamCfg ? teamCfg.token : cfg.token; }, get instanceId() { return teamCfg ? teamCfg.instanceId : cfg.instanceId; }, get peers() { return teamCfg ? teamCfg.peers : cfg.peers; } };
-  const srv = startTeamServer(live, () => teamSnapshot, { onNote: teamOnNote, onHello: teamOnHello, delegations: teamDelegations, remote: teamRemoteHandlers });
+  const srv = startTeamServer(live, () => teamSnapshot, { onNote: teamOnNote, onHello: teamOnHello, delegations: teamDelegations, remote: teamRemoteHandlers, safety: teamSafety });
   srv.once("error", (e) => { teamStatus.listening = false; teamStatus.error = `listen ${key}: ${e.code || e.message}`; teamServer = null; });
   srv.listen(cfg.port, teamStatus.bind, () => { teamStatus.listening = true; teamStatus.error = ""; });
   teamServer = srv; teamServerKey = key;
@@ -1680,7 +1693,7 @@ async function teamPoll() {
       const st = { ...(prev.host === p.host ? prev : {}), name: p.name, host: p.host, checkedAt: Date.now(), offnet: false };
       if (r.ok && !r.notModified && p.instanceId && r.instanceId && r.instanceId !== p.instanceId) {
         // the beacon / invite / hello said instance A lives here, the signed reply says B: do not show B as A
-        Object.assign(st, { ok: false, mismatch: true, expectId: p.instanceId, error: "identity mismatch", sessions: [], delegatedToMe: [], etag: "", theirAt: 0, fails: (prev.fails || 0) + 1 });
+        Object.assign(st, { ok: false, mismatch: true, expectId: p.instanceId, error: "identity mismatch", sessions: [], delegatedToMe: [], safety: undefined, etag: "", theirAt: 0, fails: (prev.fails || 0) + 1 });
         teamGrants.delete(p.name);
         console.log(`[team] ${p.name} @ ${p.host}: answered as another instance — polling stopped`);
       } else if (r.ok) {
@@ -1690,6 +1703,7 @@ async function teamPoll() {
         if (!r.notModified) {
           st.fullAt = Date.now();
           st.sessions = r.sessions; st.theirAt = r.theirAt; st.remoteName = r.remoteName; st.instanceId = r.instanceId;
+          st.safety = r.safety;   // undefined from a teammate on an older version
           // grants stay in the main process; the page only learns which sessions it may act on
           const dl = r.delegations || [];
           if (dl.length) teamGrants.set(p.name, dl); else teamGrants.delete(p.name);
@@ -1700,7 +1714,7 @@ async function teamPoll() {
         st.localNetDenied = isLocalNetworkDenied(r.error, p.host);
         st.nextAt = Date.now() + (st.fails >= 3 ? 15000 : 3000) - 200;
         // keep the last good snapshot for a while so a blip does not empty the list
-        if (!(st.lastOk && Date.now() - st.lastOk < 60000)) { st.sessions = []; st.delegatedToMe = []; teamGrants.delete(p.name); }
+        if (!(st.lastOk && Date.now() - st.lastOk < 60000)) { st.sessions = []; st.delegatedToMe = []; st.safety = undefined; teamGrants.delete(p.name); }
       }
       if (st.ok) st.localNetDenied = false;
       st.backoff = !st.ok && st.fails >= 3;
@@ -1753,7 +1767,7 @@ function teamDiscoveredList() {
 setTimeout(() => { teamFirstRun(); teamReload(); teamPoll(); }, 3000);
 setInterval(teamReload, 30000);
 setInterval(teamPoll, 1000);   // each peer keeps its own 3 s / 15 s schedule (nextAt)
-ipcMain.handle("roca:team-status", () => ({ ...teamStatus, ip: lanAddress(), discovered: teamDiscoveredList(), pending: [...teamPendingHellos.values()], notesNew: teamNotes.filter(n => n.state === "new").length, delegations: teamDelegations.list() }));
+ipcMain.handle("roca:team-status", () => ({ ...teamStatus, safety: (() => { try { return teamSafety(); } catch { return null; } })(), ip: lanAddress(), discovered: teamDiscoveredList(), pending: [...teamPendingHellos.values()], notesNew: teamNotes.filter(n => n.state === "new").length, delegations: teamDelegations.list() }));
 // "turn on": the same token-less, local-only team.json a first run writes (create or join a team afterwards)
 ipcMain.handle("roca:team-setup", () => {
   try {
