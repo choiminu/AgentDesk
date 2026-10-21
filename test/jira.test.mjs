@@ -112,9 +112,9 @@ test('pickSite prefers the given URL among Jira sites, else the first Jira site'
   const res = [
     { id: 'c1', url: 'https://conf-only.atlassian.net', scopes: ['read:confluence-content.all'] },
     { id: 'j1', url: 'https://other.atlassian.net', scopes: ['read:jira-work'] },
-    { id: 'j2', url: 'https://eximbay.atlassian.net/', scopes: ['read:jira-work', 'write:jira-work'] },
+    { id: 'j2', url: 'https://mysite.atlassian.net/', scopes: ['read:jira-work', 'write:jira-work'] },
   ];
-  assert.equal(J.pickSite(res, 'https://eximbay.atlassian.net').id, 'j2');
+  assert.equal(J.pickSite(res, 'https://mysite.atlassian.net').id, 'j2');
   assert.equal(J.pickSite(res, 'https://missing.atlassian.net').id, 'j1');
   assert.deepEqual(J.jiraSites(res).map(s => s.id), ['j1', 'j2']);
   assert.equal(J.pickSite([], 'x'), null);

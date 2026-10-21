@@ -16,7 +16,7 @@ export const REDIRECT_URI = `http://localhost:${OAUTH_PORT}/callback`;
 const SCOPES = "read:jira-work read:jira-user write:jira-work offline_access";
 const AUTH_URL = "https://auth.atlassian.com/authorize", TOKEN_URL = "https://auth.atlassian.com/oauth/token";
 const RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-resources";
-const PREFERRED_SITE = "https://eximbay.atlassian.net";   // picked first when the account can see it; any other site works too
+const PREFERRED_SITE = process.env.AGENTDESK_JIRA_SITE || "";   // optional: a site URL to prefer when the account can see several; otherwise the first Jira site
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 const DIR = join(homedir(), ".agentdesk"), FILE = join(DIR, "jira-oauth.enc");
 
