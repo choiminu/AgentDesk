@@ -12,3 +12,9 @@ Rules
   the secret patterns listed in `core/mask.js`; tests must use obviously fake values (`example.invalid`,
   `192.168.77.x`, `xoxb-0000…FAKE`).
 - Commits from this checkout use the personal author identity (set in `.git/config`).
+
+Company mirror
+- The company knowledge repository (`~/fin-management`, GitLab) carries a copy of this tree under `agentdesk/`.
+  After every push to `origin`, run `node scripts/sync-fin-management.mjs` — it copies HEAD (tracked files only,
+  `.github/` left out), commits only that directory and pushes. Set `AGENTDESK_MIRROR_REPO` if the checkout lives
+  elsewhere.
