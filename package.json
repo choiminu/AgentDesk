@@ -7,6 +7,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "NODE_ENV=development electron .",
+    "postinstall": "node scripts/dev-localnet.mjs",
     "dist": "electron-builder --mac --publish never",
     "dist:linux": "electron-builder --linux --publish never",
     "dist:win": "electron-builder --win --publish never",
