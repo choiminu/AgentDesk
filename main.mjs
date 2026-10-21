@@ -16,6 +16,7 @@ import "./core/outbound.js";   // globalThis.AgentDeskOutbound: Jira comment / S
 import "./core/team.js";       // globalThis.AgentDeskTeam: safetySummary for the team snapshot's safety status
 import "./core/timeline.js";   // globalThis.AgentDeskTimeline: the card's [타임라인] tab (details masked here)
 import "./core/version.js";    // globalThis.AgentDeskVersion: release version comparison and installer choice for updates
+import "./core/dock.js";      // globalThis.AgentDeskDock: dock mode window bounds (bottom-centre bar)
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { randomUUID, createHash } from "node:crypto";
 import { openPermEndpoint, ensurePrivateDir, permHookScript as permHookSh, guardHookScript, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK } from "./perm/server.mjs";
@@ -63,7 +64,7 @@ function loadBounds() {
 function saveBounds() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try {
-    const b = mainWindow.getBounds();
+    const b = dockState ? dockState.panel : mainWindow.getBounds();   // docked: keep the panel's place for the next start
     writeFileSync(boundsFile, JSON.stringify(b));
   } catch {}
 }
@@ -828,7 +829,7 @@ ipcMain.on("orca:session-counts", (_e, counts) => {
 
 let resizeAnim = null;
 ipcMain.on("orca:resize-window", (_e, w, h, forceHeight) => {
-  if (!mainWindow) return;
+  if (!mainWindow || dockState) return;   // dock mode places the window itself (orca:dock)
   const [curW, curH] = mainWindow.getSize();
   const [curX, curY] = mainWindow.getPosition();
 
@@ -868,6 +869,108 @@ ipcMain.on("orca:resize-window", (_e, w, h, forceHeight) => {
       mainWindow.setBounds({ x: targetX, y: targetY, width: targetW, height: targetH });
     }
   }, 16);
+});
+
+// ── dock mode: the widget as a thin bar on the bottom edge of the work area (core/dock.js dockBounds) ──
+// { on: true, contentWidth, height, extra, pop: { x, width }, remembered: { cx, y } } → bounds; the first call keeps the
+//   panel's bounds. extra = room for the hover card / review queue (above the bar, or below it when the bar sits high:
+//   bounds.dir); pop = the part of that room the card / queue covers: on Windows / Linux the window is cut to the bar
+//   plus that band (setShape), so the rest is neither drawn (no black box: the window is not transparent there)
+//   nor clickable.
+// { hit: bool } → while docked, whether the pointer is over something clickable; elsewhere clicks pass through to the
+//   windows behind (macOS / Windows: setIgnoreMouseEvents with forward, so the page still sees the pointer come back).
+// { on: false } → the panel's bounds, size limits, resizability, vibrancy and mouse handling back (always, try/finally).
+// A user drag of the bar is reported to the page (roca:dock-moved { cx, y }); moves made here are not. When a display
+// is added / removed / rearranged, the last request is placed again (roca:dock-moved { dir, reflow: true }).
+let dockState = null;   // { panel: bounds before docking, req: last request, last: last dockBounds result, setAt, moveT }
+const dockHooked = new WeakSet();
+let dockScreenHooked = false;
+const dockNum = (v, lo, hi) => (Number.isFinite(Number(v)) ? Math.min(Math.max(Number(v), lo), hi) : 0);
+// the bar's own rectangle inside the current window (the room for the card / queue is above or below it)
+function dockStripRect(cur, last) {
+  return { x: cur.x, y: last.dir === "down" ? cur.y : cur.y + cur.height - last.stripHeight, width: cur.width, height: last.stripHeight };
+}
+function dockOnMove() {
+  if (!dockState || !dockState.last || Date.now() - dockState.setAt < 400) return;
+  clearTimeout(dockState.moveT);
+  dockState.moveT = setTimeout(() => {
+    if (!dockState || !dockState.last || !mainWindow || mainWindow.isDestroyed() || Date.now() - dockState.setAt < 400) return;
+    const s = dockStripRect(mainWindow.getBounds(), dockState.last);
+    mainWindow.webContents.send("roca:dock-moved", { cx: Math.round(s.x + s.width / 2), y: s.y });
+  }, 300);
+}
+// Windows / Linux: draw (and hit-test) only the bar plus the card / queue band; [] = the whole window again
+function dockShape(b, pop) {
+  if (IS_MAC || typeof mainWindow.setShape !== "function") return;
+  let rects = [];
+  if (b && b.extra > 0 && pop && typeof pop === "object") {
+    const x = Math.round(dockNum(pop.x, 0, b.width)), w = Math.round(dockNum(pop.width, 0, b.width - x));
+    const bar = { x: 0, y: b.dir === "down" ? 0 : b.extra, width: b.width, height: b.stripHeight };
+    rects = w > 0 ? [bar, { x, y: b.dir === "down" ? b.stripHeight : 0, width: w, height: b.extra }] : [bar];
+  }
+  try { mainWindow.setShape(rects); } catch {}
+}
+function dockApply(r) {
+  const cur = mainWindow.getBounds(), last = dockState.last;
+  // the display the bar is on now (the panel's display on the first call)
+  const wa = screen.getDisplayMatching(last ? dockStripRect(cur, last) : cur).workArea;
+  const rem = r.remembered && typeof r.remembered === "object" ? { cx: Number(r.remembered.cx), y: Number(r.remembered.y) } : null;
+  const b = globalThis.AgentDeskDock.dockBounds({
+    workArea: wa, contentWidth: dockNum(r.contentWidth, 0, 20000), height: dockNum(r.height, 0, 200), extra: dockNum(r.extra, 0, 2000), remembered: rem,
+  });
+  if (!b) return null;
+  dockState.last = b; dockState.setAt = Date.now();
+  // maxWidth 480 is the panel's limit; the bar may be as wide as the work area
+  mainWindow.setMinimumSize(Math.min(280, b.width), Math.min(44, b.height));
+  mainWindow.setMaximumSize(Math.max(480, wa.width), Math.max(b.height, wa.height));
+  mainWindow.setBounds({ x: b.x, y: b.y, width: b.width, height: b.height });
+  dockShape(b, r.pop);
+  return b;
+}
+function dockReflow() {
+  if (!dockState || !dockState.req || !mainWindow || mainWindow.isDestroyed()) return;
+  dockState.last = null;   // the old display may be gone: start from where the window is now
+  const b = dockApply(dockState.req);
+  if (b) mainWindow.webContents.send("roca:dock-moved", { dir: b.dir, reflow: true });
+}
+ipcMain.handle("orca:dock", (_e, req) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const r = req && typeof req === "object" ? req : {};
+  if (typeof r.hit === "boolean") {
+    if (dockState && !IS_LINUX) mainWindow.setIgnoreMouseEvents(!r.hit, { forward: true });
+    return null;
+  }
+  if (resizeAnim) { clearInterval(resizeAnim); resizeAnim = null; }
+  if (!r.on) {
+    if (!dockState) return null;
+    const p = dockState.panel;
+    clearTimeout(dockState.moveT);
+    dockState = null;
+    const wa = screen.getDisplayMatching(p).workArea;
+    const w = Math.min(p.width, wa.width), h = Math.min(p.height, wa.height);
+    const x = Math.min(Math.max(p.x, wa.x), wa.x + wa.width - w), y = Math.min(Math.max(p.y, wa.y), wa.y + wa.height - h);
+    try {
+      mainWindow.setIgnoreMouseEvents(false);
+      dockShape(null);
+      if (IS_MAC) mainWindow.setVibrancy("under-window");
+    } finally {
+      mainWindow.setResizable(true);
+      mainWindow.setMinimumSize(Math.min(280, w), Math.min(44, h));
+      mainWindow.setMaximumSize(Math.max(480, w), Math.max(h, wa.height));
+      mainWindow.setBounds({ x, y, width: w, height: h });
+    }
+    return { x, y, width: w, height: h };
+  }
+  if (!dockState) {
+    dockState = { panel: mainWindow.getBounds(), req: null, last: null, setAt: 0, moveT: null };
+    mainWindow.setResizable(false);
+    if (IS_MAC) mainWindow.setVibrancy(null);   // the room above the bar stays see-through (the bar draws its own background)
+    if (!dockHooked.has(mainWindow)) { dockHooked.add(mainWindow); mainWindow.on("move", dockOnMove); }
+    if (!dockScreenHooked) { dockScreenHooked = true; for (const ev of ["display-added", "display-removed", "display-metrics-changed"]) screen.on(ev, dockReflow); }
+  }
+  dockState.req = r;
+  if (!(dockNum(r.extra, 0, 2000) > 0)) mainWindow.setIgnoreMouseEvents(false);   // no room around the bar: all of it is clickable
+  return dockApply(r);
 });
 
 ipcMain.handle("orca:notify", (_e, title, body) => {
