@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-gr8VA9ltEeEGtusPGaihMKiMyWao+vmExHi0lED40hA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-FaOYoDWU3RF3Khe4JbSYm3tarIfLEAnGJBnlxmkqYAE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -170,14 +170,6 @@
   .widget.minimized .page { display: none !important; }
   .widget.minimized .header { border-bottom: none; }
   .widget.minimized .header::after { display: none; }
-  .logo {
-    font-family: var(--mono);
-    font-weight: 600;
-    font-size: var(--fs-lg);
-    color: var(--accent);
-    -webkit-app-region: drag;
-    letter-spacing: -0.03em;
-  }
   .stats {
     display: flex;
     gap: 10px;
@@ -234,9 +226,10 @@
   ::-webkit-scrollbar-corner { background: transparent; }
   .office-wrap { scroll-behavior: smooth; }
   .nav-badge[hidden] { display: none; }
-  .nav-badge { display: inline-block; margin-left: 5px; padding: 0 5px; min-width: 16px; border-radius: 9px; background: var(--yellow); color: #1a1408; font-size: var(--fs-xs); font-weight: 700; line-height: 16px; text-align: center; vertical-align: 1px; }
+  /* compact so 5 buttons with three 2-digit badges still fit a 320px window in Korean and English */
+  .nav-badge { display: inline-block; margin-left: 3px; padding: 0 3px; min-width: 14px; border-radius: 8px; background: var(--yellow); color: var(--on-yellow); font-size: var(--fs-xs); font-weight: 700; line-height: 14px; text-align: center; vertical-align: 1px; }
   .page-nav-btn {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     appearance: none;
     border: none;
     background: transparent;
@@ -262,13 +255,13 @@
   .page { display: none; flex-direction: column; flex: 1; overflow: hidden; position: relative; }
   .page.active { display: flex; }
 
-  .ctx-chip.warn { color: var(--yellow) !important; }
-  .ctx-chip.crit { color: var(--red) !important; font-weight: 700; }
+  .ctx-chip.warn { color: var(--yellow-text) !important; }
+  .ctx-chip.crit { color: var(--red-text) !important; font-weight: 700; }
 
   .orca-error { margin: 6px 10px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--red) 50%, transparent); background: var(--red-dim); border-radius: var(--radius-md); font-size: var(--fs-xs); color: var(--text); display: flex; flex-direction: column; gap: 3px; }
-  .orca-error b { color: var(--red); }
+  .orca-error b { color: var(--red-text); }
   .mode-banner { margin: 6px 10px; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-dim); border-radius: var(--radius-md); font-size: var(--fs-xs); color: var(--text); display: flex; flex-direction: column; gap: 2px; }
-  .mode-banner b { color: var(--accent); }
+  .mode-banner b { color: var(--accent-text); }
   .mode-banner button { align-self: flex-start; margin-top: 4px; background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; font-size: var(--fs-xs); }
   .mode-banner span { color: var(--text2); }
   .orca-error span { color: var(--text2); word-break: break-all; }
@@ -284,7 +277,7 @@
   .team-modal button { background: var(--surface-raised, var(--surface)); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; }
   .team-modal button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   .team-modal .assign { border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px; margin-top: 8px; }
-  .team-modal .assign b { color: var(--accent); }
+  .team-modal .assign b { color: var(--accent-text); }
   .team-modal .assign textarea { min-height: 56px; margin-top: 4px; }
   .team-modal .log { font-family: var(--mono); font-size: var(--fs-xs); white-space: pre-wrap; background: var(--bg-solid); border-radius: 6px; padding: 8px; max-height: 50vh; overflow: auto; }
   .team-modal .brief { font-family: var(--mono); font-size: var(--fs-xs); white-space: pre-wrap; background: var(--bg-solid); border-radius: 6px; padding: 8px; max-height: 30vh; overflow: auto; color: var(--text2); }
@@ -298,7 +291,7 @@
   .ctx-menu .ctx-title { padding: 4px 8px 6px; font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); border-bottom: 1px solid var(--border-subtle); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
   .ctx-menu button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none; color: var(--text); padding: 5px 8px; border-radius: 6px; cursor: pointer; font: inherit; }
   .ctx-menu button:hover { background: var(--surface-hover, rgba(255,255,255,0.06)); }
-  .ctx-menu button.danger { color: var(--red); }
+  .ctx-menu button.danger { color: var(--red-text); }
   .ctx-menu button .k { margin-left: auto; color: var(--text3); font-size: var(--fs-xs); }
 
   /* ── Pixel office ── */
@@ -320,8 +313,8 @@
   .office-legend-key { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
   .office-hint { margin-left: auto; color: var(--text3); }
   .office-sound-btn { background: none; border: 1px solid var(--border-subtle); border-radius: 6px; cursor: pointer; font-size: var(--fs-sm); padding: 0 5px; line-height: 18px; color: var(--text3); }
-  .office-sound-btn.on { border-color: var(--yellow); color: var(--yellow); }
-  #hooks-toggle.on { border-color: var(--green); color: var(--green); }
+  .office-sound-btn.on { border-color: var(--yellow); color: var(--yellow-text); }
+  #hooks-toggle.on { border-color: var(--green); color: var(--green-text); }
   .office-wrap {
     flex: 1;
     overflow: auto;
@@ -353,7 +346,7 @@
   .office-ask .ask-row input { flex: 1; min-width: 0; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font: inherit; }
   .office-ask .ask-row button { background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; cursor: pointer; font: inherit; }
   .office-ask .ask-status { color: var(--text3); margin-top: 4px; min-height: 12px; }
-  .office-ask .ask-status.err { color: var(--red); }
+  .office-ask .ask-status.err { color: var(--red-text); }
   .office-tip {
     position: absolute;
     pointer-events: none;
@@ -395,7 +388,7 @@
   }
   .tab:hover { color: var(--text2); background: var(--surface-hover); }
   .tab.active {
-    color: var(--accent);
+    color: var(--accent-text);
     background: var(--accent-dim);
   }
   .tab-badge {
@@ -499,19 +492,19 @@
   }
   .team-bar { padding: 8px 12px 0; font-size: var(--fs-xs); color: var(--text3); line-height: 1.4; }
   .team-bar b { color: var(--text2); font-weight: 600; }
-  .team-bar .off { color: var(--red); }
+  .team-bar .off { color: var(--red-text); }
   .group-header .gh-safety { display: inline-flex; flex-wrap: wrap; gap: 4px; text-transform: none; letter-spacing: 0; font-weight: 400; }
   .safety-chip { border: 1px solid var(--border-subtle); border-radius: 4px; padding: 0 4px; max-width: none; }
-  .safety-chip.bad { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); opacity: 1; }
-  .safety-chip.warn { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 50%, transparent); opacity: 1; }
-  .safety-chip.unk { color: var(--text3); opacity: .6; }
-  .peer-conflict.file { color: var(--red); border-color: var(--red); }
+  .safety-chip.bad { color: var(--red-text); border-color: color-mix(in srgb, var(--red) 50%, transparent); opacity: 1; }
+  .safety-chip.warn { color: var(--yellow-text); border-color: color-mix(in srgb, var(--yellow) 50%, transparent); opacity: 1; }
+  .safety-chip.unk { color: var(--text3); }
+  .peer-conflict.file { color: var(--red-text); border-color: var(--red); }
   .peer-conflict.branch { color: #c99a1a; }
   .peer-warn-btn { cursor: pointer; background: transparent; font: inherit; }
   .peer-board { width: calc(100% - 24px); margin: 2px 12px 8px; border-collapse: collapse; font-size: var(--fs-xs); color: var(--text2); }
   .peer-board th { text-align: left; font-weight: 600; color: var(--text3); border-bottom: 1px solid var(--border-subtle); padding: 3px 4px; }
   .peer-board td { border-bottom: 1px solid var(--border-subtle); padding: 3px 4px; vertical-align: top; word-break: break-word; }
-  .peer-board tr.mine td:first-child { color: var(--accent); }
+  .peer-board tr.mine td:first-child { color: var(--accent-text); }
   .peer-onboard { margin: 10px 12px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; font-size: var(--fs-sm); color: var(--text2); display: flex; flex-direction: column; gap: 8px; }
   .peer-onboard b { color: var(--text); font-size: var(--fs-md); }
   .peer-onboard p { margin: 0; color: var(--text3); }
@@ -519,7 +512,7 @@
   .peer-onboard .set-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   .peer-onboard .po-me { display: flex; gap: 6px; align-items: center; }
   .peer-onboard input { flex: 1; min-width: 0; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; font: inherit; }
-  .peer-onboard .off { color: var(--red); }
+  .peer-onboard .off { color: var(--red-text); }
   .peer-onboard.ln-denied { border-color: var(--red); }
   .peer-note, .peer-disc { margin: 4px 12px; padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: 6px; font-size: var(--fs-sm); color: var(--text2); }
   .peer-note .pn-text { margin: 4px 0; white-space: pre-wrap; color: var(--text); }
@@ -528,7 +521,7 @@
   .peer-deleg { color: #c99a1a; border-color: #c99a1a; }
   .peer-rlog { display: flex; flex-direction: column; gap: 2px; }
   .peer-rlog .pr-row { word-break: break-word; }
-  .peer-rlog .pr-row.blocked { color: var(--red); }
+  .peer-rlog .pr-row.blocked { color: var(--red-text); }
   .peer-last { white-space: pre-wrap; word-break: break-word; max-height: 50vh; overflow: auto; font-family: var(--mono); font-size: var(--fs-sm); color: var(--text); background: var(--bg-solid); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px; user-select: text; }
   .deleg-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
   .peer-r-btns { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -539,24 +532,24 @@
   .peer-term .pt-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--surface); border-bottom: 1px solid var(--border); }
   .peer-term .pt-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .peer-term .pt-status { margin-left: auto; flex: none; font-size: var(--fs-xs); padding: 1px 8px; border-radius: 10px; color: var(--text2); background: var(--surface-hover); }
-  .peer-term .pt-status.run { color: var(--accent); background: var(--accent-dim); }
-  .peer-term .pt-status.wait { color: var(--green); background: var(--green-dim); }
-  .peer-term .pt-status.ask { color: var(--yellow); background: var(--yellow-dim); }
-  .peer-term .pt-status.err { color: var(--red); background: var(--red-dim); }
+  .peer-term .pt-status.run { color: var(--accent-text); background: var(--accent-dim); }
+  .peer-term .pt-status.wait { color: var(--green-text); background: var(--green-dim); }
+  .peer-term .pt-status.ask { color: var(--yellow-text); background: var(--yellow-dim); }
+  .peer-term .pt-status.err { color: var(--red-text); background: var(--red-dim); }
   .peer-term button { background: var(--surface-raised, var(--surface)); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; }
   .peer-term button:disabled { opacity: 0.5; cursor: default; }
   .peer-term .pt-screen { flex: 1; margin: 0; padding: 8px 10px; overflow: auto; white-space: pre; font-family: var(--mono); font-size: var(--fs-sm); line-height: 1.35; color: var(--text); background: var(--bg-solid); user-select: text; }
   .peer-term .pt-foot { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--border); background: var(--surface); }
-  .peer-term .pt-prompt { font-family: var(--mono); color: var(--accent); }
+  .peer-term .pt-prompt { font-family: var(--mono); color: var(--accent-text); }
   .peer-term .pt-input { flex: 1; min-width: 0; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-family: var(--mono); font-size: var(--fs-sm); }
   .peer-term .pt-input:disabled { opacity: 0.6; }
   .peer-term .pt-msg { padding: 0 10px 6px; min-height: 14px; font-size: var(--fs-xs); color: var(--text3); background: var(--surface); }
-  .peer-term .pt-msg.error { color: var(--red); }
+  .peer-term .pt-msg.error { color: var(--red-text); }
   .office-peer-pop { pointer-events: auto; white-space: normal; max-width: 280px; z-index: 6; }
   .office-peer-pop .pp-row { display: flex; gap: 6px; margin-top: 6px; }
   .office-peer-pop button { font: inherit; font-size: var(--fs-xs); background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 2px 8px; cursor: pointer; }
   .group-header .gh-peer-state { font-weight: 400; text-transform: none; letter-spacing: 0; opacity: .8; }
-  .group-header .gh-peer-state.off { color: var(--red); opacity: 1; }
+  .group-header .gh-peer-state.off { color: var(--red-text); opacity: 1; }
   .group-header .gh-count {
     font-weight: 400;
     color: var(--text3);
@@ -574,42 +567,8 @@
     line-height: 1;
     margin-top: 1px;
   }
-  .s-icon.waiting .ic-bounce {
-    display: inline-block;
-    animation: icBounce 2s ease-in-out infinite;
-  }
   .s-icon.done { opacity: 0.45; }
-  .s-icon.error .ic-shake {
-    display: inline-block;
-    animation: icShake 0.5s ease-in-out infinite;
-  }
   @keyframes icBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
-  @keyframes icShake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
-
-  .typing-bubble {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    background: linear-gradient(135deg, var(--accent), #7b6cf6);
-    border-radius: 8px 8px 8px 3px;
-    padding: 3px 5px;
-    height: 14px;
-    box-shadow: 0 1px 4px rgba(91,156,245,0.3);
-  }
-  .typing-bubble .dot {
-    width: 3px;
-    height: 3px;
-    border-radius: 50%;
-    background: #fff;
-    animation: typingDot 1.4s ease-in-out infinite;
-  }
-  .typing-bubble .dot:nth-child(2) { animation-delay: 0.2s; }
-  .typing-bubble .dot:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes typingDot {
-    0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
-    30% { opacity: 1; transform: translateY(-2px); }
-  }
-
   .s-info { flex: 1; min-width: 0; }
   .s-name {
     font-weight: 600;
@@ -636,10 +595,10 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
-  .s-agent.claude { background: var(--purple-dim); color: var(--purple); }
-  .s-agent.opencode { background: var(--green-dim); color: var(--green); }
-  .s-agent.gemini { background: var(--accent-dim); color: var(--accent); }
-  .s-agent.shell { background: var(--yellow-dim); color: var(--yellow); }
+  .s-agent.claude { background: var(--purple-dim); color: var(--purple-text); }
+  .s-agent.opencode { background: var(--green-dim); color: var(--green-text); }
+  .s-agent.gemini { background: var(--accent-dim); color: var(--accent-text); }
+  .s-agent.shell { background: var(--yellow-dim); color: var(--yellow-text); }
 
   .s-time { font-variant-numeric: tabular-nums; }
   .s-tool {
@@ -683,8 +642,8 @@
     line-height: 1;
   }
   .s-act:hover { background: var(--surface-raised); color: var(--text); }
-  .s-act.pinned { color: var(--accent); }
-  .s-act.danger:hover { color: var(--red); background: var(--red-dim); }
+  .s-act.pinned { color: var(--accent-text); }
+  .s-act.danger:hover { color: var(--red-text); background: var(--red-dim); }
 
   /* ── Hover prompt peek ── */
   .s-prompt {
@@ -758,8 +717,8 @@
   .bar-fill.yellow { background: linear-gradient(90deg, #c8922e, var(--yellow)); }
   .bar-fill.red { background: linear-gradient(90deg, #c94e49, var(--red)); }
   .token-eta { font-size: var(--fs-xs); color: var(--text3); padding-left: 36px; margin: -2px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .token-eta.warn { color: var(--yellow); }
-  .token-eta.crit { color: var(--red); }
+  .token-eta.warn { color: var(--yellow-text); }
+  .token-eta.crit { color: var(--red-text); }
 
   .empty {
     display: flex;
@@ -801,1003 +760,18 @@
     border-radius: var(--radius-md);
     background: var(--surface-raised);
     border: 1px solid var(--green);
-    color: var(--green);
+    color: var(--green-text);
     backdrop-filter: blur(16px);
     animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     pointer-events: auto;
     box-shadow: var(--shadow-float);
   }
-  .toast.err { border-color: var(--red); color: var(--red); background: linear-gradient(135deg, var(--red-dim), var(--surface-raised)); }
-  .toast.waiting { border-color: var(--yellow); color: var(--yellow); background: linear-gradient(135deg, var(--yellow-dim), var(--surface-raised)); }
+  .toast.err { border-color: var(--red); color: var(--red-text); background: linear-gradient(135deg, var(--red-dim), var(--surface-raised)); }
+  .toast.waiting { border-color: var(--yellow); color: var(--yellow-text); background: linear-gradient(135deg, var(--yellow-dim), var(--surface-raised)); }
   @keyframes toastIn {
     from { opacity: 0; transform: translateY(8px) scale(0.96); }
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
-
-  /* ── Sessions viewer page ── */
-  .cs-item {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    padding: 10px 12px;
-    cursor: pointer;
-    border-radius: var(--radius-md);
-    margin: 0 0 2px 0;
-    transition: background 0.15s;
-  }
-  .cs-item:hover { background: var(--surface-hover); }
-  .cs-title {
-    font-weight: 600;
-    font-size: var(--fs-base);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .cs-meta {
-    display: flex;
-    gap: 8px;
-    font-family: var(--mono);
-    font-size: var(--fs-sm);
-    color: var(--text3);
-    flex-wrap: wrap;
-  }
-  .cs-meta .highlight { color: var(--accent); font-weight: 500; }
-  .cs-meta .cost { color: var(--yellow); }
-
-  /* ── Session detail view ── */
-  .detail-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-    background: var(--surface);
-  }
-  .back-btn {
-    appearance: none;
-    border: 1px solid var(--border);
-    background: var(--surface-raised);
-    color: var(--accent);
-    font-size: var(--fs-lg);
-    cursor: pointer;
-    padding: 3px 7px;
-    border-radius: var(--radius-sm);
-    transition: background 0.15s;
-  }
-  .back-btn:hover { background: var(--surface-hover); }
-  .detail-title {
-    font-weight: 600;
-    font-size: var(--fs-base);
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .detail-stats {
-    font-family: var(--mono);
-    font-size: var(--fs-sm);
-    color: var(--text3);
-    display: flex;
-    gap: 10px;
-    padding: 8px 14px;
-    border-bottom: 1px solid var(--border-subtle);
-    flex-shrink: 0;
-    flex-wrap: wrap;
-  }
-
-  .msg-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 6px 0;
-  }
-
-  .msg {
-    padding: 8px 14px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .msg-role {
-    font-family: var(--mono);
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 4px;
-  }
-  .msg-role.user { color: var(--green); }
-  .msg-role.assistant { color: var(--purple); }
-  .msg-text {
-    font-size: var(--fs-base);
-    line-height: 1.55;
-    color: var(--text2);
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 200px;
-    overflow-y: auto;
-  }
-  .msg-tool {
-    font-family: var(--mono);
-    font-size: var(--fs-sm);
-    padding: 5px 10px;
-    margin: 4px 0;
-    background: var(--surface);
-    border-radius: var(--radius-sm);
-    border-left: 2px solid var(--accent);
-    color: var(--text3);
-  }
-  .msg-tool .tool-name { color: var(--accent); font-weight: 600; }
-  .msg-tool .tool-status { margin-left: 6px; }
-  .msg-tool .tool-status.completed { color: var(--green); }
-  .msg-tool .tool-status.error { color: var(--red); }
-  .msg-tool-output {
-    max-height: 80px;
-    overflow-y: auto;
-    margin-top: 4px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    font-size: var(--fs-sm);
-    opacity: 0.8;
-  }
-  .msg-reasoning {
-    font-size: var(--fs-sm);
-    color: var(--text3);
-    font-style: italic;
-    padding: 4px 10px;
-    margin: 4px 0;
-    border-left: 2px solid var(--purple);
-    background: var(--purple-dim);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    max-height: 100px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-  }
-
-  /* ── Orchestration page ── */
-  .orch-layout {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-    gap: 0;
-  }
-  .orch-left {
-    width: 220px;
-    min-width: 180px;
-    flex-shrink: 0;
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: var(--surface);
-  }
-  .orch-left-header {
-    padding: 10px 12px;
-    font-family: var(--sans);
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    color: var(--text2);
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-    letter-spacing: 0.02em;
-  }
-  .orch-terminal-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .orch-terminal-card {
-    padding: 8px 10px;
-    background: var(--surface-raised);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-subtle);
-    font-size: var(--fs-md);
-    cursor: grab;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    transition: border-color 0.2s, box-shadow 0.2s, opacity 0.15s;
-  }
-  .orch-terminal-card:hover {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent-dim);
-  }
-  .orch-terminal-card.dragging { opacity: 0.35; }
-  .orch-terminal-card .agent-badge {
-    font-family: var(--mono);
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: linear-gradient(135deg, var(--accent), #7b6cf6);
-    color: #fff;
-    text-transform: uppercase;
-    flex-shrink: 0;
-  }
-  .orch-terminal-card .term-info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  .orch-terminal-card .term-name {
-    font-weight: 500;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .orch-terminal-card .term-handle {
-    font-family: var(--mono);
-    font-size: var(--fs-xs);
-    color: var(--text3);
-  }
-  .orch-terminal-card .conn-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .orch-terminal-card .conn-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
-  .orch-terminal-card .conn-dot.off { background: var(--text3); opacity: 0.5; }
-
-  .orch-right {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .orch-right-top {
-    display: flex;
-    gap: 8px;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-    align-items: center;
-    background: var(--surface);
-  }
-  .orch-right-top select {
-    appearance: none;
-    border: 1px solid var(--border);
-    background: var(--surface-raised);
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: var(--fs-md);
-    padding: 5px 10px;
-    border-radius: var(--radius-sm);
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  .orch-right-top select:focus { border-color: var(--accent); }
-
-  .phase-columns-wrap {
-    flex: 1;
-    overflow-x: auto;
-    overflow-y: auto;
-    padding: 10px;
-  }
-
-  .phase-columns {
-    display: flex;
-    gap: 10px;
-    min-width: max-content;
-    align-items: flex-start;
-  }
-  .phase-column {
-    width: 180px;
-    flex-shrink: 0;
-    background: var(--surface);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-subtle);
-    border-top: 3px solid var(--border);
-    overflow: hidden;
-    transition: border-color 0.2s, box-shadow 0.2s;
-  }
-  .phase-column.drag-over {
-    box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(91,156,245,0.15);
-  }
-  .phase-column-head {
-    padding: 8px 12px;
-    font-family: var(--sans);
-    font-size: var(--fs-md);
-    font-weight: 600;
-    border-bottom: 1px solid var(--border-subtle);
-    display: flex;
-    align-items: center;
-    gap: 7px;
-  }
-  .phase-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .phase-column-count {
-    font-weight: 400;
-    color: var(--text3);
-    margin-left: auto;
-    font-size: var(--fs-sm);
-  }
-  .phase-column-body {
-    padding: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-height: 44px;
-    max-height: 280px;
-    overflow-y: auto;
-  }
-  .phase-empty {
-    color: var(--text3);
-    font-size: var(--fs-sm);
-    text-align: center;
-    padding: 10px 4px;
-    opacity: 0.6;
-  }
-
-  .phase-session-card {
-    padding: 6px 8px;
-    background: var(--bg-solid);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-subtle);
-    font-size: var(--fs-md);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: border-color 0.15s;
-  }
-  .phase-session-card:hover { border-color: var(--border); }
-  .phase-session-card .ps-info {
-    flex: 1;
-    min-width: 0;
-  }
-  .phase-session-card .ps-name {
-    font-weight: 500;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: var(--fs-md);
-  }
-  .phase-session-card .ps-handle {
-    font-family: var(--mono);
-    font-size: var(--fs-xs);
-    color: var(--text3);
-  }
-  .phase-session-card .ps-actions {
-    display: flex;
-    gap: 3px;
-    flex-shrink: 0;
-  }
-  .phase-session-card .ps-btn {
-    appearance: none;
-    border: 1px solid var(--border-subtle);
-    background: var(--surface);
-    color: var(--text3);
-    font-size: var(--fs-sm);
-    padding: 2px 6px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.12s;
-  }
-  .phase-session-card .ps-btn:hover { color: var(--text); background: var(--surface-hover); border-color: var(--border); }
-  .phase-session-card .ps-btn.rm:hover { color: var(--red); background: var(--red-dim); border-color: var(--red); }
-
-  /* Task cards (in task section below) */
-  .task-section {
-    border-top: 1px solid var(--border);
-    padding: 10px;
-    flex-shrink: 0;
-    background: var(--surface);
-  }
-  .task-section-header {
-    font-family: var(--sans);
-    font-size: var(--fs-md);
-    font-weight: 600;
-    color: var(--text2);
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .task-lanes {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    min-width: max-content;
-  }
-  .task-lane {
-    min-width: 155px;
-    max-width: 185px;
-    flex-shrink: 0;
-    background: var(--surface-raised);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-subtle);
-    overflow: hidden;
-  }
-  .task-lane-header {
-    padding: 6px 10px;
-    font-family: var(--sans);
-    font-size: var(--fs-md);
-    font-weight: 600;
-    border-bottom: 1px solid var(--border-subtle);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .task-lane-body {
-    padding: 5px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    max-height: 160px;
-    overflow-y: auto;
-  }
-  .task-card {
-    padding: 6px 8px;
-    background: var(--bg-solid);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-subtle);
-    font-size: var(--fs-md);
-    line-height: 1.35;
-    color: var(--text2);
-    cursor: grab;
-    transition: border-color 0.2s, box-shadow 0.2s;
-  }
-  .task-card:hover {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent-dim);
-  }
-  .task-card.dragging { opacity: 0.35; }
-  .task-card .task-title {
-    font-weight: 500;
-    color: var(--text);
-    margin-bottom: 3px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .task-card .task-status {
-    font-family: var(--mono);
-    font-size: var(--fs-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    font-weight: 500;
-  }
-  .task-card .task-status.pending { color: var(--text3); }
-  .task-card .task-status.dispatched { color: var(--yellow); }
-  .task-card .task-status.in_progress { color: var(--accent); }
-  .task-card .task-status.completed { color: var(--green); }
-  .task-card .task-status.failed { color: var(--red); }
-
-  .new-task-form {
-    display: flex;
-    gap: 5px;
-    padding: 8px 10px;
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
-    background: var(--surface);
-  }
-  .new-task-form select {
-    appearance: none;
-    border: 1px solid var(--border);
-    background: var(--surface-raised);
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: var(--fs-md);
-    padding: 5px 8px;
-    border-radius: var(--radius-sm);
-    outline: none;
-    width: 76px;
-    transition: border-color 0.15s;
-  }
-  .new-task-form select:focus { border-color: var(--accent); }
-  .new-task-form input {
-    flex: 1;
-    border: 1px solid var(--border);
-    background: var(--surface-raised);
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: var(--fs-md);
-    padding: 5px 10px;
-    border-radius: var(--radius-sm);
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-  }
-  .new-task-form input::placeholder { color: var(--text3); }
-  .new-task-form input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-dim);
-  }
-  .new-task-form button {
-    appearance: none;
-    border: none;
-    background: linear-gradient(135deg, var(--accent), #7b6cf6);
-    color: #fff;
-    font-family: var(--sans);
-    font-size: var(--fs-md);
-    font-weight: 600;
-    padding: 5px 14px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: opacity 0.15s, transform 0.1s;
-    box-shadow: 0 1px 3px rgba(91,156,245,0.3);
-  }
-  .new-task-form button:hover { opacity: 0.9; }
-  .new-task-form button:active { transform: scale(0.97); }
-  .new-task-form button:disabled { opacity: 0.35; cursor: default; transform: none; }
-
-  .orch-empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 60px;
-    color: var(--text3);
-    font-size: var(--fs-sm);
-    opacity: 0.6;
-  }
-
-  /* Worker drop zone for task dispatching */
-  .worker-drop-zone {
-    padding: 5px 8px;
-    background: var(--surface);
-    border-radius: var(--radius-sm);
-    border: 1.5px dashed var(--border);
-    font-size: var(--fs-md);
-    color: var(--text3);
-    text-align: center;
-    transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
-    min-height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .worker-drop-zone.drag-over {
-    border-color: var(--accent);
-    border-style: solid;
-    background: var(--accent-dim);
-    color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-dim);
-  }
-  .worker-drop-zone.dispatching { color: var(--yellow); }
-  .worker-drop-zone.err { color: var(--red); }
-
-  /* ── Collaboration Page Layout ── */
-  .collab-layout {
-    display: flex;
-    gap: 10px;
-    height: 100%;
-    overflow: hidden;
-  }
-  .collab-left {
-    width: 200px;
-    min-width: 160px;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    border-right: 1px solid var(--border-subtle);
-    padding-right: 10px;
-    overflow-y: auto;
-  }
-  .collab-left-header {
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    color: var(--text2);
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .collab-left .debate-session-list {
-    max-height: none;
-    flex-direction: column;
-    overflow-y: auto;
-  }
-  .collab-right {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    overflow-y: auto;
-    min-width: 0;
-  }
-  .collab-zones {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  /* ── Hierarchy Tree (vertical org-chart style) ── */
-  .collab-tree {
-    padding: 16px 12px;
-    background: var(--surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    min-height: 80px;
-    overflow-x: auto;
-  }
-  .collab-tree-empty {
-    color: var(--text3);
-    font-size: var(--fs-xs);
-    text-align: center;
-    padding: 20px 0;
-  }
-  .collab-tree-root {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0;
-    position: relative;
-  }
-  .collab-node {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 14px;
-    border-radius: 10px;
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    white-space: nowrap;
-    position: relative;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
-    transition: transform 0.15s, box-shadow 0.15s;
-  }
-  .collab-node:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 3px 8px rgba(0,0,0,0.18);
-  }
-  .collab-node .dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 20%, transparent);
-  }
-  .collab-node-master {
-    background: var(--yellow-dim);
-    border: 1.5px solid color-mix(in srgb, var(--yellow) 60%, transparent);
-    color: var(--text);
-    font-size: var(--fs-md);
-  }
-  .collab-node-master::before {
-    content: '👑';
-    font-size: var(--fs-sm);
-    margin-right: 2px;
-  }
-  .collab-node-worker-a {
-    background: var(--accent-dim);
-    border: 1.5px solid color-mix(in srgb, var(--accent) 40%, transparent);
-    color: var(--text);
-  }
-  .collab-node-worker-b {
-    background: color-mix(in srgb, var(--green) 10%, var(--surface));
-    border: 1.5px solid color-mix(in srgb, var(--green) 35%, transparent);
-    color: var(--text);
-  }
-
-  /* vertical connector line */
-  .ct-vline {
-    width: 2px;
-    background: var(--border);
-    position: relative;
-  }
-  .ct-vline::after {
-    content: '';
-    position: absolute;
-    bottom: -3px; left: 50%;
-    transform: translateX(-50%);
-    width: 0; height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid var(--border);
-  }
-  .ct-vline-short { height: 20px; }
-  .ct-vline-long  { height: 32px; }
-
-  /* horizontal rail connecting branches */
-  .ct-hline {
-    height: 2px;
-    background: var(--border);
-    align-self: stretch;
-    margin: 0 20%;
-    border-radius: 1px;
-  }
-
-  /* branch container */
-  .ct-branches {
-    display: flex;
-    justify-content: center;
-    gap: 32px;
-    width: 100%;
-  }
-  .ct-branch {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0;
-    flex: 1;
-    max-width: 180px;
-  }
-
-  /* group label badge */
-  .ct-group-label {
-    font-size: var(--fs-xs);
-    font-weight: 700;
-    color: var(--bg);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    padding: 2px 10px;
-    border-radius: 8px;
-    margin-bottom: 6px;
-  }
-  .ct-group-label-a { background: var(--accent); }
-  .ct-group-label-b { background: var(--green); }
-
-  /* stacked node list in a branch */
-  .ct-node-stack {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    position: relative;
-  }
-  .ct-node-stack .collab-node + .collab-node::before {
-    content: '';
-    position: absolute;
-    width: 2px;
-    height: 6px;
-    background: var(--border-subtle);
-    top: -6px;
-    left: 50%;
-    transform: translateX(-50%);
-  }
-
-  /* flow direction indicator */
-  .ct-flow-badge {
-    font-size: var(--fs-xs);
-    color: var(--text3);
-    background: var(--surface);
-    border: 1px solid var(--border-subtle);
-    padding: 3px 10px;
-    border-radius: 10px;
-    margin-top: 8px;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .ct-flow-badge .arrow { font-size: var(--fs-base); }
-
-  /* relay mode: dual arrows between groups */
-  .ct-relay-arrow {
-    display: flex;
-    align-items: center;
-    align-self: center;
-    font-size: 22px;
-    color: var(--accent);
-    padding: 0 4px;
-    flex-shrink: 0;
-    animation: ct-pulse 2s ease-in-out infinite;
-  }
-  @keyframes ct-pulse {
-    0%, 100% { opacity: 0.5; }
-    50% { opacity: 1; }
-  }
-
-  /* ── Debate Room (shared styles) ── */
-
-  .debate-flow {
-    display: flex;
-    gap: 6px;
-    align-items: stretch;
-  }
-  .debate-pool {
-    flex: 1;
-    min-height: 60px;
-  }
-  .debate-pool-label {
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    color: var(--text3);
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .debate-pool-label .pool-color {
-    display: inline-block;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    margin-right: 4px;
-    vertical-align: middle;
-  }
-  .debate-dropzone {
-    min-height: 48px;
-    border: 1.5px dashed var(--border);
-    border-radius: var(--radius-sm);
-    padding: 4px;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    transition: border-color 0.15s, background 0.15s;
-  }
-  .debate-dropzone.drag-over {
-    border-color: var(--accent);
-    background: var(--accent-dim);
-  }
-  .debate-dropzone-empty {
-    font-size: var(--fs-xs);
-    color: var(--text3);
-    text-align: center;
-    padding: 10px 4px;
-    pointer-events: none;
-  }
-  .debate-flow-arrow {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    color: var(--text3);
-    font-size: 17px;
-    min-width: 28px;
-    flex-shrink: 0;
-  }
-  .debate-flow-arrow span { font-size: var(--fs-xs); }
-
-  .debate-session-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 3px;
-    max-height: 72px;
-    overflow-y: auto;
-    padding: 2px 0;
-  }
-
-  .debate-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 8px;
-    border-radius: 10px;
-    font-size: var(--fs-xs);
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text2);
-    cursor: grab;
-    user-select: none;
-    transition: all 0.12s;
-    white-space: nowrap;
-  }
-  .debate-tag:active { cursor: grabbing; }
-  .debate-tag:hover { border-color: var(--text3); }
-  .debate-tag .dot {
-    width: 5px; height: 5px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .debate-tag .remove-tag {
-    margin-left: 2px;
-    font-size: var(--fs-xs);
-    color: var(--text3);
-    cursor: pointer;
-    line-height: 1;
-  }
-  .debate-tag .remove-tag:hover { color: var(--red); }
-  .debate-tag.dragging { opacity: 0.4; }
-
-  .debate-config-row {
-    display: flex;
-    gap: 6px;
-    align-items: stretch;
-  }
-  .debate-config-row textarea {
-    flex: 1;
-    resize: none;
-    height: 42px;
-    padding: 6px 8px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: var(--fs-md);
-  }
-  .debate-config-row textarea::placeholder { color: var(--text3); }
-  .debate-config-row textarea:focus { border-color: var(--accent); outline: none; }
-  .debate-config-side {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 65px;
-  }
-  .debate-config-side label { font-size: var(--fs-xs); color: var(--text3); }
-  .debate-config-side select {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    font-size: var(--fs-xs);
-    padding: 2px 3px;
-  }
-  .debate-actions {
-    display: flex;
-    gap: 6px;
-  }
-  .debate-actions button {
-    flex: 1;
-    padding: 5px 0;
-    border: none;
-    border-radius: var(--radius-sm);
-    font-size: var(--fs-md);
-    font-weight: 500;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
-  .debate-actions button:hover { opacity: 0.85; }
-  .debate-actions button:disabled { opacity: 0.35; cursor: default; }
-  .debate-start-btn { background: var(--accent); color: #fff; }
-  .debate-stop-btn { background: var(--red); color: #fff; }
-  .debate-status {
-    font-size: var(--fs-xs);
-    color: var(--text3);
-    min-height: 14px;
-  }
-  .debate-log {
-    max-height: 280px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 4px;
-  }
-  .debate-msg {
-    padding: 6px 10px;
-    border-radius: var(--radius-md);
-    font-size: var(--fs-sm);
-    line-height: 1.5;
-    max-width: 90%;
-    word-break: break-word;
-    white-space: pre-wrap;
-  }
-  .debate-msg.system {
-    align-self: center;
-    max-width: 100%;
-    text-align: center;
-    color: var(--text3);
-    font-size: var(--fs-xs);
-    font-style: italic;
-    background: none;
-    padding: 2px 0;
-  }
-  .debate-msg.group-a { align-self: flex-start; background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
-  .debate-msg.group-b { align-self: flex-end; background: var(--surface); border: 1px solid var(--border-subtle); }
-  .debate-msg .debate-sender {
-    font-weight: 600;
-    font-size: var(--fs-xs);
-    margin-bottom: 2px;
-    display: block;
-  }
-  .debate-msg.group-master { align-self: center; background: var(--yellow-dim); border: 1px solid color-mix(in srgb, var(--yellow) 30%, transparent); max-width: 95%; }
-  .debate-master-zone {
-    margin-bottom: 6px;
-    padding: 6px;
-    border: 1.5px dashed var(--yellow);
-    border-radius: var(--radius-sm);
-    min-height: 36px;
-    transition: border-color 0.15s, background 0.15s;
-  }
-  .debate-master-zone.drag-over { border-color: var(--yellow); background: var(--yellow-dim); }
-  .debate-master-label {
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    color: var(--yellow);
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .debate-layout-toggle { display: none; }
-  .debate-layout-toggle.visible { display: block; }
 
   /* ── Chat panel (dashboard, slide-up) ── */
   .chat-panel {
@@ -1844,12 +818,12 @@
     font-weight: 500;
     white-space: nowrap;
   }
-  .chat-header-status.idle { background: var(--green-dim); color: var(--green); }
-  .chat-header-status.busy { background: var(--yellow-dim); color: var(--yellow); }
-  .chat-header-status.offline { background: var(--red-dim); color: var(--red); }
+  .chat-header-status.idle { background: var(--green-dim); color: var(--green-text); }
+  .chat-header-status.busy { background: var(--yellow-dim); color: var(--yellow-text); }
+  .chat-header-status.offline { background: var(--red-dim); color: var(--red-text); }
   .chat-orca-btn {
     background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-    color: var(--accent); cursor: pointer; font-size: var(--fs-sm); padding: 2px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap;
+    color: var(--accent-text); cursor: pointer; font-size: var(--fs-sm); padding: 2px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap;
   }
   .chat-orca-btn:hover { background: var(--accent); color: var(--bg); }
   .chat-close-btn {
@@ -1867,7 +841,7 @@
     white-space: pre-wrap;
     word-break: break-all;
   }
-  .chat-screen .chat-line-prompt { color: var(--accent); }
+  .chat-screen .chat-line-prompt { color: var(--accent-text); }
   .chat-screen .chat-line-response { color: var(--text); }
   .chat-screen .chat-line-done { color: var(--text3); font-style: italic; }
   .chat-screen .chat-line-status { color: var(--text3); }
@@ -1915,67 +889,8 @@
   }
   .chat-refresh-btn:hover { color: var(--text); border-color: var(--border); }
 
-  /* ── Clipboard history page ── */
-  .clip-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 6px 8px;
-  }
-  .clip-item {
-    padding: 8px 12px;
-    border-radius: var(--radius-md);
-    margin-bottom: 3px;
-    cursor: pointer;
-    transition: background 0.15s;
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  .clip-item:hover { background: var(--surface-hover); }
-  .clip-item.active { background: var(--accent-dim); }
-  .clip-text {
-    flex: 1;
-    min-width: 0;
-    font-family: var(--mono);
-    font-size: var(--fs-sm);
-    color: var(--text2);
-    white-space: pre-wrap;
-    word-break: break-all;
-    max-height: 60px;
-    overflow: hidden;
-    line-height: 1.4;
-  }
-  .clip-time {
-    font-family: var(--mono);
-    font-size: var(--fs-xs);
-    color: var(--text3);
-    flex-shrink: 0;
-    white-space: nowrap;
-  }
-  .clip-actions {
-    display: flex;
-    gap: 6px;
-    padding: 6px 12px;
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .clip-actions button {
-    flex: 1;
-    appearance: none;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text2);
-    font-family: var(--sans);
-    font-size: var(--fs-sm);
-    padding: 5px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .clip-actions button:hover { background: var(--surface-hover); color: var(--text); }
-
-  /* ── Port monitor page ── */
-  .port-header {
+  /* ── Page header bar (Jira) ── */
+  .jira-header {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1983,7 +898,7 @@
     border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
   }
-  .port-header button {
+  .jira-header button {
     appearance: none;
     border: 1px solid var(--border);
     background: var(--surface);
@@ -1995,70 +910,18 @@
     cursor: pointer;
     margin-left: auto;
   }
-  .port-header button:hover { background: var(--surface-hover); color: var(--text); }
-  .port-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 4px 8px;
-  }
-  .port-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border-radius: var(--radius-md);
-    margin-bottom: 2px;
-    transition: background 0.15s;
-  }
-  .port-item:hover { background: var(--surface-hover); }
-  .port-num {
-    font-family: var(--mono);
-    font-size: var(--fs-lg);
-    font-weight: 600;
-    color: var(--accent);
-    min-width: 50px;
-  }
-  .port-info {
-    flex: 1;
-    min-width: 0;
-  }
-  .port-name {
-    font-weight: 500;
-    font-size: var(--fs-base);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .port-pid {
-    font-family: var(--mono);
-    font-size: var(--fs-xs);
-    color: var(--text3);
-  }
-  .port-kill {
-    appearance: none;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text3);
-    font-size: var(--fs-sm);
-    padding: 2px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: all 0.12s;
-  }
-  .port-kill:hover { color: var(--red); border-color: var(--red); background: var(--red-dim); }
-
+  .jira-header button:hover { background: var(--surface-hover); color: var(--text); }
   /* ── Jira page ── */
   .jira-filter { background: var(--surface); color: var(--text2); border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; font-size: var(--fs-sm); padding: 3px 4px; }
   .jira-list { flex: 1; overflow-y: auto; padding: 4px 8px; }
   .jira-item { padding: 7px 10px; border-radius: var(--radius-md); margin-bottom: 4px; border: 1px solid var(--border-subtle); }
   .jira-item:hover { background: var(--surface-hover); }
   .jira-head { display: flex; gap: 6px; align-items: baseline; cursor: pointer; min-width: 0; }
-  .jira-key { font-family: var(--mono); font-size: var(--fs-xs); color: var(--accent); font-weight: 600; flex-shrink: 0; }
+  .jira-key { font-family: var(--mono); font-size: var(--fs-xs); color: var(--accent-text); font-weight: 600; flex-shrink: 0; }
   .jira-sum { flex: 1; min-width: 0; font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .jira-item.open .jira-sum { white-space: normal; }
   .jira-badge { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 700; padding: 0 6px; border-radius: 9px; line-height: 17px; background: var(--surface-raised, var(--surface)); color: var(--text2); border: 1px solid var(--border); }
-  .jira-badge.report { background: var(--yellow); color: #1a1408; border-color: var(--yellow); }
+  .jira-badge.report { background: var(--yellow); color: var(--on-yellow); border-color: var(--yellow); }
   .jira-meta { font-size: var(--fs-xs); color: var(--text3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .jira-desc { font-size: var(--fs-xs); color: var(--text2); white-space: pre-wrap; margin-top: 6px; max-height: 180px; overflow: auto; background: var(--bg-solid); border-radius: 6px; padding: 6px 8px; }
   .jira-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; align-items: center; }
@@ -2068,7 +931,7 @@
   .jira-prev { margin-top: 8px; font-size: var(--fs-xs); color: var(--text2); }
   .jira-prev summary { cursor: pointer; }
   .jira-prev pre { margin-top: 4px; user-select: text; }
-  .jira-draft .jd-warn { font-size: var(--fs-xs); color: var(--yellow); margin-bottom: 4px; }
+  .jira-draft .jd-warn { font-size: var(--fs-xs); color: var(--yellow-text); margin-bottom: 4px; }
   .jira-actions { display: flex; gap: 4px; margin-top: 6px; align-items: center; }
   .jira-actions button, .jira-draft button { appearance: none; border: 1px solid var(--border); background: var(--surface); color: var(--text2); font: inherit; font-size: var(--fs-xs); padding: 2px 8px; border-radius: 6px; cursor: pointer; }
   .jira-actions button:hover, .jira-draft button:hover { background: var(--surface-hover); color: var(--text); }
@@ -2114,18 +977,18 @@
   .jb-card.sel { border-color: var(--accent); }
   .jb-sum { font-size: var(--fs-md); color: var(--text); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .jb-due { font-size: var(--fs-xs); color: var(--text2); margin-top: 5px; }
-  .jb-due.over { color: var(--red); }
+  .jb-due.over { color: var(--red-text); }
   .jb-subs { font-size: var(--fs-xs); color: var(--text3); margin-top: 4px; }
-  .jb-cost { font-size: var(--fs-xs); color: var(--yellow); margin-top: 5px; }
+  .jb-cost { font-size: var(--fs-xs); color: var(--yellow-text); margin-top: 5px; }
   .jb-peer { font-size: var(--fs-xs); margin-top: 5px; }
-  .jira-peer { color: var(--accent); overflow-wrap: anywhere; }
-  .jira-cost { color: var(--yellow); }
+  .jira-peer { color: var(--accent-text); overflow-wrap: anywhere; }
+  .jira-cost { color: var(--yellow-text); }
   .jb-foot { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-size: var(--fs-xs); }
   .jb-key { font-family: var(--mono); color: var(--text2); }
   .jb-type { width: 16px; height: 16px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-xs); color: #fff; background: var(--accent); flex-shrink: 0; }
   .jb-type.bug { background: var(--red); } .jb-type.story { background: var(--green); } .jb-type.epic { background: var(--purple); } .jb-type.sub { background: var(--text3); }
-  .jb-pri { margin-left: auto; font-weight: 700; color: var(--yellow); }
-  .jb-pri.highest, .jb-pri.high { color: var(--red); } .jb-pri.low, .jb-pri.lowest { color: var(--accent); }
+  .jb-pri { margin-left: auto; font-weight: 700; color: var(--yellow-text); }
+  .jb-pri.highest, .jb-pri.high { color: var(--red-text); } .jb-pri.low, .jb-pri.lowest { color: var(--accent-text); }
   .jb-ava { position: relative; width: 24px; height: 24px; border-radius: 50%; background: var(--purple-dim); color: var(--text); display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-xs); font-weight: 700; overflow: hidden; flex-shrink: 0; border: 1px solid var(--border); }
   .jb-ava img { position: absolute; inset: 0; width: 100%; height: 100%; }
   .jb-ava i { font-style: normal; }
@@ -2138,54 +1001,6 @@
   .jb-drawer .jira-desc { max-height: none; }
   .team-modal .jira-field { display: block; margin-top: 8px; color: var(--text2); font-size: var(--fs-xs); }
   .team-modal .jira-field select, .team-modal .jira-field input[type=text] { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 6px; font: inherit; }
-
-  /* ── Memo page ── */
-  .memo-wrap {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .memo-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-bottom: 1px solid var(--border-subtle);
-    flex-shrink: 0;
-  }
-  .memo-toolbar .memo-status {
-    font-family: var(--mono);
-    font-size: var(--fs-xs);
-    color: var(--text3);
-    margin-left: auto;
-  }
-  .memo-toolbar .memo-status.saved { color: var(--green); }
-  .memo-editor {
-    flex: 1;
-    width: 100%;
-    appearance: none;
-    border: none;
-    background: transparent;
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: var(--fs-base);
-    line-height: 1.6;
-    padding: 12px 14px;
-    resize: none;
-    outline: none;
-    overflow-y: auto;
-  }
-  .memo-editor::placeholder { color: var(--text3); }
-  .memo-char-count {
-    font-family: var(--mono);
-    font-size: var(--fs-xs);
-    color: var(--text3);
-    padding: 4px 14px;
-    border-top: 1px solid var(--border-subtle);
-    text-align: right;
-    flex-shrink: 0;
-  }
 
   /* ── Pomodoro page ── */
   .pomo-wrap {
@@ -2272,16 +1087,7 @@
     color: var(--text3);
   }
 
-
-  /* ── Cost summary ── */
-
   /* ── Footer controls ── */
-  .footer-controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    justify-content: center;
-  }
   .theme-btn {
     appearance: none;
     border: 1px solid var(--border-subtle);
@@ -2299,7 +1105,6 @@
     flex-shrink: 0;
   }
   .theme-btn:hover { color: var(--text); background: var(--surface-raised); border-color: var(--border); }
-  .opacity-label, .opacity-slider { display: none; }
     min-width: 14px;
   }
 
@@ -2323,35 +1128,35 @@
   .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left 0.15s; }
   .switch.on { background: var(--accent); } .switch.on::after { left: 16px; }
   .set-btn { font-size: var(--fs-xs); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text2); cursor: pointer; flex-shrink: 0; }
-  .set-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .set-btn:hover { border-color: var(--accent); color: var(--accent-text); }
   .upd-dot { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 999px; background: var(--accent); border: 2px solid var(--bg); }
   #settings-btn { position: relative; }
   .set-meta { font-size: var(--fs-xs); color: var(--text3); line-height: 1.6; margin-top: 10px; word-break: break-all; }
   /* ── dashboard: groups, detail, filters, keyboard selection, feedback ── */
   .stat[hidden] { display: none; }
-  .stat.ask { background: var(--yellow-dim); color: var(--yellow); }
-  .stat .ask-mark { width: 18px; height: 18px; border-radius: 999px; background: var(--yellow); color: #1a1408; font-size: var(--fs-xs); font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+  .stat.ask { background: var(--yellow-dim); color: var(--yellow-text); }
+  .stat .ask-mark { width: 18px; height: 18px; border-radius: 999px; background: var(--yellow); color: var(--on-yellow); font-size: var(--fs-xs); font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
   .stat.bump { animation: statBump 0.5s ease-out; }
   @keyframes statBump { 0% { transform: scale(1); } 35% { transform: scale(1.18); } 100% { transform: scale(1); } }
   .filters { display: flex; gap: 4px; padding: 6px 10px 0; flex-wrap: wrap; }
   .filters[hidden] { display: none; }
   .fchip { font: inherit; font-size: var(--fs-xs); font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; }
-  .fchip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .fchip.on { border-color: var(--accent); color: var(--accent-text); background: var(--accent-dim); }
   .gh-btn { font: inherit; font-size: var(--fs-xs); padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; margin-left: 4px; }
   .gh-btn:hover { color: var(--text); border-color: var(--border); }
-  .group-header.ask { color: var(--yellow); }
-  .group-header.ask .gh-count { color: var(--yellow); }
+  .group-header.ask { color: var(--yellow-text); }
+  .group-header.ask .gh-count { color: var(--yellow-text); }
   .repo-header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; margin: 0 0 6px; border-radius: 10px; background: var(--surface); border: 1px dashed var(--border-subtle); color: var(--text2); font-size: var(--fs-sm); cursor: pointer; }
   .repo-header:hover { border-color: var(--border); }
   .repo-header .rh-count { font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); }
   .repo-header .rh-arrow { margin-left: auto; color: var(--text3); font-size: var(--fs-xs); }
   .session.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
   .session.stuck .s-icon { background: var(--yellow-dim); }
-  .s-tool.stuck { color: var(--yellow) !important; border-color: color-mix(in srgb, var(--yellow) 50%, transparent) !important; font-weight: 700; }
-  .s-time.ask { color: var(--yellow) !important; font-weight: 700; }
+  .s-tool.stuck { color: var(--yellow-text) !important; border-color: color-mix(in srgb, var(--yellow) 50%, transparent) !important; font-weight: 700; }
+  .s-time.ask { color: var(--yellow-text) !important; font-weight: 700; }
   .s-prompt.s-now { display: block; color: var(--text2); font-family: var(--sans); font-size: var(--fs-xs); opacity: 1; margin-top: 3px; }
-  .s-prompt.s-now::before { content: '▸ '; color: var(--accent); }
-  .s-tool.loop { color: var(--red) !important; border-color: color-mix(in srgb, var(--red) 50%, transparent) !important; font-weight: 700; }
+  .s-prompt.s-now::before { content: '▸ '; color: var(--accent-text); }
+  .s-tool.loop { color: var(--red-text) !important; border-color: color-mix(in srgb, var(--red) 50%, transparent) !important; font-weight: 700; }
   .s-expand { position: absolute; right: 8px; bottom: 6px; width: 20px; height: 20px; border-radius: 6px; border: none; background: transparent; color: var(--text3); font-size: var(--fs-xs); cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .s-expand:hover { background: var(--surface-hover); color: var(--text); }
   .session.expanded .s-expand { transform: rotate(90deg); }
@@ -2363,47 +1168,47 @@
   .perm-orphans[hidden] { display: none; }
   .perm-orphans .perm-panel { margin-top: 0; }
   .perm-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .perm-head b { color: var(--yellow); }
+  .perm-head b { color: var(--yellow-text); }
   .perm-head code, .perm-file code { font-family: var(--mono); font-size: var(--fs-xs); padding: 0 4px; border-radius: 4px; background: var(--surface-hover); }
   .perm-sess { font-weight: 600; } .perm-more { color: var(--text3); } .perm-left { margin-left: auto; font-family: var(--mono); color: var(--text3); }
   .perm-desc { color: var(--text2); }
   .perm-code { margin: 0; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-all; font-family: var(--mono); font-size: var(--fs-xs); padding: 6px; border-radius: 6px; background: var(--surface); color: var(--text); }
-  .perm-file { word-break: break-all; } .perm-add { color: var(--green); font-family: var(--mono); } .perm-del { color: var(--red); font-family: var(--mono); }
+  .perm-file { word-break: break-all; } .perm-add { color: var(--green-text); font-family: var(--mono); } .perm-del { color: var(--red-text); font-family: var(--mono); }
   .perm-reason { font: inherit; font-size: var(--fs-xs); padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
   .perm-btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .perm-panel.full .perm-code { max-height: none; }
   .perm-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .perm-full { font: inherit; font-size: var(--fs-xs); padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; }
-  .perm-cut { color: var(--red); font-size: var(--fs-xs); }
+  .perm-cut { color: var(--red-text); font-size: var(--fs-xs); }
   .perm-btns button { font: inherit; font-size: var(--fs-xs); font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); cursor: pointer; }
   .perm-btns button:focus-visible, .perm-reason:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .perm-btns .perm-allow { border-color: var(--green); color: var(--green); } .perm-btns .perm-deny { border-color: var(--red); color: var(--red); }
+  .perm-btns .perm-allow { border-color: var(--green); color: var(--green-text); } .perm-btns .perm-deny { border-color: var(--red); color: var(--red-text); }
   .perm-btns button:disabled { opacity: 0.5; cursor: default; }
-  .stat.perm { background: var(--yellow-dim); color: var(--yellow); cursor: pointer; font-weight: 700; }
-  .stat.guard { background: var(--red-dim); color: var(--red); cursor: pointer; font-weight: 700; }
-  .s-tool.guard { color: var(--red) !important; border-color: color-mix(in srgb, var(--red) 50%, transparent) !important; }
+  .stat.perm { background: var(--yellow-dim); color: var(--yellow-text); cursor: pointer; font-weight: 700; }
+  .stat.guard { background: var(--red-dim); color: var(--red-text); cursor: pointer; font-weight: 700; }
+  .s-tool.guard { color: var(--red-text) !important; border-color: color-mix(in srgb, var(--red) 50%, transparent) !important; }
   .guard-rules { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
   .guard-rule { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-hover); font-size: var(--fs-xs); }
   .guard-rule .tx { flex: 1; min-width: 0; }
   .guard-rule .tx b { display: block; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .guard-rule .tx code { display: block; font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .guard-rule .tx .err { display: block; color: var(--red); font-size: var(--fs-xs); }
+  .guard-rule .tx .err { display: block; color: var(--red-text); font-size: var(--fs-xs); }
   .guard-rule.off .tx b { color: var(--text3); }
   .guard-rule .sev { font-size: var(--fs-xs); padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text2); cursor: pointer; flex-shrink: 0; }
-  .guard-rule .sev.block { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); }
+  .guard-rule .sev.block { color: var(--red-text); border-color: color-mix(in srgb, var(--red) 50%, transparent); }
   .guard-rule .set-btn { padding: 2px 8px; }
   .guard-test { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
   .guard-test input { flex: 1; min-width: 140px; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font-family: var(--mono); font-size: var(--fs-xs); }
   .guard-test select, .guard-edit select, .guard-edit input { background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: var(--fs-sm); }
   .guard-test-out { display: block; font-size: var(--fs-xs); margin-top: 4px; color: var(--text3); word-break: break-word; }
-  .guard-test-out.hit { color: var(--red); }
+  .guard-test-out.hit { color: var(--red-text); }
   .guard-edit label { display: block; margin-top: 8px; color: var(--text2); font-size: var(--fs-sm); }
   .guard-edit input[type=text] { width: 100%; box-sizing: border-box; }
   .guard-edit textarea { font-family: var(--mono); min-height: 60px; }
   .guard-edit .tools { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
   .guard-edit .tools label { display: inline-flex; gap: 4px; margin: 0; align-items: center; }
-  .guard-edit .err { color: var(--red); font-size: var(--fs-xs); min-height: 14px; margin-top: 6px; }
-  .guard-log .pr-row.deny { color: var(--red); }
+  .guard-edit .err { color: var(--red-text); font-size: var(--fs-xs); min-height: 14px; margin-top: 6px; }
+  .guard-log .pr-row.deny { color: var(--red-text); }
   .s-detail { flex-basis: 100%; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 5px; font-size: var(--fs-xs); color: var(--text2); }
   .s-detail .d-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; }
   .s-detail .d-row b { color: var(--text3); font-weight: 600; font-size: var(--fs-xs); letter-spacing: 0.04em; text-transform: uppercase; }
@@ -2419,7 +1224,7 @@
   .s-detail .d-tabs button { background: transparent; border: 1px solid var(--border-subtle); color: var(--text2); border-radius: 999px; padding: 1px 9px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
   .s-detail .d-tabs button.on { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
   .s-detail .d-tabs .cnt { color: var(--text3); margin-left: 3px; }
-  .s-tool.diff-badge { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent); cursor: pointer; font: inherit; font-size: var(--fs-xs); }
+  .s-tool.diff-badge { background: var(--accent-dim); color: var(--accent-text); border: 1px solid var(--accent); cursor: pointer; font: inherit; font-size: var(--fs-xs); }
   .diff-panel { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-xs); color: var(--text2); cursor: default; }
   .diff-panel button { background: var(--surface-raised); color: var(--text2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
   .diff-panel button:hover { color: var(--text); border-color: var(--accent); }
@@ -2428,24 +1233,24 @@
   .diff-panel button:disabled { opacity: .45; cursor: default; }
   .diff-panel .df-bar { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
   .diff-panel .df-sum { margin-left: auto; color: var(--text3); }
-  .diff-panel .df-sum .a, .diff-panel .df-file .a, .diff-panel .dl.add .ln-mark { color: var(--green); }
-  .diff-panel .df-sum .d, .diff-panel .df-file .d, .diff-panel .dl.del .ln-mark { color: var(--red); }
-  .diff-panel .df-note { color: var(--yellow); }
+  .diff-panel .df-sum .a, .diff-panel .df-file .a, .diff-panel .dl.add .ln-mark { color: var(--green-text); }
+  .diff-panel .df-sum .d, .diff-panel .df-file .d, .diff-panel .dl.del .ln-mark { color: var(--red-text); }
+  .diff-panel .df-note { color: var(--yellow-text); }
   .diff-panel .df-files { max-height: 150px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: 6px; }
   .diff-panel .df-file { display: grid; grid-template-columns: 14px 1fr auto; gap: 6px; padding: 2px 6px; cursor: pointer; align-items: center; }
   .diff-panel .df-file:hover { background: var(--surface-hover); }
   .diff-panel .df-file.sel { background: var(--accent-dim); color: var(--text); }
   .diff-panel .df-file .p { font-family: var(--mono); word-break: break-all; }
   .diff-panel .df-st { font-family: var(--mono); font-weight: 700; text-align: center; }
-  .diff-panel .df-st.A, .diff-panel .df-st.Q { color: var(--green); } .diff-panel .df-st.D { color: var(--red); } .diff-panel .df-st.R { color: var(--purple); } .diff-panel .df-st.M { color: var(--yellow); }
+  .diff-panel .df-st.A, .diff-panel .df-st.Q { color: var(--green-text); } .diff-panel .df-st.D { color: var(--red-text); } .diff-panel .df-st.R { color: var(--purple-text); } .diff-panel .df-st.M { color: var(--yellow-text); }
   .diff-panel .df-view { max-height: 360px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-solid); }
   .diff-panel .df-vhead { display: flex; gap: 6px; align-items: center; padding: 3px 6px; position: sticky; top: 0; background: var(--surface-raised); border-bottom: 1px solid var(--border-subtle); font-family: var(--mono); color: var(--text); word-break: break-all; z-index: 1; }
   .diff-panel .df-vhead button { margin-left: auto; flex-shrink: 0; }
-  .diff-panel .hh { font-family: var(--mono); color: var(--purple); background: var(--purple-dim); padding: 1px 6px; }
+  .diff-panel .hh { font-family: var(--mono); color: var(--purple-text); background: var(--purple-dim); padding: 1px 6px; }
   .diff-panel .dl { display: grid; grid-template-columns: 3.4em 3.4em 1fr; font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.45; }
   .diff-panel .dl.add { background: var(--green-dim); } .diff-panel .dl.del { background: var(--red-dim); }
   .diff-panel .ln { text-align: right; padding-right: 4px; color: var(--text3); user-select: none; }
-  .diff-panel .ln.c { cursor: pointer; } .diff-panel .ln.c:hover { color: var(--accent); text-decoration: underline; }
+  .diff-panel .ln.c { cursor: pointer; } .diff-panel .ln.c:hover { color: var(--accent-text); text-decoration: underline; }
   .diff-panel .code { white-space: pre-wrap; word-break: break-all; color: var(--text); padding-left: 4px; }
   .diff-panel .nonl { color: var(--text3); font-style: italic; }
   .diff-panel .dc { margin: 2px 6px 4px 6.8em; padding: 4px 6px; border-left: 2px solid var(--accent); background: var(--accent-dim); border-radius: 4px; color: var(--text); white-space: pre-wrap; word-break: break-word; font-family: var(--sans); display: flex; gap: 6px; }
@@ -2455,7 +1260,7 @@
   .diff-panel .dc-edit .row { display: flex; gap: 4px; align-items: center; }
   .diff-panel .dc-edit .row .cnt { margin-right: auto; color: var(--text3); }
   .diff-panel .df-foot { display: flex; gap: 6px; align-items: center; }
-  .diff-panel .df-chip { padding: 1px 8px; border-radius: 999px; background: var(--accent-dim); color: var(--accent); }
+  .diff-panel .df-chip { padding: 1px 8px; border-radius: 999px; background: var(--accent-dim); color: var(--accent-text); }
   .diff-panel .df-foot .primary { margin-left: auto; }
   .diff-panel .df-empty { padding: 6px; color: var(--text3); }
   /* card "타임라인" tab: hook events on a time axis (core/timeline.js); SVG colors come from classes */
@@ -2465,10 +1270,10 @@
   .tl-panel button.on { background: var(--accent-dim); color: var(--text); border-color: var(--accent); }
   .tl-panel .tl-bar-top, .tl-panel .tl-chips, .tl-panel .tl-legend, .tl-panel .tl-sum { display: flex; gap: 4px 8px; align-items: center; flex-wrap: wrap; }
   .tl-panel .tl-chips span { padding: 1px 8px; border-radius: 999px; background: var(--surface-raised); border: 1px solid var(--border-subtle); color: var(--text); }
-  .tl-panel .bad { color: var(--red); }
+  .tl-panel .bad { color: var(--red-text); }
   .tl-panel .tl-dim, .tl-panel .tl-empty { color: var(--text3); }
   .tl-panel .tl-empty { padding: 6px; }
-  .tl-panel .tl-note { color: var(--yellow); }
+  .tl-panel .tl-note { color: var(--yellow-text); }
   .tl-panel .tl-sum b { color: var(--text3); font-weight: 600; }
   .tl-panel .tl-sum code, .tl-panel .tl-row .lb { font-family: var(--mono); }
   .tl-panel .tl-axis { border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-solid); overflow: hidden; }
@@ -2505,11 +1310,11 @@
   .tl-panel .tl-row { display: grid; grid-template-columns: 5.2em 6.5em minmax(4em, 9em) 1fr auto; gap: 6px; padding: 1px 6px; cursor: pointer; align-items: baseline; }
   .tl-panel .tl-row:hover { background: var(--surface-hover); }
   .tl-panel .tl-row.sel { background: var(--accent-dim); color: var(--text); }
-  .tl-panel .tl-row.bad .du, .tl-panel .tl-row.bad .lb { color: var(--red); }
+  .tl-panel .tl-row.bad .du, .tl-panel .tl-row.bad .lb { color: var(--red-text); }
   .tl-panel .tl-row .tm, .tl-panel .tl-row .du { font-family: var(--mono); color: var(--text3); }
   .tl-panel .tl-row .lb { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
   .tl-panel .tl-row .dt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .tl-panel .tl-row .k-prompt { color: var(--accent); } .tl-panel .tl-row .k-permission { color: var(--yellow); } .tl-panel .tl-row .k-subagent { color: var(--purple); }
+  .tl-panel .tl-row .k-prompt { color: var(--accent-text); } .tl-panel .tl-row .k-permission { color: var(--yellow-text); } .tl-panel .tl-row .k-subagent { color: var(--purple-text); }
   .hidden-link { text-align: center; font-size: var(--fs-xs); color: var(--text3); padding: 8px 0 4px; cursor: pointer; }
   .hidden-link:hover { color: var(--text); }
   .local-stats { font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); justify-content: center; gap: 10px; }
@@ -2539,11 +1344,11 @@
   .onboard-feat span { font-size: var(--fs-xs); color: var(--text3); line-height: 1.45; }
   .onboard-check { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-hover); margin-bottom: 8px; }
   .onboard-check .st { width: 16px; text-align: center; font-size: var(--fs-base); flex-shrink: 0; }
-  .onboard-check .st.ok { color: #4ade80; } .onboard-check .st.warn { color: #fbbf24; } .onboard-check .st.off { color: var(--text3); } .onboard-check .st.wait { color: var(--text3); animation: pulse 1s infinite; }
+  .onboard-check .st.ok { color: #4ade80; } .onboard-check .st.warn { color: #fbbf24; } .onboard-check .st.off { color: var(--text3); } .onboard-check .st.wait { color: var(--text3); animation: pulse 1s infinite; } @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
   .onboard-check .tx { flex: 1; min-width: 0; }
   .onboard-check .tx b { display: block; font-size: var(--fs-sm); color: var(--text); }
   .onboard-check .tx span { display: block; font-size: var(--fs-xs); color: var(--text3); line-height: 1.4; margin-top: 1px; word-break: break-all; }
-  .onboard-check button { flex-shrink: 0; font-size: var(--fs-xs); padding: 4px 9px; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent); cursor: pointer; }
+  .onboard-check button { flex-shrink: 0; font-size: var(--fs-xs); padding: 4px 9px; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent-text); cursor: pointer; }
   .onboard-check button:hover { background: var(--accent); color: #fff; }
   .onboard-foot { display: flex; align-items: center; gap: 8px; padding: 10px 18px 14px; border-top: 1px solid var(--border-subtle); }
   .onboard-dots { display: flex; gap: 5px; flex: 1; }
@@ -2554,7 +1359,7 @@
   .onboard-foot button:hover { filter: brightness(1.1); }
   .onboard-lang { display: flex; gap: 6px; margin-bottom: 14px; }
   .onboard-lang button { font-size: var(--fs-sm); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text3); cursor: pointer; }
-  .onboard-lang button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .onboard-lang button.on { border-color: var(--accent); color: var(--accent-text); background: var(--accent-dim); }
   .onboard-tip { display: flex; gap: 8px; font-size: var(--fs-sm); color: var(--text2); line-height: 1.5; margin-bottom: 8px; }
   .onboard-tip kbd { font-family: inherit; font-size: var(--fs-xs); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-hover); color: var(--text); white-space: nowrap; height: fit-content; }
 
@@ -2565,12 +1370,15 @@
     --bg: #0e1014; --bg-solid: #0e1014;
     --surface: #151820; --surface-hover: #1b1f29; --surface-raised: #20252f;
     --border: rgba(255,255,255,0.12); --border-subtle: rgba(255,255,255,0.07);
-    --text: #eef1f6; --text2: #9aa3b2; --text3: #6b7484;
+    /* text3 lifted (hue kept) to >= 4.5:1 on --bg, --surface and --surface-hover (WCAG AA, small text) */
+    --text: #eef1f6; --text2: #9aa3b2; --text3: #7e8797;
     --accent: #f0845c; --accent-dim: rgba(240,132,92,0.14);
     --green: #6fbf9a; --green-dim: rgba(111,191,154,0.14);
     --yellow: #e5b54b; --yellow-dim: rgba(229,181,75,0.14);
     --red: #ef6a62; --red-dim: rgba(239,106,98,0.14);
     --purple: #a99cf2; --purple-dim: rgba(169,156,242,0.14);
+    --on-yellow: #1a1408;
+    --accent-text: var(--accent); --green-text: var(--green); --yellow-text: var(--yellow); --red-text: var(--red); --purple-text: var(--purple);   /* text use; light theme darkens these */
     --sans: 'Manrope', -apple-system, 'Apple SD Gothic Neo', sans-serif;
     --mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
     --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px;
@@ -2582,12 +1390,14 @@
       --bg: #f4f3ef; --bg-solid: #f4f3ef;
       --surface: #ffffff; --surface-hover: #f7f6f2; --surface-raised: #ffffff;
       --border: rgba(20,20,25,0.14); --border-subtle: rgba(20,20,25,0.08);
-      --text: #17181c; --text2: #565d6b; --text3: #7f8794;
+      --text: #17181c; --text2: #565d6b; --text3: #666e7a;   /* text3 darkened to >= 4.5:1 on #f4f3ef (WCAG AA) */
       --accent: #d9663e; --accent-dim: rgba(217,102,62,0.12);
       --green: #2e8f63; --green-dim: rgba(46,143,99,0.12);
       --yellow: #b8891e; --yellow-dim: rgba(184,137,30,0.14);
       --red: #d4473f; --red-dim: rgba(212,71,63,0.12);
       --purple: #6f5fd6; --purple-dim: rgba(111,95,214,0.12);
+      /* the same hues as text: >= 4.5:1 (WCAG AA, small text) on #f4f3ef and on their own -dim tint; fills keep the above */
+      --accent-text: #a54320; --green-text: #236e4c; --yellow-text: #7b5b14; --red-text: #b53029; --purple-text: #5f4dd1;
       --shadow-card: 0 1px 2px rgba(0,0,0,0.06), 0 0 0 1px var(--border-subtle);
       --shadow-float: 0 8px 30px rgba(0,0,0,0.14), 0 0 0 1px var(--border);
     }
@@ -2596,12 +1406,14 @@
     --bg: #f4f3ef; --bg-solid: #f4f3ef;
     --surface: #ffffff; --surface-hover: #f7f6f2; --surface-raised: #ffffff;
     --border: rgba(20,20,25,0.14); --border-subtle: rgba(20,20,25,0.08);
-    --text: #17181c; --text2: #565d6b; --text3: #7f8794;
+    --text: #17181c; --text2: #565d6b; --text3: #666e7a;   /* text3 darkened to >= 4.5:1 on #f4f3ef (WCAG AA) */
     --accent: #d9663e; --accent-dim: rgba(217,102,62,0.12);
     --green: #2e8f63; --green-dim: rgba(46,143,99,0.12);
     --yellow: #b8891e; --yellow-dim: rgba(184,137,30,0.14);
     --red: #d4473f; --red-dim: rgba(212,71,63,0.12);
     --purple: #6f5fd6; --purple-dim: rgba(111,95,214,0.12);
+    /* the same hues as text: >= 4.5:1 (WCAG AA, small text) on #f4f3ef and on their own -dim tint; fills keep the above */
+    --accent-text: #a54320; --green-text: #236e4c; --yellow-text: #7b5b14; --red-text: #b53029; --purple-text: #5f4dd1;
     --shadow-card: 0 1px 2px rgba(0,0,0,0.06), 0 0 0 1px var(--border-subtle);
     --shadow-float: 0 8px 30px rgba(0,0,0,0.14), 0 0 0 1px var(--border);
   }
@@ -2619,9 +1431,9 @@
   .stat { flex-shrink: 0; white-space: nowrap; }
   .header-controls { flex-shrink: 0; }
   .stat { display: flex; align-items: center; gap: 6px; padding: 3px 9px 3px 6px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); font-size: var(--fs-sm); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text2); }
-  .stat.run { background: var(--accent-dim); color: var(--accent); }
-  .stat.wait { background: var(--yellow-dim); color: var(--yellow); }
-  .stat.done { background: var(--green-dim); color: var(--green); }
+  .stat.run { background: var(--accent-dim); color: var(--accent-text); }
+  .stat.wait { background: var(--yellow-dim); color: var(--yellow-text); }
+  .stat.done { background: var(--green-dim); color: var(--green-text); }
   .minimize-btn, .header-controls .theme-btn { width: 26px; height: 26px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border-subtle); color: var(--text2); font-size: var(--fs-md); }
   .minimize-btn:hover, .header-controls .theme-btn:hover { background: var(--surface-hover); border-color: var(--border); color: var(--text); }
 
@@ -2636,18 +1448,18 @@
   /* cards show the sprites at 2x for legibility; header pills stay 1x */
   .s-icon .px-ic { width: 32px; height: 32px; background-size: 32px auto; }
   .px-badge { position: absolute; top: -6px; right: -6px; width: 17px; height: 17px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 800; line-height: 1; display: flex; align-items: center; justify-content: center; border: 2px solid var(--surface); font-family: var(--sans); }
-  .px-badge.q { background: var(--yellow); color: #1a1408; animation: icBounce 2s ease-in-out infinite; }
+  .px-badge.q { background: var(--yellow); color: var(--on-yellow); animation: icBounce 2s ease-in-out infinite; }
   .px-badge.x { background: var(--red); color: #fff; }
 
   /* navigation */
-  .page-nav { padding: 8px 10px 0; background: none; border-bottom: none; gap: 2px; }
-  .page-nav-btn { font-size: var(--fs-sm); padding: 5px 10px; border-radius: 8px; font-weight: 500; }
+  .page-nav { padding: 8px 6px 0; background: none; border-bottom: none; gap: 2px; }
+  .page-nav-btn { font-size: var(--fs-sm); padding: 5px; border-radius: 8px; font-weight: 500; }
   .page-nav-btn.active { background: var(--surface-hover); box-shadow: none; font-weight: 700; color: var(--text); }
   .tabs { padding: 8px 10px 0; border-bottom: none; gap: 2px; }
   .tab { flex: 0 0 auto; padding: 5px 11px; border-radius: 999px; font-size: var(--fs-sm); font-weight: 600; border: 1px solid transparent; }
   .tab.active { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
   .tab-badge { background: transparent; margin-left: 4px; font-size: var(--fs-xs); height: auto; min-width: 0; padding: 0; }
-  .tab.active .tab-badge { background: transparent; color: var(--accent); opacity: 0.85; }
+  .tab.active .tab-badge { background: transparent; color: var(--accent-text); }
   .search-wrap { padding: 10px 10px 2px; }
   .search-input { border-radius: 10px; padding: 7px 11px 7px 30px; font-size: var(--fs-md); border-color: var(--border-subtle);
     background: var(--surface) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%236b7484' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><line x1='20' y1='20' x2='16.5' y2='16.5'/></svg>") no-repeat 10px center; }
@@ -2673,15 +1485,15 @@
   .page-nav::-webkit-scrollbar { display: none; }
   .s-tool, .s-branch { padding: 1px 6px; border-radius: 5px; background: var(--surface-hover); border: 1px solid var(--border-subtle); opacity: 1; color: var(--text2); font-size: var(--fs-xs); line-height: 1.5; }
   .s-agent { border-radius: 5px; font-size: var(--fs-xs); padding: 1px 6px; line-height: 1.5; }
-  .s-agent.claude { background: var(--accent-dim); color: var(--accent); }
-  .s-agent.gemini { background: var(--purple-dim); color: var(--purple); }
-  .s-agent.codex { background: var(--green-dim); color: var(--green); }
-  .s-agent.opencode { background: var(--yellow-dim); color: var(--yellow); }
+  .s-agent.claude { background: var(--accent-dim); color: var(--accent-text); }
+  .s-agent.gemini { background: var(--purple-dim); color: var(--purple-text); }
+  .s-agent.codex { background: var(--green-dim); color: var(--green-text); }
+  .s-agent.opencode { background: var(--yellow-dim); color: var(--yellow-text); }
   .s-time { color: var(--text3); }
   .s-act { border-radius: 8px; width: 22px; height: 22px; }
   .hover-demo .session:nth-child(2) .s-actions { display: flex; }   /* ROCA_START_PAGE=...,hover-demo: show one card's hover state for captures */
   .s-actions { position: absolute; top: 6px; right: 6px; gap: 2px; padding: 2px 3px; border-radius: 999px; background: var(--surface-raised); border: 1px solid var(--border-subtle); box-shadow: 0 4px 14px rgba(0,0,0,0.28); z-index: 2; }
-  .s-chat { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; align-self: center; font: inherit; margin-right: 2px; font-size: var(--fs-xs); font-weight: 700; padding: 3px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-dim); color: var(--accent); cursor: pointer; transition: background 0.15s, color 0.15s; }
+  .s-chat { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; align-self: center; font: inherit; margin-right: 2px; font-size: var(--fs-xs); font-weight: 700; padding: 3px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-dim); color: var(--accent-text); cursor: pointer; transition: background 0.15s, color 0.15s; }
   .s-chat:hover { background: var(--accent); color: #fff; }
   .s-chat svg { flex-shrink: 0; }
 
@@ -2725,9 +1537,6 @@
     <button class="page-nav-btn active" data-page="dashboard">대시보드</button>
     <button class="page-nav-btn" data-page="office">오피스<span class="nav-badge" id="badge-office" hidden>0</span></button>
     <button class="page-nav-btn" data-page="team">팀<span class="nav-badge" id="badge-team" hidden>0</span></button>
-    <button class="page-nav-btn" data-page="clipboard">클립보드</button>
-    <button class="page-nav-btn" data-page="ports">포트</button>
-    <button class="page-nav-btn" data-page="memo">메모</button>
     <button class="page-nav-btn" data-page="jira">Jira<span class="nav-badge" id="badge-jira" hidden>0</span></button>
     <button class="page-nav-btn" data-page="pomodoro">타이머</button>
   </div>
@@ -2788,154 +1597,9 @@
     </div>
   </div>
 
-  <!-- PAGE: Sessions viewer -->
-  <div class="page" id="page-sessions">
-    <!-- List view -->
-    <div id="sessions-list-view">
-      <div class="search-wrap">
-        <input class="search-input" id="cs-search" type="text" placeholder="세션 검색..." />
-      </div>
-      <div class="list" id="cs-list"></div>
-    </div>
-    <!-- Detail view -->
-    <div id="sessions-detail-view" hidden>
-      <div class="detail-header">
-        <button class="back-btn" id="cs-back">←</button>
-        <span class="detail-title" id="cs-detail-title"></span>
-      </div>
-      <div class="detail-stats" id="cs-detail-stats"></div>
-      <div class="msg-list" id="cs-messages"></div>
-    </div>
-  </div>
-
-  <!-- PAGE: Orchestration -->
-  <div class="page" id="page-orchestration" hidden style="display:none !important">
-    <div class="orch-layout">
-      <!-- Left: terminal/session list -->
-      <div class="orch-left">
-        <div class="orch-left-header">세션 목록 (드래그)</div>
-        <div class="orch-terminal-list" id="orch-terminals"></div>
-      </div>
-      <!-- Right: phase columns + task section -->
-      <div class="orch-right">
-        <div class="orch-right-top">
-          <select id="orch-run-sel"><option value="">전체 Run</option></select>
-          <span style="font-size: var(--fs-sm);color:var(--text3)">태스크를 터미널에 드래그하여 배정</span>
-        </div>
-        <div class="phase-columns-wrap">
-          <div class="phase-columns" id="orch-phase-cols"></div>
-        </div>
-        <div class="task-section" id="orch-task-section">
-          <div class="task-section-header">태스크</div>
-          <div class="task-lanes" id="orch-task-lanes"></div>
-        </div>
-        <form class="new-task-form" id="orch-new-task-form">
-          <select id="orch-new-task-phase"></select>
-          <input type="text" id="orch-new-task-spec" placeholder="태스크 내용 입력..." />
-          <button type="submit">추가</button>
-        </form>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- PAGE: Collaboration -->
-  <div class="page" id="page-collab" hidden style="display:none !important">
-    <div class="collab-layout">
-      <!-- Left: session pool -->
-      <div class="collab-left">
-        <div class="collab-left-header">세션 목록 (드래그)</div>
-        <div class="debate-session-list" id="debate-session-list"></div>
-      </div>
-      <!-- Right: hierarchy + config + log -->
-      <div class="collab-right">
-        <!-- Hierarchy tree -->
-        <div class="collab-tree" id="collab-tree"></div>
-
-        <!-- Drop zones -->
-        <div class="collab-zones">
-          <div id="debate-master-section">
-            <div class="debate-master-label">👑 마스터 (결과 수신)</div>
-            <div class="debate-master-zone" id="debate-zone-master">
-              <div class="debate-dropzone-empty">마스터 세션을 드롭</div>
-            </div>
-          </div>
-
-          <div class="debate-flow">
-            <div class="debate-pool" style="flex:1">
-              <div class="debate-pool-label"><span class="pool-color" style="background:var(--accent)"></span>A 그룹</div>
-              <div class="debate-dropzone" id="debate-zone-a" data-zone="a">
-                <div class="debate-dropzone-empty">여기에 드롭</div>
-              </div>
-            </div>
-            <div class="debate-flow-arrow">
-              <span>→</span>
-              <span>←</span>
-            </div>
-            <div class="debate-pool" style="flex:1">
-              <div class="debate-pool-label"><span class="pool-color" style="background:var(--green)"></span>B 그룹</div>
-              <div class="debate-dropzone" id="debate-zone-b" data-zone="b">
-                <div class="debate-dropzone-empty">여기에 드롭</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Config -->
-        <div class="debate-config-row">
-          <textarea id="debate-topic" placeholder="공통 주제 또는 해결할 문제..."></textarea>
-          <div class="debate-config-side">
-            <label>라운드</label>
-            <select id="debate-rounds">
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3" selected>3</option>
-              <option value="5">5</option>
-              <option value="10">10</option>
-            </select>
-            <label>모드</label>
-            <select id="debate-mode">
-              <option value="debate">토론</option>
-              <option value="brainstorm">브레인스톰</option>
-              <option value="review">코드리뷰</option>
-              <option value="master-worker">마스터-워커</option>
-            </select>
-          </div>
-        </div>
-        <div class="debate-actions">
-          <button class="debate-start-btn" id="debate-start-btn">시작</button>
-          <button class="debate-stop-btn" id="debate-stop-btn" disabled>중단</button>
-        </div>
-        <div class="debate-status" id="debate-status"></div>
-        <div class="debate-log" id="debate-log"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- PAGE: Clipboard History -->
-  <div class="page" id="page-clipboard">
-    <div class="clip-actions">
-      <button id="clip-clear-btn">전체 삭제</button>
-    </div>
-    <div class="clip-list" id="clip-list">
-      <div class="empty"><span class="empty-icon">📋</span><span class="empty-text">클립보드 히스토리가 비어 있습니다</span></div>
-    </div>
-  </div>
-
-  <!-- PAGE: Port Monitor -->
-  <div class="page" id="page-ports">
-    <div class="port-header">
-      <span style="font-size:var(--fs-sm);color:var(--text2);font-weight:600">리스닝 포트</span>
-      <button id="port-refresh-btn">새로고침</button>
-    </div>
-    <div class="port-list" id="port-list">
-      <div class="empty"><span class="empty-icon">🔌</span><span class="empty-text">스캔 중...</span></div>
-    </div>
-  </div>
-
   <!-- PAGE: Jira tickets (Orca's Jira connection) -->
   <div class="page" id="page-jira">
-    <div class="port-header">
+    <div class="jira-header">
       <span style="font-size:var(--fs-sm);color:var(--text2);font-weight:600">Jira 티켓</span>
       <select class="jira-filter" id="jira-filter" title="목록 필터"><option value="assigned">내 담당</option><option value="reported">내가 보고</option><option value="all">전체</option></select>
       <button id="jira-refresh">새로고침</button>
@@ -2946,18 +1610,6 @@
       <div class="jb-bar" id="jb-bar"></div>
       <div class="jb-cols" id="jb-cols"></div>
       <div class="jb-drawer" id="jb-drawer" hidden></div>
-    </div>
-  </div>
-
-  <!-- PAGE: Memo -->
-  <div class="page" id="page-memo">
-    <div class="memo-wrap">
-      <div class="memo-toolbar">
-        <span style="font-size:var(--fs-sm);color:var(--text2);font-weight:600">빠른 메모</span>
-        <span class="memo-status" id="memo-status"></span>
-      </div>
-      <textarea class="memo-editor" id="memo-editor" placeholder="여기에 메모를 작성하세요..."></textarea>
-      <div class="memo-char-count" id="memo-char-count">0자</div>
     </div>
   </div>
 
@@ -3096,9 +1748,9 @@ const I18N = {
   '해당 세션의 터미널로 바로 전환합니다.': 'Jumps to that session\'s terminal.', '이름 변경, 세션 ID 복사, 인터럽트, 팀 작업 메뉴.': 'Rename, copy session ID, interrupt, team actions.',
   '오피스에서 캐릭터를 PM 자리에 놓으면 팀이 만들어지고, 다른 캐릭터를 팀 블록에 넣으면 팀원이 됩니다. PM에게 목표를 주면 브리프와 분담을 제안합니다.': 'In the office, drop a character on the PM seat to create a team and drop others into the block to add members. Give the PM a goal and it proposes a brief and a task split.',
   '헤더에서 테마와 언어를 바꿀 수 있습니다. 새로 시작하는 Claude Code 세션부터 훅 이벤트가 기록되니, 세션이 안 보이면 프롬프트를 한 번 보내 보세요.': 'Theme and language live in the header. Hook events are recorded from the next Claude Code activity on, so if a session is missing, send it a prompt once.',
-  '팀': 'Team', '팀 공유': 'Team sharing', '같은 망의 팀원 세션': 'Teammates\' sessions on the office network', '공유 중': 'sharing', '서버 꺼짐': 'server off', '팀원': 'peers', '연결됨': 'connected', '연결 안 됨': 'unreachable', '세션 없음': 'no sessions', '세션 정보를 받지 못했습니다': 'no session data received', '팀 공유가 꺼져 있습니다': 'Team sharing is off', '~/.agentdesk/team.json 에 내 이름·공유 토큰·팀원 주소를 적으면 같은 망의 팀원 세션이 여기에 보입니다.': 'Put your name, a shared token and your teammates\' addresses in ~/.agentdesk/team.json and their sessions appear here.', '설정 파일 만들기': 'Create config', '설정 파일 열기': 'Open config', 'team.json 의 peers 가 비어 있습니다': 'peers in team.json is empty', '~/.agentdesk/team.json 에 이름·토큰·팀원 주소를 적으면 켜집니다. 팀원도 같은 토큰을 써야 합니다.': 'Turns on when ~/.agentdesk/team.json has a name, token and peers. Teammates must use the same token.', 'team.json 예시 파일을 만들었습니다. 이름·토큰·팀원 주소를 채우세요': 'Created an example team.json. Fill in the name, token and peers', '설정 파일을 엽니다': 'Opening the config file', '팀 공유 켜기': 'Turn on team sharing', '팀 공유를 켰습니다. 팀 탭에서 팀을 만들거나 초대 코드로 합류하세요': 'Team sharing is on. Create a team or join one with an invite code in the Team tab', '팀 초대 코드': 'Team invite code', '코드에는 팀 비밀 토큰이 들어 있습니다. Slack DM 등 1:1 로만 전달하세요. 코드는 클립보드로만 복사되고 어디에도 저장되지 않습니다.': 'The code contains the team secret. Send it 1:1 only (e.g. a Slack DM). It is copied to the clipboard and stored nowhere else.', '초대 코드 만들기': 'Create invite code', '초대 코드 붙여넣기': 'Paste invite code', '아직 팀이 없습니다': 'not in a team yet', '팀 공유 시작': 'Start team sharing', '우리 팀 만들기 (초대 코드 생성)': 'Create our team (invite code)', '초대 코드로 합류': 'Join with an invite code', '초대 코드에는 팀 비밀 토큰이 들어 있습니다. Slack DM 등 1:1 로만 전달하세요.': 'An invite code contains the team secret. Send it 1:1 only (e.g. a Slack DM).', '내 이름': 'My name', '내 주소': 'My address', '이름 변경 실패': 'Rename failed', '초대 코드를 클립보드에 복사했습니다. Slack DM 등 1:1 로만 전달하세요': 'Invite code copied. Send it 1:1 only (e.g. a Slack DM)', '초대 코드를 만들지 못했습니다': 'Could not create an invite code', '팀원에게 받은 agentdesk-team:v1: 코드를 붙여 넣으세요. 이 PC의 팀 토큰이 코드의 토큰으로 바뀌고, 초대한 사람이 팀원으로 추가됩니다.': 'Paste the agentdesk-team:v1: code you received. This PC takes the team token from it and adds the inviter as a teammate.', '합류': 'Join', '연결 확인 중': 'Checking the connection', '합류 실패': 'Join failed', '합류했지만 아직 연결되지 않았습니다': 'Joined, but not connected yet', '다음을 누르면 정확 감지(훅) 켜기 (권장)': 'Turn on exact detection (hooks) when I press Next (recommended)', '켜기(권장)': 'Turn on (recommended)', '오늘 팀': 'Team today', '복사': 'Copy', '티켓': 'Ticket', '한 일': 'Done', '시각': 'Time', '진행 중': 'in progress', '오늘 보고나 배치된 티켓이 아직 없습니다': 'No reports or assigned tickets today yet', '받은 메모': 'Notes received', '세션에 전달': 'Send to session', '무시': 'Ignore', '발견됨': 'Found', '추가': 'Add', '자동 발견 켜짐': 'discovery on', '실패': 'failures', '15초 간격': 'every 15s', '메모 남기기': 'Leave a note', '받는 사람의 받은편지함에 쌓입니다. 세션에 바로 입력되지 않고, 받는 사람이 [세션에 전달]을 눌러야 전달됩니다.': 'It goes to the recipient\'s inbox. Nothing is typed into the session until they press [Send to session].', '보내기': 'Send', '메모를 보냈습니다': 'note sent', '메모 전송 실패': 'Note failed', '메모를 전달했습니다': 'note delivered', '세션에 알리기': 'Tell session', '내 세션에 충돌 주의 문구를 보냅니다': 'Sends a conflict warning to my session', '충돌 주의를 보냈습니다': 'conflict warning sent', '내 세션과 같은 파일': 'same file as my session', '내 세션과 같은 브랜치': 'same branch as my session', '팀원 추가': 'Teammate added', '이미 등록된 주소': 'Already listed', '추가 실패': 'Add failed', '팀 보드를 마크다운 표로 복사했습니다': 'Copied the team board as a Markdown table', '팀 탭에서 추가': 'add from the Team tab', '연결 끊김': 'offline', '클릭: 메모 남기기': 'Click: leave a note', '사무실에 팀원 표시': 'Show teammates in the office', '팀 공유가 켜져 있으면 사무실 맨 아래에 팀원별 구역과 그 PC의 세션 캐릭터를 그립니다 (읽기 전용, 클릭하면 메모 남기기).': 'With team sharing on, draws an area per teammate at the bottom of the office with their sessions (read-only; click to leave a note).', 
-  '대시보드': 'Dashboard', '오피스': 'Office', '클립보드': 'Clipboard', '포트': 'Ports', '메모': 'Memo', '타이머': 'Timer',
-  '전체': 'All', '최근': 'Recent', '실행 중': 'Running', '완료': 'Done', '검색...': 'Search...', '세션 검색...': 'Search sessions...',
+  '팀': 'Team', '팀 공유': 'Team sharing', '같은 망의 팀원 세션': 'Teammates\' sessions on the office network', '공유 중': 'sharing', '서버 꺼짐': 'server off', '팀원': 'peers', '연결됨': 'connected', '연결 안 됨': 'unreachable', '세션 없음': 'no sessions', '세션 정보를 받지 못했습니다': 'no session data received', '팀 공유가 꺼져 있습니다': 'Team sharing is off', '~/.agentdesk/team.json 에 내 이름·공유 토큰·팀원 주소를 적으면 같은 망의 팀원 세션이 여기에 보입니다.': 'Put your name, a shared token and your teammates\' addresses in ~/.agentdesk/team.json and their sessions appear here.', '설정 파일 만들기': 'Create config', '설정 파일 열기': 'Open config', 'team.json 의 peers 가 비어 있습니다': 'peers in team.json is empty', '~/.agentdesk/team.json 에 이름·토큰·팀원 주소를 적으면 켜집니다. 팀원도 같은 토큰을 써야 합니다.': 'Turns on when ~/.agentdesk/team.json has a name, token and peers. Teammates must use the same token.', 'team.json 예시 파일을 만들었습니다. 이름·토큰·팀원 주소를 채우세요': 'Created an example team.json. Fill in the name, token and peers', '설정 파일을 엽니다': 'Opening the config file', '팀 공유 켜기': 'Turn on team sharing', '팀 공유를 켰습니다. 팀 탭에서 팀을 만들거나 초대 코드로 합류하세요': 'Team sharing is on. Create a team or join one with an invite code in the Team tab', '팀 초대 코드': 'Team invite code', '코드에는 팀 비밀 토큰이 들어 있습니다. Slack DM 등 1:1 로만 전달하세요. 코드는 클립보드로만 복사되고 어디에도 저장되지 않습니다.': 'The code contains the team secret. Send it 1:1 only (e.g. a Slack DM). It is copied to the clipboard and stored nowhere else.', '초대 코드 만들기': 'Create invite code', '초대 코드 붙여넣기': 'Paste invite code', '아직 팀이 없습니다': 'not in a team yet', '팀 공유 시작': 'Start team sharing', '우리 팀 만들기 (초대 코드 생성)': 'Create our team (invite code)', '초대 코드로 합류': 'Join with an invite code', '초대 코드에는 팀 비밀 토큰이 들어 있습니다. Slack DM 등 1:1 로만 전달하세요.': 'An invite code contains the team secret. Send it 1:1 only (e.g. a Slack DM).', '내 이름': 'My name', '내 주소': 'My address', '이름 변경 실패': 'Rename failed', '초대 코드를 클립보드에 복사했습니다. Slack DM 등 1:1 로만 전달하세요': 'Invite code copied. Send it 1:1 only (e.g. a Slack DM)', '초대 코드를 만들지 못했습니다': 'Could not create an invite code', '팀원에게 받은 agentdesk-team:v1: 코드를 붙여 넣으세요. 이 PC의 팀 토큰이 코드의 토큰으로 바뀌고, 초대한 사람이 팀원으로 추가됩니다.': 'Paste the agentdesk-team:v1: code you received. This PC takes the team token from it and adds the inviter as a teammate.', '합류': 'Join', '연결 확인 중': 'Checking the connection', '합류 실패': 'Join failed', '합류했지만 아직 연결되지 않았습니다': 'Joined, but not connected yet', '다음을 누르면 정확 감지(훅) 켜기 (권장)': 'Turn on exact detection (hooks) when I press Next (recommended)', '켜기(권장)': 'Turn on (recommended)', '오늘 팀': 'Team today', '복사': 'Copy', '티켓': 'Ticket', '한 일': 'Done', '시각': 'Time', '진행 중': 'in progress', '오늘 보고나 배치된 티켓이 아직 없습니다': 'No reports or assigned tickets today yet', '받은 메모': 'Notes received', '세션에 전달': 'Send to session', '무시': 'Ignore', '발견됨': 'Found', '추가': 'Add', '자동 발견 켜짐': 'discovery on', '실패': 'failures', '15초 간격': 'every 15s', '메모 남기기': 'Leave a note', '받는 사람의 받은편지함에 쌓입니다. 세션에 바로 입력되지 않고, 받는 사람이 [세션에 전달]을 눌러야 전달됩니다.': 'It goes to the recipient\'s inbox. Nothing is typed into the session until they press [Send to session].', '보내기': 'Send', '메모를 보냈습니다': 'note sent', '메모 전송 실패': 'Note failed', '메모를 전달했습니다': 'note delivered', '세션에 알리기': 'Tell session', '내 세션에 충돌 주의 문구를 보냅니다': 'Sends a conflict warning to my session', '충돌 주의를 보냈습니다': 'conflict warning sent', '내 세션과 같은 파일': 'same file as my session', '내 세션과 같은 브랜치': 'same branch as my session', '팀원 추가': 'Teammate added', '이미 등록된 주소': 'Already listed', '추가 실패': 'Add failed', '팀 보드를 마크다운 표로 복사했습니다': 'Copied the team board as a Markdown table', '팀 탭에서 추가': 'add from the Team tab', '연결 끊김': 'offline', '클릭: 메모 남기기': 'Click: leave a note', '사무실에 팀원 표시': 'Show teammates in the office', '팀 공유가 켜져 있으면 사무실 맨 아래에 팀원별 구역과 그 PC의 세션 캐릭터를 그립니다 (읽기 전용, 클릭하면 메모 남기기).': 'With team sharing on, draws an area per teammate at the bottom of the office with their sessions (read-only; click to leave a note).',
+  '대시보드': 'Dashboard', '오피스': 'Office', '메모': 'Memo', '타이머': 'Timer',
+  '전체': 'All', '최근': 'Recent', '실행 중': 'Running', '완료': 'Done', '검색...': 'Search...',
   '대기 중': 'Waiting', '작업 중': 'Working', '입력 대기': 'Waiting for input', '쉬는 중': 'Idle', '오류': 'Error', '선택 필요': 'Needs input',
   '대기': 'Waiting', '작업': 'Working', '휴식': 'Resting', '서브': 'sub', '개발': 'Dev', '조사': 'Research', '실행·테스트': 'Exec/Test', '문서화': 'Docs',
   '휴게실': 'Lounge', '회의실': 'Meeting', '팀': 'Team', '팀원': 'Member', 'PM 없음': 'no PM', '명': '', '새 팀 · PM 자리에 놓으세요': 'New team · drop onto the PM seat',
@@ -3123,15 +1775,15 @@ const I18N = {
   '작업 완료': 'Work done', '오류 발생': 'Error occurred', '질문 또는 권한 승인이 기다리고 있습니다': 'a question or permission approval is waiting', '선택이 필요합니다': 'needs your choice',
   '개 세션이 새로 실행을 시작했습니다': ' session(s) started running',
   '세션이 없습니다': 'No sessions', '실행 중인 세션이 없습니다': 'No running sessions', '완료된 세션이 없습니다': 'No finished sessions', '최근 24시간 내 세션이 없습니다': 'No sessions in the last 24 hours',
-  '최근 24시간 내 활동한 세션이 없습니다': 'No sessions active in the last 24 hours', '활성 세션이 없습니다': 'No active sessions',
+  '최근 24시간 내 활동한 세션이 없습니다': 'No sessions active in the last 24 hours',
   '작업 시작 후 경과': 'Since work started', '응답 완료 후 대기': 'Waiting since reply', '마지막 활동': 'Last activity', '컨텍스트 사용량': 'Context usage',
   '가장 오래 대기: ': 'Longest wait: ', '모두 응답 중입니다': 'Everyone is working', '대기 중인 요청이 없습니다': 'Nothing is waiting on you', '컨텍스트 주의: ': 'Context warning: ', '선택 필요 ': 'needs input ',
   'Orca CLI 호출 실패': 'Orca CLI call failed', 'Orca 앱이 실행 중인지, 터미널에서 ': 'Check that the Orca app is running and that ', '이 동작하는지 확인하세요.': ' works in a terminal.',
   'Orca CLI를 찾을 수 없습니다': 'Orca CLI not found', 'Orca 앱이 /Applications에 설치되어 있는지 확인하세요.': 'Check that the Orca app is installed in /Applications.',
-  '고정': 'Pin', '고정 해제': 'Unpin', '인터럽트': 'Interrupt', '종료': 'Close', '인터럽트 전송': 'Interrupt sent', '종료됨': 'Closed', '종료 실패': 'Close failed', '프롬프트 전송': 'Prompt sent', '개 경로 입력됨': ' path(s) inserted', '경로 입력 실패: ': 'Failed to insert path: ',
-  '리스닝 포트': 'Listening ports', '새로고침': 'Refresh', '스캔 중...': 'Scanning...', '프로세스 종료': 'Kill process', '프로세스를 종료하시겠습니까?': 'Kill this process?',
-  '클립보드 히스토리가 비어 있습니다': 'Clipboard history is empty', '전체 삭제': 'Clear all', '복사됨': 'Copied',
-  '빠른 메모': 'Quick memo', '여기에 메모를 작성하세요...': 'Write a note here...', '저장됨': 'Saved', '저장 중...': 'Saving...', '자': ' chars',
+  '고정': 'Pin', '고정 해제': 'Unpin', '인터럽트': 'Interrupt', '종료': 'Close', '인터럽트 전송': 'Interrupt sent', '종료됨': 'Closed', '개 경로 입력됨': ' path(s) inserted', '경로 입력 실패: ': 'Failed to insert path: ',
+  '새로고침': 'Refresh',
+  '복사됨': 'Copied',
+  '자': ' chars',
   '뽀모도로': 'Pomodoro', '집중 25분': 'Focus 25 min', '휴식 5분': 'Break 5 min', '긴 휴식 15분': 'Long break 15 min', '시작': 'Start', '일시정지': 'Pause', '계속': 'Resume', '초기화': 'Reset', '완료: ': 'Done: ', '회': '',
   '다크 모드 (클릭: 시스템)': 'Dark mode (click: system)', '라이트 모드 (클릭: 다크)': 'Light mode (click: dark)', '시스템 모드 (클릭: 라이트)': 'System mode (click: light)',
   '세션': 'Session', '주간': 'Weekly',
@@ -3146,7 +1798,7 @@ const I18N = {
   '정확 감지 켜기': 'Turn on exact detection',
   'Orca CLI가 응답하면 Orca, 아니면 Claude Code 훅으로 세션을 찾습니다': 'Uses Orca when its CLI answers, otherwise finds sessions via Claude Code hooks',
   '항상 Orca CLI로 세션을 읽고 Orca 터미널로 제어합니다': 'Always reads sessions with the Orca CLI and controls them through Orca terminals',
-  'Orca를 쓰지 않고 Claude Code 훅으로 세션을 찾습니다. tmux 안의 세션만 채팅·지시 가능': 'Never calls Orca; finds sessions via Claude Code hooks. Only sessions inside tmux can be chatted with or directed', '자동': 'Auto', '훅 전용': 'Hooks only', '⚠ 문맥 갱신 필요': '⚠ stale brief', '⚠ 브리프가 갱신되어 문맥이 오래되었습니다': '⚠ Brief was updated; this member has stale context', '(응답 없음)': '(no reply)', '● 작업 중': '● Working',
+  'Orca를 쓰지 않고 Claude Code 훅으로 세션을 찾습니다. tmux 안의 세션만 채팅·지시 가능': 'Never calls Orca; finds sessions via Claude Code hooks. Only sessions inside tmux can be chatted with or directed', '자동': 'Auto', '훅 전용': 'Hooks only', '⚠ 문맥 갱신 필요': '⚠ stale brief', '⚠ 브리프가 갱신되어 문맥이 오래되었습니다': '⚠ Brief was updated; this member has stale context', '● 작업 중': '● Working',
   'Orca 버전': 'Orca version', '은(는) 지원 범위 밖입니다. 1.4 이상으로 업데이트하면 화면 기반 상태 판독과 채팅이 동작합니다.': ' is not supported. Update to 1.4 or newer for screen-based status and chat.',
   '팀원 등록 요청': 'Teammate requests', '지금은 이 PC 안에서만 열려 있습니다. 팀을 만들거나 합류하면 같은 네트워크에 내 이름과 세션 상태가 공개됩니다.': 'Right now this is open on this PC only. Creating or joining a team shows your name and session status on the same network.', '공유 꺼짐 (이 PC만)': 'sharing off (this PC only)', '공유 꺼짐': 'sharing off', '다른 네트워크 — 폴링 안 함': 'other network — not polled', '다른 네트워크': 'other network', '같은 네트워크에 내 이름과 세션 상태가 공개됩니다. 사무실 망에서만 켜세요.': 'Your name and session status become visible on this network. Turn it on only on the office network.', '우리 팀 만들기': 'Create our team', '공개하고 계속': 'Share and continue', '계속할까요?': 'Continue?', '확인': 'OK', '합류를 취소했습니다': 'Join cancelled', '초대한 사람이 등록 요청을 수락하면 서로 보입니다': 'you see each other once the inviter accepts your request', '공유 끄기': 'Stop sharing', '이 PC를 127.0.0.1 전용으로 되돌리고 자동 발견을 끕니다. 팀 토큰과 팀원 목록은 남고, 초대 코드를 다시 만들면 켜집니다.': 'Back to 127.0.0.1 only, discovery off. The team token and teammates stay; creating an invite code turns sharing on again.', '공유가 꺼져 있습니다 (이 PC만). 초대 코드를 만들면 다시 켜집니다.': 'Sharing is off (this PC only). Creating an invite code turns it on again.', '토큰 재발급': 'Reissue token', '새 팀 토큰을 만듭니다. 지금 팀원은 모두 연결이 끊기고, 새 초대 코드를 받아 다시 합류해야 합니다. 팀원을 내보낼 때 쓰세요.': 'Creates a new team token. Every current teammate is disconnected and must join again with a new invite code. Use it to remove someone from the team.', '재발급': 'Reissue', '삭제': 'Remove', '작업 실패': 'Failed', '공유를 껐습니다. 이 PC 안에서만 열려 있습니다': 'Sharing is off. Open on this PC only', '지금 팀원은 모두 연결이 끊깁니다. 새 초대 코드를 만들어 팀원에게 1:1 로 다시 전달해야 합니다. 계속할까요?': 'Every current teammate gets disconnected. You have to create a new invite code and send it to each teammate 1:1 again. Continue?', '새 토큰을 만들었습니다. 초대 코드를 다시 만들어 팀원에게 전달하세요': 'New token created. Create a new invite code and send it to your teammates', '팀원 삭제': 'Remove teammate',
   '사무실 망 아님 — 공유 일시 중지': 'not on the office network — sharing paused', '신원 불일치 — 폴링 중지': 'identity mismatch — polling stopped', '사무실 망': 'Office network', '지금 망은 사무실 망이 아니라 공유를 멈췄습니다.': 'This network is not an office network, so sharing is paused.', '이 대역에 있을 때만 공유합니다': 'Shares only while on', '지정 안 됨 (모든 망)': 'not set (any network)', '이 망을 사무실 망으로 추가': 'Add this network as an office network',
@@ -3326,7 +1978,6 @@ function timeAgo(ts) {
   if (m < 60) return `${m}m`; const h = Math.floor(m / 60);
   if (h < 24) return `${h}h`; return `${Math.floor(h / 24)}d`;
 }
-function barColor(pct) { if (pct >= 80) return 'red'; if (pct >= 50) return 'yellow'; return 'green'; }
 function formatTokens(n) { return n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n); }
 
 // ── Minimize / Restore ──
@@ -3369,42 +2020,12 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 // ── Opacity removed ──
 window.orca.setOpacity(1);
 
-// ── Cost summary ──
-async function updateCostSummary() { return; // removed
-  try {
-    const allSessions = await window.orca.claudeSessions({});
-    if (!allSessions || !allSessions.length) { $('cost-summary').innerHTML = ''; return; }
-
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const dayOfWeek = now.getDay() || 7;
-    const weekStart = todayStart - (dayOfWeek - 1) * 86400000;
-
-    let todayCost = 0, todayTokens = 0, todayCount = 0, weekCost = 0;
-    for (const s of allSessions) {
-      const created = s.timeCreated || s.timeUpdated || 0;
-      const cost = s.cost || 0;
-      const tokens = (s.tokensInput || 0) + (s.tokensOutput || 0);
-      if (created >= weekStart) weekCost += cost;
-      if (created >= todayStart) { todayCost += cost; todayTokens += tokens; todayCount++; }
-    }
-
-    if (todayCount === 0 && weekCost === 0) { $('cost-summary').innerHTML = ''; return; }
-
-    let html = '';
-    html += `<span class="cost-item"><span class="cost-label">오늘</span><span class="cost-value money">$${todayCost.toFixed(2)}</span></span>`;
-    html += `<span class="cost-item"><span class="cost-label">토큰</span><span class="cost-value">${formatTokens(todayTokens)}</span></span>`;
-    html += `<span class="cost-item"><span class="cost-label">세션</span><span class="cost-value">${todayCount}</span></span>`;
-    html += `<span class="cost-item"><span class="cost-label">주간</span><span class="cost-value money">$${weekCost.toFixed(2)}</span></span>`;
-    $('cost-summary').innerHTML = html;
-  } catch { $('cost-summary').innerHTML = ''; }
-}
-updateCostSummary();
-setInterval(updateCostSummary, 60000);
-
 // ── Prevent default file drop (navigating to file) ──
 document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', e => e.preventDefault());
+
+// leftovers of removed pages (clipboard history may hold copied secrets; no UI reads any of these any more)
+try { for (const k of ['orca-clip-history', 'orca-phase-assignments', 'orca-memo']) localStorage.removeItem(k); } catch {}
 
 // ── Page navigation ──
 const PAGE_SIZES = {
@@ -3412,12 +2033,6 @@ const PAGE_SIZES = {
   settings:      { w: 320, h: 480 },
   office:        { w: 640, h: 720, forceHeight: true },
   team:          { w: 320, h: 480 },
-  sessions:      { w: 320, h: 480 },
-  orchestration: { w: 1200, h: 800, forceHeight: true },
-  collab:        { w: 1200, h: 800, forceHeight: true },
-  clipboard:     { w: 340, h: 500 },
-  ports:         { w: 360, h: 480 },
-  memo:          { w: 380, h: 520 },
   jira:          { w: 380, h: 560 },
   pomodoro:      { w: 320, h: 420 },
 };
@@ -3432,13 +2047,8 @@ function showPage(name) {
   {
     const size = PAGE_SIZES[currentPage] || PAGE_SIZES.dashboard;
     window.orca.resizeWindow(size.w, size.h, !!size.forceHeight);
-    if (currentPage === 'sessions') loadClaudeSessions();
     if (currentPage === 'office') officeStart(); else officeStop();
     if (currentPage === 'team') teamPageTick();
-    if (currentPage === 'orchestration') loadOrchestration();
-    if (currentPage === 'collab') { renderDebateSessionList(); renderCollabTree(); }
-    if (currentPage === 'clipboard') loadClipboardHistory();
-    if (currentPage === 'ports') loadPorts();
     if (currentPage === 'jira') jiraLoad();
     if (currentPage === 'settings') settingsRender();
   }
@@ -4498,7 +3108,7 @@ async function loadNotesFor(s) {
   else { try { notes = await window.orca.recallNotes(s.cwd || s.repo, 2); } catch { notes = []; } notesCache.set(s.id, { at: Date.now(), notes }); }
   const target = el(); if (!target) return;
   if (!notes || !notes.length) { target.textContent = t('관련 노트 없음'); return; }
-  target.innerHTML = notes.map(n => `<span class="d-note"><b>${esc(n.title)}</b>${n.changed && n.changed.length ? ` <span style="color:var(--yellow)">⚠ ${n.changed.length}${esc(t('개 파일 변경됨'))}</span>` : ''}<br>${esc(trunc(n.summary || '', 220))}</span>`).join('');
+  target.innerHTML = notes.map(n => `<span class="d-note"><b>${esc(n.title)}</b>${n.changed && n.changed.length ? ` <span style="color:var(--yellow-text)">⚠ ${n.changed.length}${esc(t('개 파일 변경됨'))}</span>` : ''}<br>${esc(trunc(n.summary || '', 220))}</span>`).join('');
 }
 
 // ── card "변경" tab: the session worktree's diff (main: diff/git.mjs) and review comments sent back to the session.
@@ -5143,461 +3753,6 @@ function ticketCostStatsRender() {
 setInterval(ticketCostRefresh, 60000);
 setTimeout(() => ticketCostRefresh(true), 4000);
 
-// ══════════════════════════════════════════
-// PAGE 2: SESSIONS VIEWER (Claude Code .jsonl)
-// ══════════════════════════════════════════
-let claudeSessions = [];
-let csSearchQuery = '';
-
-async function loadClaudeSessions() {
-  try {
-    claudeSessions = await window.orca.claudeSessions({ search: csSearchQuery || undefined });
-    renderClaudeSessions();
-  } catch (e) { console.error(e); $('cs-list').innerHTML = '<div class="empty"><span class="empty-icon">⚠️</span><span class="empty-text">세션을 불러오지 못했습니다</span></div>'; }
-}
-
-function renderClaudeSessions() {
-  if (!claudeSessions.length) { $('cs-list').innerHTML = '<div class="empty"><span class="empty-icon">📭</span><span class="empty-text">세션이 없습니다</span></div>'; return; }
-  let html = '';
-  for (const s of claudeSessions) {
-    const proj = s.projectWorktree ? s.projectWorktree.split('/').filter(Boolean).pop() : s.projectId.slice(0, 20);
-    html += `<div class="cs-item" data-sid="${esc(s.id)}">
-      <div class="cs-title">${esc(s.title)}</div>
-      <div class="cs-meta">
-        <span class="highlight">${esc(proj)}</span>
-        ${s.agent ? `<span>${esc(s.agent)}</span>` : ''}
-        ${s.modelId ? `<span>${esc(s.modelId.split('/').pop().split('-').slice(0, 2).join('-'))}</span>` : ''}
-        <span>${s.messageCount} msgs</span>
-        <span>${formatTokens(s.tokensInput + s.tokensOutput)} tok</span>
-        ${s.cost > 0 ? `<span class="cost">$${s.cost.toFixed(2)}</span>` : ''}
-        <span>${timeAgo(s.timeUpdated)}</span>
-      </div>
-    </div>`;
-  }
-  $('cs-list').innerHTML = html;
-}
-
-$('cs-search').addEventListener('input', e => {
-  csSearchQuery = e.target.value.trim();
-  loadClaudeSessions();
-});
-
-$('cs-list').addEventListener('click', async e => {
-  const item = e.target.closest('.cs-item');
-  if (!item) return;
-  const sid = item.dataset.sid;
-  await openSessionDetail(sid);
-});
-
-async function openSessionDetail(sessionId) {
-  $('sessions-list-view').hidden = true;
-  $('sessions-detail-view').hidden = false;
-  $('cs-detail-title').textContent = '로딩 중...';
-  $('cs-detail-stats').innerHTML = '';
-  $('cs-messages').innerHTML = '<div class="empty">로딩 중...</div>';
-
-  try {
-    const detail = await window.orca.claudeSessionDetail(sessionId);
-    if (!detail) { $('cs-messages').innerHTML = '<div class="empty">세션을 찾을 수 없습니다</div>'; return; }
-
-    $('cs-detail-title').textContent = detail.title;
-    $('cs-detail-stats').innerHTML = `
-      <span>${detail.messageCount} messages</span>
-      <span>입력: ${formatTokens(detail.tokensInput)}</span>
-      <span>출력: ${formatTokens(detail.tokensOutput)}</span>
-      ${detail.cost > 0 ? `<span style="color:var(--yellow)">$${detail.cost.toFixed(2)}</span>` : ''}
-      ${detail.modelId ? `<span>${esc(detail.modelId)}</span>` : ''}
-    `;
-
-    let msgHtml = '';
-    for (const msg of detail.messages) {
-      msgHtml += `<div class="msg"><div class="msg-role ${msg.role}">${msg.role}</div>`;
-      for (const part of msg.parts) {
-        if (part.type === 'text') {
-          msgHtml += `<div class="msg-text">${esc(part.text)}</div>`;
-        } else if (part.type === 'reasoning') {
-          msgHtml += `<div class="msg-reasoning">${esc(trunc(part.text, 500))}</div>`;
-        } else if (part.type === 'tool') {
-          const st = part.state || {};
-          const statusCls = st.status === 'completed' ? 'completed' : st.status === 'error' ? 'error' : '';
-          msgHtml += `<div class="msg-tool">
-            <span class="tool-name">${esc(part.tool)}</span>
-            <span class="tool-status ${statusCls}">${esc(st.status || 'running')}</span>
-            ${st.output ? `<div class="msg-tool-output">${esc(trunc(st.output, 500))}</div>` : ''}
-          </div>`;
-        }
-      }
-      msgHtml += '</div>';
-    }
-    $('cs-messages').innerHTML = msgHtml || '<div class="empty">메시지 없음</div>';
-  } catch (e) {
-    console.error(e);
-    $('cs-messages').innerHTML = '<div class="empty">로딩 실패</div>';
-  }
-}
-
-$('cs-back').addEventListener('click', () => {
-  $('sessions-detail-view').hidden = true;
-  $('sessions-list-view').hidden = false;
-});
-
-// ══════════════════════════════════════════
-// PAGE 3: ORCHESTRATION BOARD
-// ══════════════════════════════════════════
-const PHASES = [
-  { id: 'analysis', label: '분석', tag: '[분석]', color: '#6ea8fe' },
-  { id: 'design', label: '설계', tag: '[설계]', color: '#d9a441' },
-  { id: 'dev', label: '개발', tag: '[개발]', color: '#4caf7d' },
-  { id: 'test', label: '테스트', tag: '[테스트]', color: '#e0616b' },
-  { id: 'docs', label: '문서화', tag: '[문서화]', color: '#9aa1ac' },
-];
-
-let orchRuns = [];
-let orchTasks = [];
-let orchTerminals = [];
-let selectedRunId = '';
-
-// Phase assignments stored in localStorage
-let phaseAssignments = {};
-try {
-  const saved = localStorage.getItem('orca-phase-assignments');
-  if (saved) phaseAssignments = JSON.parse(saved);
-} catch {}
-
-function savePhaseAssignments() {
-  localStorage.setItem('orca-phase-assignments', JSON.stringify(phaseAssignments));
-}
-
-function assignPhase(handle, phaseId) {
-  if (!phaseAssignments[handle]) phaseAssignments[handle] = { phases: [], label: '' };
-  if (!phaseAssignments[handle].phases.includes(phaseId)) {
-    phaseAssignments[handle].phases.push(phaseId);
-  }
-  savePhaseAssignments();
-}
-
-function unassignPhase(handle, phaseId) {
-  if (!phaseAssignments[handle]) return;
-  phaseAssignments[handle].phases = phaseAssignments[handle].phases.filter(p => p !== phaseId);
-  if (!phaseAssignments[handle].phases.length) delete phaseAssignments[handle];
-  savePhaseAssignments();
-}
-
-function cleanupStaleAssignments(activeHandles) {
-  const active = new Set(activeHandles);
-  let changed = false;
-  for (const h of Object.keys(phaseAssignments)) {
-    if (!active.has(h)) { delete phaseAssignments[h]; changed = true; }
-  }
-  if (changed) savePhaseAssignments();
-}
-
-function lastPathSeg(p) {
-  if (!p) return '';
-  return p.replace(/\/$/, '').split('/').pop() || '';
-}
-
-// Populate new task phase select
-(function initPhaseSelect() {
-  const sel = $('orch-new-task-phase');
-  for (const p of PHASES) {
-    sel.innerHTML += `<option value="${p.id}">${p.label}</option>`;
-  }
-})();
-
-async function loadOrchestration() {
-  try {
-    const [runsRaw, termsRaw] = await Promise.all([
-      window.orca.orchRuns(),
-      window.orca.terminals(),
-    ]);
-    orchRuns = (runsRaw?.result?.runs || []).filter(r => !r.legacy);
-    orchTerminals = termsRaw?.result?.terminals || [];
-    cleanupStaleAssignments(orchTerminals.map(t => t.handle));
-    renderRunSelect();
-    renderTerminalList();
-    renderPhaseColumns();
-    await loadOrchTasks();
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-function renderRunSelect() {
-  let html = '<option value="">전체 Run</option>';
-  for (const r of orchRuns) {
-    html += `<option value="${esc(r.id)}">${esc(r.objective || r.id.slice(0, 8))}</option>`;
-  }
-  $('orch-run-sel').innerHTML = html;
-}
-
-$('orch-run-sel').addEventListener('change', e => {
-  selectedRunId = e.target.value;
-  loadOrchTasks();
-});
-
-// ── Terminal list (left panel, draggable) ──
-function renderTerminalList() {
-  const el = $('orch-terminals');
-  if (!orchTerminals.length) {
-    el.innerHTML = '<div class="empty" style="height:100%"><span class="empty-icon">🔌</span><span class="empty-text">활성 세션이 없습니다</span></div>';
-    return;
-  }
-  let html = '';
-  for (const t of orchTerminals) {
-    const agent = t.agentIdentity || 'shell';
-    const name = lastPathSeg(t.worktreePath || t.worktree || '') || t.handle;
-    const conn = t.connected;
-    html += `<div class="orch-terminal-card" draggable="true" data-handle="${esc(t.handle)}">`
-      + `<span class="agent-badge">${esc(agent)}</span>`
-      + `<div class="term-info"><span class="term-name">${esc(name)}</span>`
-      + `<span class="term-handle">${esc(t.handle)}</span></div>`
-      + `<span class="conn-dot ${conn ? 'on' : 'off'}"></span>`
-      + `</div>`;
-  }
-  el.innerHTML = html;
-
-  el.querySelectorAll('.orch-terminal-card').forEach(card => {
-    card.addEventListener('dragstart', e => {
-      e.dataTransfer.setData('application/x-orca-terminal-handle', card.dataset.handle);
-      e.dataTransfer.effectAllowed = 'copy';
-      card.classList.add('dragging');
-    });
-    card.addEventListener('dragend', () => card.classList.remove('dragging'));
-  });
-}
-
-// ── Phase columns (right panel, drop zones) ──
-function renderPhaseColumns() {
-  const el = $('orch-phase-cols');
-  let html = '';
-  for (const p of PHASES) {
-    const assigned = orchTerminals.filter(t =>
-      phaseAssignments[t.handle]?.phases?.includes(p.id)
-    );
-    html += `<div class="phase-column" data-phase="${p.id}" style="border-top-color:${p.color}">`
-      + `<div class="phase-column-head">`
-      + `<span class="phase-dot" style="background:${p.color}"></span>`
-      + `${esc(p.label)}<span class="phase-column-count">${assigned.length}</span></div>`
-      + `<div class="phase-column-body">`;
-    if (!assigned.length) {
-      html += '<div class="phase-empty">드래그해서 추가</div>';
-    }
-    for (const t of assigned) {
-      const name = lastPathSeg(t.worktreePath || t.worktree || '') || t.handle;
-      const agent = t.agentIdentity || 'shell';
-      html += `<div class="phase-session-card">`
-        + `<span class="agent-badge" style="font-size: var(--fs-sm);padding:1px 4px">${esc(agent)}</span>`
-        + `<div class="ps-info"><div class="ps-name">${esc(name)}</div>`
-        + `<div class="ps-handle">${esc(t.handle)}</div></div>`
-        + `<div class="ps-actions">`
-        + `<button class="ps-btn" data-action="send" data-handle="${esc(t.handle)}" title="프롬프트 전송">✎</button>`
-        + `<button class="ps-btn" data-action="switch" data-handle="${esc(t.handle)}" title="터미널 전환">↗</button>`
-        + `<button class="ps-btn rm" data-action="remove" data-handle="${esc(t.handle)}" data-phase="${p.id}" title="제거">×</button>`
-        + `</div></div>`;
-    }
-    html += '</div></div>';
-  }
-  el.innerHTML = html;
-
-  // Drop zone events on each phase column
-  el.querySelectorAll('.phase-column').forEach(col => {
-    col.addEventListener('dragover', e => {
-      if (e.dataTransfer.types.includes('application/x-orca-terminal-handle')) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'copy';
-        col.classList.add('drag-over');
-      }
-    });
-    col.addEventListener('dragleave', e => {
-      if (col.contains(e.relatedTarget)) return;
-      col.classList.remove('drag-over');
-    });
-    col.addEventListener('drop', e => {
-      e.preventDefault();
-      col.classList.remove('drag-over');
-      const handle = e.dataTransfer.getData('application/x-orca-terminal-handle');
-      if (!handle) return;
-      assignPhase(handle, col.dataset.phase);
-      renderPhaseColumns();
-    });
-  });
-
-  // Button events for phase session cards
-  el.querySelectorAll('.ps-btn').forEach(btn => {
-    btn.addEventListener('click', async e => {
-      e.stopPropagation();
-      const { action, handle, phase } = btn.dataset;
-      if (action === 'remove') {
-        unassignPhase(handle, phase);
-        renderPhaseColumns();
-      } else if (action === 'switch') {
-        window.orca.terminalSwitch(handle);
-      } else if (action === 'send') {
-        const prompt = window.prompt('프롬프트 입력:');
-        if (prompt && prompt.trim()) {
-          await window.orca.orchSendToTerminal(handle, prompt.trim());
-        }
-      }
-    });
-  });
-}
-
-// ── Task lanes ──
-async function loadOrchTasks() {
-  try {
-    const raw = await window.orca.orchTasks(selectedRunId || undefined);
-    orchTasks = raw?.result?.tasks || [];
-    renderOrchTaskLanes();
-  } catch { orchTasks = []; renderOrchTaskLanes(); }
-}
-
-function detectPhase(spec) {
-  if (!spec) return null;
-  for (const p of PHASES) {
-    if (spec.startsWith(p.tag)) return p.id;
-  }
-  return null;
-}
-
-function stripPhaseTag(spec) {
-  if (!spec) return '';
-  for (const p of PHASES) {
-    if (spec.startsWith(p.tag)) return spec.slice(p.tag.length).trim();
-  }
-  return spec;
-}
-
-function renderOrchTaskLanes() {
-  const el = $('orch-task-lanes');
-  if (!orchTasks.length) {
-    el.innerHTML = '<div class="empty" style="height:60px"><span class="empty-icon" style="font-size:22px">📋</span><span class="empty-text">태스크가 없습니다</span></div>';
-    return;
-  }
-
-  const byPhase = new Map();
-  const untagged = [];
-  for (const p of PHASES) byPhase.set(p.id, []);
-
-  for (const t of orchTasks) {
-    const phase = detectPhase(t.spec || t.task_title);
-    if (phase && byPhase.has(phase)) byPhase.get(phase).push(t);
-    else untagged.push(t);
-  }
-
-  let html = '';
-  for (const p of PHASES) {
-    const tasks = byPhase.get(p.id);
-    html += `<div class="task-lane">`
-      + `<div class="task-lane-header"><span class="phase-dot" style="background:${p.color}"></span>`
-      + `${esc(p.label)} <span style="color:var(--text3);font-weight:400">${tasks.length}</span></div>`
-      + `<div class="task-lane-body">`;
-    for (const t of tasks) {
-      const title = stripPhaseTag(t.spec || t.task_title || t.id);
-      const st = (t.status || 'pending').toLowerCase();
-      html += `<div class="task-card" draggable="true" data-task-id="${esc(t.id)}">`
-        + `<div class="task-title">${esc(trunc(title, 60))}</div>`
-        + `<div class="task-status ${st}">${esc(st)}</div>`
-        + `</div>`;
-    }
-    if (!tasks.length) html += '<div class="orch-empty">비어있음</div>';
-    html += '</div></div>';
-  }
-
-  if (untagged.length) {
-    html += `<div class="task-lane">`
-      + `<div class="task-lane-header"><span class="phase-dot" style="background:var(--text3)"></span>`
-      + `미분류 <span style="color:var(--text3);font-weight:400">${untagged.length}</span></div>`
-      + `<div class="task-lane-body">`;
-    for (const t of untagged) {
-      const title = t.spec || t.task_title || t.id;
-      const st = (t.status || 'pending').toLowerCase();
-      html += `<div class="task-card" draggable="true" data-task-id="${esc(t.id)}">`
-        + `<div class="task-title">${esc(trunc(title, 60))}</div>`
-        + `<div class="task-status ${st}">${esc(st)}</div>`
-        + `</div>`;
-    }
-    html += '</div></div>';
-  }
-
-  // Worker drop zone at the end for task→terminal dispatch
-  html += `<div class="task-lane" style="min-width:160px">`
-    + `<div class="task-lane-header" style="color:var(--accent)">↓ 배정 영역</div>`
-    + `<div class="task-lane-body" id="orch-worker-zones">`;
-  for (const t of orchTerminals) {
-    const name = lastPathSeg(t.worktreePath || t.worktree || '') || t.handle;
-    html += `<div class="worker-drop-zone" data-handle="${esc(t.handle)}">`
-      + `${esc(name)}</div>`;
-  }
-  if (!orchTerminals.length) html += '<div class="orch-empty">터미널 없음</div>';
-  html += '</div></div>';
-
-  el.innerHTML = html;
-
-  // Drag events for task cards
-  el.querySelectorAll('.task-card[draggable]').forEach(card => {
-    card.addEventListener('dragstart', e => {
-      e.dataTransfer.setData('application/x-orca-task-id', card.dataset.taskId);
-      e.dataTransfer.effectAllowed = 'move';
-      card.classList.add('dragging');
-    });
-    card.addEventListener('dragend', () => card.classList.remove('dragging'));
-  });
-
-  // Drop zones for worker assignment
-  el.querySelectorAll('.worker-drop-zone').forEach(zone => {
-    zone.addEventListener('dragover', e => {
-      if (e.dataTransfer.types.includes('application/x-orca-task-id')) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        zone.classList.add('drag-over');
-      }
-    });
-    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-    zone.addEventListener('drop', async e => {
-      e.preventDefault();
-      zone.classList.remove('drag-over');
-      const taskId = e.dataTransfer.getData('application/x-orca-task-id');
-      if (!taskId) return;
-      zone.textContent = '배정 중...';
-      zone.classList.add('dispatching');
-      try {
-        await window.orca.orchDispatch(taskId, zone.dataset.handle);
-        zone.textContent = '배정 완료 ✓';
-        setTimeout(() => loadOrchTasks(), 1500);
-      } catch (err) {
-        zone.textContent = '오류: ' + (err.message || '실패');
-        zone.classList.remove('dispatching');
-        zone.classList.add('err');
-      }
-    });
-  });
-}
-
-// ── New task form ──
-$('orch-new-task-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const phaseId = $('orch-new-task-phase').value;
-  const specInput = $('orch-new-task-spec');
-  const spec = specInput.value.trim();
-  if (!spec) return;
-  const phase = PHASES.find(p => p.id === phaseId);
-  const taggedSpec = phase ? `${phase.tag}${spec}` : spec;
-  const btn = e.target.querySelector('button');
-  btn.disabled = true;
-  btn.textContent = '추가 중...';
-  try {
-    await window.orca.orchTaskCreate(taggedSpec, selectedRunId || undefined);
-    specInput.value = '';
-    await loadOrchTasks();
-  } catch (err) {
-    console.error('Task create failed:', err);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '추가';
-  }
-});
-
 // ── Shared: extract terminal tail lines from orca response ──
 function extractTail(res) {
   const tail = res?.result?.terminal?.tail;
@@ -5648,7 +3803,7 @@ function detectTerminalStatus(lines) {
   return 'offline';
 }
 
-// ── Debate Room ──
+// ── Meeting room state (read by the pixel office meeting room; set by the office demo) ──
 const debateState = {
   running: false,
   groupA: [],
@@ -5657,473 +3812,9 @@ const debateState = {
   topic: '',
   mode: 'debate',
   maxRounds: 3,
-  log: [],
   round: 0,
   currentHandle: null,
 };
-
-function renderCollabTree() {
-  const el = $('collab-tree');
-  const mode = $('debate-mode').value;
-  const isMW = mode === 'master-worker';
-  const { master, groupA, groupB } = debateState;
-
-  if (!master && !groupA.length && !groupB.length) {
-    el.innerHTML = '<div class="collab-tree-empty">세션을 왼쪽에서 드래그하여 배치하면<br>계층 구조가 표시됩니다</div>';
-    return;
-  }
-
-  const nodeHtml = (handle, cls) => {
-    const name = resolveHandleName(handle);
-    const sid = [...handles.entries()].find(([, v]) => v === handle)?.[0];
-    const s = sessions.find(ss => ss.id === sid);
-    const dotColor = s ? (DEBATE_STATUS_COLORS[s.status] || 'var(--text3)') : 'var(--text3)';
-    return `<div class="collab-node ${cls}"><span class="dot" style="background:${dotColor}"></span>${esc(name)}</div>`;
-  };
-
-  const branchHtml = (handles, cls, label, labelCls) => {
-    let h = '';
-    h += `<div class="ct-branch">`;
-    h += `<div class="ct-vline ct-vline-short"></div>`;
-    h += `<div class="ct-group-label ${labelCls}">${label}</div>`;
-    h += `<div class="ct-node-stack">`;
-    for (const hd of handles) h += nodeHtml(hd, cls);
-    h += `</div></div>`;
-    return h;
-  };
-
-  let html = '<div class="collab-tree-root">';
-
-  if (isMW && master) {
-    html += nodeHtml(master, 'collab-node-master');
-    if (groupA.length || groupB.length) {
-      html += '<div class="ct-vline ct-vline-long"></div>';
-      html += '<div class="ct-hline"></div>';
-      html += '<div class="ct-branches">';
-      if (groupA.length) html += branchHtml(groupA, 'collab-node-worker-a', 'Group A', 'ct-group-label-a');
-      if (groupB.length) html += branchHtml(groupB, 'collab-node-worker-b', 'Group B', 'ct-group-label-b');
-      html += '</div>';
-      html += '<div class="ct-flow-badge"><span class="arrow">↑</span> 워커 간 토론 후 결과를 마스터에게 전달</div>';
-    }
-  } else {
-    if (groupA.length || groupB.length) {
-      html += '<div class="ct-branches" style="align-items:center">';
-      if (groupA.length) {
-        html += `<div class="ct-branch">`;
-        html += `<div class="ct-group-label ct-group-label-a">Group A</div>`;
-        html += `<div class="ct-node-stack">`;
-        for (const h of groupA) html += nodeHtml(h, 'collab-node-worker-a');
-        html += `</div></div>`;
-      }
-      html += '<div class="ct-relay-arrow">⇄</div>';
-      if (groupB.length) {
-        html += `<div class="ct-branch">`;
-        html += `<div class="ct-group-label ct-group-label-b">Group B</div>`;
-        html += `<div class="ct-node-stack">`;
-        for (const h of groupB) html += nodeHtml(h, 'collab-node-worker-b');
-        html += `</div></div>`;
-      }
-      html += '</div>';
-      html += '<div class="ct-flow-badge"><span class="arrow">↔</span> A ↔ B 릴레이 토론</div>';
-    }
-  }
-
-  html += '</div>';
-  el.innerHTML = html;
-}
-
-$('debate-mode').addEventListener('change', () => {
-  const isMW = $('debate-mode').value === 'master-worker';
-  // master section always visible now
-  renderCollabTree();
-});
-
-const masterZoneEl = $('debate-zone-master');
-masterZoneEl.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; masterZoneEl.classList.add('drag-over'); });
-masterZoneEl.addEventListener('dragleave', () => masterZoneEl.classList.remove('drag-over'));
-masterZoneEl.addEventListener('drop', e => {
-  e.preventDefault();
-  masterZoneEl.classList.remove('drag-over');
-  const handle = e.dataTransfer.getData('text/plain');
-  if (!handle || isHandleAssigned(handle)) return;
-  if (debateState.master) {
-    const oldMaster = debateState.master;
-    debateState.master = null;
-    renderMasterZone();
-  }
-  debateState.master = handle;
-  renderMasterZone();
-  renderDebateSessionList();
-  renderCollabTree();
-});
-
-function renderMasterZone() {
-  const el = $('debate-zone-master');
-  if (!debateState.master) {
-    el.innerHTML = '<div class="debate-dropzone-empty">마스터 세션을 드롭</div>';
-    return;
-  }
-  const name = resolveHandleName(debateState.master);
-  const sid = [...handles.entries()].find(([, v]) => v === debateState.master)?.[0];
-  const s = sessions.find(ss => ss.id === sid);
-  const dotColor = s ? (DEBATE_STATUS_COLORS[s.status] || 'var(--text3)') : 'var(--text3)';
-  el.innerHTML = `<div class="debate-tag" data-handle="${esc(debateState.master)}">` +
-    `<span class="dot" style="background:${dotColor}"></span>👑 ${esc(name)}` +
-    `<span class="remove-tag" data-handle="${esc(debateState.master)}" data-zone="master">✕</span></div>`;
-  el.querySelector('.remove-tag')?.addEventListener('click', e => {
-    e.stopPropagation();
-    debateState.master = null;
-    renderMasterZone();
-    renderDebateSessionList();
-    renderCollabTree();
-  });
-}
-
-const DEBATE_STATUS_COLORS = { running: 'var(--accent)', waiting: 'var(--yellow)', done: 'var(--text3)', error: 'var(--red)' };
-
-function getDebateSessions() {
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  return sessions.filter(s => {
-    if (!handles.get(s.id)) return false;
-    if (s.status === 'running' || s.status === 'waiting') return true;
-    return s.time && s.time > cutoff;
-  }).sort((a, b) => {
-    const order = { running: 0, waiting: 1, done: 2, error: 3 };
-    const diff = (order[a.status] ?? 9) - (order[b.status] ?? 9);
-    return diff !== 0 ? diff : (b.time || 0) - (a.time || 0);
-  });
-}
-
-function resolveHandleName(handle) {
-  const sid = [...handles.entries()].find(([, v]) => v === handle)?.[0];
-  return sessions.find(s => s.id === sid)?.name || handle.slice(0, 12);
-}
-
-function isHandleAssigned(handle) {
-  return debateState.groupA.includes(handle) || debateState.groupB.includes(handle) || debateState.master === handle;
-}
-
-function renderDebateSessionList() {
-  const el = $('debate-session-list');
-  const list = getDebateSessions();
-  if (!list.length) {
-    el.innerHTML = '<span style="color:var(--text3);font-size:var(--fs-xs)">최근 세션이 없습니다</span>';
-    return;
-  }
-  let html = '';
-  for (const s of list) {
-    const handle = handles.get(s.id);
-    if (!handle || isHandleAssigned(handle)) continue;
-    const dotColor = DEBATE_STATUS_COLORS[s.status] || 'var(--text3)';
-    html += `<div class="debate-tag" draggable="true" data-handle="${esc(handle)}">` +
-      `<span class="dot" style="background:${dotColor}"></span>${esc(s.name)}</div>`;
-  }
-  el.innerHTML = html || '<span style="color:var(--text3);font-size:var(--fs-xs)">모든 세션이 배치되었습니다</span>';
-  el.querySelectorAll('.debate-tag[draggable]').forEach(tag => {
-    tag.addEventListener('dragstart', e => {
-      e.dataTransfer.setData('text/plain', tag.dataset.handle);
-      e.dataTransfer.effectAllowed = 'move';
-      tag.classList.add('dragging');
-    });
-    tag.addEventListener('dragend', () => tag.classList.remove('dragging'));
-  });
-}
-
-function renderZone(zoneId, group, color) {
-  const el = $(zoneId);
-  if (!group.length) {
-    el.innerHTML = '<div class="debate-dropzone-empty">여기에 드롭</div>';
-    return;
-  }
-  let html = '';
-  for (const handle of group) {
-    const name = resolveHandleName(handle);
-    const sid = [...handles.entries()].find(([, v]) => v === handle)?.[0];
-    const s = sessions.find(ss => ss.id === sid);
-    const dotColor = s ? (DEBATE_STATUS_COLORS[s.status] || 'var(--text3)') : 'var(--text3)';
-    html += `<div class="debate-tag" data-handle="${esc(handle)}">` +
-      `<span class="dot" style="background:${dotColor}"></span>${esc(name)}` +
-      `<span class="remove-tag" data-handle="${esc(handle)}" data-zone="${zoneId}">✕</span></div>`;
-  }
-  el.innerHTML = html;
-  el.querySelectorAll('.remove-tag').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const h = btn.dataset.handle;
-      const z = btn.dataset.zone;
-      if (z === 'debate-zone-a') debateState.groupA = debateState.groupA.filter(x => x !== h);
-      else debateState.groupB = debateState.groupB.filter(x => x !== h);
-      renderZone('debate-zone-a', debateState.groupA, 'var(--accent)');
-      renderZone('debate-zone-b', debateState.groupB, 'var(--green)');
-      renderDebateSessionList();
-      renderCollabTree();
-    });
-  });
-}
-
-['debate-zone-a', 'debate-zone-b'].forEach(zoneId => {
-  const el = $(zoneId);
-  el.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; el.classList.add('drag-over'); });
-  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
-  el.addEventListener('drop', e => {
-    e.preventDefault();
-    el.classList.remove('drag-over');
-    const handle = e.dataTransfer.getData('text/plain');
-    if (!handle || isHandleAssigned(handle)) return;
-    if (zoneId === 'debate-zone-a') debateState.groupA.push(handle);
-    else debateState.groupB.push(handle);
-    renderZone('debate-zone-a', debateState.groupA, 'var(--accent)');
-    renderZone('debate-zone-b', debateState.groupB, 'var(--green)');
-    renderDebateSessionList();
-    renderCollabTree();
-  });
-});
-
-function debateLog(sender, text, type = 'msg', group = null) {
-  debateState.log.push({ sender, text, type, group, time: Date.now() });
-  renderDebateLog();
-}
-
-function renderDebateLog() {
-  const el = $('debate-log');
-  let html = '';
-  for (const m of debateState.log) {
-    if (m.type === 'system') {
-      html += `<div class="debate-msg system">${esc(m.text)}</div>`;
-    } else {
-      const name = resolveHandleName(m.sender);
-      const cls = m.group === 'master' ? 'group-master' : m.group === 'a' ? 'group-a' : 'group-b';
-      const color = m.group === 'master' ? 'var(--yellow)' : m.group === 'a' ? 'var(--accent)' : 'var(--green)';
-      html += `<div class="debate-msg ${cls}"><span class="debate-sender" style="color:${color}">${esc(name)}</span>${esc(m.text)}</div>`;
-    }
-  }
-  el.innerHTML = html;
-  el.scrollTop = el.scrollHeight;
-}
-
-function debateStatus(text) {
-  $('debate-status').textContent = text;
-}
-
-function buildRelayPrompt(mode, topic, round, maxRounds, myName, peerNames, lastPeerMsg) {
-  const peersStr = peerNames.join(', ');
-  const modeLabel = mode === 'brainstorm' ? '브레인스톰' : mode === 'review' ? '코드리뷰' : '토론';
-  const header = `[${modeLabel} - 라운드 ${round}/${maxRounds}]\n다른 세션(${peersStr})과 "${topic}" 주제로 대화 중입니다.\n메시지를 중계해 드리겠습니다. 상대에게 전달할 답변만 작성해 주세요.\n\n`;
-
-  if (!lastPeerMsg) {
-    return `${header}첫 번째 발언자입니다. "${topic}"에 대해 현재 작업의 맥락에서 의견을 3~5문장으로 제시해 주세요.`;
-  }
-
-  const relay = `상대 세션(${lastPeerMsg.name})의 메시지:\n\"\"\"${lastPeerMsg.text}\"\"\"\n\n`;
-  if (mode === 'brainstorm') return `${header}${relay}위 의견을 참고하여 아이디어를 발전시키거나 새로운 제안을 3~5문장으로 해 주세요.`;
-  if (mode === 'review') return `${header}${relay}위 의견에 대해 코드리뷰 관점에서 3~5문장으로 답변하세요.`;
-  return `${header}${relay}위 의견에 대해 동의 또는 반론을 3~5문장으로 제시해 주세요.`;
-}
-
-async function sendAndCollect(handle, prompt, group) {
-  debateState.currentHandle = handle;
-  const name = resolveHandleName(handle);
-  const singleLinePrompt = prompt.replace(/\n+/g, ' ').trim();
-  console.log(`[debate] sending to ${name} (${handle}), length: ${singleLinePrompt.length}`);
-
-  try {
-    const sendRes = await window.orca.terminalSend(handle, singleLinePrompt, true, 15);
-    const stages = sendRes?.result?.send?.prompt?.stages || [];
-    console.log(`[debate] send stages:`, stages);
-    if (!sendRes?.result?.send?.accepted) {
-      debateLog(null, `${name}: 전송이 거부되었습니다`, 'system');
-      return null;
-    }
-    if (!stages.includes('turn_started')) {
-      debateLog(null, `${name}: 세션이 처리를 시작하지 않았습니다 (입력 대기 상태인지 확인하세요)`, 'system');
-      return null;
-    }
-  } catch (err) {
-    console.error(`[debate] send error:`, err);
-    debateLog(null, `${name}: 전송 실패 (${err.message})`, 'system');
-    return null;
-  }
-
-  debateStatus(`${name} 응답 대기 중...`);
-  try {
-    await window.orca.terminalWait(handle, 'tui-idle', 180000);
-    await new Promise(r => setTimeout(r, 800));
-  } catch (err) {
-    console.warn(`[debate] wait timeout/error:`, err);
-  }
-
-  if (!debateState.running) return null;
-
-  let cleaned = '';
-  try {
-    const screenRes = await window.orca.terminalRead(handle, true);
-    const lines = extractTail(screenRes);
-    console.log(`[debate] screen after: ${lines.length} lines`);
-    cleaned = extractLastResponse(lines);
-    console.log(`[debate] extracted response (${cleaned.length} chars):`, cleaned.slice(0, 300));
-  } catch (err) {
-    console.warn(`[debate] screen read failed:`, err);
-  }
-
-  if (cleaned.length > 1500) cleaned = cleaned.slice(0, 1500) + '...';
-  console.log(`[debate] final response (${cleaned.length} chars):`, cleaned.slice(0, 200));
-  debateLog(handle, cleaned || '(응답 없음)', 'msg', group);
-  debateState.currentHandle = null;
-  return { name, text: cleaned || '(응답 없음)' };
-}
-
-async function runDebate() {
-  const { groupA, groupB, topic, mode, maxRounds } = debateState;
-  debateState.log = [];
-
-  const namesA = groupA.map(h => resolveHandleName(h));
-  const namesB = groupB.map(h => resolveHandleName(h));
-  debateLog(null, `시작: [${namesA.join(', ')}] ↔ [${namesB.join(', ')}] | "${topic}" | ${maxRounds}라운드`, 'system');
-
-  let lastMsgFromA = null;
-  let lastMsgFromB = null;
-
-  for (let round = 1; round <= maxRounds; round++) {
-    debateState.round = round;
-    if (!debateState.running) break;
-    debateLog(null, `── 라운드 ${round}/${maxRounds} ──`, 'system');
-
-    for (const handle of groupA) {
-      if (!debateState.running) break;
-      const myName = resolveHandleName(handle);
-      debateStatus(`A: ${myName}에게 전달 중...`);
-      const prompt = buildRelayPrompt(mode, topic, round, maxRounds, myName, namesB, lastMsgFromB);
-      lastMsgFromA = await sendAndCollect(handle, prompt, 'a');
-    }
-    if (!debateState.running) break;
-
-    for (const handle of groupB) {
-      if (!debateState.running) break;
-      const myName = resolveHandleName(handle);
-      debateStatus(`B: ${myName}에게 전달 중...`);
-      const prompt = buildRelayPrompt(mode, topic, round, maxRounds, myName, namesA, lastMsgFromA);
-      lastMsgFromB = await sendAndCollect(handle, prompt, 'b');
-    }
-  }
-
-  debateLog(null, debateState.running ? '토론이 완료되었습니다.' : '토론이 중단되었습니다.', 'system');
-  debateStatus('');
-  debateState.running = false;
-  $('debate-start-btn').disabled = false;
-  $('debate-stop-btn').disabled = true;
-}
-
-async function runMasterWorker() {
-  const { groupA, groupB, master, topic, maxRounds } = debateState;
-  debateState.log = [];
-
-  const workers = [...groupA, ...groupB];
-  const workerNames = workers.map(h => resolveHandleName(h));
-  const masterName = resolveHandleName(master);
-  debateLog(null, `마스터-워커 시작: 마스터(${masterName}) | 워커(${workerNames.join(', ')}) | "${topic}" | ${maxRounds}라운드`, 'system');
-
-  const workerGroupA = groupA;
-  const workerGroupB = groupB;
-  const namesA = workerGroupA.map(h => resolveHandleName(h));
-  const namesB = workerGroupB.map(h => resolveHandleName(h));
-
-  let lastMsgFromA = null;
-  let lastMsgFromB = null;
-
-  for (let round = 1; round <= maxRounds; round++) {
-    debateState.round = round;
-    if (!debateState.running) break;
-    debateLog(null, `── 워커 토론 라운드 ${round}/${maxRounds} ──`, 'system');
-
-    for (const handle of workerGroupA) {
-      if (!debateState.running) break;
-      const myName = resolveHandleName(handle);
-      debateStatus(`워커 A: ${myName}에게 전달 중...`);
-      const prompt = buildRelayPrompt('debate', topic, round, maxRounds, myName, namesB, lastMsgFromB);
-      lastMsgFromA = await sendAndCollect(handle, prompt, 'a');
-    }
-    if (!debateState.running) break;
-
-    for (const handle of workerGroupB) {
-      if (!debateState.running) break;
-      const myName = resolveHandleName(handle);
-      debateStatus(`워커 B: ${myName}에게 전달 중...`);
-      const prompt = buildRelayPrompt('debate', topic, round, maxRounds, myName, namesA, lastMsgFromA);
-      lastMsgFromB = await sendAndCollect(handle, prompt, 'b');
-    }
-  }
-
-  if (!debateState.running) {
-    debateLog(null, '중단되었습니다.', 'system');
-    debateStatus('');
-    debateState.running = false;
-    $('debate-start-btn').disabled = false;
-    $('debate-stop-btn').disabled = true;
-    return;
-  }
-
-  debateLog(null, `── 워커 토론 완료, 마스터에게 결과 전달 ──`, 'system');
-  debateStatus(`마스터(${masterName})에게 최종 결과 전달 중...`);
-
-  const allMessages = debateState.log
-    .filter(m => m.type === 'msg')
-    .map(m => `[${m.group === 'a' ? 'A' : 'B'}] ${resolveHandleName(m.sender)}: ${m.text}`);
-
-  let condensed = allMessages.join(' | ');
-  if (condensed.length > 3000) {
-    const lastA = allMessages.filter(m => m.startsWith('[A]')).slice(-1)[0] || '';
-    const lastB = allMessages.filter(m => m.startsWith('[B]')).slice(-1)[0] || '';
-    condensed = `[최종 A 의견] ${lastA.slice(4)} | [최종 B 의견] ${lastB.slice(4)}`;
-  }
-
-  const summaryPrompt = `워커들이 "${topic}" 주제로 ${maxRounds}라운드 토론했습니다. 참여: ${workerNames.join(', ')}. 토론 요약: ${condensed} --- 위 내용을 분석하여 1)핵심 합의 2)쟁점 3)최종 결론을 정리해 주세요.`;
-
-  console.log(`[debate] master prompt length: ${summaryPrompt.length}`);
-  debateLog(null, `마스터에게 전달 중 (프롬프트 ${summaryPrompt.length}자)...`, 'system');
-
-  const masterResult = await sendAndCollect(master, summaryPrompt, 'master');
-  if (masterResult) {
-    debateLog(null, `마스터(${masterName})의 최종 정리가 완료되었습니다.`, 'system');
-  } else {
-    debateLog(null, `마스터(${masterName})에게 전달하지 못했습니다. 마스터 세션이 입력 대기 상태(❯)인지 확인하세요.`, 'system');
-  }
-
-  debateLog(null, '마스터-워커 흐름이 완료되었습니다.', 'system');
-  debateStatus('');
-  debateState.running = false;
-  $('debate-start-btn').disabled = false;
-  $('debate-stop-btn').disabled = true;
-}
-
-$('debate-start-btn').addEventListener('click', () => {
-  const topic = $('debate-topic').value.trim();
-  if (!topic) { showInAppToast('주제를 입력하세요', 'error'); return; }
-  const mode = $('debate-mode').value;
-  if (mode === 'master-worker') {
-    if (!debateState.master) { showInAppToast('마스터 세션을 배치하세요', 'error'); return; }
-    const workers = [...debateState.groupA, ...debateState.groupB];
-    if (workers.length < 2) { showInAppToast('워커 세션을 2개 이상 배치하세요 (A, B 그룹에 나눠서)', 'error'); return; }
-  } else {
-    if (!debateState.groupA.length || !debateState.groupB.length) {
-      showInAppToast('A 그룹과 B 그룹에 각각 세션을 배치하세요', 'error');
-      return;
-    }
-  }
-  debateState.topic = topic;
-  debateState.mode = mode;
-  debateState.maxRounds = parseInt($('debate-rounds').value, 10);
-  debateState.running = true;
-  $('debate-start-btn').disabled = true;
-  $('debate-stop-btn').disabled = false;
-  if (mode === 'master-worker') runMasterWorker();
-  else runDebate();
-});
-
-$('debate-stop-btn').addEventListener('click', () => {
-  debateState.running = false;
-  debateStatus('중단 중...');
-  $('debate-stop-btn').disabled = true;
-});
 
 // ══════════════════════════════════════════
 // CHAT PANEL (Dashboard)
@@ -6218,14 +3909,14 @@ async function sendChatMessage() {
     const sendRes = await window.orca.terminalSend(chatHandle, text, true, 15);
     const stages = sendRes?.result?.send?.prompt?.stages || [];
     if (!sendRes?.result?.send?.accepted) {
-      el.innerHTML += `<div class="chat-line-status" style="color:var(--red)">전송이 거부되었습니다</div>`;
+      el.innerHTML += `<div class="chat-line-status" style="color:var(--red-text)">전송이 거부되었습니다</div>`;
       chatSending = false;
       input.disabled = false;
       $('chat-send').disabled = false;
       return;
     }
     if (!stages.includes('turn_started')) {
-      el.innerHTML += `<div class="chat-line-status" style="color:var(--yellow)">세션이 입력 대기 상태가 아닙니다</div>`;
+      el.innerHTML += `<div class="chat-line-status" style="color:var(--yellow-text)">세션이 입력 대기 상태가 아닙니다</div>`;
       chatSending = false;
       input.disabled = false;
       $('chat-send').disabled = false;
@@ -6240,7 +3931,7 @@ async function sendChatMessage() {
 
     await refreshChatScreen(chatHandle);
   } catch (err) {
-    el.innerHTML += `<div class="chat-line-status" style="color:var(--red)">오류: ${esc(err.message)}</div>`;
+    el.innerHTML += `<div class="chat-line-status" style="color:var(--red-text)">오류: ${esc(err.message)}</div>`;
     el.scrollTop = el.scrollHeight;
   } finally {
     chatSending = false;
@@ -7495,7 +5186,7 @@ function peerTipHtml(ps) {
   const cf = peerConflicts.filter(c => c.owner === ps.owner && c.peer === s.id);
   return `<b>@${esc(ps.owner)} · ${esc(s.name)}</b><span>${esc(s.repo || '')}${s.branch ? ' · ' + esc(s.branch) : ''} · ${esc(stLabel)}${wait}${s.tool ? ' · ' + esc(s.tool) : ''}${ps.off ? ' · ' + esc(t('연결 끊김')) : ''}</span>`
     + (s.now ? `<span style="display:block;max-width:240px;white-space:normal;color:var(--text2);margin-top:2px">${esc(s.now)}</span>` : '')
-    + cf.map(c => `<span style="display:block;color:${c.level === 'file' ? 'var(--red)' : '#F2C037'};margin-top:2px">⚠ ${esc(t(c.level === 'file' ? '내 세션과 같은 파일' : '내 세션과 같은 브랜치'))} · ${esc(c.mineName)}${c.files.length ? ': ' + esc(c.files.join(', ')) : ''}</span>`).join('');
+    + cf.map(c => `<span style="display:block;color:${c.level === 'file' ? 'var(--red-text)' : '#F2C037'};margin-top:2px">⚠ ${esc(t(c.level === 'file' ? '내 세션과 같은 파일' : '내 세션과 같은 브랜치'))} · ${esc(c.mineName)}${c.files.length ? ': ' + esc(c.files.join(', ')) : ''}</span>`).join('');
 }
 function officePeerPopClose() { const el = $('office-peer-pop'); if (el) el.remove(); }
 function officePeerPopOpen(ps, e) {
@@ -8196,7 +5887,6 @@ function teamsSave() {
 teamsLoad();
 
 function teamOf(sid) { for (const t of Object.values(teamState.teams)) if (t.pm === sid || t.members[sid]) return t; return null; }
-function teamRoleOf(sid) { const t = teamOf(sid); return t ? (t.pm === sid ? 'pm' : t.members[sid]) : null; }
 function teamUnpin(sid) {
   const t = teamOf(sid); if (!t) return;
   if (t.pm === sid) t.pm = null; else delete t.members[sid];
@@ -8699,7 +6389,7 @@ function teamReviewPlan(team, plan, auto = false) {
   if (plan.done) { teamLog(team, 'done', '팀 작업 완료: ' + (plan.note || '')); window.orca.notify(t('팀 작업 완료'), `${officeChars.get(team.pm)?.sess?.name || 'PM'}: ${plan.note || ''}`); return; }
   if (auto || team.autoDispatch) { teamDispatch(team, items); return; }
   const m = teamModal(`<h3>PM 분배안 승인</h3>${plan.note ? `<p>${esc(plan.note)}</p>` : ''}
-    ${items.map((it, i) => `<div class="assign"><label><input type="checkbox" data-i="${i}" ${it.sid ? 'checked' : 'disabled'}> <b>${esc(it.to)}</b>${it.sid ? '' : ' <span style="color:var(--red)">(팀원 매칭 실패)</span>'}</label><textarea data-task="${i}">${esc(it.task)}</textarea><div style="color:var(--text3);margin-top:3px">완료 조건: ${esc(it.done_when)}</div></div>`).join('')}
+    ${items.map((it, i) => `<div class="assign"><label><input type="checkbox" data-i="${i}" ${it.sid ? 'checked' : 'disabled'}> <b>${esc(it.to)}</b>${it.sid ? '' : ' <span style="color:var(--red-text)">(팀원 매칭 실패)</span>'}</label><textarea data-task="${i}">${esc(it.task)}</textarea><div style="color:var(--text3);margin-top:3px">완료 조건: ${esc(it.done_when)}</div></div>`).join('')}
     <div class="row"><button id="team-cancel">취소</button><span style="margin-left:auto"></span><button class="primary" id="team-send">선택한 팀원에게 전달</button></div>`);
   m.querySelector('#team-cancel').onclick = closeTeamModal;
   m.querySelector('#team-send').onclick = () => {
@@ -8798,150 +6488,6 @@ function teamMenuItems(sess) {
 window.addEventListener('resize', () => { if (currentPage === 'office' && officeReady) officeFrame(performance.now()); });
 
 // ══════════════════════════════════════════
-// PAGE 4: CLIPBOARD HISTORY
-// ══════════════════════════════════════════
-let clipHistory = [];
-try { const saved = localStorage.getItem('orca-clip-history'); if (saved) clipHistory = JSON.parse(saved); } catch {}
-
-function saveClipHistory() {
-  try { localStorage.setItem('orca-clip-history', JSON.stringify(clipHistory.slice(0, 20))); } catch {}
-}
-
-async function loadClipboardHistory() {
-  try {
-    const current = await window.orca.clipboardRead();
-    if (current && (!clipHistory.length || clipHistory[0].text !== current)) {
-      clipHistory.unshift({ text: current, time: Date.now() });
-      if (clipHistory.length > 20) clipHistory.pop();
-      saveClipHistory();
-    }
-  } catch {}
-  renderClipboard();
-}
-
-function renderClipboard() {
-  const el = $('clip-list');
-  if (!clipHistory.length) {
-    el.innerHTML = '<div class="empty"><span class="empty-icon">📋</span><span class="empty-text">클립보드 히스토리가 비어 있습니다</span></div>';
-    return;
-  }
-  let html = '';
-  for (const c of clipHistory) {
-    html += `<div class="clip-item" data-clip="${esc(c.text)}">
-      <div class="clip-text">${esc(trunc(c.text, 200))}</div>
-      <span class="clip-time">${timeAgo(c.time)}</span>
-    </div>`;
-  }
-  el.innerHTML = html;
-}
-
-$('clip-list').addEventListener('click', e => {
-  const item = e.target.closest('.clip-item');
-  if (!item) return;
-  const text = item.dataset.clip;
-  window.orca.clipboardWrite(text);
-  item.classList.add('active');
-  setTimeout(() => item.classList.remove('active'), 300);
-  showInAppToast('복사됨');
-});
-
-$('clip-clear-btn').addEventListener('click', () => {
-  clipHistory = [];
-  saveClipHistory();
-  renderClipboard();
-});
-
-setInterval(async () => {
-  if (currentPage !== 'clipboard') return;
-  try {
-    const current = await window.orca.clipboardRead();
-    if (current && (!clipHistory.length || clipHistory[0].text !== current)) {
-      clipHistory.unshift({ text: current, time: Date.now() });
-      if (clipHistory.length > 20) clipHistory.pop();
-      saveClipHistory();
-      renderClipboard();
-    }
-  } catch {}
-}, 1000);
-
-// ══════════════════════════════════════════
-// PAGE 5: PORT MONITOR
-// ══════════════════════════════════════════
-let portData = [];
-
-async function loadPorts() {
-  $('port-list').innerHTML = '<div class="empty"><span class="empty-icon">🔌</span><span class="empty-text">스캔 중...</span></div>';
-  try {
-    portData = await window.orca.scanPorts();
-    renderPorts();
-  } catch {
-    $('port-list').innerHTML = '<div class="empty"><span class="empty-icon">⚠️</span><span class="empty-text">포트 스캔에 실패했습니다</span></div>';
-  }
-}
-
-function renderPorts() {
-  const el = $('port-list');
-  if (!portData.length) {
-    el.innerHTML = '<div class="empty"><span class="empty-icon">✨</span><span class="empty-text">리스닝 중인 포트가 없습니다</span></div>';
-    return;
-  }
-  let html = '';
-  for (const p of portData) {
-    html += `<div class="port-item">
-      <span class="port-num">:${esc(String(p.port))}</span>
-      <div class="port-info">
-        <div class="port-name">${esc(p.name || 'unknown')}</div>
-        <div class="port-pid">PID ${esc(String(p.pid))}${p.user ? ' · ' + esc(p.user) : ''}</div>
-      </div>
-      <button class="port-kill" data-pid="${p.pid}" title="프로세스 종료">종료</button>
-    </div>`;
-  }
-  el.innerHTML = html;
-}
-
-$('port-refresh-btn').addEventListener('click', loadPorts);
-
-$('port-list').addEventListener('click', async e => {
-  const btn = e.target.closest('.port-kill');
-  if (!btn) return;
-  const pid = btn.dataset.pid;
-  if (confirm(`PID ${pid} 프로세스를 종료하시겠습니까?`)) {
-    try {
-      await window.orca.killProcess(Number(pid));
-      showInAppToast(`PID ${pid} 종료됨`);
-      setTimeout(loadPorts, 500);
-    } catch { showInAppToast(`PID ${pid} 종료 실패`, 'error'); }
-  }
-});
-
-// ══════════════════════════════════════════
-// PAGE 6: MEMO
-// ══════════════════════════════════════════
-const memoEditor = $('memo-editor');
-const memoStatus = $('memo-status');
-const memoCharCount = $('memo-char-count');
-let memoSaveTimer = null;
-
-try {
-  const saved = localStorage.getItem('orca-memo');
-  if (saved) memoEditor.value = saved;
-  memoCharCount.textContent = memoEditor.value.length + '자';
-} catch {}
-
-memoEditor.addEventListener('input', () => {
-  memoCharCount.textContent = memoEditor.value.length + '자';
-  memoStatus.textContent = '저장 중...';
-  memoStatus.classList.remove('saved');
-  clearTimeout(memoSaveTimer);
-  memoSaveTimer = setTimeout(() => {
-    try { localStorage.setItem('orca-memo', memoEditor.value); } catch {}
-    memoStatus.textContent = '저장됨';
-    memoStatus.classList.add('saved');
-    setTimeout(() => { memoStatus.textContent = ''; memoStatus.classList.remove('saved'); }, 1500);
-  }, 500);
-});
-
-// ══════════════════════════════════════════
 // PAGE 7: POMODORO TIMER
 // ══════════════════════════════════════════
 const POMO_DURATIONS = { work: 25 * 60, short: 5 * 60, long: 15 * 60 };
@@ -9028,16 +6574,6 @@ document.querySelectorAll('.pomo-mode-btn').forEach(btn => {
 });
 
 updatePomoDisplay();
-
-// ── Elapsed timer for running sessions (updates every 1s) ──
-function formatElapsed(ms) {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
-  return `${m}:${String(sec).padStart(2,'0')}`;
-}
 
 // ── Start polling ──
 fetchData();
@@ -10000,7 +7536,7 @@ function jiraListRender() {
   const rows = [...jiraIssues];
   for (const d of Object.values(jiraDispatch)) if ((d.state === 'sent' || d.state === 'report') && !rows.some(i => i.key === d.key)) rows.push({ key: d.key, summary: d.summary || '', status: '', priority: '', assignee: '', labels: [], description: '' });
   if (!rows.length) { el.innerHTML = `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text">${esc(jiraErr || t('표시할 티켓이 없습니다'))}</span></div>`; return; }
-  el.innerHTML = (jiraErr ? `<div class="jira-meta" style="color:var(--red);padding:4px 2px">${esc(jiraErr)}</div>` : '') + rows.map(i => jiraRowHtml(i, jiraOpen.has(i.key))).join('');
+  el.innerHTML = (jiraErr ? `<div class="jira-meta" style="color:var(--red-text);padding:4px 2px">${esc(jiraErr)}</div>` : '') + rows.map(i => jiraRowHtml(i, jiraOpen.has(i.key))).join('');
 }
 function jiraDraftWarn(draft) {
   const miss = AgentDeskJira.reportIssues(draft);
@@ -10043,7 +7579,7 @@ function jiraConnRender(msg) {
   const o = jiraOAuth || {}; if (jiraConnOpen == null && jiraOAuth) jiraConnOpen = !o.connected;
   const line = o.connected ? `${t('OAuth 연결됨')}: ${o.siteUrl || o.siteName || ''}` : t('OAuth 연결 안 됨');
   el.innerHTML = `<div class="jc-line"><span data-verbatim>${esc(line)}</span><button data-jc="toggle">${esc(t(jiraConnOpen ? '접기' : '연결 설정'))}</button></div>` + (!jiraConnOpen ? '' : `
-    ${o.encryption === false ? `<div class="jc-guide" style="color:var(--red)">${esc(t('이 시스템에서는 암호화 저장소를 쓸 수 없어 OAuth를 사용할 수 없습니다.'))}</div>` : ''}
+    ${o.encryption === false ? `<div class="jc-guide" style="color:var(--red-text)">${esc(t('이 시스템에서는 암호화 저장소를 쓸 수 없어 OAuth를 사용할 수 없습니다.'))}</div>` : ''}
     <div class="jc-guide">${esc(t('developer.atlassian.com/console/myapps → OAuth 2.0 integration 만들기 → Permissions: Jira API (read:jira-work, read:jira-user, write:jira-work) → Authorization callback URL'))} <b data-verbatim>${esc(o.redirectUri || 'http://localhost:47391/callback')}</b> ${esc(t('→ Settings에서 Client ID/Secret 복사'))}</div>
     <input type="text" id="jc-id" placeholder="Client ID" value="${esc(o.clientId || '')}" autocomplete="off" spellcheck="false">
     <input type="password" id="jc-secret" placeholder="${esc(o.hasSecret ? t('Client Secret 저장됨 — 바꿀 때만 입력') : 'Client Secret')}" autocomplete="off">

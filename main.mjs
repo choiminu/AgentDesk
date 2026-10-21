@@ -1,5 +1,5 @@
 import { app, BrowserWindow, clipboard, ipcMain, screen, Tray, Menu, nativeImage, Notification, shell } from "electron";
-import { execFile, exec as execCb } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join, delimiter as PATH_DELIM } from "node:path";
@@ -372,92 +372,7 @@ function listClaudeSessions(filters = {}) {
   return result.sort((a, b) => b.timeUpdated - a.timeUpdated);
 }
 
-function getClaudeSessionDetail(sessionId) {
-  let filePath = null, projectId = null;
-  try {
-    const dirs = readdirSync(CLAUDE_PROJECTS_DIR, { withFileTypes: true });
-    for (const dir of dirs) {
-      if (!dir.isDirectory() || filePath) continue;
-      const p = join(CLAUDE_PROJECTS_DIR, dir.name, sessionId + ".jsonl");
-      try { statSync(p); filePath = p; projectId = dir.name; } catch {}
-    }
-  } catch {}
-  if (!filePath) return null;
-
-  const summary = parseJsonlSummary(projectId, filePath);
-  const messages = [];
-  const toolPartsById = new Map();
-  const raw = readFileSync(filePath, "utf-8");
-  let start = 0;
-  while (start < raw.length) {
-    let end = raw.indexOf("\n", start);
-    if (end === -1) end = raw.length;
-    const line = raw.slice(start, end).trim();
-    start = end + 1;
-    if (!line) continue;
-    try {
-      const rec = JSON.parse(line);
-      if (rec.type !== "user" && rec.type !== "assistant") continue;
-      const msg = rec.message;
-      if (!msg) continue;
-      const parts = [];
-      const content = msg.content;
-      if (typeof content === "string") {
-        if (content.trim()) parts.push({ type: "text", text: content });
-      } else if (Array.isArray(content)) {
-        for (const b of content) {
-          if (!b || typeof b !== "object") continue;
-          if (b.type === "text" && String(b.text || "").trim()) parts.push({ type: "text", text: String(b.text) });
-          else if (b.type === "thinking") parts.push({ type: "reasoning", text: String(b.thinking || "") });
-          else if (b.type === "tool_use") {
-            const part = { type: "tool", callID: String(b.id || ""), tool: String(b.name || "tool"), state: { status: "running", input: b.input } };
-            toolPartsById.set(part.callID, part);
-            parts.push(part);
-          } else if (b.type === "tool_result") {
-            const target = toolPartsById.get(String(b.tool_use_id || ""));
-            const text = typeof b.content === "string" ? b.content : Array.isArray(b.content) ? b.content.map(x => x?.text || "").join("\n") : "";
-            if (target) {
-              target.state.status = b.is_error ? "error" : "completed";
-              target.state.output = text.length > 20000 ? text.slice(0, 20000) : text;
-            }
-          }
-        }
-      }
-      if (!parts.length) continue;
-      const ts = toEpochMs(rec.timestamp);
-      messages.push({ id: String(rec.uuid || `${rec.type}-${messages.length}`), role: String(msg.role || rec.type), agent: rec.entrypoint || null, modelId: msg.model || null, timeCreated: ts || null, parts });
-    } catch {}
-  }
-  return { ...summary, messages };
-}
-
 ipcMain.handle("orca:claude-sessions", (_e, filters) => listClaudeSessions(filters));
-ipcMain.handle("orca:claude-session-detail", (_e, id) => getClaudeSessionDetail(id));
-
-// ── Orchestration ──
-ipcMain.handle("orca:orch-runs", () => orca("orchestration", "run-list"));
-ipcMain.handle("orca:orch-tasks", async (_e, runId) => {
-  if (runId) return orca("orchestration", "task-list", "--run", runId);
-  try {
-    const runsRaw = await orca("orchestration", "run-list");
-    const runs = (runsRaw?.result?.runs || []).filter(r => !r.legacy);
-    const results = await Promise.all(runs.map(r => orca("orchestration", "task-list", "--run", r.id).catch(() => ({ result: { tasks: [] } }))));
-    return { result: { tasks: results.flatMap(r => r?.result?.tasks || []) } };
-  } catch { return { result: { tasks: [] } }; }
-});
-ipcMain.handle("orca:orch-workers", () => orca("orchestration", "worker-list"));
-
-ipcMain.handle("orca:orch-dispatch", (_e, taskId, handle) =>
-  orca("orchestration", "dispatch", "--task", taskId, "--to", handle)
-);
-ipcMain.handle("orca:orch-task-create", async (_e, spec, runId) => {
-  const args = ["orchestration", "task-create", "--spec", spec];
-  if (runId) args.push("--run", runId);
-  return orca(...args);
-});
-ipcMain.handle("orca:orch-send", (_e, handle, text) =>
-  orca("terminal", "send", "--terminal", handle, "--text", text, "--enter")
-);
 
 // ── tmux adapter: handles look like "tmux:%12" (pane id). Lets the widget read and drive Claude Code
 // sessions that run inside tmux when Orca is not installed (or a session is not an Orca terminal). ──
@@ -954,75 +869,12 @@ ipcMain.on("orca:resize-window", (_e, w, h, forceHeight) => {
   }, 16);
 });
 
-ipcMain.on("orca:done-notify", (_e, name) => {
-  new Notification({ title: "작업 완료", body: name }).show();
-});
 ipcMain.handle("orca:notify", (_e, title, body) => {
   try { new Notification({ title: String(title || ""), body: String(body || "") }).show(); return true; } catch { return false; }
 });
 
-// ── Clipboard ──
-ipcMain.handle("orca:clipboard-read", () => clipboard.readText());
+// ── Clipboard (copy only: session id, team board, Jira key/link) ──
 ipcMain.handle("orca:clipboard-write", (_e, text) => { clipboard.writeText(text); return true; });
-
-// ── Port Monitor ──
-const execAsync = promisify(execCb);
-let scannedPids = new Set();   // PIDs from the last port scan: the only ones orca:kill-process may signal
-ipcMain.handle("orca:scan-ports", async () => {
-  const ports = await scanPorts();
-  scannedPids = new Set(ports.map(p => p.pid).filter(Boolean));
-  return ports;
-});
-async function scanPorts() {
-  if (IS_WIN) return [];
-  if (IS_LINUX) {
-    try {
-      const { stdout } = await execAsync("ss -ltnpH 2>/dev/null || true", { timeout: 5000 });
-      const ports = []; const seen = new Set();
-      for (const line of stdout.split("\n").filter(Boolean)) {
-        const parts = line.split(/\s+/); const local = parts[3] || ""; const port = Number((local.match(/:(\d+)$/) || [])[1]);
-        if (!port) continue;
-        const pm = line.match(/users:\(\("([^"]+)",pid=(\d+)/); const name = pm ? pm[1] : "?", pid = pm ? pm[2] : "";
-        const key = `${port}-${pid}`; if (seen.has(key)) continue; seen.add(key);
-        ports.push({ port, pid: Number(pid) || 0, name, user: "" });
-      }
-      return ports.sort((a, b) => a.port - b.port);
-    } catch { return []; }
-  }
-  try {
-    const { stdout } = await execAsync("lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null || true", { timeout: 5000 });
-    const lines = stdout.split("\n").slice(1).filter(Boolean);
-    const ports = [];
-    const seen = new Set();
-    for (const line of lines) {
-      const parts = line.split(/\s+/);
-      if (parts.length < 9) continue;
-      const name = parts[0];
-      const pid = parts[1];
-      const user = parts[2];
-      const addrPort = parts[8];
-      const match = addrPort.match(/:(\d+)$/);
-      if (!match) continue;
-      const port = Number(match[1]);
-      const key = `${port}-${pid}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      ports.push({ port, pid: Number(pid), name, user });
-    }
-    ports.sort((a, b) => a.port - b.port);
-    return ports;
-  } catch { return []; }
-}
-
-ipcMain.handle("orca:kill-process", async (_e, pid) => {
-  // only a PID the port monitor itself listed (never this app, never an arbitrary number from the page)
-  if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid || !scannedPids.has(pid)) throw new Error("not a listed process");
-  try {
-    process.kill(pid, "SIGTERM");
-    return true;
-  } catch (err) { throw new Error(err.message); }
-});
-
 
 ipcMain.on("orca:set-opacity", (_e, val) => {
   if (!mainWindow) return;
@@ -1815,6 +1667,9 @@ ipcMain.handle("roca:team-invite-join", async (_e, code, opts) => {
     if (leaving) { teamPeerState.clear(); teamPendingHellos.clear(); teamHelloSent.clear(); }
     const r = addPeerToConfig(TEAM_CFG, inv.inviter); if (!r.ok) return r;
     teamReload(); if (!teamCfg) return { ok: false, error: teamStatus.error || "team.json" };
+    // joined (token + inviter saved): the page refreshes the Team tab. No `added` flag: the join dialog already toasts
+    // the result, and "@inviter joined the team" would name the wrong person.
+    toRenderer("roca:team-joined", { name: r.name, host: inv.inviter.host });
     const peer = { name: r.name, host: inv.inviter.host };
     if (!sameSubnet(peer.host)) return { ok: true, connected: false, name: r.name, error: "other network" };
     // this first connection is also what makes macOS ask for Local Network access

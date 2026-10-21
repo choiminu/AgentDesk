@@ -23,7 +23,7 @@ A pixel-art office for your AI coding agents. AgentDesk is a lightweight macOS d
 - **PM teams** — drag an agent onto the PM seat to form a team and drag others in as members. Give the PM a goal: it writes a team brief, proposes a task split, and after your approval each member receives the brief plus its task. Reports flow back to the PM automatically.
 - **Needs-input alerts** — notifications, toast, tray badge and an optional chime fire only when an agent is really waiting on you (permission prompt or a question), not on every finished turn.
 - **Chat panel** — click any character or card to read the agent's screen and send it a message without leaving the widget; double-click jumps to its Orca terminal.
-- **Utilities** — clipboard history, listening-port monitor with kill, quick memo, Pomodoro timer.
+- **Utilities** — Pomodoro timer.
 - **Works with or without Orca** — with Orca you get session discovery, chat and terminal control through the Orca CLI. Without Orca (any Mac with Claude Code), the widget discovers sessions from Claude Code hooks and transcripts; sessions running inside tmux can still be chatted with and directed. Both kinds of sessions show up side by side; nothing to configure.
 - **English and Korean UI** — English by default, switch in ⚙ Settings.
 
