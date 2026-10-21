@@ -1,5 +1,6 @@
 // Team sharing phase 3: per-session delegation ("remote input"). Pure helpers, testable without Electron or a network.
-//   createDelegationStore()  → the owner's in-memory list of (session, teammate) pairs, each with its own random grant.
+//   createDelegationStore()  → the owner's in-memory list of (session, teammate) pairs, each with its own random grant:
+//                              by the teammate's key id (kid, team/identity.mjs) in key mode, by instance id in v1.
 //                              Never written to disk: an app restart drops every delegation.
 //   validateRemoteText(text) → { text } (one line, ≤ REMOTE_TEXT_MAX) | { error }
 //   remoteMessage(from, t)   → "[원격 · will — 주인 확인 없이 파괴적 작업(…) 금지] t" — what is typed into the session
@@ -7,9 +8,11 @@
 //   createEventThrottle()    → rate / busy / blocked events folded to one per session and result a minute
 //   resolveDelegatedSession(sessions, localId) → the one session with exactly that local id, else null (fail closed)
 //   screenAllowsInput(tail)  → the Claude Code screen sits at an empty prompt (no choice / permission prompt, no turn)
-//   canDelegate(...)         → why a session may not be delegated to a teammate ("" when it may)
-//   autoRevokeReasons(...)   → which delegations end now and why (session gone, teammate removed / ambiguous /
-//                              identity mismatch / unreachable / my Local Network permission denied)
+//   canDelegate(...)         → why a session may not be delegated to a teammate ("" when it may); keyMode: a pinned
+//                              key whose last poll answer was signed by it is required, v1: the address rules
+//   autoRevokeReasons(...)   → which delegations end now and why (session gone, teammate removed; v1: ambiguous /
+//                              identity mismatch / unreachable / my Local Network permission denied; keyed: key
+//                              unverified / changed / unreachable for 10 minutes)
 //   remoteInterruptAllowed(h) → Esc is only sent where it cannot reach another app (tmux, Orca — not Terminal.app tabs)
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, renameSync, chmodSync, existsSync } from "node:fs";
@@ -19,6 +22,7 @@ import { isIPv4 } from "node:net";
 import "../core/mask.js";
 import "../core/team.js";
 import "../core/status.js";
+import { kidOf, KID_RE, KEY_TRUST } from "./identity.mjs";
 const { mask } = globalThis.AgentDeskMask;
 const { clean, publicSessionId } = globalThis.AgentDeskTeam;
 const { screenHasChoice, statusFromScreen } = globalThis.AgentDeskStatus;
@@ -96,38 +100,68 @@ export function hostIpv4(h) {
 }
 const sameIp = (a, b) => { const x = hostIpv4(a), y = hostIpv4(b); return !!x && x === y; };
 const prefix24 = h => { const ip = hostIpv4(h); return ip ? ip.split(".").slice(0, 3).join(".") : null; };
+// the teammate's pinned key id ("" when the entry has no key with a trust reason)
+const pinnedKid = p => (p && KEY_TRUST.has(p.keyTrust) && kidOf(p.pubkey)) || "";
 // owner-side check before a delegation is made. peer: the team.json entry; peers: all of them; state: its poll state;
-// session: the snapshot session (full local id)
-export function canDelegate({ peer, peers, state, session }) {
-  if (!peer || !peer.instanceId) return "unknown teammate";
-  if (!hostIpv4(peer.host)) return "teammate address is not an IP";
-  if (!state || !state.ok || state.mismatch || state.offnet) return "teammate not connected";
-  const others = (peers || []).filter(p => p !== peer && p.name !== peer.name);
-  if (others.some(p => sameIp(p.host, peer.host))) return "another teammate shares this address";
-  // an entry that cannot be pinned to one address next to the target (a host name, or no instance id on its /24)
-  if (others.some(p => !hostIpv4(p.host) || (!p.instanceId && prefix24(p.host) === prefix24(peer.host)))) return "an unidentified teammate is on the same network";
+// session: the snapshot session (full local id).
+// keyMode (this PC runs with an Ed25519 identity): the teammate must have a pinned key and its last answer must have
+// been signed by it (state.keyOk); an address shared with another teammate does not matter. Without keyMode (v1, as
+// before 0.2.2): the teammate is identified by its address, so a shared or unidentifiable address next to it refuses.
+export function canDelegate({ peer, peers, state, session, keyMode = false }) {
+  if (keyMode) {
+    if (!peer) return "unknown teammate";
+    if (!pinnedKid(peer)) return "teammate key not confirmed";
+    if (!state || !state.ok || state.mismatch || state.offnet) return "teammate not connected";
+    if (!state.keyOk) return "teammate key not verified";
+  } else {
+    if (!peer || !peer.instanceId) return "unknown teammate";
+    if (!hostIpv4(peer.host)) return "teammate address is not an IP";
+    if (!state || !state.ok || state.mismatch || state.offnet) return "teammate not connected";
+    const others = (peers || []).filter(p => p !== peer && p.name !== peer.name);
+    if (others.some(p => sameIp(p.host, peer.host))) return "another teammate shares this address";
+    // an entry that cannot be pinned to one address next to the target (a host name, or no instance id on its /24)
+    if (others.some(p => !hostIpv4(p.host) || (!p.instanceId && prefix24(p.host) === prefix24(peer.host)))) return "an unidentified teammate is on the same network";
+  }
   if (!session || session.ended) return "unknown session";
   if (session.agent !== "claude") return "Claude Code sessions only";
   if (!permissionOk(session)) return "permission checks off/unknown";
   if (!session.handle) return "no terminal";
   return "";
 }
+export const UNREACHABLE_REVOKE_MS = 10 * 60 * 1000;
 // which delegations must end now. ctx: { sessions (snapshot), peers (team.json), stateOf(name) → poll state, now,
-// localNetworkDenied }. Unreachable while macOS denies me Local Network access still ends it (fail closed: the
-// teammate's identity cannot be checked again while my own connections are blocked), with that as the reason.
+// localNetworkDenied }.
+// A v1 delegation (made without a key id): the teammate is found by instance id; a shared address ("ambiguous
+// teammate"), "identity mismatch", unreachable 3 times and 120 s ("local network denied" while macOS blocks my own
+// connections: the identity cannot be checked again) end it — exactly as before 0.2.2.
+// A delegation with a kid: the teammate is found by that key among the pinned keys. Poll state fields read here:
+//   keyState "changed" (a reply / hello signed by another key than the pinned one) → "key changed"
+//   keyState "mismatch" or mismatch (the reply did not match what was expected)     → "key unverified"
+//   offnet → "teammate on another network"; !ok for 3+ polls and no good answer for 10 minutes → "teammate unreachable"
+// A teammate entry whose key lost its trust reason (team.json edited by hand) → "key unverified".
 export function autoRevokeReasons(list, { sessions, peers, stateOf, now = Date.now(), localNetworkDenied = false }) {
   const out = [];
   for (const d of list || []) {
-    const peer = (peers || []).find(p => p.instanceId === d.instanceId);
+    const peer = d.kid ? (peers || []).find(p => p && p.pubkey && kidOf(p.pubkey) === d.kid) : (peers || []).find(p => p.instanceId === d.instanceId);
     let reason = "";
     if (d.expiresAt && now >= d.expiresAt) reason = "expired";
     else if (!peer) reason = "teammate removed";
-    else if ((peers || []).some(p => p !== peer && sameIp(p.host, peer.host))) reason = "ambiguous teammate";
+    else if (!d.kid) {
+      if ((peers || []).some(p => p !== peer && sameIp(p.host, peer.host))) reason = "ambiguous teammate";
+      else {
+        const st = stateOf ? stateOf(peer.name) : null;
+        if (st && st.mismatch) reason = "identity mismatch";
+        else if (st && st.offnet) reason = "teammate on another network";
+        else if (st && !st.ok && (st.fails || 0) >= 3 && (!st.lastOk || now - st.lastOk > 120000)) reason = localNetworkDenied || st.localNetDenied ? "local network denied" : "teammate unreachable";
+      }
+    }
+    else if (!pinnedKid(peer)) reason = "key unverified";
     else {
       const st = stateOf ? stateOf(peer.name) : null;
-      if (st && st.mismatch) reason = "identity mismatch";
+      if (st && st.keyState === "changed") reason = "key changed";
+      else if (st && (st.keyState === "mismatch" || st.mismatch)) reason = "key unverified";
       else if (st && st.offnet) reason = "teammate on another network";
-      else if (st && !st.ok && (st.fails || 0) >= 3 && (!st.lastOk || now - st.lastOk > 120000)) reason = localNetworkDenied || st.localNetDenied ? "local network denied" : "teammate unreachable";
+      else if (st && !st.ok && (st.fails || 0) >= 3 && (!st.lastOk || now - st.lastOk >= UNREACHABLE_REVOKE_MS)) reason = "teammate unreachable";
     }
     if (!reason && sessions) {
       const s = resolveDelegatedSession(sessions, d.localId);
@@ -154,22 +188,28 @@ export function createEventThrottle({ windowMs = 60000, now = Date.now } = {}) {
   };
 }
 
-// key: `${sessionId}|${instanceId}`. changedAt moves on every change, so the /v1/sessions answer (and its ETag) does too.
+// key: `${sessionId}|${kid}` (key mode: the teammate's pinned key id; instanceId is kept for display only) or, for a
+// delegation made without a kid (v1), `${sessionId}|${instanceId}`. The two never mix: forInstances / match(…, ids)
+// see only v1 delegations, forKey / match(…, kid) only keyed ones. changedAt moves on every change, so the
+// /v1/sessions answer (and its ETag) does too.
 export function createDelegationStore({ now = Date.now, ttlMs = REMOTE_TTL_MS } = {}) {
   const items = new Map();
   let changedAt = 0;
   const touch = () => { changedAt = Math.max(now(), changedAt + 1); };
   // localId (the full local session id) stays on this PC: it is in the owner's own views, never in what a teammate gets
-  const pub = d => ({ sessionId: d.sessionId, localId: d.localId, instanceId: d.instanceId, peerName: d.peerName, name: d.name, repo: d.repo, branch: d.branch, at: d.at, expiresAt: d.expiresAt });
+  const pub = d => ({ sessionId: d.sessionId, localId: d.localId, ...(d.kid ? { kid: d.kid } : {}), instanceId: d.instanceId, peerName: d.peerName, name: d.name, repo: d.repo, branch: d.branch, at: d.at, expiresAt: d.expiresAt });
+  // extend / remove name the teammate by kid (key mode) or instance id (v1)
+  const who = (d, id) => d.kid ? d.kid === id : d.instanceId === id;
   const live = d => !d.expiresAt || now() < d.expiresAt;
   return {
     // returns the new (or existing) delegation; the grant stays inside this store and the signed answer to that teammate
-    add({ localId, instanceId, peerName, name = "", repo = "", branch = "" }) {
-      const lid = String(localId || ""), iid = String(instanceId || "");
-      if (!lid || !iid) throw new Error("session and teammate are required");
-      const sid = publicSessionId(lid), key = `${sid}|${iid}`;
+    add({ localId, kid, instanceId, peerName, name = "", repo = "", branch = "" }) {
+      const lid = String(localId || ""), k = kid === undefined ? "" : String(kid || ""), iid = String(instanceId || "");
+      if (kid !== undefined && !KID_RE.test(k)) throw new Error("session and teammate key are required");
+      if (!lid || (!k && !iid)) throw new Error("session and teammate are required");
+      const sid = publicSessionId(lid), key = k ? `${sid}|k:${k}` : `${sid}|${iid}`;
       if (items.has(key)) return pub(items.get(key));
-      const d = { sessionId: sid, localId: lid, instanceId: iid, peerName: clean(peerName, 40), name: clean(name, 120), repo: clean(repo, 120), branch: clean(branch, 120), grant: randomBytes(24).toString("hex"), at: now(), expiresAt: now() + ttlMs };
+      const d = { sessionId: sid, localId: lid, ...(k ? { kid: k } : {}), instanceId: iid, peerName: clean(peerName, 40), name: clean(name, 120), repo: clean(repo, 120), branch: clean(branch, 120), grant: randomBytes(24).toString("hex"), at: now(), expiresAt: now() + ttlMs };
       items.set(key, d); touch();
       return pub(d);
     },
@@ -181,27 +221,34 @@ export function createDelegationStore({ now = Date.now, ttlMs = REMOTE_TTL_MS } 
       return out;
     },
     // owner only (IPC from the owner's page): another ttl from now
-    extend(localId, instanceId) {
-      const d = [...items.values()].find(x => x.localId === localId && x.instanceId === instanceId);
+    extend(localId, id) {
+      const d = [...items.values()].find(x => x.localId === localId && who(x, id));
       if (!d) return null;
       d.expiresAt = now() + ttlMs;
       return pub(d);
     },
-    remove(localId, instanceId) { return this.removeWhere(d => d.localId === localId && (!instanceId || d.instanceId === instanceId)); },
+    remove(localId, id) { return this.removeWhere(d => d.localId === localId && (!id || who(d, id))); },
     clear() { return this.removeWhere(() => true); },
     list() { return [...items.values()].map(pub); },
     isDelegated(sessionId) { for (const d of items.values()) if (d.sessionId === sessionId) return true; return false; },
-    // what goes into the signed /v1/sessions answer for the teammate(s) registered at the caller's address
+    // v1: what goes into the signed /v1/sessions answer for the teammate(s) registered at the caller's address
     forInstances(ids) {
       const set = new Set((ids || []).filter(Boolean));
-      return [...items.values()].filter(d => set.has(d.instanceId) && live(d)).map(d => ({ sessionId: d.sessionId, grant: d.grant, name: d.name, repo: d.repo, branch: d.branch }));
+      return [...items.values()].filter(d => !d.kid && set.has(d.instanceId) && live(d)).map(d => ({ sessionId: d.sessionId, grant: d.grant, name: d.name, repo: d.repo, branch: d.branch }));
     },
-    // the delegation this grant opens, if it belongs to this session and to a teammate at the caller's address
-    match(sessionId, grant, ids) {
+    // key mode: what goes into the signed /v1/sessions answer for the teammate whose pinned key signed the request
+    forKey(kid) {
+      if (!kid) return [];
+      return [...items.values()].filter(d => d.kid === kid && live(d)).map(d => ({ sessionId: d.sessionId, grant: d.grant, name: d.name, repo: d.repo, branch: d.branch }));
+    },
+    // the delegation this grant opens, if it belongs to this session and to the caller: `who` = the kid whose key signed
+    // the request (key mode), or the instance ids registered at the caller's address (v1, an array)
+    match(sessionId, grant, who) {
       if (typeof grant !== "string" || !GRANT_RE.test(grant)) return null;
-      const set = new Set((ids || []).filter(Boolean));
+      const ids = Array.isArray(who) ? new Set(who.filter(Boolean)) : null;
+      if (!ids && !who) return null;
       let hit = null;
-      for (const d of items.values()) if (d.sessionId === sessionId && set.has(d.instanceId) && live(d) && safeEq(d.grant, grant)) hit = d;
+      for (const d of items.values()) if (d.sessionId === sessionId && (ids ? !d.kid && ids.has(d.instanceId) : d.kid === who) && live(d) && safeEq(d.grant, grant)) hit = d;
       return hit ? { ...pub(hit) } : null;
     },
     get changedAt() { return changedAt; },

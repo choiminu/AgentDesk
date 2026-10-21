@@ -18,6 +18,9 @@ test('invite code round-trips; damaged or foreign codes are refused', () => {
   assert.ok(code.startsWith(INVITE_PREFIX)); assert.ok(!code.includes(token), 'the token is encoded, not plain');
   assert.deepEqual(decodeInvite(`  ${code}\n`), { token, inviter: { name: 'neo', host: '192.168.10.120:7331', instanceId: ID.neo } });
   assert.equal(decodeInvite(encodeInvite({ token, inviter: { name: 'neo<b>', host: '1.2.3.4:7331', instanceId: 'not-a-uuid' } })).inviter.instanceId, '');
+  // 0.2.2: the inviter's public key (and a join ticket) ride along under the same prefix (test/team-identity.test.mjs)
+  const pub = 'A'.repeat(43);
+  assert.deepEqual(decodeInvite(encodeInvite({ token, inviter: { name: 'neo', host: '1.2.3.4:7331', pubkey: pub }, ticket: 'B'.repeat(22) })), { token, inviter: { name: 'neo', host: '1.2.3.4:7331', instanceId: '', pubkey: pub }, ticket: 'B'.repeat(22) });
   assert.equal(decodeInvite(encodeInvite({ token, inviter: { name: 'neo<b>', host: '1.2.3.4:7331' } })).inviter.name, 'neob');
   assert.match(decodeInvite('hello').error, /not an AgentDesk/);
   assert.match(decodeInvite(INVITE_PREFIX + '%%%').error, /damaged|token/);
