@@ -115,5 +115,7 @@ test('preload only needs what a sandboxed preload gets', () => {
   assert.match(main, /sandbox: true/);
   assert.match(main, /setWindowOpenHandler\(\(\) => \(\{ action: "deny" \}\)\)/);
   assert.match(main, /on\("will-navigate", \(e\) => e\.preventDefault\(\)\)/);
-  assert.match(main, /scannedPids\.has\(pid\)/, 'kill-process only for PIDs the port scan listed');
+  assert.doesNotMatch(main, /process\.kill\(/, 'no IPC to signal arbitrary PIDs');
+  assert.doesNotMatch(src, /killProcess|scanPorts|clipboardRead|kill-process|clipboard-read/, 'no IPC to signal arbitrary PIDs or read the clipboard');
+  assert.doesNotMatch(main, /clipboard\.readText/, 'the page cannot read the clipboard (clipboard history was removed)');
 });
