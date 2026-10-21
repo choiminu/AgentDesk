@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { startTeamServer, fetchPeer, signRequest, remoteInput, remoteInterrupt, remoteLast, sanitizeDelegations } from '../team/peer.mjs';
-import { createDelegationStore, createRemoteLog, createEventThrottle, validateRemoteText, remoteMessage, resolveDelegatedSession, screenAllowsInput, remoteInterruptAllowed, canDelegate, autoRevokeReasons, hostIpv4, permissionOk, REMOTE_TTL_MS, REMOTE_TEXT_MAX, REMOTE_RATE, REMOTE_LAST_MAX } from '../team/remote.mjs';
+import { startTeamServer, fetchPeer, signRequest, remoteInput, remoteInterrupt, remoteLast, remoteScreen, screenLines, lastText, sanitizeDelegations, sanitizeSessions } from '../team/peer.mjs';
+import { createDelegationStore, createRemoteLog, createEventThrottle, validateRemoteText, remoteMessage, resolveDelegatedSession, screenAllowsInput, remoteInterruptAllowed, canDelegate, autoRevokeReasons, hostIpv4, permissionOk, REMOTE_TTL_MS, REMOTE_TEXT_MAX, REMOTE_RATE, REMOTE_LAST_MAX, REMOTE_SCREEN_RATE, REMOTE_SCREEN_LINES, REMOTE_SCREEN_LINE_MAX, REMOTE_SCREEN_BYTES, REMOTE_SCREEN_LOG_MS, REMOTE_SCREEN_CACHE_MS } from '../team/remote.mjs';
 const P = id => globalThis.AgentDeskTeam.publicSessionId(id);
 
 const ID = { me: '11111111-1111-4111-8111-111111111111', will: '22222222-2222-4222-8222-222222222222', amy: '33333333-3333-4333-8333-333333333333', bob: '44444444-4444-4444-8444-444444444444' };
@@ -18,10 +18,10 @@ const REPO = '3a17eda1-0000-4000-8000-000000000000';
 const WT_PAY = `${REPO}::/Users/neo/project/payout`, WT_MAIN = `${REPO}::/Users/neo/project/main`;
 
 // will is registered at 127.0.0.1 (where the tests call from); amy elsewhere
-function setup({ sessions, slowInput, peers, inputResult, interruptResult } = {}) {
+function setup({ sessions, slowInput, slowScreen, peers, inputResult, interruptResult, screenResult } = {}) {
   const cfg = { name: 'neo', token: 't0k', instanceId: ID.me, peers: peers || [{ name: 'will', host: '127.0.0.1:7441', instanceId: ID.will }, { name: 'amy', host: '10.0.0.9:7331', instanceId: ID.amy }] };
   const store = createDelegationStore();
-  const calls = { input: [], interrupt: [], last: [], events: [] };
+  const calls = { input: [], interrupt: [], last: [], screen: [], events: [] };
   let clock = 1_000_000;
   const snap = { at: 10, sessions: sessions || [
     { id: WT_PAY, name: 'payout', status: 'waiting', handle: 'tmux:%1', lastMsg: 'short last', agent: 'claude', permissionMode: 'default' },
@@ -33,6 +33,7 @@ function setup({ sessions, slowInput, peers, inputResult, interruptResult } = {}
     input: async (ctx) => { if (inputResult) return inputResult; calls.input.push(ctx); if (slowInput) await slowInput; return { ok: true, accepted: true }; },
     interrupt: async (ctx) => { calls.interrupt.push(ctx); return interruptResult || { ok: true }; },
     last: async (ctx) => { calls.last.push(ctx); return { text: ctx.session ? ctx.session.lastMsg : '', at: 5 }; },
+    screen: async (ctx) => { calls.screen.push(ctx); if (slowScreen) await slowScreen; return screenResult !== undefined ? screenResult : { lines: ctx.session.screen || ['⏺ done', '❯ '] }; },
     event: e => calls.events.push(e),
   };
   const server = startTeamServer(cfg, () => snap, { delegations: store, remote, now: () => clock });
@@ -263,6 +264,10 @@ test('autoRevokeReasons: expiry, session ended / bypass, teammate removed / shar
   assert.deepEqual(run({ stateOf: () => ({ ok: false, fails: 3, lastOk: now - 121000 }) }), ['teammate unreachable']);
   assert.deepEqual(run({ stateOf: () => ({ ok: false, fails: 3, lastOk: now - 60000 }) }), [], 'a short blip keeps it');
   assert.deepEqual(run({ stateOf: () => ({ ok: false, fails: 2, lastOk: now - 600000 }) }), [], 'fewer than 3 failures keeps it');
+  // my Local Network permission is off: still revoked (fail closed), with that as the reason
+  assert.deepEqual(run({ stateOf: () => ({ ok: false, fails: 3, lastOk: now - 121000 }), localNetworkDenied: true }), ['local network denied']);
+  assert.deepEqual(run({ stateOf: () => ({ ok: false, fails: 3, lastOk: now - 121000, localNetDenied: true }) }), ['local network denied']);
+  assert.deepEqual(run({ localNetworkDenied: true }), [], 'a reachable teammate is not revoked for it');
 });
 
 test('input: 20 a minute per session (429), interrupts count too; next minute works again', async () => {
@@ -408,4 +413,193 @@ test('server: bypass / unknown permission mode at input time → 409; same IP co
   } finally { s2.server.close(); }
   assert.equal(hostIpv4('010.0.0.5:7331'), '10.0.0.5'); assert.equal(hostIpv4('x.local:1'), null); assert.equal(hostIpv4('300.1.1.1:1'), null);
   assert.equal(permissionOk({ permissionMode: 'acceptEdits' }), true); assert.equal(permissionOk({}), false); assert.equal(permissionOk(null), false);
+});
+
+test('screen: signed, delegated callers only; masked, no ANSI / control characters, capped; fail closed when unreadable', async () => {
+  const screen = ['\u001b[31m⏺ deploying\u001b[0m', 'token xoxb-1234567890-abcdefghij here', 'mail neo@eximbay.com\u0007', '\u001b]0;title\u0007❯ '];
+  const { server, calls, grant, tick } = setup({ sessions: [
+    { id: WT_PAY, name: 'payout', status: 'waiting', handle: 'tmux:%1', agent: 'claude', permissionMode: 'default', screen },
+    { id: 'wt3', name: 'ask', status: 'waiting', needsInput: true, handle: 'tmux:%3', screen: ['Do you want to proceed?', '❯ 1. Yes'] },
+  ] });
+  const host = await listen(server);
+  const g = grant(WT_PAY), pid = P(WT_PAY), path = `/v1/sessions/${pid}/screen`;
+  const amy = grant(WT_PAY, ID.amy, 'amy');
+  try {
+    assert.equal((await fetch(`http://${host}${path}`, { method: 'POST', body: JSON.stringify({ grant: g }) })).status, 401, 'unsigned');
+    assert.equal((await raw(host, 'bad', 'POST', path, JSON.stringify({ grant: g }))).status, 401, 'wrong team token');
+    assert.equal((await raw(host, 't0k', 'POST', path, JSON.stringify({ grant: OTHER_GRANT }))).status, 403, 'not delegated');
+    assert.equal((await raw(host, 't0k', 'POST', path, JSON.stringify({ grant: amy }))).status, 403, 'another teammate\'s grant');
+    assert.equal((await raw(host, 't0k', 'POST', path, '{}')).status, 403, 'no grant');
+    assert.equal((await raw(host, 't0k', 'GET', `${path}?grant=${g}`)).status, 405, 'the grant never travels in a URL');
+    assert.equal(calls.screen.length, 0, 'nothing read for a refused caller');
+    const r = await remoteScreen({ name: 'neo', host }, 't0k', pid, g);
+    assert.equal(r.ok, true);
+    assert.deepEqual([r.status, r.needsInput, r.ended], ['waiting', false, false]);
+    assert.ok(r.at > 0);
+    assert.equal(r.lines.length, screen.length);
+    const all = r.lines.join('\n');
+    for (const leak of ['xoxb-', 'eximbay.com', '\u0007', '\u001b', '[31m', 'title']) assert.ok(!all.includes(leak), leak);
+    assert.equal(r.lines[0], '⏺ deploying');
+    assert.equal(r.lines.at(-1), '❯');
+    // one "viewed" entry per session and teammate per 10 minutes — polling does not flood the log
+    for (let i = 0; i < 3; i++) assert.equal((await raw(host, 't0k', 'POST', path, JSON.stringify({ grant: g }))).status, 200);
+    assert.deepEqual(calls.events.filter(e => e.kind === 'screen').map(e => [e.result, e.peer]), [['viewed', 'will']]);
+    tick(REMOTE_SCREEN_LOG_MS + 1);
+    assert.equal((await raw(host, 't0k', 'POST', path, JSON.stringify({ grant: g }))).status, 200);
+    assert.equal(calls.events.filter(e => e.kind === 'screen').length, 2);
+    // a permission prompt: the screen is shown, the status says the owner has to answer
+    const ask = await remoteScreen({ name: 'neo', host }, 't0k', P('wt3'), grant('wt3'));
+    assert.deepEqual([ask.ok, ask.needsInput], [true, true]);
+  } finally { server.close(); }
+});
+
+test('screen: unreadable screen or unplaceable session → 409 busy; revoke → 403', async () => {
+  const a = setup({ screenResult: null });
+  const host = await listen(a.server);
+  try {
+    const r = await remoteScreen({ name: 'neo', host }, 't0k', P(WT_PAY), a.grant(WT_PAY));
+    assert.deepEqual([r.ok, r.status, r.error], [false, 409, 'busy']);
+    const gone = a.grant('wt-gone');
+    assert.equal((await raw(host, 't0k', 'POST', `/v1/sessions/${P('wt-gone')}/screen`, JSON.stringify({ grant: gone }))).status, 409, 'session not in the snapshot');
+    const g = a.grant(WT_MAIN);
+    a.store.remove(WT_MAIN, ID.will);
+    assert.equal((await raw(host, 't0k', 'POST', `/v1/sessions/${P(WT_MAIN)}/screen`, JSON.stringify({ grant: g }))).status, 403, 'revoked');
+  } finally { a.server.close(); }
+});
+
+test('screen: its own rate budget (90/min) — reads never use up the 20/min input budget', async () => {
+  const { server, grant, tick, calls } = setup();
+  const host = await listen(server);
+  const g = grant(WT_PAY), pid = P(WT_PAY), path = `/v1/sessions/${pid}/screen`;
+  try {
+    for (let i = 0; i < REMOTE_SCREEN_RATE; i++) assert.equal((await raw(host, 't0k', 'POST', path, JSON.stringify({ grant: g }))).status, 200, `read ${i}`);
+    const before = calls.events.length;
+    assert.equal((await raw(host, 't0k', 'POST', path, JSON.stringify({ grant: g }))).status, 429);
+    assert.equal(calls.events.length, before, 'a refused read is not logged');
+    // the input budget is untouched: 20 inputs still go through
+    for (let i = 0; i < REMOTE_RATE; i++) assert.equal((await input(host, WT_PAY, g, `n${i}`)).status, 200, `input ${i}`);
+    assert.equal((await input(host, WT_PAY, g, 'one too many')).status, 429);
+    // and a used-up input budget does not stop reading the screen
+    tick(61000);
+    for (let i = 0; i < REMOTE_RATE; i++) await input(host, WT_PAY, g, `m${i}`);
+    assert.equal((await raw(host, 't0k', 'POST', path, JSON.stringify({ grant: g }))).status, 200);
+  } finally { server.close(); }
+});
+
+test('screenLines: last 200 lines, each ≤ 400 characters, ≤ 24 KB in all (newest kept), masked across the joined text', () => {
+  const many = Array.from({ length: 500 }, (_, i) => `line ${i}`);
+  const a = screenLines(many);
+  assert.equal(a.length, REMOTE_SCREEN_LINES); assert.equal(a.at(-1), 'line 499');
+  const wide = screenLines(['x'.repeat(5000)]);
+  assert.equal(wide[0].length, REMOTE_SCREEN_LINE_MAX);
+  const heavy = screenLines(Array.from({ length: 200 }, (_, i) => `${i} ` + '가'.repeat(300)));
+  const bytes = heavy.reduce((n, l) => n + Buffer.byteLength(l) + 1, 0);
+  assert.ok(bytes <= REMOTE_SCREEN_BYTES, `${bytes}`);
+  assert.ok(heavy.length < 200 && heavy.at(-1).startsWith('199 '), 'the newest lines are kept');
+  assert.deepEqual(screenLines('not an array'), []);
+  assert.deepEqual(screenLines(['a\r\nb']), ['a  b'], 'a line never splits into two');
+  const s = screenLines(['AKIAIOSFODNN7EXAMPLE', 'ghp_' + 'a'.repeat(36), 'password=hunter2hunter2']);
+  for (const leak of ['AKIAIOSFODNN7EXAMPLE', 'ghp_aaaa', 'hunter2']) assert.ok(!s.join('\n').includes(leak), leak);
+});
+
+test('screen text never reaches /v1/sessions: sanitizeSessions drops screen / tail fields', () => {
+  const out = sanitizeSessions([{ id: WT_PAY, name: 'payout', status: 'waiting', screen: ['secret screen'], tail: ['secret tail'], lines: ['secret lines'] }]);
+  const j = JSON.stringify(out);
+  for (const k of ['secret', '"screen"', '"tail"', '"lines"']) assert.ok(!j.includes(k), k);
+});
+
+test('screen: one read per session at a time — parallel requests share it, its result is reused for 1 s', async () => {
+  let release; const slowScreen = new Promise(r => { release = r; });
+  const { server, grant, tick, calls } = setup({ slowScreen });
+  const host = await listen(server);
+  const g = grant(WT_PAY), path = `/v1/sessions/${P(WT_PAY)}/screen`;
+  const read = () => raw(host, 't0k', 'POST', path, JSON.stringify({ grant: g }));
+  try {
+    const pending = Array.from({ length: 8 }, read);
+    await new Promise(r => setTimeout(r, 100));
+    assert.equal(calls.screen.length, 1, 'one terminal read in flight for 8 requests');
+    release();
+    const all = await Promise.all(pending);
+    assert.deepEqual(all.map(r => r.status), Array(8).fill(200));
+    const bodies = await Promise.all(all.map(r => r.json()));
+    assert.ok(bodies.every(b => JSON.stringify(b.lines) === JSON.stringify(bodies[0].lines)));
+    assert.equal((await read()).status, 200);
+    assert.equal(calls.screen.length, 1, 'reused within 1 s');
+    tick(REMOTE_SCREEN_CACHE_MS);
+    assert.equal((await read()).status, 200);
+    assert.equal(calls.screen.length, 2, 'read again after 1 s');
+  } finally { server.close(); }
+});
+
+test('screen: the rate budget is per session and caller instance', async () => {
+  const { server, grant, cfg } = setup();
+  const host = await listen(server);
+  const path = `/v1/sessions/${P(WT_PAY)}/screen`;
+  const gw = grant(WT_PAY);
+  try {
+    for (let i = 0; i < REMOTE_SCREEN_RATE; i++) await raw(host, 't0k', 'POST', path, JSON.stringify({ grant: gw }));
+    assert.equal((await raw(host, 't0k', 'POST', path, JSON.stringify({ grant: gw }))).status, 429);
+    // another instance now registered at this address, delegated the same session: a budget of its own
+    cfg.peers[0] = { name: 'bob', host: '127.0.0.1:7441', instanceId: ID.bob };
+    const gb = grant(WT_PAY, ID.bob, 'bob');
+    assert.equal((await raw(host, 't0k', 'POST', path, JSON.stringify({ grant: gb }))).status, 200);
+  } finally { server.close(); }
+});
+
+test('M1 screenLines: a secret wrapped across rows is masked in every row it touches', () => {
+  const tok = 'ghp_' + 'Ab1'.repeat(12);   // 40 characters
+  const rows = ['$ export GH=' + tok.slice(0, 14), tok.slice(14, 30), tok.slice(30) + ' done', 'next line'];
+  for (const r of rows.slice(0, 3)) assert.equal(globalThis.AgentDeskMask.mask(r), r, 'no row alone matches');
+  const out = screenLines(rows);
+  assert.equal(out.length, 4);
+  for (const [i, part] of [[0, tok.slice(4, 14)], [1, tok.slice(14, 30)], [2, tok.slice(30)]]) assert.ok(!out[i].includes(part), `row ${i}: ${out[i]}`);
+  assert.ok(out[0].startsWith('$ export GH=') && out[0].includes('[MASKED]'));
+  assert.ok(out[2].endsWith(' done') && out[2].includes('[MASKED]'));
+  assert.equal(out[3], 'next line', 'rows around it are untouched');
+  // the same through lastText (its lines)
+  const lt = lastText(rows.join('\n'));
+  for (const part of [tok.slice(4, 14), tok.slice(14, 30), tok.slice(30)]) assert.ok(!lt.includes(part), part);
+  // a secret within one row keeps the usual label
+  assert.deepEqual(screenLines(['mail neo@eximbay.com']), ['mail [MASKED EMAIL]']);
+});
+
+test('M2: private key body without its BEGIN line, and BEGIN without END, are masked', () => {
+  const body = Array.from({ length: 4 }, (_, i) => `MIIEowIBAAKCAQEAu1SU1L${i}nDEFghiJKL0123456789abcdefABCDEF+/ghijklmnopqrstuvwx`.slice(0, 64));
+  const tail = 'Zm9vYmFyMTIz==';
+  // BEGIN scrolled off: body rows, the short last row, END
+  const a = screenLines([...body, tail, '-----END RSA PRIVATE KEY-----', '$ ls']);
+  assert.deepEqual(a.slice(0, 6), Array(6).fill('[MASKED PRIVATE KEY]'));
+  assert.equal(a[6], '$ ls');
+  // no BEGIN and no END: the body rows alone
+  const b = screenLines(['cat key.pem', ...body.slice(0, 3), tail, 'prompt']);
+  assert.deepEqual(b, ['cat key.pem', ...Array(4).fill('[MASKED PRIVATE KEY]'), 'prompt']);
+  // one long base64 row on its own
+  assert.deepEqual(screenLines([body[0]]), ['[MASKED PRIVATE KEY]']);
+  // BEGIN with END cut off (the text was sliced / the window ends): everything from BEGIN on
+  const c = screenLines(['key:', '-----BEGIN OPENSSH PRIVATE KEY-----', 'b3BlbnNzaC1rZXk', 'short']);
+  assert.deepEqual(c, ['key:', '[MASKED PRIVATE KEY]', '[MASKED PRIVATE KEY]', '[MASKED PRIVATE KEY]']);
+  const lt = lastText('here:\n-----BEGIN PRIVATE KEY-----\nabc\ndef');
+  assert.equal(lt, 'here:\n[MASKED PRIVATE KEY]\n[MASKED PRIVATE KEY]\n[MASKED PRIVATE KEY]');
+  const cut = lastText('-----BEGIN RSA PRIVATE KEY-----\n' + 'QUJD'.repeat(REMOTE_LAST_MAX) + '\n-----END RSA PRIVATE KEY-----');
+  assert.ok(!cut.includes('QUJD'), 'END sliced off still masks the body');
+  // a BEGIN line that scrolled above the 200 rows kept: masked over the wider window
+  const long = screenLines(['-----BEGIN RSA PRIVATE KEY-----', ...Array.from({ length: 250 }, (_, i) => `k${i}`), '-----END RSA PRIVATE KEY-----']);
+  assert.ok(long.every(l => l === '[MASKED PRIVATE KEY]'));
+  // plain text that only looks long is kept
+  assert.deepEqual(screenLines(['x'.repeat(80), '='.repeat(80)]), ['x'.repeat(80), '='.repeat(80)]);
+});
+
+test('L1: zero-width / format characters inside a token do not hide it', () => {
+  const zw = 'ghp_' + 'a'.repeat(10) + '​' + 'a'.repeat(26);
+  assert.ok(!screenLines([`token ${zw}`]).join('').includes('aaaaaaaaaa'));
+  assert.ok(!lastText(`token ${zw}`).includes('aaaaaaaaaa'));
+  assert.ok(!screenLines(['AKIA⁠IOSFODNN7EXAMPLE']).join('').includes('IOSFODNN7'));
+  assert.ok(!lastText('xoxb-﻿1234567890-abcdefghij').includes('abcdefghij'));
+});
+
+test('L2: an unterminated OSC sequence removes only itself, not the rest of the line', () => {
+  assert.deepEqual(screenLines(['before \u001b]0;window title rest of line']), ['before window title rest of line']);
+  assert.deepEqual(screenLines(['a\u001b]8;;http://x\u001b\\link\u001b]8;;\u001b\\ b']), ['alink b'], 'terminated by ST');
+  assert.deepEqual(screenLines(['a\u001b]0;t\u0007b']), ['ab'], 'terminated by BEL');
+  assert.deepEqual(screenLines(['x\u001b]2;abc\u001b[31mred']), ['xred'], 'cut short by the next ESC');
 });

@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-ZcEaGypeNTOie+yI7/sQdichc0XS2hqqy+sSJJSDbUg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-P3nyy99YMpKEfVNhnX4vMehT2bXEZLAyK9LjPixCoug='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -30,11 +30,11 @@
     --purple-dim: rgba(182, 148, 246, 0.12);
     --mono: 'JetBrains Mono', 'SF Mono', monospace;
     --sans: 'Manrope', 'Pretendard Variable', 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
-    --fs-xs: 10px;
-    --fs-sm: 11px;
-    --fs-md: 12px;
-    --fs-base: 13px;
-    --fs-lg: 14px;
+    --fs-xs: 11px;
+    --fs-sm: 12px;
+    --fs-md: 13px;
+    --fs-base: 14px;
+    --fs-lg: 15px;
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-lg: 14px;
@@ -149,12 +149,12 @@
   }
   .header * { -webkit-app-region: no-drag; }
   .header-controls { margin-left: auto; display: flex; align-items: center; gap: 4px; }
-  .header-controls .theme-btn { width: 22px; height: 22px; font-size: 11px; background: none; }
+  .header-controls .theme-btn { width: 22px; height: 22px; font-size: var(--fs-sm); background: none; }
   .minimize-btn {
     background: none;
     border: 1px solid var(--border-subtle);
     color: var(--text3);
-    font-size: 11px;
+    font-size: var(--fs-sm);
     width: 22px;
     height: 22px;
     border-radius: var(--radius-sm);
@@ -234,7 +234,7 @@
   ::-webkit-scrollbar-corner { background: transparent; }
   .office-wrap { scroll-behavior: smooth; }
   .nav-badge[hidden] { display: none; }
-  .nav-badge { display: inline-block; margin-left: 5px; padding: 0 5px; min-width: 14px; border-radius: 8px; background: var(--yellow); color: #1a1408; font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; vertical-align: 1px; }
+  .nav-badge { display: inline-block; margin-left: 5px; padding: 0 5px; min-width: 16px; border-radius: 9px; background: var(--yellow); color: #1a1408; font-size: var(--fs-xs); font-weight: 700; line-height: 16px; text-align: center; vertical-align: 1px; }
   .page-nav-btn {
     flex: 0 0 auto;
     appearance: none;
@@ -303,7 +303,7 @@
 
   /* ── Pixel office ── */
   @font-face { font-family: 'Galmuri9'; src: url('assets/fonts/Galmuri9.woff2') format('woff2'); font-display: swap; }
-  .office-zoom { background: none; border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text3); font-size: 10px; padding: 0 4px; line-height: 16px; cursor: pointer; }
+  .office-zoom { background: none; border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text3); font-size: var(--fs-xs); padding: 0 4px; line-height: 18px; cursor: pointer; }
   .office-bar {
     display: flex;
     align-items: center;
@@ -319,7 +319,7 @@
   .office-legend { display: inline-flex; align-items: center; gap: 4px; }
   .office-legend-key { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
   .office-hint { margin-left: auto; color: var(--text3); }
-  .office-sound-btn { background: none; border: 1px solid var(--border-subtle); border-radius: 6px; cursor: pointer; font-size: 11px; padding: 0 5px; line-height: 16px; color: var(--text3); }
+  .office-sound-btn { background: none; border: 1px solid var(--border-subtle); border-radius: 6px; cursor: pointer; font-size: var(--fs-sm); padding: 0 5px; line-height: 18px; color: var(--text3); }
   .office-sound-btn.on { border-color: var(--yellow); color: var(--yellow); }
   #hooks-toggle.on { border-color: var(--green); color: var(--green); }
   .office-wrap {
@@ -402,11 +402,11 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 16px;
-    height: 16px;
+    min-width: 18px;
+    height: 18px;
     padding: 0 4px;
-    border-radius: 8px;
-    font-size: 9px;
+    border-radius: 9px;
+    font-size: var(--fs-xs);
     font-weight: 600;
     font-family: var(--mono);
     margin-left: 3px;
@@ -497,25 +497,26 @@
     height: 1px;
     background: var(--border-subtle);
   }
-  .team-bar { padding: 8px 12px 0; font-size: 10.5px; color: var(--text3); line-height: 1.4; }
+  .team-bar { padding: 8px 12px 0; font-size: var(--fs-xs); color: var(--text3); line-height: 1.4; }
   .team-bar b { color: var(--text2); font-weight: 600; }
   .team-bar .off { color: var(--red); }
   .peer-conflict.file { color: var(--red); border-color: var(--red); }
   .peer-conflict.branch { color: #c99a1a; }
   .peer-warn-btn { cursor: pointer; background: transparent; font: inherit; }
-  .peer-board { width: calc(100% - 24px); margin: 2px 12px 8px; border-collapse: collapse; font-size: 10.5px; color: var(--text2); }
+  .peer-board { width: calc(100% - 24px); margin: 2px 12px 8px; border-collapse: collapse; font-size: var(--fs-xs); color: var(--text2); }
   .peer-board th { text-align: left; font-weight: 600; color: var(--text3); border-bottom: 1px solid var(--border-subtle); padding: 3px 4px; }
   .peer-board td { border-bottom: 1px solid var(--border-subtle); padding: 3px 4px; vertical-align: top; word-break: break-word; }
   .peer-board tr.mine td:first-child { color: var(--accent); }
-  .peer-onboard { margin: 10px 12px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; font-size: 11px; color: var(--text2); display: flex; flex-direction: column; gap: 8px; }
-  .peer-onboard b { color: var(--text); font-size: 12px; }
+  .peer-onboard { margin: 10px 12px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; font-size: var(--fs-sm); color: var(--text2); display: flex; flex-direction: column; gap: 8px; }
+  .peer-onboard b { color: var(--text); font-size: var(--fs-md); }
   .peer-onboard p { margin: 0; color: var(--text3); }
   .peer-onboard .po-btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .peer-onboard .set-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   .peer-onboard .po-me { display: flex; gap: 6px; align-items: center; }
   .peer-onboard input { flex: 1; min-width: 0; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; font: inherit; }
   .peer-onboard .off { color: var(--red); }
-  .peer-note, .peer-disc { margin: 4px 12px; padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: 6px; font-size: 11px; color: var(--text2); }
+  .peer-onboard.ln-denied { border-color: var(--red); }
+  .peer-note, .peer-disc { margin: 4px 12px; padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: 6px; font-size: var(--fs-sm); color: var(--text2); }
   .peer-note .pn-text { margin: 4px 0; white-space: pre-wrap; color: var(--text); }
   .peer-note .pn-actions, .peer-disc { display: flex; gap: 6px; align-items: center; }
   .peer-disc .set-btn { margin-left: auto; }
@@ -523,10 +524,29 @@
   .peer-rlog { display: flex; flex-direction: column; gap: 2px; }
   .peer-rlog .pr-row { word-break: break-word; }
   .peer-rlog .pr-row.blocked { color: var(--red); }
-  .peer-last { white-space: pre-wrap; word-break: break-word; max-height: 50vh; overflow: auto; font-family: var(--mono); font-size: 11px; color: var(--text); background: var(--bg-solid); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px; user-select: text; }
+  .peer-last { white-space: pre-wrap; word-break: break-word; max-height: 50vh; overflow: auto; font-family: var(--mono); font-size: var(--fs-sm); color: var(--text); background: var(--bg-solid); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px; user-select: text; }
   .deleg-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
   .peer-r-btns { display: flex; gap: 4px; flex-wrap: wrap; }
   .peer-r-btns .set-btn { font-size: var(--fs-xs); padding: 1px 6px; }
+  /* remote terminal view: a delegated teammate session's screen (read-only, polled) with one input line */
+  .peer-term-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 290; display: flex; align-items: center; justify-content: center; }
+  .peer-term { width: min(860px, 94vw); height: min(620px, 88vh); display: flex; flex-direction: column; background: var(--bg-solid); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: 0 12px 40px rgba(0,0,0,0.5); overflow: hidden; font-size: var(--fs-sm); color: var(--text); }
+  .peer-term .pt-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .peer-term .pt-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .peer-term .pt-status { margin-left: auto; flex: none; font-size: var(--fs-xs); padding: 1px 8px; border-radius: 10px; color: var(--text2); background: var(--surface-hover); }
+  .peer-term .pt-status.run { color: var(--accent); background: var(--accent-dim); }
+  .peer-term .pt-status.wait { color: var(--green); background: var(--green-dim); }
+  .peer-term .pt-status.ask { color: var(--yellow); background: var(--yellow-dim); }
+  .peer-term .pt-status.err { color: var(--red); background: var(--red-dim); }
+  .peer-term button { background: var(--surface-raised, var(--surface)); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; }
+  .peer-term button:disabled { opacity: 0.5; cursor: default; }
+  .peer-term .pt-screen { flex: 1; margin: 0; padding: 8px 10px; overflow: auto; white-space: pre; font-family: var(--mono); font-size: var(--fs-sm); line-height: 1.35; color: var(--text); background: var(--bg-solid); user-select: text; }
+  .peer-term .pt-foot { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--border); background: var(--surface); }
+  .peer-term .pt-prompt { font-family: var(--mono); color: var(--accent); }
+  .peer-term .pt-input { flex: 1; min-width: 0; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-family: var(--mono); font-size: var(--fs-sm); }
+  .peer-term .pt-input:disabled { opacity: 0.6; }
+  .peer-term .pt-msg { padding: 0 10px 6px; min-height: 14px; font-size: var(--fs-xs); color: var(--text3); background: var(--surface); }
+  .peer-term .pt-msg.error { color: var(--red); }
   .office-peer-pop { pointer-events: auto; white-space: normal; max-width: 280px; z-index: 6; }
   .office-peer-pop .pp-row { display: flex; gap: 6px; margin-top: 6px; }
   .office-peer-pop button { font: inherit; font-size: var(--fs-xs); background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 2px 8px; cursor: pointer; }
@@ -732,7 +752,7 @@
   .bar-fill.green { background: linear-gradient(90deg, #2ea87a, var(--green)); }
   .bar-fill.yellow { background: linear-gradient(90deg, #c8922e, var(--yellow)); }
   .bar-fill.red { background: linear-gradient(90deg, #c94e49, var(--red)); }
-  .token-eta { font-size: 9.5px; color: var(--text3); padding-left: 36px; margin: -2px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .token-eta { font-size: var(--fs-xs); color: var(--text3); padding-left: 36px; margin: -2px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .token-eta.warn { color: var(--yellow); }
   .token-eta.crit { color: var(--red); }
 
@@ -834,7 +854,7 @@
     border: 1px solid var(--border);
     background: var(--surface-raised);
     color: var(--accent);
-    font-size: 14px;
+    font-size: var(--fs-lg);
     cursor: pointer;
     padding: 3px 7px;
     border-radius: var(--radius-sm);
@@ -1434,11 +1454,11 @@
     background: var(--yellow-dim);
     border: 1.5px solid color-mix(in srgb, var(--yellow) 60%, transparent);
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
   .collab-node-master::before {
     content: '👑';
-    font-size: 11px;
+    font-size: var(--fs-sm);
     margin-right: 2px;
   }
   .collab-node-worker-a {
@@ -1498,7 +1518,7 @@
 
   /* group label badge */
   .ct-group-label {
-    font-size: 10px;
+    font-size: var(--fs-xs);
     font-weight: 700;
     color: var(--bg);
     text-transform: uppercase;
@@ -1531,7 +1551,7 @@
 
   /* flow direction indicator */
   .ct-flow-badge {
-    font-size: 10px;
+    font-size: var(--fs-xs);
     color: var(--text3);
     background: var(--surface);
     border: 1px solid var(--border-subtle);
@@ -1542,14 +1562,14 @@
     align-items: center;
     gap: 4px;
   }
-  .ct-flow-badge .arrow { font-size: 13px; }
+  .ct-flow-badge .arrow { font-size: var(--fs-base); }
 
   /* relay mode: dual arrows between groups */
   .ct-relay-arrow {
     display: flex;
     align-items: center;
     align-self: center;
-    font-size: 20px;
+    font-size: 22px;
     color: var(--accent);
     padding: 0 4px;
     flex-shrink: 0;
@@ -1614,7 +1634,7 @@
     justify-content: center;
     gap: 2px;
     color: var(--text3);
-    font-size: 16px;
+    font-size: 17px;
     min-width: 28px;
     flex-shrink: 0;
   }
@@ -1653,7 +1673,7 @@
   }
   .debate-tag .remove-tag {
     margin-left: 2px;
-    font-size: 10px;
+    font-size: var(--fs-xs);
     color: var(--text3);
     cursor: pointer;
     line-height: 1;
@@ -1824,11 +1844,11 @@
   .chat-header-status.offline { background: var(--red-dim); color: var(--red); }
   .chat-orca-btn {
     background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-    color: var(--accent); cursor: pointer; font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap;
+    color: var(--accent); cursor: pointer; font-size: var(--fs-sm); padding: 2px 8px; border-radius: 6px; font-weight: 600; white-space: nowrap;
   }
   .chat-orca-btn:hover { background: var(--accent); color: var(--bg); }
   .chat-close-btn {
-    background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; padding: 2px 4px; line-height: 1;
+    background: none; border: none; color: var(--text3); cursor: pointer; font-size: var(--fs-lg); padding: 2px 4px; line-height: 1;
   }
   .chat-close-btn:hover { color: var(--text); }
   .chat-screen {
@@ -2032,7 +2052,7 @@
   .jira-key { font-family: var(--mono); font-size: var(--fs-xs); color: var(--accent); font-weight: 600; flex-shrink: 0; }
   .jira-sum { flex: 1; min-width: 0; font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .jira-item.open .jira-sum { white-space: normal; }
-  .jira-badge { flex-shrink: 0; font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 8px; line-height: 15px; background: var(--surface-raised, var(--surface)); color: var(--text2); border: 1px solid var(--border); }
+  .jira-badge { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 700; padding: 0 6px; border-radius: 9px; line-height: 17px; background: var(--surface-raised, var(--surface)); color: var(--text2); border: 1px solid var(--border); }
   .jira-badge.report { background: var(--yellow); color: #1a1408; border-color: var(--yellow); }
   .jira-meta { font-size: var(--fs-xs); color: var(--text3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .jira-desc { font-size: var(--fs-xs); color: var(--text2); white-space: pre-wrap; margin-top: 6px; max-height: 180px; overflow: auto; background: var(--bg-solid); border-radius: 6px; padding: 6px 8px; }
@@ -2094,16 +2114,16 @@
   .jira-cost { color: var(--yellow); }
   .jb-foot { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-size: var(--fs-xs); }
   .jb-key { font-family: var(--mono); color: var(--text2); }
-  .jb-type { width: 14px; height: 14px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; color: #fff; background: var(--accent); flex-shrink: 0; }
+  .jb-type { width: 16px; height: 16px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-xs); color: #fff; background: var(--accent); flex-shrink: 0; }
   .jb-type.bug { background: var(--red); } .jb-type.story { background: var(--green); } .jb-type.epic { background: var(--purple); } .jb-type.sub { background: var(--text3); }
   .jb-pri { margin-left: auto; font-weight: 700; color: var(--yellow); }
   .jb-pri.highest, .jb-pri.high { color: var(--red); } .jb-pri.low, .jb-pri.lowest { color: var(--accent); }
-  .jb-ava { position: relative; width: 22px; height: 22px; border-radius: 50%; background: var(--purple-dim); color: var(--text); display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; overflow: hidden; flex-shrink: 0; border: 1px solid var(--border); }
+  .jb-ava { position: relative; width: 24px; height: 24px; border-radius: 50%; background: var(--purple-dim); color: var(--text); display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-xs); font-weight: 700; overflow: hidden; flex-shrink: 0; border: 1px solid var(--border); }
   .jb-ava img { position: absolute; inset: 0; width: 100%; height: 100%; }
   .jb-ava i { font-style: normal; }
   .jb-drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 380px; max-width: 100%; background: var(--bg-solid); border-left: 1px solid var(--border); box-shadow: var(--shadow-float); overflow-y: auto; padding: 10px 12px; z-index: 5; }
   .jb-dhead { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: var(--fs-sm); color: var(--text2); }
-  .jb-dhead .jb-x { margin-left: auto; appearance: none; border: none; background: none; color: var(--text2); cursor: pointer; font-size: 14px; }
+  .jb-dhead .jb-x { margin-left: auto; appearance: none; border: none; background: none; color: var(--text2); cursor: pointer; font-size: var(--fs-lg); }
   .jb-drawer .jira-item { border: none; padding: 0; }
   .jb-drawer .jira-item:hover { background: none; }
   .jb-drawer .jira-sum { white-space: normal; font-size: var(--fs-md); }
@@ -2259,7 +2279,7 @@
     border: 1px solid var(--border-subtle);
     background: var(--surface-hover);
     color: var(--text3);
-    font-size: 12px;
+    font-size: var(--fs-md);
     width: 24px;
     height: 24px;
     border-radius: var(--radius-sm);
@@ -2279,75 +2299,75 @@
 
   /* ── settings page ── */
   .settings { flex: 1; overflow-y: auto; padding: 14px 16px 18px; }
-  .settings h2 { font-size: 10px; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin: 14px 0 8px; font-weight: 600; }
+  .settings h2 { font-size: var(--fs-xs); color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin: 14px 0 8px; font-weight: 600; }
   .settings h2:first-child { margin-top: 0; }
   .set-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-hover); margin-bottom: 6px; }
   .set-row .tx { flex: 1; min-width: 0; }
-  .set-row .tx b { display: block; font-size: 11.5px; color: var(--text); font-weight: 600; }
-  .set-row .tx span { display: block; font-size: 10px; color: var(--text3); line-height: 1.4; margin-top: 1px; }
+  .set-row .tx b { display: block; font-size: var(--fs-sm); color: var(--text); font-weight: 600; }
+  .set-row .tx span { display: block; font-size: var(--fs-xs); color: var(--text3); line-height: 1.4; margin-top: 1px; }
   .set-inline { display: flex; gap: 4px; align-items: center; }
-  .set-inline input { width: 150px; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 10.5px; }
+  .set-inline input { width: 150px; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: var(--fs-xs); }
   .seg { display: flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; flex-shrink: 0; }
-  .seg button { font-size: 10.5px; padding: 3px 9px; border: none; background: none; color: var(--text3); cursor: pointer; border-right: 1px solid var(--border-subtle); }
+  .seg button { font-size: var(--fs-xs); padding: 3px 9px; border: none; background: none; color: var(--text3); cursor: pointer; border-right: 1px solid var(--border-subtle); }
   .seg button:last-child { border-right: none; }
   .seg button.on { background: var(--accent); color: #fff; }
   .switch { width: 32px; height: 18px; border-radius: 999px; background: var(--border); position: relative; cursor: pointer; flex-shrink: 0; border: none; transition: background 0.15s; }
   .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left 0.15s; }
   .switch.on { background: var(--accent); } .switch.on::after { left: 16px; }
-  .set-btn { font-size: 10.5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text2); cursor: pointer; flex-shrink: 0; }
+  .set-btn { font-size: var(--fs-xs); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text2); cursor: pointer; flex-shrink: 0; }
   .set-btn:hover { border-color: var(--accent); color: var(--accent); }
   .upd-dot { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 999px; background: var(--accent); border: 2px solid var(--bg); }
   #settings-btn { position: relative; }
-  .set-meta { font-size: 10px; color: var(--text3); line-height: 1.6; margin-top: 10px; word-break: break-all; }
+  .set-meta { font-size: var(--fs-xs); color: var(--text3); line-height: 1.6; margin-top: 10px; word-break: break-all; }
   /* ── dashboard: groups, detail, filters, keyboard selection, feedback ── */
   .stat[hidden] { display: none; }
   .stat.ask { background: var(--yellow-dim); color: var(--yellow); }
-  .stat .ask-mark { width: 16px; height: 16px; border-radius: 999px; background: var(--yellow); color: #1a1408; font-size: 10px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+  .stat .ask-mark { width: 18px; height: 18px; border-radius: 999px; background: var(--yellow); color: #1a1408; font-size: var(--fs-xs); font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
   .stat.bump { animation: statBump 0.5s ease-out; }
   @keyframes statBump { 0% { transform: scale(1); } 35% { transform: scale(1.18); } 100% { transform: scale(1); } }
   .filters { display: flex; gap: 4px; padding: 6px 10px 0; flex-wrap: wrap; }
   .filters[hidden] { display: none; }
-  .fchip { font: inherit; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; }
+  .fchip { font: inherit; font-size: var(--fs-xs); font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; }
   .fchip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
-  .gh-btn { font: inherit; font-size: 9.5px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; margin-left: 4px; }
+  .gh-btn { font: inherit; font-size: var(--fs-xs); padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; margin-left: 4px; }
   .gh-btn:hover { color: var(--text); border-color: var(--border); }
   .group-header.ask { color: var(--yellow); }
   .group-header.ask .gh-count { color: var(--yellow); }
-  .repo-header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; margin: 0 0 6px; border-radius: 10px; background: var(--surface); border: 1px dashed var(--border-subtle); color: var(--text2); font-size: 11px; cursor: pointer; }
+  .repo-header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; margin: 0 0 6px; border-radius: 10px; background: var(--surface); border: 1px dashed var(--border-subtle); color: var(--text2); font-size: var(--fs-sm); cursor: pointer; }
   .repo-header:hover { border-color: var(--border); }
-  .repo-header .rh-count { font-family: var(--mono); font-size: 10px; color: var(--text3); }
-  .repo-header .rh-arrow { margin-left: auto; color: var(--text3); font-size: 10px; }
+  .repo-header .rh-count { font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); }
+  .repo-header .rh-arrow { margin-left: auto; color: var(--text3); font-size: var(--fs-xs); }
   .session.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
   .session.stuck .s-icon { background: var(--yellow-dim); }
   .s-tool.stuck { color: var(--yellow) !important; border-color: color-mix(in srgb, var(--yellow) 50%, transparent) !important; font-weight: 700; }
   .s-time.ask { color: var(--yellow) !important; font-weight: 700; }
-  .s-prompt.s-now { display: block; color: var(--text2); font-family: var(--sans); font-size: 10.5px; opacity: 1; margin-top: 3px; }
+  .s-prompt.s-now { display: block; color: var(--text2); font-family: var(--sans); font-size: var(--fs-xs); opacity: 1; margin-top: 3px; }
   .s-prompt.s-now::before { content: '▸ '; color: var(--accent); }
   .s-tool.loop { color: var(--red) !important; border-color: color-mix(in srgb, var(--red) 50%, transparent) !important; font-weight: 700; }
-  .s-expand { position: absolute; right: 8px; bottom: 6px; width: 18px; height: 18px; border-radius: 6px; border: none; background: transparent; color: var(--text3); font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .s-expand { position: absolute; right: 8px; bottom: 6px; width: 20px; height: 20px; border-radius: 6px; border: none; background: transparent; color: var(--text3); font-size: var(--fs-xs); cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .s-expand:hover { background: var(--surface-hover); color: var(--text); }
   .session.expanded .s-expand { transform: rotate(90deg); }
   .session.expanded { flex-wrap: wrap; }
   /* permission request panel (Claude Code PermissionRequest answered from the widget) */
   .session.has-perm { flex-wrap: wrap; }
-  .perm-panel { flex-basis: 100%; margin-top: 8px; padding: 8px; border: 1px solid var(--yellow); border-radius: var(--radius-md); background: var(--yellow-dim); display: flex; flex-direction: column; gap: 6px; font-size: 10.5px; color: var(--text); cursor: default; }
+  .perm-panel { flex-basis: 100%; margin-top: 8px; padding: 8px; border: 1px solid var(--yellow); border-radius: var(--radius-md); background: var(--yellow-dim); display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-xs); color: var(--text); cursor: default; }
   .perm-orphans { margin: 6px 10px 0; display: flex; flex-direction: column; gap: 6px; }
   .perm-orphans[hidden] { display: none; }
   .perm-orphans .perm-panel { margin-top: 0; }
   .perm-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .perm-head b { color: var(--yellow); }
-  .perm-head code, .perm-file code { font-family: var(--mono); font-size: 10px; padding: 0 4px; border-radius: 4px; background: var(--surface-hover); }
+  .perm-head code, .perm-file code { font-family: var(--mono); font-size: var(--fs-xs); padding: 0 4px; border-radius: 4px; background: var(--surface-hover); }
   .perm-sess { font-weight: 600; } .perm-more { color: var(--text3); } .perm-left { margin-left: auto; font-family: var(--mono); color: var(--text3); }
   .perm-desc { color: var(--text2); }
-  .perm-code { margin: 0; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-all; font-family: var(--mono); font-size: 10px; padding: 6px; border-radius: 6px; background: var(--surface); color: var(--text); }
+  .perm-code { margin: 0; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-all; font-family: var(--mono); font-size: var(--fs-xs); padding: 6px; border-radius: 6px; background: var(--surface); color: var(--text); }
   .perm-file { word-break: break-all; } .perm-add { color: var(--green); font-family: var(--mono); } .perm-del { color: var(--red); font-family: var(--mono); }
-  .perm-reason { font: inherit; font-size: 10.5px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  .perm-reason { font: inherit; font-size: var(--fs-xs); padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
   .perm-btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .perm-panel.full .perm-code { max-height: none; }
   .perm-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .perm-full { font: inherit; font-size: 10px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; }
-  .perm-cut { color: var(--red); font-size: 10px; }
-  .perm-btns button { font: inherit; font-size: 10.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); cursor: pointer; }
+  .perm-full { font: inherit; font-size: var(--fs-xs); padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text3); cursor: pointer; }
+  .perm-cut { color: var(--red); font-size: var(--fs-xs); }
+  .perm-btns button { font: inherit; font-size: var(--fs-xs); font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); cursor: pointer; }
   .perm-btns button:focus-visible, .perm-reason:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .perm-btns .perm-allow { border-color: var(--green); color: var(--green); } .perm-btns .perm-deny { border-color: var(--red); color: var(--red); }
   .perm-btns button:disabled { opacity: 0.5; cursor: default; }
@@ -2355,37 +2375,37 @@
   .stat.guard { background: var(--red-dim); color: var(--red); cursor: pointer; font-weight: 700; }
   .s-tool.guard { color: var(--red) !important; border-color: color-mix(in srgb, var(--red) 50%, transparent) !important; }
   .guard-rules { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
-  .guard-rule { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-hover); font-size: 10.5px; }
+  .guard-rule { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-hover); font-size: var(--fs-xs); }
   .guard-rule .tx { flex: 1; min-width: 0; }
   .guard-rule .tx b { display: block; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .guard-rule .tx code { display: block; font-family: var(--mono); font-size: 10px; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .guard-rule .tx .err { display: block; color: var(--red); font-size: 10px; }
+  .guard-rule .tx code { display: block; font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .guard-rule .tx .err { display: block; color: var(--red); font-size: var(--fs-xs); }
   .guard-rule.off .tx b { color: var(--text3); }
-  .guard-rule .sev { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text2); cursor: pointer; flex-shrink: 0; }
+  .guard-rule .sev { font-size: var(--fs-xs); padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text2); cursor: pointer; flex-shrink: 0; }
   .guard-rule .sev.block { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); }
   .guard-rule .set-btn { padding: 2px 8px; }
   .guard-test { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
-  .guard-test input { flex: 1; min-width: 140px; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font-family: var(--mono); font-size: 10.5px; }
-  .guard-test select, .guard-edit select, .guard-edit input { background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 11px; }
-  .guard-test-out { display: block; font-size: 10px; margin-top: 4px; color: var(--text3); word-break: break-word; }
+  .guard-test input { flex: 1; min-width: 140px; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font-family: var(--mono); font-size: var(--fs-xs); }
+  .guard-test select, .guard-edit select, .guard-edit input { background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: var(--fs-sm); }
+  .guard-test-out { display: block; font-size: var(--fs-xs); margin-top: 4px; color: var(--text3); word-break: break-word; }
   .guard-test-out.hit { color: var(--red); }
-  .guard-edit label { display: block; margin-top: 8px; color: var(--text2); font-size: 11px; }
+  .guard-edit label { display: block; margin-top: 8px; color: var(--text2); font-size: var(--fs-sm); }
   .guard-edit input[type=text] { width: 100%; box-sizing: border-box; }
   .guard-edit textarea { font-family: var(--mono); min-height: 60px; }
   .guard-edit .tools { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
   .guard-edit .tools label { display: inline-flex; gap: 4px; margin: 0; align-items: center; }
-  .guard-edit .err { color: var(--red); font-size: 10.5px; min-height: 14px; margin-top: 6px; }
+  .guard-edit .err { color: var(--red); font-size: var(--fs-xs); min-height: 14px; margin-top: 6px; }
   .guard-log .pr-row.deny { color: var(--red); }
-  .s-detail { flex-basis: 100%; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; color: var(--text2); }
+  .s-detail { flex-basis: 100%; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 5px; font-size: var(--fs-xs); color: var(--text2); }
   .s-detail .d-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; }
-  .s-detail .d-row b { color: var(--text3); font-weight: 600; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .s-detail .d-row b { color: var(--text3); font-weight: 600; font-size: var(--fs-xs); letter-spacing: 0.04em; text-transform: uppercase; }
   .s-detail .d-row span { line-height: 1.45; word-break: break-word; }
-  .s-detail code { font-family: var(--mono); font-size: 9.5px; padding: 0 4px; border-radius: 4px; background: var(--surface-hover); color: var(--text); }
+  .s-detail code { font-family: var(--mono); font-size: var(--fs-xs); padding: 0 4px; border-radius: 4px; background: var(--surface-hover); color: var(--text); }
   .s-detail .d-ctx { height: 4px; border-radius: 999px; background: var(--surface-hover); overflow: hidden; }
   .s-detail .d-ctx i { display: block; height: 100%; border-radius: 999px; background: var(--green); }
   .s-detail .d-ctx i.warn { background: var(--yellow); } .s-detail .d-ctx i.crit { background: var(--red); }
   .s-detail .d-note { display: block; padding: 4px 0; }
-  .s-detail .d-note b { color: var(--text); text-transform: none; letter-spacing: 0; font-size: 10.5px; }
+  .s-detail .d-note b { color: var(--text); text-transform: none; letter-spacing: 0; font-size: var(--fs-xs); }
   /* card "변경" tab: worktree diff + review comments (core/diff.js, diff/git.mjs) */
   .s-detail .d-tabs { display: flex; gap: 4px; }
   .s-detail .d-tabs button { background: transparent; border: 1px solid var(--border-subtle); color: var(--text2); border-radius: 999px; padding: 1px 9px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
@@ -2446,7 +2466,7 @@
   .tl-panel .tl-axis { border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-solid); overflow: hidden; }
   .tl-panel .tl-svg { display: block; }
   .tl-svg .tl-grid { stroke: var(--border-subtle); stroke-width: 1; }
-  .tl-svg .tl-ax, .tl-svg .tl-lane { fill: var(--text3); font-family: var(--mono); font-size: 8.5px; }
+  .tl-svg .tl-ax, .tl-svg .tl-lane { fill: var(--text3); font-family: var(--mono); font-size: var(--fs-xs); }
   .tl-svg .tl-ax { text-anchor: middle; }
   .tl-svg [data-ti] { cursor: pointer; }
   .tl-svg .tl-bar { stroke: none; }
@@ -2482,53 +2502,53 @@
   .tl-panel .tl-row .lb { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
   .tl-panel .tl-row .dt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .tl-panel .tl-row .k-prompt { color: var(--accent); } .tl-panel .tl-row .k-permission { color: var(--yellow); } .tl-panel .tl-row .k-subagent { color: var(--purple); }
-  .hidden-link { text-align: center; font-size: 10px; color: var(--text3); padding: 8px 0 4px; cursor: pointer; }
+  .hidden-link { text-align: center; font-size: var(--fs-xs); color: var(--text3); padding: 8px 0 4px; cursor: pointer; }
   .hidden-link:hover { color: var(--text); }
-  .local-stats { font-family: var(--mono); font-size: 9.5px; color: var(--text3); justify-content: center; gap: 10px; }
+  .local-stats { font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); justify-content: center; gap: 10px; }
   .local-stats[hidden] { display: none; }
   /* ── morning briefing ── */
   .brief-card { margin: 8px 10px 0; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border-subtle); box-shadow: 0 1px 2px rgba(0,0,0,0.12); position: relative; }
   .brief-card[hidden] { display: none; }
   .brief-card.urgent { border-color: color-mix(in srgb, var(--red) 50%, transparent); } .brief-card.busy { border-color: color-mix(in srgb, var(--yellow) 50%, transparent); }
   .brief-card .b-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  .brief-card .b-tag { font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); }
-  .brief-card .b-title { font-size: 12px; font-weight: 700; color: var(--text); flex: 1; min-width: 0; }
-  .brief-card .b-x { border: none; background: none; color: var(--text3); cursor: pointer; font-size: 12px; padding: 0 2px; }
+  .brief-card .b-tag { font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); }
+  .brief-card .b-title { font-size: var(--fs-md); font-weight: 700; color: var(--text); flex: 1; min-width: 0; }
+  .brief-card .b-x { border: none; background: none; color: var(--text3); cursor: pointer; font-size: var(--fs-md); padding: 0 2px; }
   .brief-card .b-x:hover { color: var(--text); }
-  .brief-card ul { margin: 8px 0 0; padding-left: 16px; font-size: 11px; line-height: 1.5; color: var(--text2); }
+  .brief-card ul { margin: 8px 0 0; padding-left: 16px; font-size: var(--fs-sm); line-height: 1.5; color: var(--text2); }
   .brief-card ul li { margin: 2px 0; }
-  .brief-card .b-meta { margin-top: 6px; font-family: var(--mono); font-size: 9.5px; color: var(--text3); }
+  .brief-card .b-meta { margin-top: 6px; font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); }
   /* ── first-run onboarding ── */
   .onboard { position: fixed; inset: 0; z-index: 200; background: var(--bg); display: flex; flex-direction: column; -webkit-app-region: no-drag; }
   .onboard[hidden] { display: none; }
   .onboard-body { flex: 1; overflow-y: auto; padding: 22px 18px 12px; }
-  .onboard h1 { font-size: 17px; font-weight: 700; margin: 0 0 6px; color: var(--text); letter-spacing: -0.01em; }
-  .onboard p { font-size: 11.5px; line-height: 1.55; color: var(--text2); margin: 0 0 12px; }
-  .onboard-step { font-size: 10px; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
+  .onboard h1 { font-size: 18px; font-weight: 700; margin: 0 0 6px; color: var(--text); letter-spacing: -0.01em; }
+  .onboard p { font-size: var(--fs-sm); line-height: 1.55; color: var(--text2); margin: 0 0 12px; }
+  .onboard-step { font-size: var(--fs-xs); color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
   .onboard-feat { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-hover); margin-bottom: 8px; }
-  .onboard-feat .ic { font-size: 16px; line-height: 1; margin-top: 1px; }
-  .onboard-feat b { display: block; font-size: 11.5px; color: var(--text); margin-bottom: 2px; }
-  .onboard-feat span { font-size: 10.5px; color: var(--text3); line-height: 1.45; }
+  .onboard-feat .ic { font-size: 17px; line-height: 1; margin-top: 1px; }
+  .onboard-feat b { display: block; font-size: var(--fs-sm); color: var(--text); margin-bottom: 2px; }
+  .onboard-feat span { font-size: var(--fs-xs); color: var(--text3); line-height: 1.45; }
   .onboard-check { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-hover); margin-bottom: 8px; }
-  .onboard-check .st { width: 16px; text-align: center; font-size: 13px; flex-shrink: 0; }
+  .onboard-check .st { width: 16px; text-align: center; font-size: var(--fs-base); flex-shrink: 0; }
   .onboard-check .st.ok { color: #4ade80; } .onboard-check .st.warn { color: #fbbf24; } .onboard-check .st.off { color: var(--text3); } .onboard-check .st.wait { color: var(--text3); animation: pulse 1s infinite; }
   .onboard-check .tx { flex: 1; min-width: 0; }
-  .onboard-check .tx b { display: block; font-size: 11.5px; color: var(--text); }
-  .onboard-check .tx span { display: block; font-size: 10px; color: var(--text3); line-height: 1.4; margin-top: 1px; word-break: break-all; }
-  .onboard-check button { flex-shrink: 0; font-size: 10.5px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent); cursor: pointer; }
+  .onboard-check .tx b { display: block; font-size: var(--fs-sm); color: var(--text); }
+  .onboard-check .tx span { display: block; font-size: var(--fs-xs); color: var(--text3); line-height: 1.4; margin-top: 1px; word-break: break-all; }
+  .onboard-check button { flex-shrink: 0; font-size: var(--fs-xs); padding: 4px 9px; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent); cursor: pointer; }
   .onboard-check button:hover { background: var(--accent); color: #fff; }
   .onboard-foot { display: flex; align-items: center; gap: 8px; padding: 10px 18px 14px; border-top: 1px solid var(--border-subtle); }
   .onboard-dots { display: flex; gap: 5px; flex: 1; }
   .onboard-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
   .onboard-dots i.on { background: var(--accent); }
-  .onboard-foot button { font-size: 11.5px; padding: 6px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-hover); color: var(--text2); cursor: pointer; }
+  .onboard-foot button { font-size: var(--fs-sm); padding: 6px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-hover); color: var(--text2); cursor: pointer; }
   .onboard-foot button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   .onboard-foot button:hover { filter: brightness(1.1); }
   .onboard-lang { display: flex; gap: 6px; margin-bottom: 14px; }
-  .onboard-lang button { font-size: 11px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text3); cursor: pointer; }
+  .onboard-lang button { font-size: var(--fs-sm); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text3); cursor: pointer; }
   .onboard-lang button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
-  .onboard-tip { display: flex; gap: 8px; font-size: 11px; color: var(--text2); line-height: 1.5; margin-bottom: 8px; }
-  .onboard-tip kbd { font-family: inherit; font-size: 10px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-hover); color: var(--text); white-space: nowrap; height: fit-content; }
+  .onboard-tip { display: flex; gap: 8px; font-size: var(--fs-sm); color: var(--text2); line-height: 1.5; margin-bottom: 8px; }
+  .onboard-tip kbd { font-family: inherit; font-size: var(--fs-xs); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-hover); color: var(--text); white-space: nowrap; height: fit-content; }
 
   /* ═══════════════════════════════════════════════════════════════════
      MODERN THEME — tokens and component overrides (design canvas "AgentDesk redesign")
@@ -2577,18 +2597,24 @@
     --shadow-card: 0 1px 2px rgba(0,0,0,0.06), 0 0 0 1px var(--border-subtle);
     --shadow-float: 0 8px 30px rgba(0,0,0,0.14), 0 0 0 1px var(--border);
   }
-  html, body { font-size: 12.5px; }
+  html, body { font-size: var(--fs-base); }
   .widget { border-radius: 16px; border-color: var(--border); box-shadow: 0 12px 48px rgba(0,0,0,0.5); backdrop-filter: blur(28px) saturate(1.3); -webkit-backdrop-filter: blur(28px) saturate(1.3); }
 
   /* header: pixel status counters + round controls */
   .header { padding: 9px 12px 8px; background: none; gap: 6px; }
   .header::after { display: none; }
-  .stats { gap: 6px; margin-left: 0; font-family: var(--sans); }
-  .stat { display: flex; align-items: center; gap: 6px; padding: 3px 9px 3px 6px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text2); }
+  /* many pills at 320px: clip pills sideways, keep the controls visible; vertically nothing is clipped (padding-block
+     with a matching negative margin leaves room for the statBump scale without moving the header) */
+  .stats { gap: 6px; margin-left: 0; font-family: var(--sans); min-width: 0; overflow-x: clip; overflow-y: visible; overflow-clip-margin: 2px; padding-block: 3px; margin-block: -3px; }
+  /* narrow window: the less important pills keep their numbers and drop their words (the title still says what they are) */
+  @media (max-width: 420px) { #statPermLabel, #statGuardLabel { display: none; } }
+  .stat { flex-shrink: 0; white-space: nowrap; }
+  .header-controls { flex-shrink: 0; }
+  .stat { display: flex; align-items: center; gap: 6px; padding: 3px 9px 3px 6px; border-radius: 999px; border: 1px solid var(--border-subtle); background: var(--surface); font-size: var(--fs-sm); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text2); }
   .stat.run { background: var(--accent-dim); color: var(--accent); }
   .stat.wait { background: var(--yellow-dim); color: var(--yellow); }
   .stat.done { background: var(--green-dim); color: var(--green); }
-  .minimize-btn, .header-controls .theme-btn { width: 26px; height: 26px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border-subtle); color: var(--text2); font-size: 12px; }
+  .minimize-btn, .header-controls .theme-btn { width: 26px; height: 26px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border-subtle); color: var(--text2); font-size: var(--fs-md); }
   .minimize-btn:hover, .header-controls .theme-btn:hover { background: var(--surface-hover); border-color: var(--border); color: var(--text); }
 
   /* pixel status icons (Pixel Agents sprites, 1x, top 16px of the 16x32 pc sheets) */
@@ -2601,26 +2627,26 @@
   .s-icon .px-ic.clock { background-position: 0 -16px; }
   /* cards show the sprites at 2x for legibility; header pills stay 1x */
   .s-icon .px-ic { width: 32px; height: 32px; background-size: 32px auto; }
-  .px-badge { position: absolute; top: -5px; right: -5px; width: 14px; height: 14px; border-radius: 999px; font-size: 9px; font-weight: 800; line-height: 1; display: flex; align-items: center; justify-content: center; border: 2px solid var(--surface); font-family: var(--sans); }
+  .px-badge { position: absolute; top: -6px; right: -6px; width: 17px; height: 17px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 800; line-height: 1; display: flex; align-items: center; justify-content: center; border: 2px solid var(--surface); font-family: var(--sans); }
   .px-badge.q { background: var(--yellow); color: #1a1408; animation: icBounce 2s ease-in-out infinite; }
   .px-badge.x { background: var(--red); color: #fff; }
 
   /* navigation */
   .page-nav { padding: 8px 10px 0; background: none; border-bottom: none; gap: 2px; }
-  .page-nav-btn { font-size: 11.5px; padding: 5px 10px; border-radius: 8px; font-weight: 500; }
+  .page-nav-btn { font-size: var(--fs-sm); padding: 5px 10px; border-radius: 8px; font-weight: 500; }
   .page-nav-btn.active { background: var(--surface-hover); box-shadow: none; font-weight: 700; color: var(--text); }
   .tabs { padding: 8px 10px 0; border-bottom: none; gap: 2px; }
-  .tab { flex: 0 0 auto; padding: 5px 11px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid transparent; }
+  .tab { flex: 0 0 auto; padding: 5px 11px; border-radius: 999px; font-size: var(--fs-sm); font-weight: 600; border: 1px solid transparent; }
   .tab.active { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
-  .tab-badge { background: transparent; margin-left: 4px; font-size: 9.5px; height: auto; min-width: 0; padding: 0; }
+  .tab-badge { background: transparent; margin-left: 4px; font-size: var(--fs-xs); height: auto; min-width: 0; padding: 0; }
   .tab.active .tab-badge { background: transparent; color: var(--accent); opacity: 0.85; }
   .search-wrap { padding: 10px 10px 2px; }
-  .search-input { border-radius: 10px; padding: 7px 11px 7px 30px; font-size: 12px; border-color: var(--border-subtle);
+  .search-input { border-radius: 10px; padding: 7px 11px 7px 30px; font-size: var(--fs-md); border-color: var(--border-subtle);
     background: var(--surface) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%236b7484' stroke-width='2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><line x1='20' y1='20' x2='16.5' y2='16.5'/></svg>") no-repeat 10px center; }
 
   /* session cards */
   .list { padding: 4px 10px 8px; }
-  .group-header { padding: 10px 4px 4px; font-size: 10px; letter-spacing: 0.08em; font-weight: 700; gap: 8px; }
+  .group-header { padding: 10px 4px 4px; font-size: var(--fs-xs); letter-spacing: 0.08em; font-weight: 700; gap: 8px; }
   .group-header .gh-count { font-family: var(--mono); opacity: 1; }
   .session { align-items: center; padding: 10px 11px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border-subtle); margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
   .session:hover { background: var(--surface-hover); border-color: var(--border); }
@@ -2631,14 +2657,14 @@
   .s-icon.done { background: var(--green-dim); opacity: 1; }
   .s-icon.done .px-ic { opacity: 0.55; }
   .s-icon.error { background: var(--red-dim); }
-  .s-name { font-weight: 700; font-size: 13px; letter-spacing: -0.005em; }
-  .s-meta { margin-top: 4px; gap: 5px; font-size: 9.5px; flex-wrap: nowrap; overflow: hidden; }
+  .s-name { font-weight: 700; font-size: var(--fs-base); letter-spacing: -0.005em; }
+  .s-meta { margin-top: 4px; gap: 5px; font-size: var(--fs-xs); flex-wrap: nowrap; overflow: hidden; }
   .s-meta > * { white-space: nowrap; flex-shrink: 0; }
   .s-meta > .s-branch, .s-meta > .s-tool { flex-shrink: 1; min-width: 24px; }
   .page-nav { scrollbar-width: none; }
   .page-nav::-webkit-scrollbar { display: none; }
-  .s-tool, .s-branch { padding: 1px 6px; border-radius: 5px; background: var(--surface-hover); border: 1px solid var(--border-subtle); opacity: 1; color: var(--text2); font-size: 9.5px; line-height: 1.5; }
-  .s-agent { border-radius: 5px; font-size: 9px; padding: 1px 6px; line-height: 1.5; }
+  .s-tool, .s-branch { padding: 1px 6px; border-radius: 5px; background: var(--surface-hover); border: 1px solid var(--border-subtle); opacity: 1; color: var(--text2); font-size: var(--fs-xs); line-height: 1.5; }
+  .s-agent { border-radius: 5px; font-size: var(--fs-xs); padding: 1px 6px; line-height: 1.5; }
   .s-agent.claude { background: var(--accent-dim); color: var(--accent); }
   .s-agent.gemini { background: var(--purple-dim); color: var(--purple); }
   .s-agent.codex { background: var(--green-dim); color: var(--green); }
@@ -2647,7 +2673,7 @@
   .s-act { border-radius: 8px; width: 22px; height: 22px; }
   .hover-demo .session:nth-child(2) .s-actions { display: flex; }   /* ROCA_START_PAGE=...,hover-demo: show one card's hover state for captures */
   .s-actions { position: absolute; top: 6px; right: 6px; gap: 2px; padding: 2px 3px; border-radius: 999px; background: var(--surface-raised); border: 1px solid var(--border-subtle); box-shadow: 0 4px 14px rgba(0,0,0,0.28); z-index: 2; }
-  .s-chat { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; align-self: center; font: inherit; margin-right: 2px; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-dim); color: var(--accent); cursor: pointer; transition: background 0.15s, color 0.15s; }
+  .s-chat { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; align-self: center; font: inherit; margin-right: 2px; font-size: var(--fs-xs); font-weight: 700; padding: 3px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-dim); color: var(--accent); cursor: pointer; transition: background 0.15s, color 0.15s; }
   .s-chat:hover { background: var(--accent); color: #fff; }
   .s-chat svg { flex-shrink: 0; }
 
@@ -2658,7 +2684,7 @@
   .mode-banner, .orca-error { border-radius: 12px; padding: 10px 12px; }
   .mode-banner button { border-radius: 999px; padding: 4px 11px; font-weight: 700; }
   .chat-panel { border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,0.35); border-top-color: var(--border-subtle); }
-  .chat-input { border-radius: 10px; font-family: var(--sans); font-size: 11.5px; background: var(--surface-hover); }
+  .chat-input { border-radius: 10px; font-family: var(--sans); font-size: var(--fs-sm); background: var(--surface-hover); }
   .chat-send-btn, .chat-orca-btn { border-radius: 999px; }
   .ctx-menu { border-radius: 12px; padding: 5px; box-shadow: var(--shadow-float); }
   .ctx-menu button { border-radius: 8px; }
@@ -3195,6 +3221,18 @@ Object.assign(I18N, {
   '세션 파일 기반 추정, 구독 요금제에서는 실제 청구액이 아님': 'Estimated from session files; on a subscription plan this is not what you are billed',
   '기존 세션에 배치한 티켓은 그 세션의 배치 이전 비용도 포함': 'for a ticket sent to an existing session this includes that session\'s earlier cost', '비용 미상 세션': 'sessions without cost',
   '오늘 배치 비용': 'Today\'s dispatch cost', '티켓별 상위 3': 'Top 3 tickets', '비용': 'Cost',
+  // remote terminal view (delegated teammate session)
+  '원격 터미널': 'Remote terminal', '연결 중…': 'Connecting…', '소유자 승인 대기': 'Waiting for the owner\'s approval', '위임 만료·해제': 'Delegation expired or revoked',
+  '화면을 읽을 수 없습니다': 'Cannot read the screen', '연결 오류': 'Connection error', '팀원 목록에 없음': 'Not in your teammate list', '팀 공유 꺼짐': 'Team sharing is off', '위임 확인 중': 'Checking the delegation', '중단을 보냈습니다': 'Interrupt sent', '로컬 네트워크 권한 없음 — 권한을 켠 뒤 다시 위임하세요': 'No Local Network access — turn the permission on, then delegate again', '화면 보기': 'Screen viewed', '열람': 'viewed',
+  '입력 후 Enter — 상대 세션에 그대로 전달됩니다': 'Type and press Enter — sent to their session as is', '입력 대기 상태일 때만 보낼 수 있습니다': 'Can only send while the session waits for input',
+  '상대 화면을 그대로 보여 줍니다 (민감 정보는 가려짐). 승인·선택 프롬프트는 소유자만 답할 수 있습니다.': 'Shows their screen as is (secrets masked). Only the owner can answer permission and choice prompts.',
+  // macOS Local Network permission (team sharing)
+  '로컬 네트워크 권한 없음': 'No Local Network access', '로컬 네트워크 권한 필요': 'Local Network permission needed', '권한 설정 열기': 'Open permission settings', '설정을 열지 못했습니다': 'Could not open Settings',
+  '로컬 네트워크 권한이 꺼져 있어 팀원 세션을 받을 수 없습니다': 'Local Network access is off, so teammates\' sessions cannot be fetched',
+  'macOS가 이 앱의 사무실 망 연결을 막고 있습니다 (EHOSTUNREACH). 팀원은 내 세션을 볼 수 있지만 나는 팀원 세션을 볼 수 없습니다. 시스템 설정 → 개인정보 보호 및 보안 → 로컬 네트워크에서 이 앱을 켜세요. 켜면 재시작 없이 몇 초 안에 다시 연결됩니다.': 'macOS is blocking this app\'s connections to the office network (EHOSTUNREACH). Teammates can see your sessions, but you cannot see theirs. Turn this app on in System Settings → Privacy & Security → Local Network. It reconnects within a few seconds, no restart needed.',
+  '개발 실행(npm start)은 목록에 "Electron"으로, DMG로 설치한 앱은 "AgentDesk"로 표시됩니다.': 'A dev run (npm start) is listed as "Electron"; the app installed from the DMG is listed as "AgentDesk".',
+  '버튼을 누르면 "개인정보 보호 및 보안" 화면이 열립니다. 아래쪽의 "로컬 네트워크"를 누른 뒤 이 앱의 스위치를 켜세요.': 'The button opens "Privacy & Security". Scroll to "Local Network", open it, and turn this app on.',
+  '로컬 네트워크 권한이 꺼져 있습니다 — 팀 탭의 [권한 설정 열기]를 누르세요': 'Local Network access is off — press [Open permission settings] in the Team tab',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -4525,14 +4563,15 @@ function tlTip(e) {
 function tlSvg(m, W, start, end, sel) {
   const LBL = 46, R = 6, span = Math.max(1000, end - start), X = at => LBL + (Math.min(end, Math.max(start, at)) - start) / span * (W - LBL - R);
   const subRows = Math.min(6, Math.max(1, ...m.subs.map(s => s.row + 1)));
-  const yTool = 16, hTool = 14, ySub = yTool + hTool + 6, hRow = 9, yWait = ySub + subRows * hRow + 6, hWait = 10, H = yWait + hWait + 4;
+  const yTool = 18, hTool = 14, ySub = yTool + hTool + 6, hRow = 9, yWait = ySub + subRows * hRow + 6, hWait = 10, H = yWait + hWait + 4;
   const subRow = new Map(m.subs.map(s => [s.sub, Math.min(subRows - 1, s.row)]));
   const inWin = (a, b) => b >= start && a <= end;
   let g = '';
-  // axis: ≤ 6 ticks on a round step
+  // axis: ≤ 6 ticks on a round step, fewer when the panel is too narrow for the labels
   const steps = [10e3, 30e3, 60e3, 120e3, 300e3, 600e3, 900e3, 1800e3, 3600e3, 7200e3, 10800e3, 21600e3, 43200e3, 86400e3];
-  const step = steps.find(x => span / x <= 6) || 86400e3;
-  for (let at = Math.ceil(start / step) * step; at <= end; at += step) { const x = X(at).toFixed(1); g += `<line class="tl-grid" x1="${x}" x2="${x}" y1="12" y2="${H}"/><text class="tl-ax" x="${x}" y="9">${tlTime(at, step < 60e3)}</text>`; }
+  const maxTicks = Math.max(2, Math.min(6, Math.floor((W - LBL - R) / 60)));
+  const step = steps.find(x => span / x <= maxTicks) || 86400e3;
+  for (let at = Math.ceil(start / step) * step; at <= end; at += step) { const x = X(at).toFixed(1); g += `<line class="tl-grid" x1="${x}" x2="${x}" y1="13" y2="${H}"/><text class="tl-ax" x="${x}" y="10">${tlTime(at, step < 60e3)}</text>`; }
   g += `<text class="tl-lane" x="2" y="${yTool + 10}">${esc(tlT('도구'))}</text><text class="tl-lane" x="2" y="${ySub + 7}">${esc(tlT('서브'))}</text><text class="tl-lane" x="2" y="${yWait + 8}">${esc(tlT('대기'))}</text>`;
   for (const w of m.waits) {
     if (!inWin(w.start, w.end)) continue;
@@ -4552,11 +4591,11 @@ function tlSvg(m, W, start, end, sel) {
       const wd = Math.max(2, X(b) - x), cls = `tl-bar c-${tlCat(e.label)}${e.ok === false ? ' fail' : ''}${e.open || e.orphan ? ' open' : ''}${on}`;
       const y = e.sub && subRow.has(e.sub) ? ySub + subRow.get(e.sub) * hRow + 1 : yTool + 2, h = e.sub && subRow.has(e.sub) ? hRow - 4 : hTool - 4;
       g += `<rect class="${cls}" data-ti="${i}" x="${x.toFixed(1)}" y="${y}" width="${wd.toFixed(1)}" height="${h}"><title>${esc(tlTip(e))}</title></rect>`;
-    } else if (e.kind === 'prompt') g += `<line class="tl-prompt${on}" data-ti="${i}" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="12" y2="${H}"><title>${esc(tlTip(e))}</title></line>`;
+    } else if (e.kind === 'prompt') g += `<line class="tl-prompt${on}" data-ti="${i}" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="13" y2="${H}"><title>${esc(tlTip(e))}</title></line>`;
     else if (e.kind === 'stop' || e.kind === 'stop-failure') g += `<circle class="tl-stop${e.kind === 'stop-failure' ? ' fail' : ''}${on}" data-ti="${i}" cx="${x.toFixed(1)}" cy="${yTool + hTool / 2}" r="3"><title>${esc(tlTip(e))}</title></circle>`;
     else if (e.kind === 'permission' && e.state === 'denied' && e.dur == null) g += `<rect class="tl-deny${on}" data-ti="${i}" x="${(x - 1).toFixed(1)}" y="${yWait}" width="2.5" height="${hWait}"><title>${esc(tlTip(e))}</title></rect>`;
-    else if (e.kind === 'session') g += `<line class="tl-sess${on}" data-ti="${i}" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="12" y2="${H}"><title>${esc(tlTip(e))}</title></line>`;
-    else if (e.kind === 'compact' || e.kind === 'task') g += `<rect class="tl-mark ${e.kind}${on}" data-ti="${i}" x="${(x - 2).toFixed(1)}" y="11" width="4" height="4"><title>${esc(tlTip(e))}</title></rect>`;
+    else if (e.kind === 'session') g += `<line class="tl-sess${on}" data-ti="${i}" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="13" y2="${H}"><title>${esc(tlTip(e))}</title></line>`;
+    else if (e.kind === 'compact' || e.kind === 'task') g += `<rect class="tl-mark ${e.kind}${on}" data-ti="${i}" x="${(x - 2).toFixed(1)}" y="13" width="4" height="4"><title>${esc(tlTip(e))}</title></rect>`;
   });
   return `<svg class="tl-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(tlT('세션 타임라인'))}">${g}</svg>`;
 }
@@ -5365,7 +5404,7 @@ function stripPhaseTag(spec) {
 function renderOrchTaskLanes() {
   const el = $('orch-task-lanes');
   if (!orchTasks.length) {
-    el.innerHTML = '<div class="empty" style="height:60px"><span class="empty-icon" style="font-size:20px">📋</span><span class="empty-text">태스크가 없습니다</span></div>';
+    el.innerHTML = '<div class="empty" style="height:60px"><span class="empty-icon" style="font-size:22px">📋</span><span class="empty-text">태스크가 없습니다</span></div>';
     return;
   }
 
@@ -6202,6 +6241,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (ctxMenuEl) { closeCtxMenu(); return; }
     if ($('team-modal')) { closeTeamModal(); return; }
+    if ($('peer-term')) { peerRemoteTermClose(); return; }
     if (currentPage === 'jira' && jb.drawer && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName || '')) { jb.drawer = ''; jbColsRender(); jbDrawerRender(); return; }
     const panel = $('chat-panel');
     if (panel.classList.contains('open')) { panel.classList.remove('open'); chatHandle = null; }
@@ -7396,7 +7436,7 @@ function officePeerPopOpen(ps, e) {
   const wrap = $('office-wrap'), wr = wrap.getBoundingClientRect();
   const el = document.createElement('div'); el.id = 'office-peer-pop'; el.className = 'office-tip office-peer-pop';
   const dg = peerDelegatedToMe(ps.owner, ps.sess.id), canInput = ps.sess.status === 'waiting' && ps.sess.needsInput !== true && ps.sess.ended !== true;
-  el.innerHTML = peerTipHtml(ps) + (dg ? `<div class="pp-row"><button data-pp="r-input" ${canInput ? '' : `disabled title="${esc(t('입력 대기 상태일 때만 보낼 수 있습니다'))}"`}>🔑 ${esc(t('입력'))}</button><button data-pp="r-stop">${esc(t('중단'))}</button><button data-pp="r-last">${esc(t('마지막 응답'))}</button></div>` : '')
+  el.innerHTML = peerTipHtml(ps) + (dg ? `<div class="pp-row"><button data-pp="r-input" ${canInput ? '' : `disabled title="${esc(t('입력 대기 상태일 때만 보낼 수 있습니다'))}"`}>🔑 ${esc(t('입력'))}</button><button data-pp="r-stop">${esc(t('중단'))}</button><button data-pp="r-last">${esc(t('마지막 응답'))}</button><button data-pp="r-term">${esc(t('터미널'))}</button></div>` : '')
     + `<div class="pp-row"><button data-pp="note">✉ ${esc(t('메모 남기기'))}</button><button data-pp="close">${esc(t('닫기'))}</button></div>`;
   el.style.left = (e.clientX - wr.left + 12) + 'px'; el.style.top = (e.clientY - wr.top + wrap.scrollTop + 12) + 'px';
   el.addEventListener('click', ev => {
@@ -7406,6 +7446,7 @@ function officePeerPopOpen(ps, e) {
     else if (a === 'r-input') peerRemoteInputCompose(ps.owner, ps.sess.id);
     else if (a === 'r-stop') peerRemoteInterrupt(ps.owner, ps.sess.id);
     else if (a === 'r-last') peerRemoteLastShow(ps.owner, ps.sess.id);
+    else if (a === 'r-term') peerRemoteTermOpen(ps.owner, ps.sess.id);
   });
   wrap.appendChild(el);
 }
@@ -9005,7 +9046,7 @@ function teamPeerCard(s, owner) {
             ${dg ? `<span class="s-tool peer-deleg">🔑 ${esc(t('나에게 위임됨'))}</span>` : ''}
           </div>
           ${s.now ? `<div class="s-prompt s-now">${esc(s.now)}</div>` : ''}
-          ${dg ? `<div class="peer-r-btns"><button class="set-btn" data-team="r-input" data-peer="${esc(owner)}" data-id="${esc(s.id)}" ${canInput ? '' : `disabled title="${esc(t('입력 대기 상태일 때만 보낼 수 있습니다'))}"`}>${esc(t('입력'))}</button><button class="set-btn" data-team="r-stop" data-peer="${esc(owner)}" data-id="${esc(s.id)}">${esc(t('중단'))}</button><button class="set-btn" data-team="r-last" data-peer="${esc(owner)}" data-id="${esc(s.id)}">${esc(t('마지막 응답'))}</button></div>` : ''}
+          ${dg ? `<div class="peer-r-btns"><button class="set-btn" data-team="r-input" data-peer="${esc(owner)}" data-id="${esc(s.id)}" ${canInput ? '' : `disabled title="${esc(t('입력 대기 상태일 때만 보낼 수 있습니다'))}"`}>${esc(t('입력'))}</button><button class="set-btn" data-team="r-stop" data-peer="${esc(owner)}" data-id="${esc(s.id)}">${esc(t('중단'))}</button><button class="set-btn" data-team="r-last" data-peer="${esc(owner)}" data-id="${esc(s.id)}">${esc(t('마지막 응답'))}</button><button class="set-btn" data-team="r-term" data-peer="${esc(owner)}" data-id="${esc(s.id)}">${esc(t('터미널'))}</button></div>` : ''}
         </div>
         <div class="s-actions" style="opacity:1"><button class="s-act" data-team="note" data-peer="${esc(owner)}" data-id="${esc(s.id)}" title="${esc(t('메모 남기기'))}">✉</button></div>
       </div>`;
@@ -9042,6 +9083,18 @@ function peerDiscoveredHtml() {
     ${list.map(p => `<div class="peer-disc">${esc(t('발견됨'))}: <b>${esc(p.name)}</b> @ ${esc(p.host)}<button class="set-btn" data-team="add-peer" data-name="${esc(p.name)}" data-host="${esc(p.host)}" data-id="${esc(p.id)}">${esc(t('추가'))}</button></div>`).join('')}`;
 }
 function peerLocalSession(publicId) { return sessions.find(s => AgentDeskTeam.publicSessionId(s.id) === publicId) || null; }
+// macOS Local Network permission denied (main confirms it with a probe): what is wrong, why, and the way to Settings
+function peerLocalNetHtml() {
+  const st = teamStatus;
+  if (!st.shared || st.localNetwork !== 'denied') return '';
+  return `<div class="peer-onboard ln-denied" role="alert">
+    <b>⚠️ ${esc(t('로컬 네트워크 권한이 꺼져 있어 팀원 세션을 받을 수 없습니다'))}</b>
+    <p>${esc(t('macOS가 이 앱의 사무실 망 연결을 막고 있습니다 (EHOSTUNREACH). 팀원은 내 세션을 볼 수 있지만 나는 팀원 세션을 볼 수 없습니다. 시스템 설정 → 개인정보 보호 및 보안 → 로컬 네트워크에서 이 앱을 켜세요. 켜면 재시작 없이 몇 초 안에 다시 연결됩니다.'))}</p>
+    <p>${esc(t('버튼을 누르면 "개인정보 보호 및 보안" 화면이 열립니다. 아래쪽의 "로컬 네트워크"를 누른 뒤 이 앱의 스위치를 켜세요.'))}</p>
+    <p>${esc(t('개발 실행(npm start)은 목록에 "Electron"으로, DMG로 설치한 앱은 "AgentDesk"로 표시됩니다.'))}</p>
+    <div class="po-btns"><button class="set-btn primary" data-team="ln-settings">${esc(t('권한 설정 열기'))}</button></div>
+  </div>`;
+}
 function teamRender() {
   const bar = $('team-bar'), list = $('team-list'); if (!bar || !list) return;
   const st = teamStatus;
@@ -9071,13 +9124,13 @@ function teamRender() {
   bar.innerHTML = `<b>${esc(st.name)}</b> · ${st.paused ? `<span class="off">${esc(t('사무실 망 아님 — 공유 일시 중지'))}</span>` : !st.shared ? `<span class="off">${esc(t('공유 꺼짐 (이 PC만)'))}</span>` : st.listening ? `${esc(t('공유 중'))} :${esc(st.port)}` : `<span class="off">${esc(t('서버 꺼짐'))}</span>`} · ${esc(t('팀원'))} ${up}/${peers.length}${st.discovery ? ` · ${esc(t('자동 발견 켜짐'))}` : ''}`;
   const toMe = peers.reduce((n, p) => n + (p.delegatedToMe || []).length, 0);
   bar.innerHTML += ` · ${esc(t('내가 위임한'))} ${(st.delegations || []).length} · ${esc(t('나에게 위임된'))} ${toMe}`;
-  let html = peerPendingHtml() + peerNotesHtml() + peerDiscoveredHtml() + peerBoardHtml(peers);
+  let html = peerLocalNetHtml() + peerPendingHtml() + peerNotesHtml() + peerDiscoveredHtml() + peerBoardHtml(peers);
   if (!peers.length) html += `<div class="empty"><span class="empty-icon">👥</span><span class="empty-text">${esc(t('team.json 의 peers 가 비어 있습니다'))}</span></div>`;
   const ord = { running: 0, waiting: 1, error: 2, done: 3 };
   for (const p of peers) {
     const items = (p.sessions || []).filter(s => !s.isSub).sort((a, b) => (a.needsInput ? -1 : 0) - (b.needsInput ? -1 : 0) || (ord[a.status] ?? 9) - (ord[b.status] ?? 9) || (b.time || 0) - (a.time || 0));
     const q = p.ok ? `${p.rtt != null ? ` · ${esc(p.rtt)}ms` : ''}` : `${p.fails ? ` · ${esc(t('실패'))} ${esc(p.fails)}${p.backoff ? ` (${esc(t('15초 간격'))})` : ''}` : ''}`;
-    const perr = p.offnet ? t('다른 네트워크 — 폴링 안 함') : p.error === 'sharing off' ? t('공유 꺼짐') : p.error === 'paused' ? t('사무실 망 아님 — 공유 일시 중지') : p.mismatch ? t('신원 불일치 — 폴링 중지') : p.error;
+    const perr = p.offnet ? t('다른 네트워크 — 폴링 안 함') : p.error === 'sharing off' ? t('공유 꺼짐') : p.error === 'paused' ? t('사무실 망 아님 — 공유 일시 중지') : p.mismatch ? t('신원 불일치 — 폴링 중지') : p.localNetDenied && st.localNetwork === 'denied' ? `${t('로컬 네트워크 권한 필요')} (${p.error})` : p.error;
     const state = p.ok ? `${esc(t('연결됨'))} · ${timeAgo(p.at)}${q}` : `<span class="off">${esc(t('연결 안 됨'))}${perr ? ` · ${esc(perr)}` : ''}${p.lastOk ? ` · ${esc(t('마지막'))} ${timeAgo(p.lastOk)}` : ''}${q}</span>`;
     const renamed = p.remoteName && p.remoteName !== p.name ? ` <span class="gh-peer-state" title="instance ${esc(String(p.instanceId || '').slice(0, 8))}">(${esc(p.remoteName)})</span>` : '';
     html += `<div class="group-header"><span>@${esc(p.name)}</span>${renamed}<span class="gh-count">${items.length}</span><span class="gh-line"></span><span class="gh-peer-state${p.ok ? '' : ' off'}">${state}</span></div>`;
@@ -9154,7 +9207,7 @@ peerNotesLoad();
 // ── phase 3: session delegation (remote input). Mine: which teammate may type into / interrupt which of my sessions
 //    (main keeps the grants; the page sees names only). Theirs: sessions a teammate delegated to me. ──
 let peerRemoteLog = [], peerBlockToastAt = 0;   // newest first: { at, kind: delegate|revoke|input|interrupt, result, sessionId, sessionName, peer, text, rule, reason }
-const PEER_REMOTE_RESULT = { accepted: '수락', sent: '전송', blocked: '차단', busy: '대기 중 아님', rate: '횟수 초과', error: '실패' };
+const PEER_REMOTE_RESULT = { viewed: '열람', accepted: '수락', sent: '전송', blocked: '차단', busy: '대기 중 아님', rate: '횟수 초과', error: '실패' };
 function peerDelegationsOf(localId) { return ((teamStatus && teamStatus.delegations) || []).filter(d => d.localId === localId); }
 // main's reasons for refusing a delegation, in words
 const PEER_DELEG_ERR = { 'Claude Code sessions only': 'Claude Code 세션만 위임할 수 있습니다', 'permission checks off/unknown': '권한 모드를 알 수 없거나 꺼져 있어 위임할 수 없습니다 — 정확 감지(hook)가 켜진 Claude Code 세션만 위임할 수 있습니다', 'teammate address is not an IP': '팀원 주소가 IP가 아니라 위임할 수 없습니다', 'an unidentified teammate is on the same network': '같은 망에 식별되지 않은 팀원 항목(호스트 이름·instance id 없음)이 있어 위임할 수 없습니다', 'another teammate shares this address': '같은 주소(IP)에 다른 팀원이 있어 위임할 수 없습니다', 'teammate not connected': '팀원이 연결되어 있지 않습니다', 'unknown session': '세션을 찾을 수 없습니다', 'no terminal': '세션 터미널을 찾을 수 없습니다', 'unknown teammate': '팀원 식별자(instance id)가 아직 없습니다' };
@@ -9168,7 +9221,7 @@ function peerDelegBadges(s) {
 }
 function peerRemoteRowHtml(e) {
   const hm = new Date(Number(e.at) || 0).toLocaleTimeString(LANG === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit' });
-  const what = e.kind === 'input' ? String(e.text || '') : e.kind === 'interrupt' ? t('중단') : e.kind === 'delegate' ? t('위임') : e.kind === 'revoke' ? `${t('회수')}${e.reason ? ' · ' + e.reason : ''}` : String(e.kind || '');
+  const what = e.kind === 'input' ? String(e.text || '') : e.kind === 'interrupt' ? t('중단') : e.kind === 'delegate' ? t('위임') : e.kind === 'screen' ? t('화면 보기') : e.kind === 'revoke' ? `${t('회수')}${e.reason ? ' · ' + peerRevokeReason(e.reason) : ''}` : String(e.kind || '');
   const res = e.result ? ` · ${t(PEER_REMOTE_RESULT[e.result] || String(e.result))}${e.rule ? ` (${e.rule})` : ''}` : '';
   return `<span class="pr-row${e.result === 'blocked' ? ' blocked' : ''}">${esc(hm)} @${esc(e.peer || '')} ${esc(trunc(what, 80))}${esc(res)}</span>`;
 }
@@ -9216,6 +9269,8 @@ function peerRemoteLogShow() {
   m.querySelector('#rlog-close').onclick = closeTeamModal;
   m.querySelector('#rlog-file').onclick = () => window.orca.teamRemoteOpenLog();
 }
+// the owner's auto-revoke reason (English in the log): the Local Network one says what to do
+const peerRevokeReason = r => r === 'local network denied' ? t('로컬 네트워크 권한 없음 — 권한을 켠 뒤 다시 위임하세요') : String(r || '');
 function peerSessionOf(owner, sid) { const p = (teamStatus.peers || {})[owner]; return (p && (p.sessions || []).find(x => x.id === sid)) || null; }
 function peerRemoteResult(r) {
   if (r.ok) return [r.accepted ? t('입력을 보냈습니다') : t('입력을 보냈습니다 (수락 미확인)'), undefined];
@@ -9245,11 +9300,13 @@ function peerRemoteInputCompose(owner, sid) {
     showInAppToast(`@${owner}: ${msg}`, kind);
   };
 }
-async function peerRemoteInterrupt(owner, sid) {
+// the result (null when cancelled); quiet: the caller shows it (the terminal view, whose overlay would hide a toast)
+async function peerRemoteInterrupt(owner, sid, quiet) {
   const s = peerSessionOf(owner, sid);
-  if (!await teamConfirm(t('원격 중단'), LANG === 'en' ? `Interrupt @${owner}'s ${s ? s.name : sid} (Esc)?` : `@${owner} 의 ${s ? s.name : sid} 세션을 중단(Esc)할까요?`, t('중단'))) return;
+  if (!await teamConfirm(t('원격 중단'), LANG === 'en' ? `Interrupt @${owner}'s ${s ? s.name : sid} (Esc)?` : `@${owner} 의 ${s ? s.name : sid} 세션을 중단(Esc)할까요?`, t('중단'))) return null;
   const r = await window.orca.teamRemoteInterrupt({ peer: owner, sessionId: sid }).catch(e => ({ ok: false, error: e.message }));
-  showInAppToast(r.ok ? `@${owner}: ${t('중단을 보냈습니다')}` : `@${owner}: ${peerRemoteResult(r)[0]}`, r.ok ? undefined : 'error');
+  if (!quiet) showInAppToast(r.ok ? `@${owner}: ${t('중단을 보냈습니다')}` : `@${owner}: ${peerRemoteResult(r)[0]}`, r.ok ? undefined : 'error');
+  return r;
 }
 async function peerRemoteLastShow(owner, sid) {
   const s = peerSessionOf(owner, sid);
@@ -9260,6 +9317,107 @@ async function peerRemoteLastShow(owner, sid) {
     <div class="row"><span style="margin-left:auto"></span><button id="peer-last-close">${esc(t('닫기'))}</button></div>`);
   m.querySelector('#peer-last-close').onclick = closeTeamModal;
 }
+// ── remote terminal view: the delegated session's screen as the owner sees it (masked, read-only), polled every 1.5 s
+// while open and visible (backing off on errors), with one input line that sends plain text through the same
+// /input path as the input modal — only while the session sits idle at its prompt. Permission / choice prompts stay
+// with the owner; no keys are forwarded.
+let peerTerm = null;   // { owner, sid, timer, delay, busy, sending, refocus, lastText, alive }
+const PEER_TERM_MS = 1500, PEER_TERM_MAX_MS = 15000;
+function peerRemoteTermClose() {
+  if (peerTerm) { peerTerm.alive = false; clearTimeout(peerTerm.timer); peerTerm = null; }
+  const el = $('peer-term'); if (el) el.remove();
+}
+function peerRemoteTermOpen(owner, sid) {
+  peerRemoteTermClose();
+  const s = peerSessionOf(owner, sid);
+  const bg = document.createElement('div'); bg.className = 'peer-term-bg'; bg.id = 'peer-term';
+  bg.innerHTML = `<div class="peer-term" role="dialog" aria-label="${esc(t('원격 터미널'))}">
+    <div class="pt-head"><span class="pt-title">🔑 ${esc(t('터미널'))} · @${esc(owner)} / ${esc(s ? s.name : sid)}</span><span class="pt-status" id="pt-status">${esc(t('연결 중…'))}</span><button id="pt-close" title="${esc(t('닫기'))}">✕</button></div>
+    <pre class="pt-screen" id="pt-screen"></pre>
+    <div class="pt-foot"><span class="pt-prompt">❯</span><input class="pt-input" id="pt-input" maxlength="4000" disabled autocomplete="off" spellcheck="false"><button id="pt-stop">${esc(t('중단'))}</button></div>
+    <div class="pt-msg" id="pt-msg">${esc(t('상대 화면을 그대로 보여 줍니다 (민감 정보는 가려짐). 승인·선택 프롬프트는 소유자만 답할 수 있습니다.'))}</div>
+  </div>`;
+  bg.addEventListener('mousedown', e => { if (e.target === bg) peerRemoteTermClose(); });
+  document.body.appendChild(bg);
+  const st = peerTerm = { owner, sid, timer: 0, delay: PEER_TERM_MS, busy: false, sending: false, refocus: false, lastText: null, alive: true, canInput: false };
+  const input = bg.querySelector('#pt-input'), msg = bg.querySelector('#pt-msg');
+  const say = (text, kind) => { msg.textContent = text; msg.classList.toggle('error', kind === 'error'); };
+  bg.querySelector('#pt-close').onclick = peerRemoteTermClose;
+  bg.querySelector('#pt-stop').onclick = async () => {
+    const r = await peerRemoteInterrupt(owner, sid, true);
+    if (!st.alive) return;
+    if (r) say(r.ok ? t('중단을 보냈습니다') : peerRemoteResult(r)[0], r.ok ? undefined : 'error');
+    peerTermPoll(st);
+  };
+  input.addEventListener('keydown', async e => {
+    if (e.key !== 'Enter' || e.isComposing || e.shiftKey) return;
+    e.preventDefault();
+    const text = input.value.trim(); if (!text || st.sending || !st.canInput) return;
+    st.sending = true; st.refocus = true; input.disabled = true; say(t('보내는 중…'));
+    const r = await window.orca.teamRemoteInput({ peer: owner, sessionId: sid, text }).catch(err => ({ ok: false, error: err.message }));
+    st.sending = false;
+    if (!st.alive) return;
+    const [m, kind] = peerRemoteResult(r); say(m, kind);
+    if (r.ok) input.value = '';
+    peerTermPoll(st);
+  });
+  peerTermPoll(st);
+}
+function peerTermSchedule(st, ms) { if (!st.alive) return; clearTimeout(st.timer); st.timer = setTimeout(() => peerTermPoll(st), ms); }
+async function peerTermPoll(st) {
+  if (!st.alive || st.busy) return;
+  if (document.hidden) { peerTermSchedule(st, PEER_TERM_MS); return; }   // no reads while the widget is hidden
+  st.busy = true; clearTimeout(st.timer);
+  const r = await window.orca.teamRemoteScreen({ peer: st.owner, sessionId: st.sid }).catch(e => ({ ok: false, error: e.message }));
+  st.busy = false;
+  if (!st.alive) return;
+  const bg = $('peer-term'); if (!bg) return;
+  const pre = bg.querySelector('#pt-screen'), status = bg.querySelector('#pt-status'), input = bg.querySelector('#pt-input');
+  const setStatus = (label, cls) => { status.textContent = t(label); status.className = 'pt-status' + (cls ? ' ' + cls : ''); status.title = ''; };
+  let final = false;
+  if (r.ok) {
+    st.delay = PEER_TERM_MS;
+    const text = (r.lines || []).map(l => esc(l)).join('\n');
+    if (text !== st.lastText) {
+      // stay at the bottom (like a terminal) unless the user scrolled up to read
+      const stick = st.lastText === null || pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8;
+      pre.innerHTML = text; st.lastText = text;
+      if (stick) pre.scrollTop = pre.scrollHeight;
+    }
+    // the same rule as the input buttons: waiting at the prompt, not on a permission / choice prompt, not ended
+    st.canInput = r.status === 'waiting' && r.needsInput !== true && r.ended !== true;
+    if (r.ended) setStatus('종료됨', 'err');
+    else if (r.needsInput) setStatus('소유자 승인 대기', 'ask');
+    else if (r.status === 'waiting') setStatus('입력 대기', 'wait');
+    else if (r.status === 'running') setStatus('실행 중', 'run');
+    else setStatus(r.status === 'error' ? '오류' : '쉬는 중', r.status === 'error' ? 'err' : '');
+  } else {
+    st.canInput = false;
+    // final: the owner's server said 403 (revoked / expired), or sharing is off / the teammate is gone here. A local
+    // "not delegated" (no HTTP status) is not: my grant list empties while polls fail (e.g. Local Network denied)
+    // and comes back with the next good poll, so keep polling with backoff.
+    const local = !r.status, denied = local && teamStatus.localNetwork === 'denied';
+    const gone = local && (r.error === 'team sharing is off' || r.error === 'unknown peer');
+    final = !denied && (r.status === 403 || gone);
+    if (denied) setStatus('로컬 네트워크 권한 없음', 'err');
+    else if (r.status === 403) setStatus('위임 만료·해제', 'err');
+    else if (gone) setStatus(r.error === 'unknown peer' ? '팀원 목록에 없음' : '팀 공유 꺼짐', 'err');
+    else if (r.status === 409) setStatus('화면을 읽을 수 없습니다', 'err');
+    else if (local && r.error === 'not delegated') setStatus('위임 확인 중', 'err');
+    else setStatus('연결 오류', 'err');
+    status.title = denied ? t('로컬 네트워크 권한이 꺼져 있습니다 — 팀 탭의 [권한 설정 열기]를 누르세요') : String(r.error || '');
+    st.delay = Math.min(PEER_TERM_MAX_MS, st.delay * 2);
+  }
+  if (!st.sending) {
+    input.disabled = !st.canInput;
+    input.placeholder = st.canInput ? t('입력 후 Enter — 상대 세션에 그대로 전달됩니다') : t('입력 대기 상태일 때만 보낼 수 있습니다');
+    // disabling the input while sending dropped its focus to the page: give it back once it can type again
+    if (st.canInput && st.refocus) { st.refocus = false; if (!document.activeElement || document.activeElement === document.body) input.focus(); }
+  }
+  if (final) { st.canInput = false; input.disabled = true; return; }   // will not clear by itself: stop polling (reopen once delegated again)
+  peerTermSchedule(st, st.delay);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && peerTerm) peerTermPoll(peerTerm); });
 if (window.orca.teamRemoteLog) window.orca.teamRemoteLog(200).then(l => { if (Array.isArray(l)) peerRemoteLog = l; }).catch(() => {});
 if (window.orca.onTeamRemote) window.orca.onTeamRemote(e => {
   if (!e || typeof e !== 'object') return;
@@ -9269,7 +9427,7 @@ if (window.orca.onTeamRemote) window.orca.onTeamRemote(e => {
   else if (e.result === 'blocked' && (peerBlockToastAt = Date.now())) showInAppToast(LANG === 'en' ? `Blocked ${who}'s remote input: ${e.ruleLabel || e.rule || ''}` : `${who}의 원격 입력을 차단했습니다: ${e.ruleLabel || e.rule || ''}`, 'error');
   else if (e.kind === 'input' && (e.result === 'accepted' || e.result === 'sent')) showInAppToast(`🔑 @${who} → ${name}: ${trunc(String(e.text || ''), 60)}`);
   else if (e.kind === 'interrupt' && e.result === 'accepted') showInAppToast(`🔑 @${who} → ${name}: ${t('중단')}`);
-  else if (e.kind === 'revoke' && e.reason !== 'revoked by owner') showInAppToast(`${name}: ${t('위임이 해제되었습니다')} (${e.reason || ''})`);
+  else if (e.kind === 'revoke' && e.reason !== 'revoked by owner') showInAppToast(`${name}: ${t('위임이 해제되었습니다')} (${peerRevokeReason(e.reason)})`, e.reason === 'local network denied' ? 'error' : undefined);
   teamPageTick().then(() => renderDashboard()).catch(() => {});
 });
 // invite code: made and copied by the main process (it carries the token, so the page never sees it); joining sends
@@ -9319,7 +9477,7 @@ function peerInviteJoin() {
     ta.value = '';
     if (!r.ok) { btn.disabled = false; m.querySelector('#peer-invite-msg').textContent = `${t('합류 실패')}: ${r.error || ''}`; return; }
     closeTeamModal();
-    showInAppToast(r.connected ? `${t('연결됨')} @${r.name} — ${t('초대한 사람이 등록 요청을 수락하면 서로 보입니다')}` : `${t('합류했지만 아직 연결되지 않았습니다')} @${r.name}: ${r.error === 'other network' ? t('다른 네트워크') : r.error || ''}`, r.connected ? undefined : 'error');
+    showInAppToast(r.connected ? `${t('연결됨')} @${r.name} — ${t('초대한 사람이 등록 요청을 수락하면 서로 보입니다')}` : `${t('합류했지만 아직 연결되지 않았습니다')} @${r.name}: ${r.localNetworkDenied ? t('로컬 네트워크 권한 필요') : r.error === 'other network' ? t('다른 네트워크') : r.error || ''}`, r.connected ? undefined : 'error');
     teamPageTick();
   };
 }
@@ -9342,7 +9500,7 @@ function teamSettingsText() {
   if (!st.configured) return t('~/.agentdesk/team.json 에 이름·토큰·팀원 주소를 적으면 켜집니다. 팀원도 같은 토큰을 써야 합니다.');
   if (st.error) return st.error;
   const peers = Object.values(st.peers || {});
-  return `${st.listening ? `${t('공유 중')} ${st.name} :${st.port}` : t('서버 꺼짐')} · ${t('팀원')} ${peers.filter(p => p.ok).length}/${peers.length}${peers.filter(p => !p.ok).length ? ` (${peers.filter(p => !p.ok).map(p => `${p.name}: ${p.error}`).join(', ')})` : ''}${(st.discovered || []).length ? ` · ${t('발견됨')} ${st.discovered.length} — ${t('팀 탭에서 추가')}` : ''}`;
+  return `${st.shared && st.localNetwork === 'denied' ? `${t('로컬 네트워크 권한 없음')} · ` : ''}${st.listening ? `${t('공유 중')} ${st.name} :${st.port}` : t('서버 꺼짐')} · ${t('팀원')} ${peers.filter(p => p.ok).length}/${peers.length}${peers.filter(p => !p.ok).length ? ` (${peers.filter(p => !p.ok).map(p => `${p.name}: ${p.error}`).join(', ')})` : ''}${(st.discovered || []).length ? ` · ${t('발견됨')} ${st.discovered.length} — ${t('팀 탭에서 추가')}` : ''}`;
 }
 setInterval(teamPageTick, 3000); setTimeout(teamPageTick, 4000);
 $('team-list').addEventListener('click', async (e) => {
@@ -9351,12 +9509,14 @@ $('team-list').addEventListener('click', async (e) => {
   if (act === 'setup') { const r = await window.orca.teamSetup(); if (r.ok) { showInAppToast(r.created ? t('team.json 예시 파일을 만들었습니다. 이름·토큰·팀원 주소를 채우세요') : t('설정 파일을 엽니다')); window.orca.teamOpenConfig(); } }
   else if (act === 'invite-create') peerInviteCreate();
   else if (act === 'invite-join') peerInviteJoin();
+  else if (act === 'ln-settings') { const r = await window.orca.openLocalNetworkSettings().catch(err => ({ ok: false, error: err.message })); if (!r.ok) showInAppToast(`${t('설정을 열지 못했습니다')}: ${r.error || ''}`, 'error'); }
   else if (act === 'rename') { const v = ($('peer-name') || {}).value || ''; const r = await window.orca.teamRename(v); showInAppToast(r.ok ? `${t('이름 변경')}: ${r.name}` : `${t('이름 변경 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error'); if (document.activeElement) document.activeElement.blur(); teamPageTick(); }
   else if (act === 'note') peerNoteCompose(b.dataset.peer, b.dataset.id);
   else if (act === 'note-deliver') peerNoteDeliver(b.dataset.id);
   else if (act === 'r-input') peerRemoteInputCompose(b.dataset.peer, b.dataset.id);
   else if (act === 'r-stop') peerRemoteInterrupt(b.dataset.peer, b.dataset.id);
   else if (act === 'r-last') peerRemoteLastShow(b.dataset.peer, b.dataset.id);
+  else if (act === 'r-term') peerRemoteTermOpen(b.dataset.peer, b.dataset.id);
   else if (act === 'note-ignore') peerNoteSet(b.dataset.id, 'ignored');
   else if (act === 'hello-accept' || act === 'hello-ignore') {
     b.disabled = true;
@@ -9402,7 +9562,7 @@ function settingsRender() {
     ${guardSectionHtml(row, seg, sw)}
     <h2>${esc(t('슬랙 창구'))}</h2>
     ${row(t('브리지 상태'), inboxStatus.configured ? (inboxStatus.running ? t('연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.') : `${t('설정 파일은 있지만 브리지가 꺼져 있습니다.')}${inboxStatus.lastError ? ` (${esc(inboxStatus.lastError)})` : ''}`) : t('~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.'), inboxStatus.configured ? `<button class="set-btn" data-set="inbox-restart">${esc(t('재시작'))}</button>` : '')}
-    ${row(t('접수 담당 세션'), t('슬랙 요청을 처음 받아 처리하거나 다른 세션에 넘길 세션입니다. 연결된 세션 중에서 고르세요.'), `<select class="theme-btn" data-set="inbox-owner" style="width:auto;max-width:150px;padding:0 6px;font-size:11px"><option value="">${esc(t('지정 안 함'))}</option>${sessions.filter(s => s.connected && handles.get(s.id)).map(s => `<option value="${esc(s.id)}" ${s.id === inboxOwner ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>`)}
+    ${row(t('접수 담당 세션'), t('슬랙 요청을 처음 받아 처리하거나 다른 세션에 넘길 세션입니다. 연결된 세션 중에서 고르세요.'), `<select class="theme-btn" data-set="inbox-owner" style="width:auto;max-width:150px;padding:0 6px;font-size:var(--fs-sm)"><option value="">${esc(t('지정 안 함'))}</option>${sessions.filter(s => s.connected && handles.get(s.id)).map(s => `<option value="${esc(s.id)}" ${s.id === inboxOwner ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>`)}
     ${row(t('접수 기록'), inboxLog.length ? `${inboxLog.length}${t('건')}${inboxPending.length ? ` · ${t('보류')} ${inboxPending.length}` : ''} · ${t('최근')}: ${esc(inboxLog[0].type)} ${esc(trunc(inboxLog[0].text, 40))}` : t('아직 받은 요청이 없습니다.'), `<button class="set-btn" data-set="inbox-log">${esc(t('보기'))}</button>`)}
     <h2>${esc(t('팀 공유'))}</h2>
     ${row(t('같은 망의 팀원 세션'), teamSettingsText(), `<button class="set-btn" data-set="team-config">${esc(t(teamStatus.configured ? '설정 파일 열기' : '팀 공유 켜기'))}</button>`, 'set-team-status')}
@@ -9488,10 +9648,11 @@ $('settings-body').addEventListener('click', async (e) => {
     await teamPageTick(); settingsRender(); renderDashboard();
   }
   else if (name === 'team-remote-log') peerRemoteLogShow();
-  else if (name === 'team-share-off') { const r = await window.orca.teamShareOff(); showInAppToast(r.ok ? t('공유를 껐습니다. 이 PC 안에서만 열려 있습니다') : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error'); await teamPageTick(); settingsRender(); }
+  else if (name === 'team-share-off') { const r = await window.orca.teamShareOff(); if (r.ok) peerRemoteTermClose(); showInAppToast(r.ok ? t('공유를 껐습니다. 이 PC 안에서만 열려 있습니다') : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error'); await teamPageTick(); settingsRender(); }
   else if (name === 'team-rotate') {
     if (!await teamConfirm(t('토큰 재발급'), t('지금 팀원은 모두 연결이 끊깁니다. 새 초대 코드를 만들어 팀원에게 1:1 로 다시 전달해야 합니다. 계속할까요?'), t('재발급'))) return;
     const r = await window.orca.teamTokenRotate({ confirmed: true });
+    if (r.ok) peerRemoteTermClose();
     showInAppToast(r.ok ? t('새 토큰을 만들었습니다. 초대 코드를 다시 만들어 팀원에게 전달하세요') : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
     await teamPageTick(); settingsRender();
   }
@@ -9499,6 +9660,7 @@ $('settings-body').addEventListener('click', async (e) => {
     const n = b.dataset.name;
     if (!await teamConfirm(t('팀원 삭제'), LANG === 'en' ? `Remove @${n} from your list. They keep the team token until you reissue it.` : `@${n} 을 목록에서 지웁니다. 팀 토큰을 재발급하기 전까지 그 사람은 여전히 토큰을 갖고 있습니다.`, t('삭제'))) return;
     const r = await window.orca.teamRemovePeer(n);
+    if (r.ok && peerTerm && peerTerm.owner === n) peerRemoteTermClose();
     showInAppToast(r.ok ? `${t('삭제')}: @${n}` : `${t('작업 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
     await teamPageTick(); settingsRender();
   }
@@ -10107,7 +10269,7 @@ function onboardRender() {
         return row('off', t('터미널 제어'), false, '', t('Windows에서는 세션 상태 표시(훅)와 종료 세션 다시 열기(Windows Terminal)만 지원합니다. 채팅·지시는 아직 지원하지 않습니다.'), null);
       })()}
       ${e && !e.hooks ? `<label class="onboard-tip" style="align-items:center;cursor:pointer"><input type="checkbox" id="onboard-hooks-auto" ${onboardHooksAuto ? 'checked' : ''}> <span>${esc(t('다음을 누르면 정확 감지(훅) 켜기 (권장)'))}</span></label>` : ''}
-      <p style="margin-top:6px"><button class="theme-btn" data-act="recheck" style="width:auto;padding:0 10px;font-size:11px">${esc(t('다시 확인'))}</button></p>`;
+      <p style="margin-top:6px"><button class="theme-btn" data-act="recheck" style="width:auto;padding:0 10px;font-size:var(--fs-sm)">${esc(t('다시 확인'))}</button></p>`;
   } else {
     body.innerHTML = `
       <div class="onboard-step">${esc(t('사용 팁'))}</div>
