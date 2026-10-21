@@ -10,7 +10,9 @@
 //   worktreePrompt(issue, opts)      → prompt for a fresh worktree agent (guidance first, autopilot appended)
 //   sessionMessage(issue, guidance)  → message for an existing session: guidance first, then the ticket, then REPORT
 //   extractReport(text)              → REPORT body or null (ignores the echoed format hint)
-//   reportToComment(report, meta)    → plain-text Jira comment body
+//   reportToComment(report, meta)    → plain-text Jira comment body, secrets masked
+//   reportToCommentDraft(report, meta) → { text: that body, masked: [MASKED…] markers added in header + body }
+//                                      (meta.maskWithCount, else globalThis.AgentDeskMask.maskWithCount)
 //   jqlFor(filter)                   → JQL for the OAuth (REST) path: assigned | reported | all | done
 //   textToAdf(text)                  → ADF doc for a REST comment (one paragraph per line, ``` fences → codeBlock)
 //   tokenNeedsRefresh(tok, now)      → true when the OAuth access token is missing or expires within 60 s
@@ -132,12 +134,17 @@ function extractReport(text) {
   return body;
 }
 
-function reportToComment(report, meta) {
+function reportToCommentDraft(report, meta) {
   const m = meta || {}, en = m.lang === 'en';
   const body = String(report || '').replace(/REPORT_(START|END)/g, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
   const head = `${en ? 'AgentDesk agent report' : 'AgentDesk 에이전트 보고'}${m.session ? ` (${m.session})` : ''}`;
-  return `${head}\n\n${body}`.slice(0, COMMENT_MAX);
+  // masked before the length cap; the main process masks again before anything is sent (this one is for the preview)
+  const maskFn = m.maskWithCount || (root.AgentDeskMask && root.AgentDeskMask.maskWithCount);
+  if (typeof maskFn !== 'function') throw new Error('reportToComment: core/mask.js is not loaded');
+  const r = maskFn(`${head}\n\n${body}`);
+  return { text: r.text.slice(0, COMMENT_MAX), masked: r.count };
 }
+function reportToComment(report, meta) { return reportToCommentDraft(report, meta).text; }
 
 const JQL = {
   assigned: 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC',
@@ -295,7 +302,7 @@ function promptTemplates(lang) {
   ];
 }
 
-const AgentDeskJira = { promptTemplates, reportIssues, rememberGuide, boardJql, boardIssue, buildColumns, moveColumn, groupIssues, isOverdue, formatDue, priorityIcon, typeIcon, initials, filterIssues, jqlFor, textToAdf, tokenNeedsRefresh, jiraSites, pickSite, KEY_RE, REPORT_HINT, isKey, adfText, normalizeIssue, issuesFrom, issueFrom, connectionFrom, errorText, worktreeName, worktreePrompt, sessionMessage, extractReport, reportToComment };
+const AgentDeskJira = { promptTemplates, reportIssues, rememberGuide, boardJql, boardIssue, buildColumns, moveColumn, groupIssues, isOverdue, formatDue, priorityIcon, typeIcon, initials, filterIssues, jqlFor, textToAdf, tokenNeedsRefresh, jiraSites, pickSite, KEY_RE, REPORT_HINT, isKey, adfText, normalizeIssue, issuesFrom, issueFrom, connectionFrom, errorText, worktreeName, worktreePrompt, sessionMessage, extractReport, reportToComment, reportToCommentDraft };
 // the widget loads this as a classic <script> (one global); tests `import()` it and read globalThis.AgentDeskJira
 root.AgentDeskJira = AgentDeskJira;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskJira;

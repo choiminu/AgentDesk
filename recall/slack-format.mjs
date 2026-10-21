@@ -1,5 +1,10 @@
 // Slack mrkdwn for the front desk: the agent's REPORT (plain text as the TUI rendered it) → readable thread reply.
 // Pure functions, no Slack client here, so they are unit-testable.
+import "../core/mask.js";   // globalThis.AgentDeskMask: replyPayload masks whatever the reply file holds
+import "../core/outbound.js";   // globalThis.AgentDeskOutbound: the reply icon set, shared with the main process
+const mask = s => globalThis.AgentDeskMask.mask(s);
+const { replyIcon, routeFromTask } = globalThis.AgentDeskOutbound;
+export { routeFromTask };
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const SECTION_ICON = { "한 일": "🛠", "변경 파일": "📄", "막힌 점": "🚧", "다음 제안": "💡", "Done": "🛠", "Changed files": "📄", "Blockers": "🚧", "Next suggestion": "💡" };
 // a line that is code even without a ``` fence: SQL (upper-case keywords), shell, JS, or a statement ending in ; { }
@@ -9,7 +14,8 @@ const isCodeLine = (raw, inCode) => /^\s{2,}\S/.test(raw) || CODE_WORD.test(raw.
 
 function inline(s) {
   return esc(s)
-    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, "<$2|$1>")       // markdown link → slack link
+    // markdown link → slack link; the URL may hold a "[MASKED EMAIL]"-style marker (its spaces become %20)
+    .replace(/\[([^\]]+)\]\((https?:(?:[^)\s\[]|\[MASKED[A-Z ]{0,16}\]){1,2048})\)/g, (_, label, url) => `<${url.replace(/ /g, "%20")}|${label}>`)
     .replace(/\*\*([^*]+)\*\*/g, "*$1*");                          // **bold** → *bold*
 }
 
@@ -24,7 +30,8 @@ export function toMrkdwn(report) {
     flush();
     if (!t) { out.push(""); continue; }
     let m;
-    if ((m = t.match(/^\[([^\]]{1,24})\]\s*(.*)$/))) {           // [한 일] … → section title (+ rest on its own line)
+    // [한 일] … → section title (+ rest on its own line); a line that starts with a [MASKED…] marker is not a section
+    if ((m = t.match(/^\[([^\]]{1,24})\]\s*(.*)$/)) && !/^MASKED\b/.test(m[1])) {
       const icon = SECTION_ICON[m[1]]; out.push("", `*${icon ? icon + " " : ""}${esc(m[1])}*`);
       if (m[2]) out.push(inline(m[2])); continue;
     }
@@ -53,11 +60,16 @@ export function splitMrkdwn(text, max = 2900) {
   return pieces;
 }
 
-// reply file written by the widget → chat.postMessage arguments
-export function replyPayload(r) {
-  if (!r.report) return { text: r.text || "" };
-  const head = `${r.icon || "✅"} *${esc(r.title || "")}*${r.session ? `  ·  _${esc(r.session)}_` : ""}`;
+// reply file written by the widget → chat.postMessage arguments. Masked here (raw text, before the mrkdwn conversion,
+// so code blocks are covered too) even though the main process masked it already: anyone may write a reply file.
+// Only the known fields are read, and every free-text path is escaped (& < >), so no <!channel> / <@U…> / link gets in
+export function replyPayload(raw) {
+  const src = raw && typeof raw === "object" ? raw : {}, r = {};
+  for (const k of ["text", "report", "title", "session"]) if (src[k]) r[k] = mask(String(src[k]));
+  const icon = replyIcon(src.icon);   // core/outbound.js REPLY_ICONS, the set the main process checks too
+  if (!r.report) return { text: esc(r.text || "") };
+  const head = `${icon} *${esc(r.title || "")}*${r.session ? `  ·  _${esc(r.session)}_` : ""}`;
   const blocks = [{ type: "section", text: { type: "mrkdwn", text: head } }, { type: "divider" }];
   for (const piece of splitMrkdwn(toMrkdwn(r.report)).slice(0, 45)) blocks.push({ type: "section", text: { type: "mrkdwn", text: piece } });
-  return { text: `${r.icon || "✅"} ${r.title || ""}${r.session ? ` · ${r.session}` : ""}`, blocks, unfurl_links: false, unfurl_media: false };
+  return { text: esc(`${icon} ${r.title || ""}${r.session ? ` · ${r.session}` : ""}`), blocks, unfurl_links: false, unfurl_media: false };
 }

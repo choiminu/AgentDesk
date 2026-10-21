@@ -74,3 +74,14 @@ test('replyPayload: report → header + divider + sections; plain text otherwise
   assert.equal(p.text, '✅ EP-1 요약 · front-desk');
   assert.deepEqual(replyPayload({ text: '▶ 시작' }), { text: '▶ 시작' });
 });
+
+test('toMrkdwn: a line starting with a [MASKED…] marker stays a plain line, not a section title', () => {
+  assert.equal(toMrkdwn('[MASKED EMAIL] 에게 회신함'), '[MASKED EMAIL] 에게 회신함');
+  assert.equal(toMrkdwn('[MASKED] 토큰 교체'), '[MASKED] 토큰 교체');
+  assert.equal(toMrkdwn('[한 일] 수정'), '*🛠 한 일*\n수정');
+});
+
+test('toMrkdwn: a markdown link whose URL holds a [MASKED…] marker is still a Slack link', () => {
+  assert.equal(toMrkdwn('회신: [메일함](https://mail.invalid/?u=[MASKED EMAIL]&x=1)'), '회신: <https://mail.invalid/?u=[MASKED%20EMAIL]&amp;x=1|메일함>');
+  assert.equal(toMrkdwn('참고 [docs](https://docs.invalid/a)'), '참고 <https://docs.invalid/a|docs>');
+});

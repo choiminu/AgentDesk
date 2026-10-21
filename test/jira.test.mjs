@@ -2,6 +2,7 @@
 // Run: npm test   (node --test)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+await import('../core/mask.js');   // reportToComment masks with globalThis.AgentDeskMask
 await import('../core/jira.js');
 const J = globalThis.AgentDeskJira;
 
