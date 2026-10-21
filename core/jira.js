@@ -29,6 +29,10 @@
 //   promptTemplates(lang)            → [{ id, label, text }] guidance presets (analyze / implement / review / report)
 //   reportIssues(report)             → names of the REPORT sections that are missing or empty
 //   rememberGuide(list, text, max)   → recent-guidance list with `text` moved to the front (deduped, capped)
+// Team:
+//   ticketWorkers(peers, now)        → Map ticket key → teammate names whose live sessions work on it (not done / ended /
+//                                      error; a waiting session only while its time is within 2 hours, or has no time)
+//                                      (teamStatus.peers, object or array; done/ended sessions left out)
 (function (root) {
 'use strict';
 const KEY_RE = /^[A-Z][A-Z0-9]+-\d+$/;
@@ -292,6 +296,22 @@ function rememberGuide(list, text, max) {
   const rest = (Array.isArray(list) ? list : []).filter(x => typeof x === 'string' && x !== g);
   return (g ? [g, ...rest] : rest).slice(0, max || 8);
 }
+const WORKER_WAIT_MS = 2 * 3600000;
+function ticketWorkers(peers, now = Date.now()) {
+  const out = new Map();
+  const list = Array.isArray(peers) ? peers : Object.values(peers || {});
+  for (const p of list) {
+    if (!p || typeof p.name !== 'string' || !p.name) continue;
+    for (const s of Array.isArray(p.sessions) ? p.sessions : []) {
+      if (!s || !isKey(s.jira) || s.status === 'done' || s.status === 'error' || s.ended === true) continue;
+      if (s.status === 'waiting' && Number.isFinite(s.time) && s.time > 0 && now - s.time > WORKER_WAIT_MS) continue;
+      const names = out.get(s.jira) || [];
+      if (!names.includes(p.name)) names.push(p.name);
+      out.set(s.jira, names);
+    }
+  }
+  return out;
+}
 function promptTemplates(lang) {
   const en = lang === 'en';
   return [
@@ -302,7 +322,7 @@ function promptTemplates(lang) {
   ];
 }
 
-const AgentDeskJira = { promptTemplates, reportIssues, rememberGuide, boardJql, boardIssue, buildColumns, moveColumn, groupIssues, isOverdue, formatDue, priorityIcon, typeIcon, initials, filterIssues, jqlFor, textToAdf, tokenNeedsRefresh, jiraSites, pickSite, KEY_RE, REPORT_HINT, isKey, adfText, normalizeIssue, issuesFrom, issueFrom, connectionFrom, errorText, worktreeName, worktreePrompt, sessionMessage, extractReport, reportToComment, reportToCommentDraft };
+const AgentDeskJira = { ticketWorkers, promptTemplates, reportIssues, rememberGuide, boardJql, boardIssue, buildColumns, moveColumn, groupIssues, isOverdue, formatDue, priorityIcon, typeIcon, initials, filterIssues, jqlFor, textToAdf, tokenNeedsRefresh, jiraSites, pickSite, KEY_RE, REPORT_HINT, isKey, adfText, normalizeIssue, issuesFrom, issueFrom, connectionFrom, errorText, worktreeName, worktreePrompt, sessionMessage, extractReport, reportToComment, reportToCommentDraft };
 // the widget loads this as a classic <script> (one global); tests `import()` it and read globalThis.AgentDeskJira
 root.AgentDeskJira = AgentDeskJira;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskJira;

@@ -217,3 +217,21 @@ test('promptTemplates has four presets per language', () => {
   assert.deepEqual(J.promptTemplates('ko').map(x => x.id), ['analyze', 'implement', 'review', 'report']);
   assert.ok(J.promptTemplates('en').every(x => !/[가-힣]/.test(x.text + x.label)));
 });
+
+test('ticketWorkers: teammate names per ticket from live sessions only', () => {
+  const peers = {
+    will: { name: 'will', sessions: [{ id: '1', jira: 'TKT-1', status: 'running' }, { id: '2', jira: 'TKT-1', status: 'waiting' }, { id: '3', jira: 'TKT-2', status: 'done' }] },
+    kim: { name: 'kim', sessions: [{ id: '4', jira: 'TKT-1', status: 'error' }, { id: '5', jira: 'TKT-3', status: 'waiting', ended: true }, { id: '6', jira: 'bad key', status: 'running' }, { id: '7', status: 'running' }] },
+    lee: { name: 'lee', sessions: null },
+  };
+  const m = J.ticketWorkers(peers);
+  assert.deepEqual([...m], [['TKT-1', ['will']]], 'an error session does not count');
+  assert.deepEqual([...J.ticketWorkers(Object.values(peers))], [['TKT-1', ['will']]]);
+  // waiting: only while its time is within 2 hours (no time → counted)
+  const now = 10 * 3600000;
+  const w = { a: { name: 'a', sessions: [{ jira: 'TKT-5', status: 'waiting', time: now - 2 * 3600000 }] }, b: { name: 'b', sessions: [{ jira: 'TKT-5', status: 'waiting', time: now - 2 * 3600000 - 1 }] },
+    c: { name: 'c', sessions: [{ jira: 'TKT-5', status: 'waiting' }] }, d: { name: 'd', sessions: [{ jira: 'TKT-5', status: 'running', time: 1 }] } };
+  assert.deepEqual([...J.ticketWorkers(w, now)], [['TKT-5', ['a', 'c', 'd']]]);
+  assert.equal(J.ticketWorkers(null).size, 0);
+  assert.equal(J.ticketWorkers({ x: { sessions: [{ jira: 'TKT-1', status: 'running' }] } }).size, 0);   // no name
+});
