@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-BjKckfKlw+s0t05v7Icx1+/pSRqIJ2XmgZMgTkzTsd8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-dmLgekr5lrdSVt9bIInZOL/wdcSPRSkicT76lAiiUSs='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -166,6 +166,33 @@
     flex-shrink: 0;
   }
   .minimize-btn:hover { color: var(--text); background: var(--surface-hover); border-color: var(--border); }
+  /* review queue (📥): count in the header, list in a dropdown under it */
+  .header-controls .theme-btn.inbox-btn { width: auto; min-width: 26px; padding: 0 5px; gap: 2px; display: inline-flex; align-items: center; font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); white-space: nowrap; }
+  .header-controls .theme-btn.inbox-btn.has { color: var(--text); }
+  .header-controls .theme-btn.inbox-btn.hot { color: var(--yellow-text); background: var(--yellow-dim); }
+  .inbox-panel { position: fixed; left: 8px; right: 8px; z-index: 150; max-height: 70vh; overflow-y: auto; overflow-x: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: 0 6px 20px rgba(0,0,0,0.35); font-size: var(--fs-sm); }
+  .inbox-panel[hidden] { display: none; }
+  .ibx-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); position: sticky; top: 0; background: var(--surface); }
+  .ibx-head .ibx-n { font-family: var(--mono); color: var(--text3); font-size: var(--fs-xs); }
+  .ibx-head .ibx-x { margin-left: auto; background: none; border: none; color: var(--text3); cursor: pointer; font: inherit; padding: 0 4px; }
+  .ibx-head .ibx-x + .ibx-x { margin-left: 0; }
+  .ibx-head .ibx-x:hover { color: var(--text); }
+  .ibx-item { display: flex; align-items: flex-start; gap: 6px; padding: 6px 8px; border-left: 3px solid transparent; border-bottom: 1px solid var(--border-subtle); cursor: pointer; min-width: 0; }
+  .ibx-item:last-child { border-bottom: none; }
+  .ibx-item:hover, .ibx-item:focus-visible { background: var(--surface-hover, rgba(255,255,255,0.06)); outline: none; }
+  .ibx-item.sev-high { border-left-color: var(--yellow); }
+  .ibx-item.sev-low { opacity: 0.8; }
+  .ibx-ic { flex-shrink: 0; width: 16px; text-align: center; }
+  .ibx-tx { flex: 1; min-width: 0; }
+  .ibx-kind { color: var(--text3); font-size: var(--fs-xs); }
+  .ibx-title, .ibx-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ibx-title { color: var(--text); }
+  .ibx-detail { color: var(--text2); font-size: var(--fs-xs); }
+  .ibx-item .set-btn { flex-shrink: 0; align-self: center; }
+  .ibx-empty { padding: 14px 10px; color: var(--text3); text-align: center; }
+  .ibx-kinds { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 8px; }
+  .ibx-kinds .set-btn { opacity: 0.55; }
+  .ibx-kinds .set-btn.on { opacity: 1; border-color: var(--accent); }
   .widget.minimized .page-nav,
   .widget.minimized .page { display: none !important; }
   .widget.minimized .header { border-bottom: none; }
@@ -1527,10 +1554,13 @@
       <span class="stat done" title="완료"><span class="px-ic pc-off"></span><span id="nDone">0</span></span>
     </div>
     <div class="header-controls">
+      <button class="theme-btn inbox-btn" id="inbox-btn" title="검토 대기열" aria-haspopup="true" aria-expanded="false">📥<span id="inbox-n">0</span></button>
       <button class="theme-btn" id="settings-btn" title="설정">⚙</button>
       <button class="minimize-btn" id="minimize-btn" title="최소화">▾</button>
     </div>
   </div>
+
+  <div class="inbox-panel" id="inbox-panel" role="dialog" aria-label="검토 대기열" hidden></div>
 
   <!-- Page navigation -->
   <div class="page-nav">
@@ -1667,6 +1697,7 @@
 <script src="core/diff.js"></script>
 <script src="core/usage.js"></script>
 <script src="core/notify.js"></script>
+<script src="core/inbox.js"></script>
 <script>
 // dev: ROCA_START_PAGE=…,set:<localStorage key>=<url-encoded value> presets a setting before anything reads it
 for (const part of location.hash.replace('#', '').split(',')) { const m = part.match(/^set:([a-z0-9-]+)=(.*)$/i); if (m) { try { localStorage.setItem(m[1], decodeURIComponent(m[2])); } catch {} } }
@@ -1907,6 +1938,9 @@ Object.assign(I18N, {
   '같은 주소에 팀원이 둘 이상 등록되어 안전 상태를 받지 않았습니다': 'More than one teammate is registered at that address, so no safety status was received',
   '구버전이거나, 상대 쪽에서 내 주소에 팀원이 둘 이상 등록되어 있으면 안전 상태가 오지 않습니다': 'No safety status comes from an older version, or when the teammate has more than one teammate registered at my address',
 '가드 hook이 설치되어 있지 않습니다': 'The guard hook is not installed', '규칙 동일': 'same rules', '규칙 다름': 'different rules', '규칙 해시': 'rule hash',
+  '검토 대기열': 'Review queue', '대기열 설정': 'Queue settings', '대기 중인 항목이 없습니다': 'Nothing is waiting for you', '세션 없는 권한 요청': 'Permission request (session gone)',
+  '위임받은 세션': 'Delegated session', 'Jira 보고 대기': 'Jira report waiting', '대기열: 변경 보기': 'View changes', '대기열: 거부': 'Deny', '전송이 거부되었습니다 (세션이 입력 대기 상태인지 확인)': 'Send refused (check that the session is waiting for input)', '대기열에 포함할 항목': 'Items in the review queue',
+  '헤더의 📥 대기열에 보일 항목을 고릅니다. 대기열은 이미 있는 상태를 모아 보여 줄 뿐, 알림을 따로 띄우지 않습니다.': 'Choose what the 📥 queue in the header lists. The queue only gathers what is already pending; it sends no notifications of its own.',
   '안전 상태': 'Safety', '팀원의 가드가 꺼졌습니다': 'teammate\'s guard was turned off',
   '팀원 세션이 이 티켓을 작업 중입니다': 'A teammate\'s session is working on this ticket', '팀원이 작업 중인 티켓': 'A teammate is on this ticket', '그래도 배치': 'Dispatch anyway',
 });
@@ -1933,6 +1967,7 @@ function i18nApply(root) {
       const v = LANG === 'ko' ? node.__ko : t(node.__ko);
       if (node.nodeValue !== v) node.nodeValue = v;
     } else if (node.nodeType === 1) {
+      if (node.closest('[data-verbatim]')) return;   // attributes of verbatim text stay as-is too
       for (const a of ['title', 'placeholder']) {
         if (!node.hasAttribute(a)) continue;
         const key = '__ko_' + a;
@@ -2281,7 +2316,7 @@ async function fetchData() {
     renderRateLimits(rateLimits);
     renderDashboard();
   } catch (e) { console.error(e); }
-  finally { $('footer').classList.remove('loading'); }
+  finally { $('footer').classList.remove('loading'); inboxRender(); }
 }
 
 // orca's agent state lags; what the terminal screen shows right now is the truth for running/waiting.
@@ -2440,6 +2475,7 @@ function permMount() {
   box.hidden = !box.children.length;
   if (focusedPanel && focusedPanel.isConnected && document.activeElement !== active) { try { active.focus(); } catch {} }
   permTick();
+  inboxRender();
 }
 function permTick() {
   const now = Date.now();
@@ -2481,6 +2517,142 @@ $('statPerm').addEventListener('click', () => {
 setInterval(() => { if (permReqs.size) permTick(); }, 1000);
 // requests that arrived while this page was not loaded (reload, dev tools)
 hooksReady.then(async () => { try { for (const r of await window.orca.permList()) permAdd(r); permMount(); } catch {} });
+
+// ── review queue (📥 in the header): what waits for me, gathered from the state the pages already keep. core/inbox.js
+//    decides what is included and the order; this only reads, draws and calls the existing handlers. No toast and no
+//    desktop notification of its own — those stay with the pages that own each item. ──
+let inboxQPrefs = { kinds: {} };   // localStorage roca-inbox: { kinds: { <kind>: false } } — every kind on by default
+try { inboxQPrefs = AgentDeskInbox.normalizePrefs(JSON.parse(localStorage.getItem('roca-inbox') || '{}')); } catch {}
+let inboxQOpen = false, inboxQTimer = 0, inboxQItems = [], inboxQSig = '', inboxQArmT = 0;
+// labels: '대기열: ' keys keep short words (거부, 변경 보기) out of the phrase dictionary; Korean shows them without it
+const inboxT = s => LANG === 'ko' ? String(s).replace(/^대기열: /, '') : t(s);
+const INBOX_KIND_LABEL = { perm: '권한 요청', 'perm-orphan': '세션 없는 권한 요청', 'peer-ask': '위임받은 세션', usage: '한도 경고', 'jira-report': 'Jira 보고 대기', hello: '팀원 등록 요청', note: '받은 메모', stuck: '응답 없음', diff: '대기열: 변경 보기' };
+const INBOX_KIND_ICON = { perm: '🔐', 'perm-orphan': '🔐', 'peer-ask': '🔑', usage: '⚠', 'jira-report': '🎫', hello: '👥', note: '✉', stuck: '⏳', diff: '📝' };
+// called after every poll that can change an item; draws at most once per 200 ms
+function inboxRender() {
+  if (inboxQTimer) return;
+  inboxQTimer = setTimeout(() => { inboxQTimer = 0; try { inboxDraw(); } catch (e) { console.error(e); } }, 200);
+}
+function inboxUsage() {
+  const c = lastRateLimits && lastRateLimits.claude; if (!c) return null;
+  const win = (k, w) => {
+    if (!w) return null;
+    const pct = Number(w.usedPercent);
+    const f = AgentDeskUsage.forecast(usageSamples.filter(x => x[k] != null).map(x => ({ at: x.at, used: x[k] })), 100, Date.now(), Number(w.resetsAt) || 0);
+    return { pct: Number.isFinite(pct) ? pct : null, etaMs: f.reason === 'few-samples' ? null : f.etaMs, confidence: f.confidence };
+  };
+  return { levels: usageAlert.levels, at: Number(c.updatedAt) || 0, s: win('s', c.session), w: win('w', c.weekly) };
+}
+function inboxDraw() {
+  inboxQItems = AgentDeskInbox.buildInbox({
+    now: Date.now(), lang: LANG, jiraDispatch, peerNotes, teamStatus, usage: inboxUsage(),
+    permRequests: permSorted().map(r => { const s = permSessionOf(r.sessionId); return { ...r, name: permName(r), orphan: !s, localId: s ? s.id : '' }; }),
+    sessions: sessions.map(s => ({ id: s.id, name: s.name, status: s.status, stuck: s.stuck, stuckSince: s.stuckSince, diffUnseen: diffReportBadge.has(s.id), reportAt: (peerReports.get(s.id) || {}).at || 0 })),
+  }, inboxQPrefs);
+  const n = inboxQItems.length, b = $('inbox-btn');
+  $('inbox-n').textContent = n > 99 ? '99+' : n;
+  b.classList.toggle('has', n > 0); b.classList.toggle('hot', inboxQItems.some(x => x.severity === 'high'));
+  b.title = `${t('검토 대기열')} ${n}`;
+  if (inboxQOpen) inboxPanelDraw();
+}
+function inboxQuickHtml(x) {
+  // every button starts disabled and is armed after PERM_ARM_MS (inboxPanelDraw); data-off = stays disabled
+  const btn = (act, label, extra) => `<button class="set-btn" data-ibx="${act}" disabled${extra || ''}>${esc(inboxT(label))}</button>`;
+  if (x.kind === 'note') {
+    const n = peerNotes.find(m => m.id === x.id), s = n && peerLocalSession(n.to);
+    return btn('note-deliver', '세션에 전달', s && handles.get(s.id) ? '' : ` data-off="1" title="${esc(t('세션 터미널을 찾을 수 없습니다'))}"`);
+  }
+  if (x.kind === 'hello') return btn('hello-accept', '추가');
+  if (x.kind === 'perm' || x.kind === 'perm-orphan') return btn('perm-deny', '대기열: 거부');   // allowing stays on the full panel (arming delay, truncated input)
+  return '';
+}
+function inboxPanelDraw() {
+  const el = $('inbox-panel'), items = inboxQItems, now = Date.now();
+  // unchanged list (same items, texts, buttons, and the same age in minutes) → leave the DOM, focus and arming alone
+  const sig = [LANG, ...items.map(x => [x.kind, x.id, x.title, x.detail, x.severity, x.at ? Math.floor((now - x.at) / 60000) : '', inboxQuickHtml(x)].join('\u0001'))].join('\u0002');
+  if (sig === inboxQSig) return;
+  inboxQSig = sig;
+  const a = document.activeElement, fRow = a && el.contains(a) ? a.closest('.ibx-item') : null;
+  const focus = fRow ? { k: fRow.dataset.k, id: fRow.dataset.id, btn: a !== fRow } : null;
+  el.innerHTML = `<div class="ibx-head"><b>${esc(t('검토 대기열'))}</b><span class="ibx-n">${items.length}</span><button class="ibx-x" data-ibx="settings" title="${esc(t('대기열 설정'))}">⚙</button><button class="ibx-x" data-ibx="close" title="${esc(t('닫기'))}">✕</button></div>`
+    + (items.length ? items.map(x => `<div class="ibx-item sev-${esc(x.severity)}" tabindex="0" data-k="${esc(x.kind)}" data-id="${esc(x.id)}">
+        <span class="ibx-ic">${INBOX_KIND_ICON[x.kind] || '•'}</span>
+        <div class="ibx-tx"><div class="ibx-kind">${esc(inboxT(INBOX_KIND_LABEL[x.kind] || x.kind))}${x.at ? ` · ${esc(timeAgo(x.at))}` : ''}</div><div class="ibx-title" data-verbatim>${esc(x.title)}</div>${x.detail ? `<div class="ibx-detail" data-verbatim title="${esc(x.detail)}">${esc(x.detail)}</div>` : ''}</div>
+        ${inboxQuickHtml(x)}</div>`).join('')
+      : `<div class="ibx-empty">${esc(t('대기 중인 항목이 없습니다'))}</div>`);
+  // rows may have moved under the pointer: quick buttons ignore clicks for PERM_ARM_MS, as the permission panel does
+  clearTimeout(inboxQArmT);
+  inboxQArmT = setTimeout(() => { el.querySelectorAll('.ibx-item .set-btn').forEach(b => { if (!b.dataset.off) b.disabled = false; }); }, PERM_ARM_MS);
+  if (focus) {
+    const row = [...el.querySelectorAll('.ibx-item')].find(r => r.dataset.k === focus.k && r.dataset.id === focus.id);
+    if (row) { const b = focus.btn && row.querySelector('.set-btn'); (b && !b.disabled ? b : row).focus(); }
+    else { const first = el.querySelector('.ibx-item'); (first || $('inbox-btn')).focus(); }
+  }
+}
+function inboxToggle(open) {
+  inboxQOpen = open == null ? !inboxQOpen : !!open;
+  const el = $('inbox-panel'), b = $('inbox-btn');
+  b.setAttribute('aria-expanded', inboxQOpen ? 'true' : 'false');
+  if (!inboxQOpen) { el.hidden = true; el.innerHTML = ''; inboxQSig = ''; clearTimeout(inboxQArmT); return; }
+  el.style.top = `${Math.round(document.querySelector('.header').getBoundingClientRect().bottom) + 2}px`;
+  el.hidden = false; inboxDraw();
+}
+// scroll a dashboard card into view (the item's own place), when the current tab / filter shows it
+function inboxShowCard(id) {
+  const card = id ? $('list').querySelector(`.session[data-id="${CSS.escape(id)}"]`) : null;
+  if (card) { card.scrollIntoView({ block: 'center' }); card.classList.add('pulse'); }
+  return card;
+}
+function inboxGo(x) {
+  const tg = x.target || {};
+  inboxToggle(false);
+  if (x.kind === 'jira-report') {
+    jb.drawer = tg.ticket; jiraOpen.add(tg.ticket);   // whichever view jiraLoad picks (board drawer or list row) opens on it
+    if (currentPage !== 'jira') showPage('jira');
+    if (jiraBoardMode) jbOpen(tg.ticket);
+    else { jiraRender(); if (!jiraDetail.has(tg.ticket)) jiraIssueFull(tg.ticket).then(() => jiraRender()).catch(() => {}); }
+  } else if (x.kind === 'peer-ask' || x.kind === 'note' || x.kind === 'hello') {
+    teamFocusCard(tg.peer || '', x.kind === 'peer-ask' ? tg.sessionId : '');
+    if (x.kind !== 'peer-ask') { const l = $('team-list'); if (l) l.scrollTop = 0; }   // notes and requests sit at the top
+  } else if (x.kind === 'perm' || x.kind === 'perm-orphan') {
+    if (currentPage !== 'dashboard') showPage('dashboard');
+    // focus goes to [터미널로], never to [허용] (as the header's 승인 대기 button does)
+    const el = permEls.get(tg.permId); if (el && el.isConnected) { el.scrollIntoView({ block: 'center' }); const b = el.querySelector('.perm-pass'); if (b) b.focus(); }
+  } else if (x.kind === 'diff') {
+    if (currentPage !== 'dashboard') showPage('dashboard');
+    diffOpen(tg.sessionId); inboxShowCard(tg.sessionId);
+  } else if (x.kind === 'stuck') {
+    if (currentPage !== 'dashboard') showPage('dashboard');
+    inboxShowCard(tg.sessionId);
+  } else if (x.kind === 'usage') {
+    if (currentPage !== 'dashboard') showPage('dashboard');
+    const bars = $('tokenBars'); if (bars) bars.scrollIntoView({ block: 'nearest' });
+  }
+}
+$('inbox-btn').addEventListener('click', e => { e.stopPropagation(); inboxToggle(); });
+$('inbox-panel').addEventListener('click', async e => {
+  e.stopPropagation();
+  const b = e.target.closest('[data-ibx]');
+  if (b && b.dataset.ibx === 'close') { inboxToggle(false); return; }
+  if (b && b.dataset.ibx === 'settings') { inboxToggle(false); showPage('settings'); return; }
+  const row = e.target.closest('.ibx-item'); if (!row) return;
+  const x = inboxQItems.find(i => i.kind === row.dataset.k && i.id === row.dataset.id); if (!x) return;
+  if (!b) { inboxGo(x); return; }
+  if (b.disabled) return;
+  b.disabled = true;
+  // quick actions call the same handlers as the team tab / permission panel
+  if (b.dataset.ibx === 'note-deliver') await peerNoteDeliver(x.id);
+  else if (b.dataset.ibx === 'hello-accept') await peerHelloDecide(x.target.key, true);
+  else if (b.dataset.ibx === 'perm-deny') await permDecide(x.target.permId, 'deny', '', permEls.get(x.target.permId));
+  inboxRender();
+});
+$('inbox-panel').addEventListener('keydown', e => {
+  e.stopPropagation();   // the dashboard has single-key shortcuts
+  if (e.key === 'Escape') { inboxToggle(false); $('inbox-btn').focus(); return; }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('ibx-item')) { e.preventDefault(); e.target.click(); }
+});
+document.addEventListener('click', e => { if (inboxQOpen && !e.target.closest('#inbox-panel, #inbox-btn')) inboxToggle(false); });
+inboxRender();
 
 // ── dangerous-command guardrail (PreToolUse): hits from ~/.roca/guard-log.jsonl, rules from ~/.roca/guard.json ──
 let guardEntries = [];            // last hits (oldest first), from the log and live
@@ -3119,6 +3291,12 @@ const DIFF_TTL_MS = 30000;
 const diffState = new Map();       // session id → { scope, stat, statAt, loading, err, sel, files: Map(key → { at, data }), comments, edit, draft, el }
 const diffTab = new Map();         // session id → 'info' | 'diff' | 'timeline'
 const diffReportBadge = new Set(); // sessions whose REPORT arrived and whose changes were not looked at yet
+// "변경 보기": open the card's diff tab and clear the badge (card button and the review queue)
+function diffOpen(id) {
+  diffReportBadge.delete(id); expandedIds.add(id); diffTab.set(id, 'diff');
+  const st = diffState.get(id); if (st) st.statAt = 0;   // a report just arrived: read the files again
+  renderDashboard();
+}
 const diffTabOf = id => diffTab.get(id) || 'info';
 function diffSt(id) {
   let st = diffState.get(id);
@@ -3550,9 +3728,7 @@ $('list').addEventListener('click', async e => {
       if (actBtn.dataset.tab === 'diff') diffReportBadge.delete(id);
       renderDashboard();
     } else if (act === 'diff-open') {
-      const id = actBtn.dataset.id; diffReportBadge.delete(id); expandedIds.add(id); diffTab.set(id, 'diff');
-      const st = diffState.get(id); if (st) st.statAt = 0;   // a report just arrived: read the files again
-      renderDashboard();
+      diffOpen(actBtn.dataset.id);
     } else if (act === 'compact') {
       const s = sessions.find(ss => ss.id === actBtn.dataset.id);
       try { const r = await window.orca.terminalSend(actBtn.dataset.h, '/compact', true, 15); showInAppToast(`${s ? s.name : ''}: ${t(r?.result?.send?.accepted ? '/compact 전송' : '/compact 전송 (수락 미확인)')}`); } catch (err) { showInAppToast(`${t('/compact 전송 실패')}: ${err.message}`, 'error'); }
@@ -3997,6 +4173,7 @@ function openItemsMenu(x, y, title, items) {
 document.addEventListener('mousedown', e => { if (ctxMenuEl && !ctxMenuEl.contains(e.target)) closeCtxMenu(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    if (inboxQOpen) { inboxToggle(false); return; }
     if (ctxMenuEl) { closeCtxMenu(); return; }
     if ($('team-modal')) { closeTeamModal(); return; }
     if ($('peer-term')) { peerRemoteTermClose(); return; }
@@ -7152,6 +7329,12 @@ function notifyPeersTick() {
   for (const ev of evs) notifyFire(ev, ev.name, ev.owner, ev.id);
 }
 // a delegated-session alert's toast opens the Team tab on that card
+// [추가] / [무시] on a pending hello (team tab and the review queue)
+async function peerHelloDecide(key, accept) {
+  const r = await window.orca.teamHelloDecide(key, accept).catch(err => ({ ok: false, error: err.message }));
+  if (accept) showInAppToast(r.ok ? `${t('팀원 추가')}: ${r.name || ''}` : `${t('추가 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
+  teamPageTick();
+}
 function teamFocusCard(owner, id) {
   showPage('team'); teamRender();
   const el = id ? $('team-list').querySelector(`.session[data-peer="${CSS.escape(owner)}"][data-id="${CSS.escape(id)}"]`) : null;
@@ -7170,6 +7353,7 @@ async function teamPageTick() {
   const badge = $('badge-team'); if (badge) { badge.textContent = asks + notesNew; badge.hidden = asks + notesNew === 0; badge.title = notesNew ? `${t('받은 메모')} ${notesNew}` : ''; }
   if (currentPage === 'team') teamRender();
   if (currentPage === 'settings') { const el = $('set-team-status'); if (el) el.textContent = teamSettingsText(); }
+  inboxRender();
 }
 function teamSettingsText() {
   const st = teamStatus;
@@ -7194,12 +7378,7 @@ $('team-list').addEventListener('click', async (e) => {
   else if (act === 'r-last') peerRemoteLastShow(b.dataset.peer, b.dataset.id);
   else if (act === 'r-term') peerRemoteTermOpen(b.dataset.peer, b.dataset.id);
   else if (act === 'note-ignore') peerNoteSet(b.dataset.id, 'ignored');
-  else if (act === 'hello-accept' || act === 'hello-ignore') {
-    b.disabled = true;
-    const r = await window.orca.teamHelloDecide(b.dataset.key, act === 'hello-accept').catch(err => ({ ok: false, error: err.message }));
-    if (act === 'hello-accept') showInAppToast(r.ok ? `${t('팀원 추가')}: ${r.name || ''}` : `${t('추가 실패')}: ${r.error || ''}`, r.ok ? undefined : 'error');
-    teamPageTick();
-  }
+  else if (act === 'hello-accept' || act === 'hello-ignore') { b.disabled = true; await peerHelloDecide(b.dataset.key, act === 'hello-accept'); }
   else if (act === 'add-peer') {
     b.disabled = true;
     const r = await window.orca.teamAddPeer({ name: b.dataset.name, host: b.dataset.host, id: b.dataset.id }).catch(err => ({ ok: false, error: err.message }));
@@ -7237,6 +7416,8 @@ function settingsRender() {
     ${row(t('응답 없음 기준(분)'), t('작업 중인 세션에 이 시간 동안 도구 호출이나 응답이 없으면 응답 없음으로 표시하고 알립니다.'), `<div class="set-inline"><input id="set-stuck" type="number" min="1" max="600" step="1" value="${notifyCfg.stuckMin}" style="width:52px"><button class="set-btn" data-set="notify-stuck">${esc(t('저장'))}</button></div>`)}
     ${row(t('한도 경고'), t('5시간·주간 한도 사용률이 임계값을 넘으면 토스트와 데스크톱 알림을 한 번 띄웁니다 (레벨별 한 번, 리셋 후 다시).'), sw('usage-alert', usageAlert.on))}
     ${row(t('한도 경고 임계값'), t('두 값(%) — 앞 값에서 노랑, 뒤 값에서 빨강. 한도 막대 색에도 쓰입니다.'), `<div class="set-inline"><input id="set-usage-l1" type="number" min="1" max="100" value="${usageAlert.levels[0]}" style="width:52px"><input id="set-usage-l2" type="number" min="1" max="100" value="${usageAlert.levels[1]}" style="width:52px"><button class="set-btn" data-set="usage-levels">${esc(t('저장'))}</button></div>`)}
+    ${row(t('대기열에 포함할 항목'), t('헤더의 📥 대기열에 보일 항목을 고릅니다. 대기열은 이미 있는 상태를 모아 보여 줄 뿐, 알림을 따로 띄우지 않습니다.'), '')}
+    <div class="ibx-kinds">${AgentDeskInbox.KINDS.map(k => `<button class="set-btn${inboxQPrefs.kinds[k] === false ? '' : ' on'}" data-set="inbox-kind" data-v="${esc(k)}" aria-pressed="${inboxQPrefs.kinds[k] === false ? 'false' : 'true'}">${INBOX_KIND_ICON[k] || ''} ${esc(inboxT(INBOX_KIND_LABEL[k] || k))}</button>`).join('')}</div>
     ${guardSectionHtml(row, seg, sw)}
     <h2>${esc(t('슬랙 창구'))}</h2>
     ${row(t('브리지 상태'), inboxStatus.configured ? (inboxStatus.running ? t('연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.') : `${t('설정 파일은 있지만 브리지가 꺼져 있습니다.')}${inboxStatus.lastError ? ` (${esc(inboxStatus.lastError)})` : ''}`) : t('~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.'), inboxStatus.configured ? `<button class="set-btn" data-set="inbox-restart">${esc(t('재시작'))}</button>` : '')}
@@ -7310,6 +7491,11 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'update-download') await updateDownloadRun();
   else if (name === 'update-check') { b.disabled = true; b.textContent = t('확인 중…'); await checkForUpdate(true); settingsRender(); }
   else if (name === 'usage-alert') { usageAlert.on = !usageAlert.on; usageAlertSave(); settingsRender(); }
+  else if (name === 'inbox-kind' && AgentDeskInbox.KINDS.includes(v)) {
+    if (inboxQPrefs.kinds[v] === false) delete inboxQPrefs.kinds[v]; else inboxQPrefs.kinds[v] = false;
+    try { localStorage.setItem('roca-inbox', JSON.stringify(inboxQPrefs)); } catch {}
+    settingsRender(); inboxRender();
+  }
   else if (name === 'notify-remind' || name === 'notify-stuck') {
     const remind = name === 'notify-remind', n = Number($(remind ? 'set-remind' : 'set-stuck').value);
     if (!(Number.isInteger(n) && (remind ? n >= 0 && n <= 240 : n >= 1 && n <= 600))) { showInAppToast(t(remind ? '재알림 간격은 0~240 사이의 정수(분)입니다' : '응답 없음 기준은 1~600 사이의 정수(분)입니다'), 'error'); return; }
@@ -7495,6 +7681,7 @@ function jiraSave() {
   try { localStorage.setItem('roca-jira', JSON.stringify({ filter: jiraFilter, repo: jiraRepo, dispatch: jiraDispatch })); } catch {}
   const n = keep.filter(d => d.state === 'report').length;
   const b = $('badge-jira'); if (b) { b.hidden = !n; b.textContent = n; }
+  inboxRender();
 }
 const jiraHash = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); };
 $('jira-filter').value = jiraFilter;
