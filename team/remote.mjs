@@ -9,7 +9,7 @@
 //   screenAllowsInput(tail)  → the Claude Code screen sits at an empty prompt (no choice / permission prompt, no turn)
 //   canDelegate(...)         → why a session may not be delegated to a teammate ("" when it may)
 //   autoRevokeReasons(...)   → which delegations end now and why (session gone, teammate removed / ambiguous /
-//                              identity mismatch / unreachable)
+//                              identity mismatch / unreachable / my Local Network permission denied)
 //   remoteInterruptAllowed(h) → Esc is only sent where it cannot reach another app (tmux, Orca — not Terminal.app tabs)
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, renameSync, chmodSync, existsSync } from "node:fs";
@@ -27,6 +27,14 @@ export const REMOTE_LOG = join(homedir(), ".agentdesk", "team-remote.jsonl");
 export const REMOTE_TEXT_MAX = 4000;
 export const REMOTE_RATE = 20;          // inputs + interrupts per minute per session
 export const REMOTE_LAST_MAX = 8000;
+// the remote terminal view (read-only screen, polled about every 1.5 s while the window is open): its own budget, so
+// reading never eats the input / interrupt one. 90 a minute leaves room for two open windows on one session.
+export const REMOTE_SCREEN_RATE = 90;              // screen reads per minute per session and caller
+export const REMOTE_SCREEN_CACHE_MS = 1000;        // one screen read per session at a time, its result reused this long
+export const REMOTE_SCREEN_LINES = 200;            // last lines of the screen
+export const REMOTE_SCREEN_LINE_MAX = 400;         // characters per line
+export const REMOTE_SCREEN_BYTES = 24 * 1024;      // UTF-8 bytes of all lines together
+export const REMOTE_SCREEN_LOG_MS = 10 * 60 * 1000; // a "screen viewed" log entry at most once per session and teammate
 export const REMOTE_LOG_MAX = 2000;
 export const GRANT_RE = /^[0-9a-f]{48}$/;
 export const REMOTE_TTL_MS = 2 * 3600 * 1000;   // a delegation lasts 2 hours unless the owner extends it
@@ -104,8 +112,10 @@ export function canDelegate({ peer, peers, state, session }) {
   if (!session.handle) return "no terminal";
   return "";
 }
-// which delegations must end now. ctx: { sessions (snapshot), peers (team.json), stateOf(name) → poll state, now }
-export function autoRevokeReasons(list, { sessions, peers, stateOf, now = Date.now() }) {
+// which delegations must end now. ctx: { sessions (snapshot), peers (team.json), stateOf(name) → poll state, now,
+// localNetworkDenied }. Unreachable while macOS denies me Local Network access still ends it (fail closed: the
+// teammate's identity cannot be checked again while my own connections are blocked), with that as the reason.
+export function autoRevokeReasons(list, { sessions, peers, stateOf, now = Date.now(), localNetworkDenied = false }) {
   const out = [];
   for (const d of list || []) {
     const peer = (peers || []).find(p => p.instanceId === d.instanceId);
@@ -117,7 +127,7 @@ export function autoRevokeReasons(list, { sessions, peers, stateOf, now = Date.n
       const st = stateOf ? stateOf(peer.name) : null;
       if (st && st.mismatch) reason = "identity mismatch";
       else if (st && st.offnet) reason = "teammate on another network";
-      else if (st && !st.ok && (st.fails || 0) >= 3 && (!st.lastOk || now - st.lastOk > 120000)) reason = "teammate unreachable";
+      else if (st && !st.ok && (st.fails || 0) >= 3 && (!st.lastOk || now - st.lastOk > 120000)) reason = localNetworkDenied || st.localNetDenied ? "local network denied" : "teammate unreachable";
     }
     if (!reason && sessions) {
       const s = resolveDelegatedSession(sessions, d.localId);

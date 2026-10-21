@@ -33,6 +33,9 @@
         }
       ],
       "icon": null,
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "팀 공유를 켜면 사무실 네트워크에 있는 팀원 PC에 접속해 팀원의 에이전트 세션 상태를 가져옵니다. 이 권한이 없으면 팀원 세션이 보이지 않습니다."
+      },
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "identity": null

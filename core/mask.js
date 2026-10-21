@@ -3,6 +3,7 @@
 // (`import "../core/mask.js"; const { mask } = globalThis.AgentDeskMask;`).
 //
 //   maskLines(lines) → mask() per line, and every line of a multi-line private key block
+//   secretRanges(s) → [[start, end), …] of what mask() would replace
 //   mask(s) → s with tokens, keys, connection URIs, card / account numbers and e-mail addresses replaced by [MASKED]
 (function (root) {
 'use strict';
@@ -46,7 +47,19 @@ function maskLines(lines) {
     return mask(s);
   });
 }
-const AgentDeskMask = { mask, maskLines };
+// [start, end) of every part of s that mask() would replace (a kept "$1" prefix such as "token=" is not included):
+// lets a caller mask a secret it found in text joined from pieces (terminal rows) in each piece it came from
+function secretRanges(s) {
+  const str = String(s == null ? '' : s), out = [];
+  for (const [re, repl] of SECRET_RES) {
+    for (const m of str.matchAll(re)) {
+      const keep = repl.startsWith('$1') && m[1] ? m[1].length : 0;
+      if (m[0].length > keep) out.push([m.index + keep, m.index + m[0].length]);
+    }
+  }
+  return out;
+}
+const AgentDeskMask = { mask, maskLines, secretRanges };
 root.AgentDeskMask = AgentDeskMask;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskMask;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -6,8 +6,9 @@ import { dirname, join, delimiter as PATH_DELIM } from "node:path";
 import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync, mkdtempSync, rmSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
-import { readTeamConfig, startTeamServer, fetchPeer, postNote, postHello, remoteInput, remoteInterrupt, remoteLast, ensureInstanceId, addPeerToConfig, removePeerFromConfig, upsertPeer, classifyMove, onHomeNetwork, withHomeSubnets, UUID_RE, validateNote, setTeamFields, newTeamToken, rotateTeamToken, encodeInvite, decodeInvite, writeTeamJson, isShared, sameSubnet, TEAM_CFG } from "./team/peer.mjs";
+import { readTeamConfig, startTeamServer, fetchPeer, postNote, postHello, remoteInput, remoteInterrupt, remoteLast, remoteScreen, ensureInstanceId, addPeerToConfig, removePeerFromConfig, upsertPeer, classifyMove, onHomeNetwork, withHomeSubnets, UUID_RE, validateNote, setTeamFields, newTeamToken, rotateTeamToken, encodeInvite, decodeInvite, writeTeamJson, isShared, sameSubnet, TEAM_CFG } from "./team/peer.mjs";
 import { startDiscovery } from "./team/discovery.mjs";
+import { isLocalNetworkDenied, localNetworkVerdict, pollVerdict, nextLocalNetwork, localProbeTargets, probeLan, defaultGateway, LOCAL_NETWORK_SETTINGS_URL, PRIVACY_SETTINGS_URL } from "./team/localnet.mjs";
 import { createDelegationStore, createRemoteLog, createEventThrottle, remoteMessage, validateRemoteText, resolveDelegatedSession, screenAllowsInput, remoteInterruptAllowed, canDelegate, autoRevokeReasons, permissionOk, REMOTE_LOG } from "./team/remote.mjs";
 import "./core/status.js";   // globalThis.AgentDeskStatus (responseTextFromScreen) for a delegated session's last answer
 import "./core/mask.js";
@@ -482,8 +483,9 @@ async function tmuxPanes() {
 }
 // spinner / "esc to interrupt" line of the Claude Code TUI — a turn is in progress
 const SPINNER_LINE = /^[·•✢✳✶✻✽✦✧*⠁-⣿]\s*\S[^(]*…\s*(\(|$)|esc to interrupt/;
-async function tmuxCapture(pane, lines = 80) {
-  const out = await tmux("capture-pane", "-p", "-t", pane, "-S", `-${lines}`);
+// joinWrapped (-J): a line the pane wrapped comes back as one line (the remote screen view, so a wrapped secret is masked whole)
+async function tmuxCapture(pane, lines = 80, joinWrapped = false) {
+  const out = await tmux("capture-pane", "-p", ...(joinWrapped ? ["-J"] : []), "-t", pane, "-S", `-${lines}`);
   const tail = out.replace(/\n+$/, "").split("\n");
   return { ok: true, result: { terminal: { handle: `tmux:${pane}`, tail } } };
 }
@@ -777,8 +779,8 @@ ipcMain.handle("orca:terminal-wait", (_e, handle, condition, timeoutMs) => {
 });
 
 ipcMain.handle("orca:terminal-read", (_e, handle, screen, cursor, limit) => terminalRead(handle, screen, cursor, limit));
-async function terminalRead(handle, screen, cursor, limit) {
-  if (isTmux(handle)) return tmuxCapture(paneOf(handle)).catch(err => ({ ok: false, error: err.message }));
+async function terminalRead(handle, screen, cursor, limit, { joinWrapped = false } = {}) {
+  if (isTmux(handle)) return tmuxCapture(paneOf(handle), 80, joinWrapped).catch(err => ({ ok: false, error: err.message }));
   if (isTerm(handle)) return withTarget(handle, termRead).catch(err => ({ ok: false, error: err.message }));
   const args = ["terminal", "read", "--terminal", handle];
   if (screen) args.push("--screen");
@@ -1446,7 +1448,7 @@ ipcMain.handle("roca:inbox-restart", () => { if (slackChild) { try { slackChild.
 // session notes written by recall/ (MongoDB) for a checkout: spawn the CLI, which knows the worktree/repo rules; [] when unavailable
 const RECALL_CLI = [join(__dirname, "recall", "cli.mjs"), join(homedir(), "project", "agentdesk-internal", "recall", "cli.mjs"), join(homedir(), "orca-widget", "recall", "cli.mjs")].find(p => existsSync(p)) || null;
 // ── team sharing: publish my sessions on the office network, poll teammates', find them by UDP beacon, take notes — see team/*.mjs ──
-let teamCfg = null, teamServer = null, teamServerKey = "", teamStatus = { configured: false, listening: false, error: "", name: "", port: 0, instanceId: "", peers: {}, discovered: [], discovery: false, shared: false, pending: [] };
+let teamCfg = null, teamServer = null, teamServerKey = "", teamStatus = { configured: false, listening: false, error: "", name: "", port: 0, instanceId: "", peers: {}, discovered: [], discovery: false, shared: false, pending: [], localNetwork: "unknown" };
 let teamSnapshot = { at: 0, sessions: [] };
 let teamDiscovery = null, teamDiscoveryKey = "";
 // first run: write a team.json of our own (name = login name, no token, no peers, 127.0.0.1 only, no beacon) so the
@@ -1500,7 +1502,7 @@ function teamRevoke(list, reason) { for (const d of list || []) teamRemoteEvent(
 // session gone, teammate removed / sharing an address / answering as another instance / unreachable 3× and 120 s
 function teamAutoRevoke() {
   if (!teamDelegations.size) return;
-  const ended = autoRevokeReasons(teamDelegations.list(), { sessions: teamSnapshot.sessions || [], peers: teamCfg ? teamCfg.peers : [], stateOf: name => teamPeerState.get(name) || null });
+  const ended = autoRevokeReasons(teamDelegations.list(), { sessions: teamSnapshot.sessions || [], peers: teamCfg ? teamCfg.peers : [], stateOf: name => teamPeerState.get(name) || null, localNetworkDenied: teamStatus.localNetwork === "denied" });
   if (!ended.length) return;
   const keys = new Set(ended.map(d => `${d.sessionId}|${d.instanceId}`));
   teamDelegations.removeWhere(d => keys.has(`${d.sessionId}|${d.instanceId}`));
@@ -1541,6 +1543,12 @@ const teamRemoteHandlers = {
     const h = typeof session.handle === "string" ? session.handle : "";
     if (h) { try { const res = await terminalRead(h, true); const tail = res && res.result && res.result.terminal && res.result.terminal.tail; if (Array.isArray(tail)) text = AgentDeskStatus.responseTextFromScreen(tail) || ""; } catch {} }
     return { text: text || String(session.lastMsg || ""), at: Number(session.time) || 0 };
+  },
+  // the remote terminal view: the screen as-is (the server masks and caps it); unreadable → null (answered as busy)
+  async screen({ session }) {
+    const h = session && typeof session.handle === "string" ? session.handle : "";
+    if (!h) return null;
+    try { const res = await terminalRead(h, true, null, null, { joinWrapped: true }); const tail = res && res.result && res.result.terminal && res.result.terminal.tail; return Array.isArray(tail) ? { lines: tail } : null; } catch { return null; }
   },
   // repeated rate / busy / blocked events: one per session and result a minute; a desktop alert at most every 30 s
   event(e) {
@@ -1669,13 +1677,19 @@ async function teamPoll() {
         }
       } else {
         st.ok = false; st.error = r.error; st.fails = (prev.fails || 0) + 1; st.rtt = r.rtt ?? null; st.etag = ""; st.theirAt = 0;
+        st.localNetDenied = isLocalNetworkDenied(r.error, p.host);
         st.nextAt = Date.now() + (st.fails >= 3 ? 15000 : 3000) - 200;
         // keep the last good snapshot for a while so a blip does not empty the list
         if (!(st.lastOk && Date.now() - st.lastOk < 60000)) { st.sessions = []; st.delegatedToMe = []; teamGrants.delete(p.name); }
       }
+      if (st.ok) st.localNetDenied = false;
       st.backoff = !st.ok && st.fails >= 3;
       teamPeerState.set(p.name, st);
     }
+    // a teammate answered → the permission is there. All failing the denial way → confirm with a probe (an
+    // EHOSTUNREACH can also be a teammate's PC that is off), which then decides.
+    const v = pollVerdict(results);   // loopback teammates (this PC) are left out: they say nothing about the permission
+    if (v === "ok") teamLocalNetSet("ok"); else if (v === "denied") teamLocalNetProbe();
     for (const p of teamCfg.peers) if (offnet.has(p.name)) teamPeerState.set(p.name, { name: p.name, host: p.host, ok: false, offnet: true, error: "other network", sessions: [], fails: 0, checkedAt: now });
     const peers = {};
     for (const p of teamCfg.peers) { const st = teamPeerState.get(p.name); peers[p.name] = st ? { ...st, sessions: st.sessions || [] } : { name: p.name, host: p.host, ok: false, error: "", sessions: [], fails: 0 }; }
@@ -1683,6 +1697,33 @@ async function teamPoll() {
     teamAutoRevoke();   // identity mismatch, or unreachable for 3 polls and 120 s
   } finally { teamPolling = false; }
 }
+// macOS Local Network permission (team/localnet.mjs): "denied" shows a banner with a button to the Settings pane;
+// while denied a probe runs every 5 s and on window focus, and the first connection that gets through resumes polling
+function teamLocalNetSet(state) {
+  const prev = teamStatus.localNetwork;
+  teamStatus.localNetwork = nextLocalNetwork(prev, state);
+  if (prev === "denied" && teamStatus.localNetwork === "ok") {
+    // the failures were mine, not the teammates': poll everyone now instead of after the 15 s backoff
+    for (const st of teamPeerState.values()) if (!st.ok) st.nextAt = 0;
+    setTimeout(teamPoll, 0);
+  }
+}
+let teamLocalNetProbing = false;
+async function teamLocalNetProbe() {
+  if (process.platform !== "darwin" || teamLocalNetProbing || !teamCfg || !teamStatus.shared) return;
+  teamLocalNetProbing = true;
+  try {
+    const targets = localProbeTargets(teamCfg.peers, await defaultGateway());
+    teamLocalNetSet(localNetworkVerdict(await Promise.all(targets.map(h => probeLan(h)))));
+  } catch {} finally { teamLocalNetProbing = false; }
+}
+setInterval(() => { if (teamStatus.localNetwork === "denied") teamLocalNetProbe(); }, 5000);
+app.on("browser-window-focus", () => { if (teamStatus.localNetwork === "denied") teamLocalNetProbe(); });
+ipcMain.handle("roca:open-local-network-settings", async () => {
+  if (process.platform !== "darwin") return { ok: false, error: "macOS only" };
+  try { await shell.openExternal(LOCAL_NETWORK_SETTINGS_URL); return { ok: true }; }
+  catch { try { await shell.openExternal(PRIVACY_SETTINGS_URL); return { ok: true, fallback: true }; } catch (e) { return { ok: false, error: e.message }; } }
+});
 function teamDiscoveredList() {
   if (!teamCfg || !teamDiscovery) return [];
   const hosts = new Set(teamCfg.peers.map(p => p.host)), ids = new Set([...teamPeerState.values(), ...teamCfg.peers].map(s => s.instanceId).filter(Boolean));
@@ -1717,6 +1758,7 @@ ipcMain.handle("roca:team-invite-create", (_e, opts) => {
   try {
     const fields = { ...(teamCfg.token ? {} : { token: newTeamToken() }), ...(goingPublic ? { ...SHARE_ON, homeSubnets: withHomeSubnets(teamCfg.homeSubnets) } : {}) };
     if (Object.keys(fields).length) { setTeamFields(TEAM_CFG, fields); teamReload(); }
+    if (goingPublic) teamLocalNetProbe();   // one LAN connection now, so macOS asks for Local Network access at this moment
     clipboard.writeText(encodeInvite({ token: teamCfg.token, inviter: { name: teamCfg.name, host: `${ip}:${teamCfg.port}`, instanceId: teamCfg.instanceId } }));
     return { ok: true, host: `${ip}:${teamCfg.port}`, name: teamCfg.name };
   } catch (e) { return { ok: false, error: e.message }; }
@@ -1741,7 +1783,10 @@ ipcMain.handle("roca:team-invite-join", async (_e, code, opts) => {
     teamReload(); if (!teamCfg) return { ok: false, error: teamStatus.error || "team.json" };
     const peer = { name: r.name, host: inv.inviter.host };
     if (!sameSubnet(peer.host)) return { ok: true, connected: false, name: r.name, error: "other network" };
+    // this first connection is also what makes macOS ask for Local Network access
     const f = await fetchPeer(peer, teamCfg.token);
+    if (!f.ok && isLocalNetworkDenied(f.error, peer.host)) { teamLocalNetProbe(); return { ok: true, connected: false, name: r.name, error: f.error, localNetworkDenied: true }; }
+    if (f.ok) teamLocalNetSet("ok");
     if (!f.ok) return { ok: true, connected: false, name: r.name, error: f.error };
     teamHelloSent.delete(peer.name); teamSayHello(peer); setTimeout(teamPoll, 200);
     return { ok: true, connected: true, name: r.name };
@@ -1869,6 +1914,11 @@ ipcMain.handle("roca:team-remote-last", async (_e, msg) => {
   const m = msg && typeof msg === "object" ? msg : {};
   const g = teamGrantFor(m.peer, m.sessionId); if (g.error) return { ok: false, error: g.error };
   return remoteLast(g.peer, teamCfg.token, g.sessionId, g.grant);
+});
+ipcMain.handle("roca:team-remote-screen", async (_e, msg) => {
+  const m = msg && typeof msg === "object" ? msg : {};
+  const g = teamGrantFor(m.peer, m.sessionId); if (g.error) return { ok: false, error: g.error };
+  return remoteScreen(g.peer, teamCfg.token, g.sessionId, g.grant);
 });
 ipcMain.handle("roca:recall-notes", async (_e, cwd, limit) => {
   if (!RECALL_CLI || !cwd || !existsSync(cwd)) return [];
