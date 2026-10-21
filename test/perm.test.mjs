@@ -245,10 +245,13 @@ test('endpoint: socket and token live in a 0700 directory, token 0600; close rem
 });
 
 test('endpoint: when listening fails no token file is left', async () => {
-  const home = tmp(); const dir = join(home, 'perm');
-  const tooLong = join(dir, 'x'.repeat(200));   // a socket path over the OS limit fails to listen
-  await assert.rejects(openPermEndpoint({ dir: tooLong }));
-  assert.equal(existsSync(join(tooLong, 'perm-token')), false);
+  const home = tmp(); const blocker = join(home, 'perm');
+  writeFileSync(blocker, '');                     // a regular file where the directory should be: mkdir / listen fail on every OS
+  const dir = join(blocker, 'sub');
+  let opened = null;
+  try { await assert.rejects(openPermEndpoint({ dir }).then(s => { opened = s; })); }
+  finally { if (opened) await opened.close(); }   // never leave a listening server behind (it would keep the process alive)
+  assert.equal(existsSync(join(dir, 'perm-token')), false);
   rmSync(home, { recursive: true, force: true });
 });
 

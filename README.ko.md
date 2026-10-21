@@ -39,6 +39,8 @@ npm start
 
 설치 파일은 [GitHub 릴리스](https://github.com/choiminu/AgentDesk/releases)에 첨부됩니다(macOS DMG Apple Silicon·Intel, Linux AppImage·.deb, Windows 설치 프로그램·포터블 .exe). 직접 빌드하려면 `npm run dist`(macOS), `npm run dist:linux`, `npm run dist:win`을 사용합니다.
 
+새 버전이 나오면 ⚙ 설정의 "업데이트" 행에 표시됩니다. [받기]를 누르면 이 기기에 맞는 설치 파일(macOS Apple Silicon·Intel DMG, Linux AppImage, Windows 설치 프로그램)을 `~/Downloads`에 내려받아 엽니다. 맞는 파일이 없거나 내려받기에 실패하면 릴리스 페이지를 엽니다. 버전은 0.2.1부터 `0.2.1`, `0.2.2`처럼 patch 번호를 올립니다.
+
 | 플랫폼 | 세션 상태(훅) | 채팅·지시·인터럽트 | 터미널 전환 | 종료 세션 다시 열기 |
 |---|---|---|---|---|
 | macOS | ✓ | Orca, tmux, iTerm2, Terminal.app | ✓ | iTerm2 / Terminal |

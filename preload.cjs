@@ -68,6 +68,8 @@ contextBridge.exposeInMainWorld("orca", {
   teamRemoteScreen: (msg) => ipcRenderer.invoke("roca:team-remote-screen", msg),
   onTeamRemote: (cb) => ipcRenderer.on("roca:team-remote", (_e, entry) => cb(entry)),
   updateCheck: (force) => ipcRenderer.invoke("roca:update-check", force),
+  updateDownload: () => ipcRenderer.invoke("roca:update-download"),
+  onUpdateProgress: (cb) => ipcRenderer.on("roca:update-progress", (_e, p) => cb(p)),
   openExternal: (url) => ipcRenderer.invoke("roca:open-external", url),
   timeline: (req) => ipcRenderer.invoke("roca:timeline", req),
   diffStat: (req) => ipcRenderer.invoke("roca:diff-stat", req),

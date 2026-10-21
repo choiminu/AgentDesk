@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-FaOYoDWU3RF3Khe4JbSYm3tarIfLEAnGJBnlxmkqYAE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-BjKckfKlw+s0t05v7Icx1+/pSRqIJ2XmgZMgTkzTsd8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1704,7 +1704,7 @@ const I18N = {
   '터미널 제어 (tmux)': 'Terminal control (tmux)', '터미널 제어': 'Terminal control',
   'Linux에서는 tmux 안에서 실행한 세션만 채팅·지시가 됩니다. tmux가 없으면 상태 표시(훅)와 종료 세션 다시 열기만 동작합니다.': 'On Linux only sessions running inside tmux can be chatted with or directed. Without tmux you still get exact states (hooks) and reopening ended sessions.',
   'Windows에서는 세션 상태 표시(훅)와 종료 세션 다시 열기(Windows Terminal)만 지원합니다. 채팅·지시는 아직 지원하지 않습니다.': 'On Windows the widget shows session states (hooks) and reopens ended sessions in Windows Terminal. Chat and directing are not supported yet.',
-  '업데이트': 'Update', '새 버전': 'New version', '사용 가능': 'available', '현재': 'current', '최신 버전입니다': 'You are up to date', '하루에 한 번 GitHub 릴리스를 확인합니다.': 'Checks GitHub Releases once a day.', '받기': 'Get it', '지금 확인': 'Check now',
+  '업데이트': 'Update', '새 버전': 'New version', '사용 가능': 'available', '현재': 'current', '최신 버전입니다': 'You are up to date', '하루에 한 번 GitHub 릴리스를 확인합니다.': 'Checks GitHub Releases once a day.', '받기': 'Get it', '지금 확인': 'Check now', '내려받는 중': 'Downloading', '내려받는 중…': 'Downloading…', '릴리스 페이지': 'Release page', '다시 받기': 'Retry', '받기 실패': 'download failed', '이 기기용 설치 파일이 없어 릴리스 페이지를 엽니다': 'no installer for this machine; opens the release page', '이 기기용 설치 파일이 없어 릴리스 페이지를 열었습니다': 'No installer for this machine; opened the release page', '내려받았지만 열지 못했습니다': 'Downloaded but could not open', '설치 파일을 열었습니다': 'Opened the installer', '폴더에서 보여 줍니다': 'Shown in folder', '내려받은 파일': 'Downloaded', 'SHA-256 확인 안 됨': 'SHA-256 not verified', '업데이트 받기 실패': 'Update download failed', '눌러서 릴리스 페이지 열기': 'click to open the release page',
   '업데이트 자동 확인': 'Check for updates automatically', '꺼 두면 위젯이 GitHub에 접속하지 않습니다.': 'When off, the widget never contacts GitHub.',
   '선택 필요': 'Needs input', '이전 완료': 'Older done', '더 보기': 'Show', '접기': 'Collapse', '모두 숨기기': 'Hide all', '24시간 넘게 지난 완료 세션을 목록에서 숨깁니다': 'Hide done sessions older than 24 hours from the list',
   '24시간 지난 완료 세션을 숨겼습니다': 'Hid done sessions older than 24 hours', '숨긴 세션': 'Hidden sessions', '개 보기': ' — show', '숨긴 세션 감추기': 'Hide hidden sessions again', '목록에서 숨기기': 'Hide from the list', '다시 표시': 'Show again',
@@ -7263,7 +7263,7 @@ function settingsRender() {
     ${row(t('지침서 저장소 경로'), (officeKbPath ? (officeKbInfo.ok ? `${t('찾음')}: ${officeKb} · ${officeKbInfo.count || 0}${t('개 존')}${officeKbInfo.generated ? ' (' + t('카테고리 폴더에서 생성') + ')' : ' (agentdesk/zones.json)'}` : t('폴더를 찾지 못했습니다')) : t('README.md가 있는 카테고리 폴더마다 프롬프트 존이 생기고, 프롬프트의 {kb}가 이 경로로 치환됩니다. agentdesk/zones.json이 있으면 그 파일을 우선 사용합니다.')),
       `<div class="set-inline"><input id="set-kb" value="${esc(officeKbPath)}" placeholder="~/team-guides" spellcheck="false"><button class="set-btn" data-set="kb-save">${esc(t('저장'))}</button></div>`)}
     <h2>${esc(t('기타'))}</h2>
-    ${row(t('업데이트'), updateInfo && updateInfo.newer ? `${t('새 버전')} ${updateInfo.latest} ${t('사용 가능')} (${t('현재')} ${updateInfo.current})` : updateInfo && updateInfo.latest ? `${t('최신 버전입니다')} (${updateInfo.current})` : t('하루에 한 번 GitHub 릴리스를 확인합니다.'), (updateInfo && updateInfo.newer) ? `<button class="set-btn" data-set="update-open">${esc(t('받기'))}</button>` : `<button class="set-btn" data-set="update-check">${esc(t('지금 확인'))}</button>`)}
+    ${row(t('업데이트'), updateDescText(), updateDl && updateDl.busy ? `<button class="set-btn" disabled>${esc(t('내려받는 중…'))}</button>` : (updateInfo && updateInfo.newer) ? `<div class="set-inline">${updateDl && updateDl.error ? `<button class="set-btn" data-set="update-open">${esc(t('릴리스 페이지'))}</button>` : ''}<button class="set-btn" data-set="update-download">${esc(t(updateDl && updateDl.error ? '다시 받기' : '받기'))}</button></div>` : `<button class="set-btn" data-set="update-check">${esc(t('지금 확인'))}</button>`, 'upd-desc')}
     ${row(t('업데이트 자동 확인'), t('꺼 두면 위젯이 GitHub에 접속하지 않습니다.'), sw('update-auto', updateAuto))}
     ${row(t('온보딩 다시 보기'), t('소개, 환경 점검, 사용 팁을 다시 표시합니다.'), `<button class="set-btn" data-set="onboarding">${esc(t('열기'))}</button>`)}
     <div class="set-meta" id="settings-meta"></div>`;
@@ -7307,6 +7307,7 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'onboarding') { onboardStep = 0; onboardOpen(); }
   else if (name === 'kb-save') { await kbSetPath($('set-kb').value); settingsRender(); showInAppToast(officeKb ? t('지침서 저장소 연결됨') : t('폴더를 찾지 못했습니다'), officeKb ? undefined : 'error'); }
   else if (name === 'update-open') { if (updateInfo && updateInfo.url) window.orca.openExternal(updateInfo.url); }
+  else if (name === 'update-download') await updateDownloadRun();
   else if (name === 'update-check') { b.disabled = true; b.textContent = t('확인 중…'); await checkForUpdate(true); settingsRender(); }
   else if (name === 'usage-alert') { usageAlert.on = !usageAlert.on; usageAlertSave(); settingsRender(); }
   else if (name === 'notify-remind' || name === 'notify-stuck') {
@@ -7937,6 +7938,41 @@ async function checkForUpdate(force) {
     btn.title = `${t('새 버전')} ${updateInfo.latest} ${t('사용 가능')} — ${t('설정')}`;
   } else if (dot) { dot.remove(); btn.title = t('설정'); }
 }
+// [받기]: main picks this machine's installer from the release, downloads it to ~/Downloads and opens it; the row shows progress
+let updateDl = null;   // { busy, pct } while downloading, { error } after a failure
+function updateDescText() {
+  if (updateDl && updateDl.busy) return `${t('내려받는 중')} ${updateDl.pct >= 0 ? updateDl.pct + '%' : '…'}`;
+  if (!updateInfo) return t('하루에 한 번 GitHub 릴리스를 확인합니다.');
+  if (!updateInfo.newer) return updateInfo.latest ? `${t('최신 버전입니다')} (${updateInfo.current})` : t('하루에 한 번 GitHub 릴리스를 확인합니다.');
+  const base = `${t('새 버전')} ${updateInfo.latest} ${t('사용 가능')} (${t('현재')} ${updateInfo.current})`;
+  if (updateDl && updateDl.error) return `${base} · ${t('받기 실패')}: ${updateDl.error}`;
+  if (updateInfo.assetName === null) return `${base} · ${t('이 기기용 설치 파일이 없어 릴리스 페이지를 엽니다')}`;
+  return updateInfo.assetName ? `${base} · ${updateInfo.assetName}` : base;
+}
+async function updateDownloadRun() {
+  if (updateDl && updateDl.busy) return;
+  updateDl = { busy: true, pct: -1 }; settingsRender();
+  let r; try { r = await window.orca.updateDownload(); } catch (e) { r = { ok: false, error: e.message }; }
+  if (r.ok) {
+    updateDl = null;
+    const note = r.verified ? '' : ` · ${t('SHA-256 확인 안 됨')}`;
+    if (r.openError) showInAppToast(`${t('내려받았지만 열지 못했습니다')}: ${r.path}`, 'error');
+    else showInAppToast(`${r.action === 'open' ? t('설치 파일을 열었습니다') : r.action === 'reveal' ? t('폴더에서 보여 줍니다') : t('내려받은 파일')}: ${r.path}${note}`);
+  }
+  else if (r.upToDate) { updateDl = null; showInAppToast(t('최신 버전입니다')); await checkForUpdate(true); }
+  else if (r.noAsset) { updateDl = null; showInAppToast(t('이 기기용 설치 파일이 없어 릴리스 페이지를 열었습니다')); }
+  else if (r.error === 'busy') updateDl = { busy: true, pct: updateDl.pct };
+  else {
+    updateDl = { error: r.error || '' };
+    const url = r.url || (updateInfo && updateInfo.url);
+    showInAppToast(`${t('업데이트 받기 실패')}: ${r.error || ''} · ${t('눌러서 릴리스 페이지 열기')}`, 'error', undefined, url ? () => window.orca.openExternal(url) : undefined);
+  }
+  settingsRender();
+}
+if (window.orca && window.orca.onUpdateProgress) window.orca.onUpdateProgress(p => {
+  if (!updateDl || !updateDl.busy || !p || p.error) return;
+  updateDl.pct = p.pct; const el = $('upd-desc'); if (el) el.textContent = updateDescText();
+});
 setTimeout(() => checkForUpdate(false), 15000);
 setInterval(() => checkForUpdate(false), 6 * 3600 * 1000);
 
