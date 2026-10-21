@@ -111,6 +111,8 @@ contextBridge.exposeInMainWorld("orca", {
   onHookEvents: (cb) => ipcRenderer.on("roca:hook-events", (_e, evts) => cb(evts)),
   sendSessionCounts: (counts) => ipcRenderer.send("orca:session-counts", counts),
   resizeWindow: (w, h, forceHeight) => ipcRenderer.send("orca:resize-window", w, h, forceHeight),
+  dock: (req) => ipcRenderer.invoke("orca:dock", req),
+  onDockMoved: (cb) => ipcRenderer.on("roca:dock-moved", (_e, p) => cb(p)),
   claudeSessions: (filters) => ipcRenderer.invoke("orca:claude-sessions", filters),
   clipboardWrite: (text) => ipcRenderer.invoke("orca:clipboard-write", text),
   getPathForFile: (file) => webUtils.getPathForFile(file),
