@@ -5,10 +5,16 @@ import { createServer } from 'node:http';
 import { startTeamServer, fetchPeer, signRequest, responseSignature } from '../team/peer.mjs';
 import '../core/team.js';
 import '../core/guard.js';
+import { identityFromSeed } from '../team/identity.mjs';
 
 const T = globalThis.AgentDeskTeam;
 const G = globalThis.AgentDeskGuard;
 const ID = { a: '11111111-1111-4111-8111-111111111111' };
+// safety goes only to a caller whose pinned key signed the request: will is pinned on every server here
+const K = { me: identityFromSeed(Buffer.alloc(32, 1)), will: identityFromSeed(Buffer.alloc(32, 2)), bob: identityFromSeed(Buffer.alloc(32, 4)) };
+const PIN = { identity: K.me, pinnedKeys: () => ({ will: K.will.pub }) };
+const WILL = { token: 't0k', identity: K.will };
+const signKey = (method, host, path) => signRequest('t0k', method, host, path, '', Date.now(), { identity: K.will });
 const listen = async (server) => { await new Promise(r => server.listen(0, '127.0.0.1', r)); return `127.0.0.1:${server.address().port}`; };
 
 const USER_RULE = { id: 'user-1', label: 'prod db host LABEL_SHOULD_NOT_LEAK', pattern: 'prod-db-17\\.internal\\.example', tools: ['Bash'], enabled: true, severity: 'block' };
@@ -74,13 +80,13 @@ test('sanitizeSafety forces types and ranges; non-objects → null', () => {
   assert.equal(T.sanitizeSafety({ blocksToday: 'NaN' }).blocksToday, 0);
 });
 
-test('server: /v1/sessions carries safety (sanitized) and no rule body; fetchPeer keeps it as peer.safety', async () => {
+test('v2 mode: server: /v1/sessions carries safety (sanitized) and no rule body; fetchPeer keeps it as peer.safety', async () => {
   const summary = T.safetySummary({ guardCfg: { mode: 'block', rules: RULES }, guardHookInstalled: true, permHookInstalled: true, guardLogEntries: [{ at: Date.now(), decision: 'deny', rule: 'user-1', label: USER_RULE.label, summary: 'psql prod-db-17.internal.example' }] });
   // the callback leaks extra fields on purpose: the server must drop them
-  const server = startTeamServer({ name: 'neo', token: 't0k', instanceId: ID.a }, () => ({ at: 1, sessions: [] }), { safety: () => ({ ...summary, rules: RULES, label: USER_RULE.label }) });
+  const server = startTeamServer({ name: 'neo', token: 't0k', instanceId: ID.a }, () => ({ at: 1, sessions: [] }), { ...PIN, safety: () => ({ ...summary, rules: RULES, label: USER_RULE.label }) });
   const host = await listen(server);
   try {
-    const s = signRequest('t0k', 'GET', host, '/v1/sessions');
+    const s = signKey('GET', host, '/v1/sessions');
     const r = await fetch(`http://${host}/v1/sessions`, { headers: s.headers });
     const raw = await r.text();
     assert.equal(r.status, 200);
@@ -90,53 +96,59 @@ test('server: /v1/sessions carries safety (sanitized) and no rule body; fetchPee
       assert.ok(!raw.includes(rule.label), `label of ${rule.id} not in the answer`);
     }
     assert.ok(!raw.includes('prod-db-17'));
-    const f = await fetchPeer({ name: 'p', host }, 't0k');
+    const f = await fetchPeer({ name: 'p', host }, WILL);
     assert.equal(f.ok, true); assert.deepEqual(f.safety, summary);
   } finally { server.close(); }
 });
 
-test('server: a safety change gives a new ETag and beats ?since=; a throwing callback just leaves the field out', async () => {
+test('v2 mode: server: a safety change gives a new ETag and beats ?since=; a throwing callback just leaves the field out', async () => {
   let sf = { guard: 'warn', perm: true, rulesHash: 'abcdef012345', blocksToday: 0 };
   let clock = 1000;
   const snap = { at: 500, sessions: [{ id: 'a', name: 'x', status: 'running' }] };
-  const server = startTeamServer({ name: 'neo', token: 't0k', instanceId: ID.a }, () => snap, { safety: () => sf, now: () => clock });
+  const server = startTeamServer({ name: 'neo', token: 't0k', instanceId: ID.a }, () => snap, { ...PIN, safety: () => sf, now: () => clock });
   const host = await listen(server);
   try {
-    const first = await fetchPeer({ name: 'p', host }, 't0k');
+    const first = await fetchPeer({ name: 'p', host }, WILL);
     assert.equal(first.safety.blocksToday, 0);
-    assert.equal((await fetchPeer({ name: 'p', host }, 't0k', { etag: first.etag, since: first.theirAt })).notModified, true, 'unchanged → 304');
+    assert.equal((await fetchPeer({ name: 'p', host }, WILL, { etag: first.etag, since: first.theirAt })).notModified, true, 'unchanged → 304');
     sf = { ...sf, blocksToday: 1 }; clock = 2000;
-    const changed = await fetchPeer({ name: 'p', host }, 't0k', { etag: first.etag, since: first.theirAt });
+    const changed = await fetchPeer({ name: 'p', host }, WILL, { etag: first.etag, since: first.theirAt });
     assert.equal(changed.notModified, undefined); assert.equal(changed.safety.blocksToday, 1); assert.notEqual(changed.etag, first.etag);
     assert.ok(changed.theirAt >= 2000, '`at` moves with the safety change');
     // ?since= alone (no ETag) also sees the change
     sf = { ...sf, guard: 'off' }; clock = 3000;
-    const s = signRequest('t0k', 'GET', host, `/v1/sessions?since=${changed.theirAt}`);
+    const s = signKey('GET', host, `/v1/sessions?since=${changed.theirAt}`);
     const bySince = await fetch(`http://${host}/v1/sessions?since=${changed.theirAt}`, { headers: s.headers });
     assert.equal(bySince.status, 200); assert.equal((await bySince.json()).safety.guard, 'off');
     sf = null; clock = 4000;   // not an object → left out (after the 1 s reuse window)
-    const s2 = signRequest('t0k', 'GET', host, '/v1/sessions');
+    const s2 = signKey('GET', host, '/v1/sessions');
     const r2 = await fetch(`http://${host}/v1/sessions`, { headers: s2.headers });
     assert.equal((await r2.json()).safety, undefined);
   } finally { server.close(); }
-  const throwing = startTeamServer({ name: 'neo', token: 't0k', instanceId: ID.a }, () => snap, { safety: () => { throw new Error('boom'); } });
+  const throwing = startTeamServer({ name: 'neo', token: 't0k', instanceId: ID.a }, () => snap, { ...PIN, safety: () => { throw new Error('boom'); } });
   const h2 = await listen(throwing);
   try {
-    const f = await fetchPeer({ name: 'p', host: h2 }, 't0k');
+    const f = await fetchPeer({ name: 'p', host: h2 }, WILL);
     assert.equal(f.ok, true); assert.equal(f.safety, undefined); assert.equal(f.sessions.length, 1);
   } finally { throwing.close(); }
 });
 
-test('server: two registered teammates at the caller address (ambiguous) → no safety', async () => {
+test('v2 mode: server: safety only for a pinned key — not for a v1 (HMAC-only) caller nor an unpinned key, whatever the address', async () => {
+  // narrowed from the old "two teammates at the caller address" rule: v1 callers never get safety now
   const cfg = { name: 'neo', token: 't0k', instanceId: ID.a, peers: [{ name: 'will', host: '127.0.0.1:7441' }, { name: 'bob', host: '127.0.0.1:7442' }] };
-  const server = startTeamServer(cfg, () => ({ at: 1, sessions: [] }), { safety: () => ({ guard: 'block', perm: true, rulesHash: 'abcdef012345', blocksToday: 3 }) });
+  const server = startTeamServer(cfg, () => ({ at: 1, sessions: [] }), { identity: K.me, safety: () => ({ guard: 'block', perm: true, rulesHash: 'abcdef012345', blocksToday: 3 }) });
   const host = await listen(server);
   try {
     const f = await fetchPeer({ name: 'p', host }, 't0k');
     assert.equal(f.ok, true); assert.equal(f.safety, undefined);
-    cfg.peers = [{ name: 'will', host: '127.0.0.1:7441' }];   // one teammate there → served again
-    const g = await fetchPeer({ name: 'p', host }, 't0k');
-    assert.equal(g.safety.blocksToday, 3);
+    cfg.peers = [{ name: 'will', host: '127.0.0.1:7441' }];   // one keyless teammate there: still v1 → nothing
+    assert.equal((await fetchPeer({ name: 'p', host }, 't0k')).safety, undefined);
+    assert.equal((await fetchPeer({ name: 'p', host }, WILL)).safety, undefined, 'a key that is not pinned');
+    // two pinned teammates at one address (v2): both get it
+    cfg.peers = [{ name: 'will', host: '127.0.0.1:7441', pubkey: K.will.pub, keyTrust: 'invite' }, { name: 'bob', host: '127.0.0.1:7442', pubkey: K.bob.pub, keyTrust: 'confirmed' }];
+    assert.equal((await fetchPeer({ name: 'p', host }, WILL)).safety.blocksToday, 3);
+    assert.equal((await fetchPeer({ name: 'p', host }, { token: 't0k', identity: K.bob })).safety.blocksToday, 3);
+    assert.equal((await fetchPeer({ name: 'p', host }, 't0k')).safety, undefined, 'HMAC only from that IP: no downgrade');
   } finally { server.close(); }
 });
 
@@ -161,31 +173,31 @@ test('fetchPeer: an older peer (no safety field) → peer.safety undefined; garb
   } finally { fake.close(); }
 });
 
-test('server: a re-created server (bind change) delivers its first safety even to a client with a newer ?since=', async () => {
+test('v2 mode: server: a re-created server (bind change) delivers its first safety even to a client with a newer ?since=', async () => {
   let clock = 5000;
   const snap = { at: 500, sessions: [] };
-  const server = startTeamServer({ name: 'neo', token: 't0k', instanceId: ID.a }, () => snap, { safety: () => ({ guard: 'warn', perm: true, rulesHash: 'abcdef012345', blocksToday: 0 }), now: () => clock });
+  const server = startTeamServer({ name: 'neo', token: 't0k', instanceId: ID.a }, () => snap, { ...PIN, safety: () => ({ guard: 'warn', perm: true, rulesHash: 'abcdef012345', blocksToday: 0 }), now: () => clock });
   const host = await listen(server);
   try {
     // the client last saw at=4000 from the old server; the new one has the same sessions (at 500)
-    const s = signRequest('t0k', 'GET', host, '/v1/sessions?since=4000');
+    const s = signKey('GET', host, '/v1/sessions?since=4000');
     const r = await fetch(`http://${host}/v1/sessions?since=4000`, { headers: s.headers });
     assert.equal(r.status, 200); const d = await r.json();
     assert.equal(d.safety.guard, 'warn'); assert.equal(d.at, 5000);
   } finally { server.close(); }
 });
 
-test('server: the safety callback is reused for 1 s', async () => {
+test('v2 mode: server: the safety callback is reused for 1 s', async () => {
   let clock = 10000, calls = 0;
-  const server = startTeamServer({ name: 'neo', token: 't0k', instanceId: ID.a }, () => ({ at: 1, sessions: [] }), { safety: () => { calls++; return { guard: 'block', perm: true, rulesHash: '', blocksToday: calls }; }, now: () => clock });
+  const server = startTeamServer({ name: 'neo', token: 't0k', instanceId: ID.a }, () => ({ at: 1, sessions: [] }), { ...PIN, safety: () => { calls++; return { guard: 'block', perm: true, rulesHash: '', blocksToday: calls }; }, now: () => clock });
   const host = await listen(server);
   try {
-    assert.equal((await fetchPeer({ name: 'p', host }, 't0k')).safety.blocksToday, 1);
+    assert.equal((await fetchPeer({ name: 'p', host }, WILL)).safety.blocksToday, 1);
     clock += 999;
-    assert.equal((await fetchPeer({ name: 'p', host }, 't0k')).safety.blocksToday, 1);
+    assert.equal((await fetchPeer({ name: 'p', host }, WILL)).safety.blocksToday, 1);
     assert.equal(calls, 1);
     clock += 1;
-    assert.equal((await fetchPeer({ name: 'p', host }, 't0k')).safety.blocksToday, 2);
+    assert.equal((await fetchPeer({ name: 'p', host }, WILL)).safety.blocksToday, 2);
     assert.equal(calls, 2);
   } finally { server.close(); }
 });
