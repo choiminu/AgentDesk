@@ -260,6 +260,7 @@ function hookHome() {
     const env = { PATH: process.env.PATH, HOME: home };
     const c = spawn('/bin/bash', [script], { env }); let out = '';
     c.stdout.on('data', x => { out += x; }); c.on('close', code => resolve({ code, out }));
+    c.stdin.on('error', () => {});   // the script may exit without reading stdin (EPIPE)
     c.stdin.end(JSON.stringify(input));
   });
   return { home, dir: join(d, 'perm'), run };

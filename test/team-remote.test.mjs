@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+const until = async (cond, ms = 5000) => { const t0 = Date.now(); while (!cond()) { if (Date.now() - t0 > ms) throw new Error('timeout'); await new Promise(r => setTimeout(r, 5)); } };
 import { startTeamServer, fetchPeer, signRequest, remoteInput, remoteInterrupt, remoteLast, remoteScreen, screenLines, lastText, sanitizeDelegations, sanitizeSessions } from '../team/peer.mjs';
 import { createDelegationStore, createRemoteLog, createEventThrottle, validateRemoteText, remoteMessage, resolveDelegatedSession, screenAllowsInput, remoteInterruptAllowed, canDelegate, autoRevokeReasons, hostIpv4, permissionOk, REMOTE_TTL_MS, REMOTE_TEXT_MAX, REMOTE_RATE, REMOTE_LAST_MAX, REMOTE_SCREEN_RATE, REMOTE_SCREEN_LINES, REMOTE_SCREEN_LINE_MAX, REMOTE_SCREEN_BYTES, REMOTE_SCREEN_LOG_MS, REMOTE_SCREEN_CACHE_MS } from '../team/remote.mjs';
 const P = id => globalThis.AgentDeskTeam.publicSessionId(id);
@@ -189,7 +190,7 @@ test('input: busy (running, choice prompt, ended, unknown, in flight, owner-side
     assert.equal((await input(host, 'wt9', grant('wt9'))).status, 409, 'not in my list');
     const g1 = grant(WT_PAY);
     const first = input(host, WT_PAY, g1, 'first');
-    await new Promise(r => setTimeout(r, 50));
+    await until(() => calls.input.length === 1);   // the first input is in flight
     assert.equal((await input(host, WT_PAY, g1, 'second')).status, 409, 'one input at a time');
     release();
     assert.equal((await first).status, 200);

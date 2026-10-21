@@ -60,23 +60,46 @@ test('mask: tokens, keys, connection URIs, card / account numbers and e-mail add
   for (const ok of ['EP-1234 결제 재시도', 'v0.2.0-internal.3', 'port 7331', '010-1234-5678', 'commit 8330cfb', 'took 1234567 ms']) assert.equal(mask(ok), ok);
 });
 
-test('mask stays fast on adversarial input (every repetition is bounded)', () => {
-  for (const input of ['a.'.repeat(50000), 'a@'.repeat(50000), 'x@a.'.repeat(25000), 'a-'.repeat(50000), '1 '.repeat(50000), 'Bearer '.repeat(14000), 'mysql://'.repeat(12000), 'password='.repeat(11000), '-----BEGIN PRIVATE KEY-----'.repeat(3500)]) {
-    let best = Infinity;
-    for (let i = 0; i < 3; i++) { const t0 = performance.now(); mask(input); best = Math.min(best, performance.now() - t0); }
-    assert.ok(best < 50, `${input.slice(0, 12)}… took ${best.toFixed(1)} ms`);
+// timing: the default run only checks linear growth (2x the input → under 5x the time; linear = 2x, quadratic = 4x is
+// too close to tell apart, so 4x the input → under 10x); absolute limits run with AGENTDESK_PERF=1
+const bestMs = (k, fn) => { let best = Infinity; for (let i = 0; i < k; i++) { const t0 = performance.now(); fn(); best = Math.min(best, performance.now() - t0); } return best; };
+// samples both sizes in rounds until 4x the input takes under 10x the time (a stall on a loaded machine only costs
+// another round); a really quadratic function never gets there, and one still over 16x (quadratic) after 3 rounds
+// fails right away instead of using every round
+const linear = (small, large, floor = 2, rounds = 20) => {
+  let t1 = Infinity, t4 = Infinity;
+  for (let i = 0; i < rounds; i++) { t1 = Math.min(t1, bestMs(1, small)); t4 = Math.min(t4, bestMs(1, large)); if (t4 <= 10 * Math.max(t1, floor)) break; if (i >= 2 && t4 > 16 * Math.max(t1, floor)) break; }
+  return { ok: t4 <= 10 * Math.max(t1, floor), t1, t4 };
+};
+const ADVERSARIAL_MASK = [['a.', 50000], ['a@', 50000], ['x@a.', 25000], ['a-', 50000], ['1 ', 50000], ['Bearer ', 14000], ['mysql://', 12000], ['password=', 11000], ['-----BEGIN PRIVATE KEY-----', 3500]];
+test('mask stays linear on adversarial input (every repetition is bounded)', () => {
+  for (const [u, n] of ADVERSARIAL_MASK) {
+    const r = linear(() => mask(u.repeat(n / 4)), () => mask(u.repeat(n)));
+    assert.ok(r.ok, `${u}… ${r.t1.toFixed(1)} ms → ${r.t4.toFixed(1)} ms for 4x the input`);
   }
   // still masks what it should near the limits
   assert.equal(mask('a'.repeat(64) + '@example.com'), '[MASKED EMAIL]');
   assert.equal(mask('-----BEGIN RSA PRIVATE KEY-----\n' + 'A'.repeat(3300) + '\n-----END RSA PRIVATE KEY-----'), '[MASKED PRIVATE KEY]');
 });
+test('mask stays fast on adversarial input (under 50 ms, AGENTDESK_PERF=1)', { skip: !process.env.AGENTDESK_PERF }, () => {
+  for (const [u, n] of ADVERSARIAL_MASK) { const best = bestMs(3, () => mask(u.repeat(n))); assert.ok(best < 50, `${u}… took ${best.toFixed(1)} ms`); }
+});
 
 test('sanitizeSessions cuts long fields before masking', async () => {
   const { sanitizeSessions } = await import('../team/peer.mjs');
-  const t0 = performance.now();
-  const [o] = sanitizeSessions([{ id: 'a', name: 'a.'.repeat(50000), now: 'x@a.'.repeat(25000), files: ['a.'.repeat(50000)], report: { text: 'a@'.repeat(50000), at: 1 } }]);
-  assert.ok(performance.now() - t0 < 100);
+  const sess = n => [{ id: 'a', name: 'a.'.repeat(n), now: 'x@a.'.repeat(n / 2), files: ['a.'.repeat(n)], report: { text: 'a@'.repeat(n), at: 1 } }];
+  sanitizeSessions(sess(1000));   // warm up
+  // the fields are cut before masking, so 4x the raw input costs about the same as 1x (not 4x or more)
+  const r = linear(() => sanitizeSessions(sess(12500)), () => sanitizeSessions(sess(50000)));
+  assert.ok(r.ok, `${r.t1.toFixed(1)} ms → ${r.t4.toFixed(1)} ms`);
+  const [o] = sanitizeSessions(sess(50000));
   assert.equal(o.name.length, 120); assert.ok(o.now.length <= 200); assert.ok(o.report.text.length <= 200);
+});
+test('sanitizeSessions on 100 KB fields takes under 100 ms (AGENTDESK_PERF=1)', { skip: !process.env.AGENTDESK_PERF }, async () => {
+  const { sanitizeSessions } = await import('../team/peer.mjs');
+  const t0 = performance.now();
+  sanitizeSessions([{ id: 'a', name: 'a.'.repeat(50000), now: 'x@a.'.repeat(25000), files: ['a.'.repeat(50000)], report: { text: 'a@'.repeat(50000), at: 1 } }]);
+  assert.ok(performance.now() - t0 < 100);
 });
 
 test('recall/lib.mjs uses the shared mask rules', () => {

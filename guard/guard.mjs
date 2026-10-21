@@ -104,7 +104,7 @@ const ASK_ERROR = "가드 판정 중 오류";
 const ASK_NOPATH = "입력이 너무 커 대상 경로를 확인하지 못했습니다";
 
 // opts: { file, log (createGuardLog), now(), onHit(entry), onRuleDisabled({ id, label, reason }),
-//         onRuleSlow({ id, label }), runner, deadline (ms) }
+//         onRuleSlow({ id, label }), runner, timeoutMs (user-rule limit, default G.SLOW_MS), deadline (ms) }
 // → { handle(body, { settle }) → hook output, test(tool, input, mode), remote(text), config(), reload() }
 // meta.settle(fn): the server calls fn(true) once the answer was written out to the hook, fn(false) when the hook had
 // already gone (curl gave up) — the hit is logged then, as its decision or as "late-pass". Without settle it is logged
@@ -112,7 +112,15 @@ const ASK_NOPATH = "입력이 너무 커 대상 경로를 확인하지 못했습
 // Every answer is {} or a PreToolUse ask / deny (G.outputAllowed); anything else becomes {}.
 export function createGuardHandler(opts = {}) {
   const file = opts.file;
-  const runner = opts.runner || vmRunner();
+  const timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : G.SLOW_MS;
+  const baseRunner = opts.runner || vmRunner(timeoutMs);
+  // a user rule counts as slow only when it fails twice in a row: one immediate retry absorbs a scheduling stall on a
+  // loaded machine (a block rule would otherwise turn into a question, a warn rule would collect a strike). The
+  // retry only ever repeats the check; a rule that is slow both times still throws → `slow` → ask / strike.
+  const runner = (rule, forms) => {
+    const attempt = () => { const t0 = performance.now(); const r = baseRunner(rule, forms); if (performance.now() - t0 > timeoutMs) throw new Error("slow"); return r; };
+    try { return attempt(); } catch { return attempt(); }
+  };
   const now = opts.now || Date.now;
   let cache = null, cacheKey = "", lastGood = null;
   const strikes = new Map();   // user rule id → Set of input keys it timed out on (memory only)
@@ -160,7 +168,7 @@ export function createGuardHandler(opts = {}) {
   }
   // → { decision: null|"ask"|"deny", output, rule: {id,label,severity}|null, summary, res }
   function judge(tool, input, mode, compiled, truncated) {
-    const res = G.evaluate(tool, input, compiled, { run: runner, ...(opts.deadline != null ? { deadline: opts.deadline } : {}) });
+    const res = G.evaluate(tool, input, compiled, { run: runner, slowMs: Infinity, ...(opts.deadline != null ? { deadline: opts.deadline } : {}) });
     if (res.slow.length) noteSlow(res.slow, res.subject);
     if (mode === "off") return { decision: null, output: {}, rule: null, summary: "", res };
     const ask = (id, label, why) => ({ decision: "ask", output: G.askOutput(`${why}: ${G.summarizeHit(null, res.subject)}`), rule: { id, label, severity: "warn" }, summary: G.summarizeHit(null, res.subject), res });
@@ -221,7 +229,7 @@ export function createGuardHandler(opts = {}) {
       const { compiled } = load();
       const builtins = G.compileRules(G.defaultRules()).rules;
       const user = compiled.filter(r => !r.builtin);
-      const res = G.evaluate("Bash", { command: String(text == null ? "" : text) }, [...builtins, ...user], { firstHit: true, run: runner });
+      const res = G.evaluate("Bash", { command: String(text == null ? "" : text) }, [...builtins, ...user], { firstHit: true, run: runner, slowMs: Infinity });
       if (res.slow.length) noteSlow(res.slow, res.subject);
       if (res.timedOut) return { blocked: true, rule: "timeout", label: ASK_TIMEOUT };
       return res.hit ? { blocked: true, rule: res.hit.id, label: res.hit.label } : { blocked: false };
