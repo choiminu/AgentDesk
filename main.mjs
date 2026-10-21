@@ -1,9 +1,9 @@
-import { app, BrowserWindow, clipboard, ipcMain, screen, Tray, Menu, nativeImage, Notification, shell } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, screen, Tray, Menu, nativeImage, Notification, shell, dialog } from "electron";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { dirname, join, delimiter as PATH_DELIM } from "node:path";
-import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, existsSync, openSync, readSync, closeSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync, mkdtempSync, rmSync } from "node:fs";
+import { dirname, join, extname, basename, delimiter as PATH_DELIM } from "node:path";
+import { readdirSync, readFileSync, writeFileSync, statSync, lstatSync, createReadStream, mkdirSync, existsSync, openSync, readSync, writeSync, closeSync, renameSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync, mkdtempSync, rmSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { readTeamConfig, startTeamServer, fetchPeer, postNote, postHello, remoteInput, remoteInterrupt, remoteLast, remoteScreen, ensureInstanceId, addPeerToConfig, removePeerFromConfig, upsertPeer, classifyMove, onHomeNetwork, withHomeSubnets, UUID_RE, validateNote, setTeamFields, newTeamToken, rotateTeamToken, encodeInvite, decodeInvite, writeTeamJson, isShared, sameSubnet, TEAM_CFG } from "./team/peer.mjs";
@@ -15,8 +15,9 @@ import "./core/mask.js";
 import "./core/outbound.js";   // globalThis.AgentDeskOutbound: Jira comment / Slack reply bodies, masked and checked
 import "./core/team.js";       // globalThis.AgentDeskTeam: safetySummary for the team snapshot's safety status
 import "./core/timeline.js";   // globalThis.AgentDeskTimeline: the card's [타임라인] tab (details masked here)
+import "./core/version.js";    // globalThis.AgentDeskVersion: release version comparison and installer choice for updates
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { openPermEndpoint, ensurePrivateDir, permHookScript as permHookSh, guardHookScript, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK } from "./perm/server.mjs";
 import { readJsonStrict, writeJsonAtomic, backupPrivate, permHookPresent, installPermHookAt, uninstallPermHookAt, guardHookPresent, installGuardHookAt, uninstallGuardHookAt } from "./perm/settings.mjs";
 import { createGuardHandler, createGuardLog, writeGuardConfig, defaultGuardConfig, GUARD_MODES } from "./guard/guard.mjs";
@@ -1193,19 +1194,129 @@ ipcMain.handle("roca:guard-log", (_e, n) => guardLog.read(Math.min(Number(n) || 
 // new-version check against GitHub Releases, at most once a day (cached in userData); the renderer shows a badge
 const UPDATE_API = "https://api.github.com/repos/choiminu/AgentDesk/releases/latest";
 const UPDATE_CACHE = join(app.getPath("userData"), "update-check.json");
-const semverNewer = (a, b) => { const pa = String(a).replace(/^v/, "").split(".").map(n => parseInt(n, 10) || 0), pb = String(b).replace(/^v/, "").split(".").map(n => parseInt(n, 10) || 0); for (let i = 0; i < 3; i++) { if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0); } return false; };
+const UPDATE_MAX_BYTES = 200 * 1024 * 1024, UPDATE_DL_TIMEOUT = 8 * 60 * 1000, UPDATE_DL_MAX = 10;
+const { isNewer, pickAsset, isAllowedDownloadUrl, isAllowedRedirectUrl, safeAssetFileName, releaseInfo, downloadPlan } = globalThis.AgentDeskVersion;
+const fetchLatestRelease = async () => {
+  const res = await fetch(UPDATE_API, { headers: { "User-Agent": `AgentDesk/${app.getVersion()}`, Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+};
+const saveUpdateCache = info => { try { writeFileSync(UPDATE_CACHE, JSON.stringify(info)); } catch {} };
+// the renderer learns whether this machine has an installer in the release (assetName) without ever seeing a URL
+const updateView = (info, current) => ({ ...info, current, newer: isNewer(info.latest, current), assetName: Array.isArray(info.assets) ? (pickAsset(info.assets, process.platform, process.arch) || {}).name || null : undefined });
 ipcMain.handle("roca:update-check", async (_e, force) => {
   const current = app.getVersion();
   let cache = null; try { cache = JSON.parse(readFileSync(UPDATE_CACHE, "utf-8")); } catch {}
-  if (!force && cache && Date.now() - cache.at < 24 * 3600 * 1000) return { ...cache, current, newer: semverNewer(cache.latest, current) };
+  if (!force && cache && Date.now() - cache.at < 24 * 3600 * 1000) return updateView(cache, current);
   try {
-    const res = await fetch(UPDATE_API, { headers: { "User-Agent": `AgentDesk/${current}`, Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const j = await res.json();
-    const info = { at: Date.now(), latest: String(j.tag_name || "").replace(/^v/, ""), url: j.html_url || "https://github.com/choiminu/AgentDesk/releases", name: j.name || "" };
-    try { writeFileSync(UPDATE_CACHE, JSON.stringify(info)); } catch {}
-    return { ...info, current, newer: semverNewer(info.latest, current) };
-  } catch (e) { return { at: Date.now(), current, latest: cache?.latest || null, url: cache?.url || null, newer: cache ? semverNewer(cache.latest, current) : false, error: e.message }; }
+    const info = releaseInfo(await fetchLatestRelease(), Date.now());
+    saveUpdateCache(info);
+    return updateView(info, current);
+  } catch (e) { return { at: Date.now(), current, latest: cache?.latest || null, url: cache?.url || null, newer: cache ? isNewer(cache.latest, current) : false, error: e.message }; }
+});
+// [받기]: download this machine's installer from the latest release into ~/Downloads, verify its sha256 against the
+// release's digest, mark it as downloaded from the internet, and open it only after the user confirms in a dialog.
+// The URL comes from the release JSON here, never from the renderer; every redirect hop must stay on GitHub's hosts.
+let updateDownloading = false, updateDownloadCount = 0;
+async function sha256OfFile(path) {
+  const h = createHash("sha256");
+  for await (const chunk of createReadStream(path)) h.update(chunk);
+  return h.digest("hex");
+}
+// the OS treats the file like a browser download: Gatekeeper (quarantine xattr) / SmartScreen (Mark of the Web)
+async function markDownloaded(path) {
+  try {
+    if (process.platform === "darwin") await exec("/usr/bin/xattr", ["-w", "com.apple.quarantine", `0083;${Math.floor(Date.now() / 1000).toString(16)};AgentDesk;`, path], { timeout: 5000 });
+    else if (process.platform === "win32") writeFileSync(`${path}:Zone.Identifier`, "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://github.com/\r\n");
+  } catch {}
+}
+async function downloadUpdateAsset(asset, sha256, onProgress) {
+  let url = String(asset.browser_download_url || "");
+  if (!isAllowedDownloadUrl(url)) throw new Error("download URL is not a GitHub release URL");
+  if (Number(asset.size) > UPDATE_MAX_BYTES) throw new Error("installer is larger than 200MB");
+  const dir = app.getPath("downloads"), name = safeAssetFileName(asset.name);
+  // the same installer is already in ~/Downloads (a regular file, not a link) with the release's digest → reuse it
+  const existing = join(dir, name);
+  if (sha256) { try { if (lstatSync(existing).isFile() && await sha256OfFile(existing) === sha256) return { path: existing, verified: true, reused: true }; } catch {} }
+  if (updateDownloadCount >= UPDATE_DL_MAX) throw new Error(`download limit reached (${UPDATE_DL_MAX} per session)`);
+  updateDownloadCount++;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(new Error("timeout (8 min)")), UPDATE_DL_TIMEOUT);
+  let fd = null, tmp = null;
+  try {
+    let res;
+    for (let hop = 0; ; hop++) {
+      res = await fetch(url, { redirect: "manual", signal: ac.signal, headers: { "User-Agent": `AgentDesk/${app.getVersion()}`, Accept: "application/octet-stream" } });
+      if (res.status < 300 || res.status >= 400) break;
+      const next = res.headers.get("location"); try { await res.body?.cancel(); } catch {}
+      if (!next || hop >= 5) throw new Error("too many redirects");
+      url = new URL(next, url).href;
+      if (!isAllowedRedirectUrl(url)) throw new Error(`redirect to an unexpected host: ${new URL(url).host}`);
+    }
+    if (res.status !== 200 || !res.body) throw new Error(`HTTP ${res.status}`);
+    const total = Number(res.headers.get("content-length")) || Number(asset.size) || 0;
+    if (total > UPDATE_MAX_BYTES) throw new Error("installer is larger than 200MB");
+    tmp = join(dir, `.${name}.${randomUUID().slice(0, 8)}.part`);
+    fd = openSync(tmp, "wx", 0o644);   // wx: fails if the path exists (never follows a planted symlink)
+    const hash = createHash("sha256");
+    let received = 0, lastPct = -1;
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.length;
+      if (received > UPDATE_MAX_BYTES) throw new Error("installer is larger than 200MB");
+      const written = writeSync(fd, value);
+      if (written !== value.length) throw new Error(`partial write (${written}/${value.length} bytes)`);
+      hash.update(value);
+      const pct = total ? Math.min(99, Math.floor(received * 100 / total)) : -1;
+      if (pct !== lastPct) { lastPct = pct; onProgress({ pct, received, total }); }
+    }
+    closeSync(fd); fd = null;
+    if (total && received !== total) throw new Error(`incomplete download (${received}/${total} bytes)`);
+    if (sha256 && hash.digest("hex") !== sha256) throw new Error("sha256 mismatch with the release digest");
+    const ext = extname(name), stem = name.slice(0, name.length - ext.length);
+    let dest = existing;
+    for (let n = 2; existsSync(dest); n++) dest = join(dir, `${stem}-${n}${ext}`);
+    renameSync(tmp, dest); tmp = null;
+    if (/\.appimage$/i.test(dest)) { try { chmodSync(dest, 0o755); } catch {} }
+    onProgress({ pct: 100, received, total });
+    return { path: dest, verified: !!sha256 };
+  } catch (e) {
+    ac.abort(e);   // closes the socket on a write failure (ENOSPC), a digest mismatch or the timeout
+    throw ac.signal.reason instanceof Error && ac.signal.reason.message.startsWith("timeout") ? ac.signal.reason : e;
+  } finally {
+    clearTimeout(timer);
+    if (fd !== null) { try { closeSync(fd); } catch {} }
+    if (tmp) { try { unlinkSync(tmp); } catch {} }
+  }
+}
+ipcMain.handle("roca:update-download", async () => {
+  if (updateDownloading) return { ok: false, error: "busy" };
+  updateDownloading = true;
+  let releaseUrl = globalThis.AgentDeskVersion.RELEASES_PAGE;
+  try {
+    const j = await fetchLatestRelease();
+    const info = releaseInfo(j, Date.now()); releaseUrl = info.url;
+    saveUpdateCache(info);
+    const plan = downloadPlan(j, app.getVersion(), process.platform, process.arch);
+    if (plan.upToDate) return { ok: false, upToDate: true, latest: plan.latest };
+    if (plan.noAsset) { await shell.openExternal(releaseUrl); return { ok: false, noAsset: true, url: releaseUrl }; }
+    const { path, verified, reused } = await downloadUpdateAsset(plan.asset, plan.sha256, p => toRenderer("roca:update-progress", p));
+    await markDownloaded(path);
+    let size = 0; try { size = statSync(path).size; } catch {}
+    const opts = { type: "question", buttons: ["열기", "폴더에서 보기", "취소"], defaultId: 1, cancelId: 2, noLink: true,
+      message: `AgentDesk ${plan.latest} 설치 파일을 내려받았습니다`,
+      detail: `${basename(path)} (${(size / 1048576).toFixed(1)} MB)${verified ? "\nSHA-256 확인됨" : "\n릴리스에 SHA-256 값이 없어 무결성을 확인하지 못했습니다"}` };
+    const { response } = mainWindow && !mainWindow.isDestroyed() ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts);
+    let action = "cancel", openError;
+    if (response === 0) { action = "open"; openError = await shell.openPath(path) || undefined; }
+    else if (response === 1) { action = "reveal"; shell.showItemInFolder(path); }
+    return { ok: true, path, action, verified, reused: !!reused, ...(openError ? { openError } : {}) };
+  } catch (e) {
+    toRenderer("roca:update-progress", { pct: -1, error: true });
+    return { ok: false, error: e.message, url: releaseUrl };
+  } finally { updateDownloading = false; }
 });
 ipcMain.handle("roca:app-version", () => app.getVersion());
 // "what is it doing right now?" — one sentence from the last few turns of the transcript (Haiku), cached per file state for 5 minutes

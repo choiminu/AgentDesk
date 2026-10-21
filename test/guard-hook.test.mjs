@@ -22,7 +22,10 @@ function post(sock, body, { token = TOKEN, path = GUARD_PATH } = {}) {
     const req = request({ socketPath: sock, path, method: 'POST', headers: { Host: 'localhost', 'Content-Type': 'application/json', ...(token ? { 'X-AD-Perm-Token': token } : {}) } }, res => {
       let b = ''; res.on('data', c => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, body: b, sig: res.headers['x-ad-sig'] }));
     });
-    req.on('error', reject); req.end(typeof body === 'string' ? body : JSON.stringify(body));
+    // the server may close the connection while a multi-MB body is still being written (it cuts bodies over 2 MB):
+    // the resulting EPIPE on the socket must not surface as an uncaught exception after the response resolved
+    req.on('error', reject); req.on('socket', s => s.on('error', () => {}));
+    req.end(typeof body === 'string' ? body : JSON.stringify(body));
   });
 }
 function guardEnv(cfg) {
