@@ -12,6 +12,7 @@ import { isLocalNetworkDenied, localNetworkVerdict, pollVerdict, nextLocalNetwor
 import { createDelegationStore, createRemoteLog, createEventThrottle, remoteMessage, validateRemoteText, resolveDelegatedSession, screenAllowsInput, remoteInterruptAllowed, canDelegate, autoRevokeReasons, permissionOk, REMOTE_LOG } from "./team/remote.mjs";
 import "./core/status.js";   // globalThis.AgentDeskStatus (responseTextFromScreen) for a delegated session's last answer
 import "./core/mask.js";
+import "./core/outbound.js";   // globalThis.AgentDeskOutbound: Jira comment / Slack reply bodies, masked and checked
 import "./core/timeline.js";   // globalThis.AgentDeskTimeline: the card's [타임라인] tab (details masked here)
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { randomUUID } from "node:crypto";
@@ -222,8 +223,10 @@ const viaOAuth = (fn) => fn().catch(e => badArg(e.message));
 ipcMain.handle("roca:jira-status", () => jiraOAuth.connected() ? jiraOAuth.connectionResult() : orca("jira", "connection"));
 ipcMain.handle("roca:jira-list", (_e, opts = {}) => {
   const limit = Math.min(100, Math.max(1, parseInt(opts.limit, 10) || 30));
-  const jql = typeof opts.jql === "string" ? opts.jql.trim() : "";
-  if (jql && (jql.length > 2000 || jql.startsWith("-"))) return badArg("invalid JQL");
+  // control characters dropped; masking would break the query, so a JQL that holds a secret pattern is refused instead
+  const q = globalThis.AgentDeskOutbound.checkJql(opts.jql);
+  if (!q.ok) return badArg(q.error);
+  const jql = q.jql;
   const filter = JIRA_FILTERS.has(opts.filter) ? opts.filter : "assigned";
   if (jiraOAuth.connected()) return viaOAuth(() => jql ? jiraOAuth.search(jql, limit) : jiraOAuth.list(filter, limit));
   if (jql) return orcaTimed(30000, "jira", "search", jql, "--limit", String(limit));
@@ -233,15 +236,18 @@ ipcMain.handle("roca:jira-issue", (_e, key) => {
   if (!JIRA_KEY_RE.test(key || "")) return badArg("invalid Jira key");
   return jiraOAuth.connected() ? viaOAuth(() => jiraOAuth.issue(key)) : orcaTimed(30000, "jira", "issue", key);
 });
-ipcMain.handle("roca:jira-comment", async (_e, key, body) => {
+ipcMain.handle("roca:jira-comment", async (_e, key, raw) => {
   if (!JIRA_KEY_RE.test(key || "")) return badArg("invalid Jira key");
-  if (typeof body !== "string" || !body.trim() || body.length > 32000) return badArg("comment body is empty or too long");
-  if (jiraOAuth.connected()) return viaOAuth(() => jiraOAuth.comment(key, body));
+  // masked here whatever the renderer sent, before the length cap; both the OAuth and the Orca CLI path get only this
+  const m = globalThis.AgentDeskOutbound.prepareJiraComment(raw);
+  if (!m.ok) return badArg(m.error);
+  const body = m.body, withMasked = r => (r && typeof r === "object" && r.ok !== false && m.masked ? { ...r, masked: m.masked } : r);
+  if (jiraOAuth.connected()) return viaOAuth(() => jiraOAuth.comment(key, body)).then(withMasked);
   const dir = mkdtempSync(join(tmpdir(), "agentdesk-jira-"));
   const file = join(dir, "comment.txt");
   try {
     writeFileSync(file, body, { mode: 0o600 });
-    return await orcaTimed(30000, "jira", "comment", "add", key, "--body-file", file);
+    return withMasked(await orcaTimed(30000, "jira", "comment", "add", key, "--body-file", file));
   } finally { try { rmSync(dir, { recursive: true, force: true }); } catch {} }
 });
 // Kanban board (OAuth only; the Orca CLI path keeps the plain list)
@@ -1430,19 +1436,33 @@ function startSlackBridge() {
 }
 setInterval(startSlackBridge, 30000); setTimeout(startSlackBridge, 8000);
 const inboxSeen = new Set();
+// task id → { channel, thread } as the bridge wrote it: a reply goes to that thread only, never to one the renderer names
+const inboxRoutes = new Map(), INBOX_ROUTES_MAX = 500;
 function pumpInbox() {
   try {
     mkdirSync(INBOX_REPLIES, { recursive: true });
     for (const f of readdirSync(INBOX_DIR).filter(f => f.endsWith(".json"))) {
       const p = join(INBOX_DIR, f); if (inboxSeen.has(p)) continue; inboxSeen.add(p);
       let task; try { task = JSON.parse(readFileSync(p, "utf-8")); } catch { continue; }
+      const route = globalThis.AgentDeskOutbound.routeFromTask(task);
+      if (route && typeof task.id === "string") {
+        inboxRoutes.set(task.id, route);
+        while (inboxRoutes.size > INBOX_ROUTES_MAX) inboxRoutes.delete(inboxRoutes.keys().next().value);
+      }
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:inbox-task", task);
       try { unlinkSync(p); } catch {}
     }
   } catch {}
 }
 setInterval(pumpInbox, 3000);
-ipcMain.handle("roca:inbox-reply", (_e, reply) => { try { mkdirSync(INBOX_REPLIES, { recursive: true }); writeFileSync(join(INBOX_REPLIES, `${reply.id}-${Date.now()}.json`), JSON.stringify(reply)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
+// Slack thread reply (core/outbound.js prepareInboxReply): known fields only, channel / thread from the task the bridge
+// handed over (the renderer's are ignored; an unknown task id is refused), every text field masked before it is cut
+ipcMain.handle("roca:inbox-reply", (_e, reply) => {
+  const id = reply && typeof reply === "object" ? reply.id : undefined;
+  const p = globalThis.AgentDeskOutbound.prepareInboxReply(reply, typeof id === "string" ? inboxRoutes.get(id) : undefined);
+  if (!p.ok) return { ok: false, error: p.error };
+  try { mkdirSync(INBOX_REPLIES, { recursive: true }); writeFileSync(join(INBOX_REPLIES, `${p.reply.id}-${Date.now()}.json`), JSON.stringify(p.reply)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; }
+});
 ipcMain.handle("roca:inbox-status", () => ({ ...slackStatus, configured: existsSync(SLACK_CFG) }));
 ipcMain.handle("roca:inbox-restart", () => { if (slackChild) { try { slackChild.kill(); } catch {} } slackRestartAt = 0; setTimeout(startSlackBridge, 500); return { ok: true }; });
 // session notes written by recall/ (MongoDB) for a checkout: spawn the CLI, which knows the worktree/repo rules; [] when unavailable

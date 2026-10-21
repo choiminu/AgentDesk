@@ -6,7 +6,7 @@
 import { SocketModeClient } from "@slack/socket-mode";
 import { WebClient } from "@slack/web-api";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, renameSync } from "node:fs";
-import { replyPayload } from "./slack-format.mjs";
+import { replyPayload, routeFromTask } from "./slack-format.mjs";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -57,20 +57,23 @@ async function handle(ev) {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const task = { id, ts: Date.now(), channel: ev.channel, thread, user: ev.user, text, tickets: keys, issues, zoneId: d.zoneId, title: d.title, prompt: d.prompt };
     writeFileSync(join(INBOX, `${id}.json`), JSON.stringify(task, null, 2));
-    await web.chat.postMessage({ channel: ev.channel, thread_ts: thread, text: `📥 ${d.ack}` });
+    await web.chat.postMessage({ channel: ev.channel, thread_ts: thread, text: `📥 ${mask(d.ack)}` });
     log("slack task", id, JSON.stringify(d.title));
   } catch (e) {
     log("slack error", e.message);
-    await web.chat.postMessage({ channel: ev.channel, thread_ts: thread, text: `⚠️ 접수 실패: ${e.message}` }).catch(() => {});
+    await web.chat.postMessage({ channel: ev.channel, thread_ts: thread, text: `⚠️ 접수 실패: ${mask(e.message)}` }).catch(() => {});
   }
 }
 // replies written by the widget → Slack thread
+// replyPayload masks every text field (the file may have been written by anything, not only the widget)
 // a reply file is claimed by renaming it first, so two bridges (e.g. a dev widget next to the installed one) never post it twice
 function pumpReplies() {
   for (const f of readdirSync(REPLIES).filter(f => f.endsWith(".json"))) {
     const p = join(REPLIES, f), claimed = p + ".sending";
     try { renameSync(p, claimed); } catch { continue; }
     let r; try { r = JSON.parse(readFileSync(claimed, "utf-8")); } catch { unlinkSync(claimed); continue; }
+    // same checks as the main process: a file written by anything else must still name a plain channel and thread
+    if (!routeFromTask(r)) { log("slack reply dropped: bad channel/thread", f); unlinkSync(claimed); continue; }
     web.chat.postMessage({ channel: r.channel, thread_ts: r.thread, ...replyPayload(r) })
       .then(() => unlinkSync(claimed))
       .catch(e => { log("slack reply error", e.message); try { renameSync(claimed, p); } catch {} });

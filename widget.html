@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-P3nyy99YMpKEfVNhnX4vMehT2bXEZLAyK9LjPixCoug='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-sZzI0tqUX0Y2n+xbn0+QrTvnIY8g9T9bWCqK2uDmikY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2071,6 +2071,7 @@
   .jira-track { font-size: var(--fs-xs); color: var(--text3); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .jira-draft { margin-top: 6px; border-top: 1px dashed var(--border); padding-top: 6px; }
   .jira-draft .jd-head { font-size: var(--fs-xs); color: var(--text2); margin-bottom: 4px; }
+  .jira-draft .jd-mask { font-size: var(--fs-xs); color: var(--text2); margin-bottom: 4px; }
   .jira-draft textarea { width: 100%; min-height: 110px; box-sizing: border-box; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px; font-family: var(--mono); font-size: var(--fs-xs); resize: vertical; }
   .jira-draft .jd-row { display: flex; gap: 4px; margin-top: 4px; justify-content: flex-end; }
   .jira-conn { padding: 6px 12px; border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-xs); color: var(--text2); flex-shrink: 0; }
@@ -3001,6 +3002,7 @@
 </div>
 
 <script src="core/status.js"></script>
+<script src="core/mask.js"></script>
 <script src="core/jira.js"></script>
 <script src="core/team.js"></script>
 <script src="core/diff.js"></script>
@@ -3061,7 +3063,7 @@ const I18N = {
   '슬랙 창구': 'Slack front desk', '브리지 상태': 'Bridge status', '연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.': 'Connected — requests arrive via @mention or DM in Slack.', '설정 파일은 있지만 브리지가 꺼져 있습니다.': 'Config found but the bridge is not running.',
   '~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.': 'Create ~/.agentdesk/slack.json (appToken, botToken) and the bridge starts by itself.', '재시작': 'Restart', '접수 담당 세션': 'Reception session',
   '슬랙 요청을 처음 받아 처리하거나 다른 세션에 넘길 세션입니다. 연결된 세션 중에서 고르세요.': 'The session that receives Slack requests first and handles or forwards them. Pick a connected session.', '지정 안 함': 'None', '접수 기록': 'Front desk log', '보류': 'pending', '아직 받은 요청이 없습니다.': 'No requests yet.',
-  '접수 담당': 'Reception', '접수 담당 세션 지정 해제': 'Reception session cleared', '슬랙 접수: 담당 세션이 없어 보류 — 설정 → 슬랙 창구에서 지정하세요': 'Slack request on hold — pick a reception session in Settings → Slack front desk', '슬랙 스레드에 보고를 보냈습니다': 'report posted to the Slack thread',
+  '접수 담당': 'Reception', '접수 담당 세션 지정 해제': 'Reception session cleared', '슬랙 접수: 담당 세션이 없어 보류 — 설정 → 슬랙 창구에서 지정하세요': 'Slack request on hold — pick a reception session in Settings → Slack front desk', '슬랙 스레드에 보고를 보냈습니다': 'report posted to the Slack thread', '슬랙 회신 실패': 'Slack reply failed',
   '진행 요약 한 줄': 'One-line "doing now"', '작업 중·대기 중 세션의 최근 대화를 Haiku가 한 문장으로 요약해 카드에 표시합니다 (세션당 5분에 한 번).': 'Haiku turns the latest turns of active sessions into one sentence shown on the card (once per 5 minutes per session).', '지금 하는 일 (5분마다 갱신)': 'Doing now (refreshed every 5 minutes)',
   '이전': 'Back', '다음': 'Next', '시작하기': 'Get started', 'AgentDesk에 오신 것을 환영합니다': 'Welcome to AgentDesk',
   'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'A desktop widget that watches your AI coding agent sessions in one place: live state for every session, alerts only when your input is needed, and a pixel office where you can see the agents at work.',
@@ -9739,12 +9741,18 @@ function inboxPrompt(task, owner) {
   parts.push(LANG === 'en' ? 'Handle it yourself, or if another session fits better say in [Next suggestion] how to hand it over. Always end with the REPORT block.' : '직접 처리하되, 더 적합한 다른 세션이 있으면 REPORT의 [다음 제안]에 어떻게 넘길지 적어 주세요. 반드시 REPORT 블록으로 끝내세요.');
   return parts.join(' ');
 }
+// a reply the main process refused (unknown task, empty body, …) shows up in the front desk log and as a toast
+async function inboxSend(reply) {
+  const r = await window.orca.inboxReply(reply).catch(e => ({ ok: false, error: e.message }));
+  if (!r || r.ok === false) { const msg = `${t('슬랙 회신 실패')}: ${(r && r.error) || '?'}`; inboxNote('error', msg); showInAppToast(msg, 'error'); }
+  return r;
+}
 async function inboxAccept(task) {
   const owner = sessions.find(s => s.id === inboxOwner && s.connected && handles.get(s.id));
   if (!owner) {
     inboxPending.push(task); inboxNote('pending', task.title);
     showInAppToast(t('슬랙 접수: 담당 세션이 없어 보류 — 설정 → 슬랙 창구에서 지정하세요'), 'error');
-    await window.orca.inboxReply({ id: task.id, channel: task.channel, thread: task.thread, text: '⏸ 접수 담당 세션이 지정되지 않아 보류 중입니다. AgentDesk 설정 → 슬랙 창구에서 담당 세션을 지정하면 바로 전달됩니다.' }).catch(() => {});
+    await inboxSend({ id: task.id, channel: task.channel, thread: task.thread, text: '⏸ 접수 담당 세션이 지정되지 않아 보류 중입니다. AgentDesk 설정 → 슬랙 창구에서 담당 세션을 지정하면 바로 전달됩니다.' }).catch(() => {});
     return;
   }
   const h = handles.get(owner.id);
@@ -9755,10 +9763,10 @@ async function inboxAccept(task) {
     inboxNote('sent', `${task.title} → ${owner.name}`);
     const ch = officeChars.get(owner.id); if (ch) ch.reactT = 1.5;
     showInAppToast(`📥 ${task.title} → ${owner.name}`);
-    await window.orca.inboxReply({ id: task.id, channel: task.channel, thread: task.thread, text: `▶ ${owner.name} 세션이 작업을 시작했습니다. 끝나면 이 스레드에 보고합니다.` }).catch(() => {});
+    await inboxSend({ id: task.id, channel: task.channel, thread: task.thread, text: `▶ ${owner.name} 세션이 작업을 시작했습니다. 끝나면 이 스레드에 보고합니다.` }).catch(() => {});
   } catch (e) {
     inboxNote('error', `${task.title}: ${e.message}`);
-    await window.orca.inboxReply({ id: task.id, channel: task.channel, thread: task.thread, text: `⚠️ 전달 실패: ${e.message}` }).catch(() => {});
+    await inboxSend({ id: task.id, channel: task.channel, thread: task.thread, text: `⚠️ 전달 실패: ${e.message}` }).catch(() => {});
   }
 }
 async function inboxTick() {
@@ -9767,19 +9775,20 @@ async function inboxTick() {
     const sess = sessions.find(x => x.id === it.sid);
     if (!sess) continue;
     const prev = it.prev; it.prev = sess.status;
-    if (Date.now() - it.sentAt > INBOX_TIMEOUT_MS) { it.done = true; inboxNote('timeout', it.task.title); await window.orca.inboxReply({ id, channel: it.task.channel, thread: it.task.thread, text: `⏱ ${it.task.title}: 60분 안에 보고가 오지 않아 추적을 멈춥니다. 세션을 직접 확인해 주세요.` }).catch(() => {}); continue; }
+    if (Date.now() - it.sentAt > INBOX_TIMEOUT_MS) { it.done = true; inboxNote('timeout', it.task.title); await inboxSend({ id, channel: it.task.channel, thread: it.task.thread, text: `⏱ ${it.task.title}: 60분 안에 보고가 오지 않아 추적을 멈춥니다. 세션을 직접 확인해 주세요.` }).catch(() => {}); continue; }
     if (!(prev === 'running' && sess.status === 'waiting') || Date.now() - it.sentAt < 8000) continue;
     it.done = true;
     try {
       const res = await window.orca.terminalRead(handles.get(it.sid), true);
       const lines = extractTail(res);
       // keeps code indentation and rejoins hard-wrapped lines; the bridge turns it into Slack mrkdwn blocks (recall/slack-format.mjs)
-      const report = teamParseReport(AgentDeskStatus.responseTextFromScreen(lines) || extractLastResponse(lines) || '').slice(0, 12000);
+      // bounded to 4× the 12,000-character cap only: the main process masks first, then cuts the report to 12,000
+      const report = teamParseReport(AgentDeskStatus.responseTextFromScreen(lines) || extractLastResponse(lines) || '').slice(0, 48000);
       inboxNote('report', it.task.title);
       peerRememberReport(it.sid, report);
       const fallback = '(보고 블록을 찾지 못했습니다. 세션 화면을 확인해 주세요.)';
-      await window.orca.inboxReply({ id, channel: it.task.channel, thread: it.task.thread, title: it.task.title, session: sess.name, report, text: `✅ ${it.task.title} — ${sess.name}\n${report || fallback}` });
-      showInAppToast(`${sess.name}: ${t('슬랙 스레드에 보고를 보냈습니다')}`);
+      const sent = await inboxSend({ id, channel: it.task.channel, thread: it.task.thread, title: it.task.title, session: sess.name, report, text: `✅ ${it.task.title} — ${sess.name}\n${report || fallback}` });
+      if (sent && sent.ok !== false) showInAppToast(`${sess.name}: ${t('슬랙 스레드에 보고를 보냈습니다')}`);
     } catch (e) { inboxNote('error', e.message); }
   }
   if (inboxPending.length && sessions.some(s => s.id === inboxOwner && s.connected)) { const q = inboxPending.splice(0); for (const task of q) await inboxAccept(task); }
@@ -9850,6 +9859,7 @@ function jiraDraftWarn(draft) {
   const miss = AgentDeskJira.reportIssues(draft);
   return miss.length ? `<div class="jd-warn" data-verbatim>⚠ ${esc(t('보고에 빠진 항목'))}: ${esc(miss.map(x => `[${x}]`).join(' '))}</div>` : '';
 }
+const jiraMaskedText = n => LANG === 'ko' ? `비밀 패턴 ${n}곳을 [MASKED]로 바꿨습니다` : `Replaced ${n} secret pattern(s) with [MASKED]`;
 function jiraLink(key) { const i = jiraIssues.find(x => x.key === key); const base = String((jiraOAuth && jiraOAuth.siteUrl) || '').replace(/\/+$/, ''); return (i && i.url) || (base ? `${base}/browse/${key}` : ''); }
 async function jiraCopy(text, label) { try { await window.orca.clipboardWrite(text); showInAppToast(`${label} ${t('복사됨')}`); } catch { showInAppToast(t('복사하지 못했습니다'), 'error'); } }
 function jiraRowHtml(i, open) {
@@ -9857,7 +9867,7 @@ function jiraRowHtml(i, open) {
     const meta = [i.status, i.priority, i.assignee].filter(Boolean).join(' · ');
     const desc = open ? `<div class="jira-desc" data-verbatim>${esc((det || i).description || '') || (det ? esc(t('설명 없음')) : esc(t('불러오는 중…')))}</div>` : '';
     const track = d && (d.state === 'sent' || d.state === 'timeout') ? `<span class="jira-track" data-verbatim>→ ${esc(d.name || '')}</span>` : '';
-    const draft = d && d.state === 'report' ? `<div class="jira-draft"><div class="jd-head">${esc(t('댓글 초안 — 고친 뒤 등록하세요 (자동 등록 안 함)'))}</div>${jiraDraftWarn(d.draft)}<textarea data-act="draft">${esc(d.draft || '')}</textarea><div class="jd-row"><button data-act="discard">${esc(t('버리기'))}</button><button class="primary" data-act="post">${esc(t('Jira에 등록'))}</button></div></div>` : '';
+    const draft = d && d.state === 'report' ? `<div class="jira-draft"><div class="jd-head">${esc(t('댓글 초안 — 고친 뒤 등록하세요 (자동 등록 안 함)'))}</div>${jiraDraftWarn(d.draft)}${d.masked ? `<div class="jd-mask">🔒 ${esc(jiraMaskedText(d.masked))}</div>` : ''}<textarea data-act="draft">${esc(d.draft || '')}</textarea><div class="jd-row"><button data-act="discard">${esc(t('버리기'))}</button><button class="primary" data-act="post">${esc(t('Jira에 등록'))}</button></div></div>` : '';
     return `<div class="jira-item${open ? ' open' : ''}" data-key="${esc(i.key)}"><div class="jira-head" data-act="toggle"><span class="jira-key">${esc(i.key)}</span><span class="jira-sum" data-verbatim>${esc(i.summary)}</span>${jiraBadge(d)}</div>${meta ? `<div class="jira-meta" data-verbatim>${esc(meta)}</div>` : ''}${ticketCostText(i.key) ? `<div class="jira-meta jira-cost" title="${esc(ticketCostTip(i.key))}">${esc(ticketCostText(i.key))}</div>` : ''}${desc}<div class="jira-actions"><button class="primary" data-act="wt">${esc(t('워크트리로 배치'))}</button><button data-act="more" title="${esc(t('더보기'))}">⋯</button>${track}</div>${draft}</div>`;
 }
 // ── Atlassian OAuth (3LO) connection box; the main process keeps the secret and tokens, this only sees jiraOAuthStatus() ──
@@ -9995,7 +10005,10 @@ async function jiraCapture(d, sess, manual) {
   if (!h) { if (manual) showInAppToast(t('세션 터미널을 찾을 수 없습니다'), 'error'); return; }
   const rep = jiraReportFrom(extractTail(await window.orca.terminalRead(h, true).catch(() => null)));
   if (!rep || (d.stale && jiraHash(rep) === d.stale)) { if (manual) showInAppToast(t('보고 블록을 찾지 못했습니다'), 'error'); return; }
-  d.state = 'report'; d.draft = AgentDeskJira.reportToComment(rep.slice(0, 12000), { session: sess.name, lang: LANG }); d.reportAt = Date.now();
+  // masked before any cut (the report is only bounded to 4× the old 12,000 first); the count covers header + report.
+  // The main process masks again on post
+  const dr = AgentDeskJira.reportToCommentDraft(rep.slice(0, 48000), { session: sess.name, lang: LANG });
+  d.state = 'report'; d.draft = dr.text; d.masked = dr.masked; d.reportAt = Date.now();
   peerRememberReport(sess.id, rep);
   jiraSave(); jiraRender();
   showInAppToast(`🎫 ${d.key}: ${t('보고 도착 — Jira 탭에서 댓글 초안 확인')}`);
@@ -10038,7 +10051,7 @@ const jiraItemClick = async e => {
     openItemsMenu(r.left, r.bottom + 2, key, items);
   } else if (act === 'discard' && d) {
     if (!confirm(`${key} ${t('댓글 초안을 버릴까요?')}`)) return;
-    d.state = 'discarded'; d.draft = ''; jiraSave(); jiraRender();
+    d.state = 'discarded'; d.draft = ''; d.masked = 0; jiraSave(); jiraRender();
   } else if (act === 'post' && d) {
     const body = (item.querySelector('textarea[data-act="draft"]')?.value || '').trim();
     if (!body) { showInAppToast(t('댓글 내용이 비어 있습니다'), 'error'); return; }
@@ -10046,8 +10059,8 @@ const jiraItemClick = async e => {
     b.disabled = true;
     const r = await window.orca.jiraComment(key, body).catch(err => ({ ok: false, error: err.message }));
     if (!r || r.ok === false) { b.disabled = false; showInAppToast(`${key}: ${AgentDeskJira.errorText(r) || t('등록 실패')}`, 'error'); return; }
-    d.state = 'posted'; d.draft = ''; jiraSave(); b.blur(); jiraRender();
-    showInAppToast(`🎫 ${key}: ${t('Jira 댓글 등록됨')}`);
+    d.state = 'posted'; d.draft = ''; d.masked = 0; jiraSave(); b.blur(); jiraRender();
+    showInAppToast(`🎫 ${key}: ${t('Jira 댓글 등록됨')}${r.masked ? ` · ${jiraMaskedText(r.masked)}` : ''}`);
   }
 };
 for (const id of ['jira-list', 'jb-drawer']) { $(id).addEventListener('focusout', jiraItemFocusOut); $(id).addEventListener('input', jiraItemInput); $(id).addEventListener('click', jiraItemClick); }
