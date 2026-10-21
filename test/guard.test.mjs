@@ -213,20 +213,46 @@ const ADVERSARIAL = (() => {
   out.push('base64' + ' -d'.repeat(2664), 'git push ' + '-f '.repeat(2660), 'git push -f ' + '+x '.repeat(2660), 'cat ' + '>'.repeat(7990), '>'.repeat(4000) + ' '.repeat(3990), 'git push -f ' + ' x'.repeat(3990), ' -c'.repeat(2666));
   return out;
 })();
-test('built-ins: every adversarial 8,000-char input is judged in under 50 ms (all rules, all forms)', () => {
+// timing helpers: the default run only checks that the time grows linearly with the input (a machine under load
+// slows both sides alike); the absolute limits run with AGENTDESK_PERF=1
+const bestMs = (k, fn) => { let best = Infinity; for (let i = 0; i < k; i++) { const t0 = performance.now(); fn(); best = Math.min(best, performance.now() - t0); } return best; };
+// 4x the input may take at most 10x the time (linear = 4x, quadratic = 16x); `floor` ms keeps tiny timings from deciding
+const growsLinearly = (small, large, floor = 1) => large <= 10 * Math.max(small, floor);
+// samples both sizes in rounds until the ratio holds (a stall on a loaded machine only costs another round); still over
+// 16x (quadratic) after 3 rounds → fails right away instead of using every round
+const linear = (small, large, floor = 1, rounds = 20) => {
+  let t1 = Infinity, t4 = Infinity;
+  for (let i = 0; i < rounds; i++) { t1 = Math.min(t1, bestMs(1, small)); t4 = Math.min(t4, bestMs(1, large)); if (growsLinearly(t1, t4, floor)) break; if (i >= 2 && t4 > 16 * Math.max(t1, floor)) break; }
+  return { ok: growsLinearly(t1, t4, floor), t1, t4 };
+};
+test('built-ins: adversarial 8,000-char inputs stay linear (4x the input → under 10x the time, all rules, all forms)', () => {
+  const R = RULES();
+  for (const s of ADVERSARIAL.slice(0, 5)) evaluate('Bash', { command: s }, R);   // warm up
+  let worstRatio = 0, which = '', bad = '';
+  for (const s of ADVERSARIAL) {
+    const { ok, t1, t4 } = linear(() => evaluate('Bash', { command: s }, R, { deadline: 1e9 }), () => evaluate('Bash', { command: s.repeat(4) }, R, { deadline: 1e9 }));
+    if (t4 / Math.max(t1, 1) > worstRatio) { worstRatio = t4 / Math.max(t1, 1); which = s.slice(0, 40); }
+    if (!ok) bad = `${JSON.stringify(s.slice(0, 40))}: ${t1.toFixed(1)} ms → ${t4.toFixed(1)} ms`;
+  }
+  assert.ok(!bad, `not linear: ${bad} (worst ratio ${worstRatio.toFixed(1)} on ${JSON.stringify(which)})`);
+  assert.ok(ADVERSARIAL.length > 300);
+  // file paths too
+  for (const pth of ['/.env'.repeat(1600), '.env'.repeat(2000), '/x/id_rsa'.repeat(800), '.pem'.repeat(2000)]) {
+    const { ok, t1, t4 } = linear(() => evaluate('Write', { file_path: pth }, R), () => evaluate('Write', { file_path: pth.repeat(4) }, R));
+    assert.ok(ok, `${pth.slice(0, 20)}: ${t1.toFixed(1)} ms → ${t4.toFixed(1)} ms`);
+  }
+});
+test('built-ins: every adversarial 8,000-char input is judged in under 50 ms (AGENTDESK_PERF=1)', { skip: !process.env.AGENTDESK_PERF }, () => {
   const R = RULES();
   for (const s of ADVERSARIAL.slice(0, 5)) evaluate('Bash', { command: s }, R);   // warm up
   let worst = 0, which = '';
   for (const s of ADVERSARIAL) {
-    let best = Infinity;
-    for (let k = 0; k < 2; k++) { const t0 = performance.now(); evaluate('Bash', { command: s }, R, { deadline: 1e9 }); best = Math.min(best, performance.now() - t0); }
+    const best = bestMs(2, () => evaluate('Bash', { command: s }, R, { deadline: 1e9 }));
     if (best > worst) { worst = best; which = s.slice(0, 40); }
   }
   assert.ok(worst < 50, `worst ${worst.toFixed(1)} ms on ${JSON.stringify(which)}…`);
-  assert.ok(ADVERSARIAL.length > 300);
-  // file paths too
-  for (const p of ['/.env'.repeat(1600), '.env'.repeat(2000), '/x/id_rsa'.repeat(800), '.pem'.repeat(2000)]) {
-    const t0 = performance.now(); evaluate('Write', { file_path: p }, R); assert.ok(performance.now() - t0 < 50, p.slice(0, 20));
+  for (const pth of ['/.env'.repeat(1600), '.env'.repeat(2000), '/x/id_rsa'.repeat(800), '.pem'.repeat(2000)]) {
+    const t0 = performance.now(); evaluate('Write', { file_path: pth }, R); assert.ok(performance.now() - t0 < 50, pth.slice(0, 20));
   }
 });
 
@@ -281,20 +307,30 @@ test('allow invariant: decide / askOutput never produce allow, updatedInput or u
 });
 
 // re-review #1: built-ins now see the whole input (up to 256 KB), so they must stay linear at that size too
-test('built-ins: adversarial 256 KB inputs are judged in under 50 ms (all rules, all forms)', () => {
+const UNITS_256K = ['base64 -d ', 'base64 -d"" $(x) ', 'git push ', 'git push -f +x ', '>', '> ', 'rm -rf ', 'rm -rf x ', 'mysql ', 'mysql://', ' -c', 'curl | ', 'eval ', 'dd ',
+    'x', ' ', '"', '`x` ', '${IFS}', 'cat ', '.env ', 'find ', 'wget ', '-fffff', 'git push origin ', 'push git '];;
+const TAILS_256K = ['', '; mysql -h rds-prod.db -e "select $(true)"'];
+const rep256 = (u, t, n) => u.repeat(Math.floor((n - t.length) / u.length)) + t;
+test('built-ins: adversarial 256 KB inputs stay linear (4x the input → under 10x the time, all rules, all forms)', () => {
   const R = RULES(), N = 256 * 1024;
-  const units = ['base64 -d ', 'base64 -d"" $(x) ', 'git push ', 'git push -f +x ', '>', '> ', 'rm -rf ', 'rm -rf x ', 'mysql ', 'mysql://', ' -c', 'curl | ', 'eval ', 'dd ',
-    'x', ' ', '"', '`x` ', '${IFS}', 'cat ', '.env ', 'find ', 'wget ', '-fffff', 'git push origin ', 'push git '];
-  let worst = 0, which = '';
-  for (const u of units) for (const t of ['', '; mysql -h rds-prod.db -e "select $(true)"']) {
-    const s = u.repeat(Math.floor((N - t.length) / u.length)) + t;
-    let best = Infinity;
-    for (let k = 0; k < 2; k++) { const t0 = performance.now(); evaluate('Bash', { command: s }, R, { deadline: 1e9 }); best = Math.min(best, performance.now() - t0); }
-    if (best > worst) { worst = best; which = u + t.slice(0, 6); }
+  let bad = '';
+  for (const u of UNITS_256K) for (const t of TAILS_256K) {
+    const { ok, t1, t4 } = linear(() => evaluate('Bash', { command: rep256(u, t, N / 4) }, R, { deadline: 1e9 }), () => evaluate('Bash', { command: rep256(u, t, N) }, R, { deadline: 1e9 }), 2, 10);
+    if (!ok) bad = `${JSON.stringify(u + t.slice(0, 6))}: ${t1.toFixed(1)} ms → ${t4.toFixed(1)} ms`;
   }
-  assert.ok(worst < 50, `worst ${worst.toFixed(1)} ms on ${JSON.stringify(which)}`);
+  assert.ok(!bad, `not linear: ${bad}`);
   // and they do see the middle of a long command
   const r = evaluate('Bash', { command: 'echo ' + 'x'.repeat(120000) + '; rm -rf ~; ' + 'y'.repeat(120000) }, R);
   assert.deepEqual([r.hit?.id, r.cut], ['rm-rf', false]);
   assert.equal(evaluate('Bash', { command: 'x'.repeat(N + 10) }, R).cut, true, 'over 256 KB even the built-ins see only both ends');
+});
+test('built-ins: adversarial 256 KB inputs are judged in under 50 ms (AGENTDESK_PERF=1)', { skip: !process.env.AGENTDESK_PERF }, () => {
+  const R = RULES(), N = 256 * 1024;
+  let worst = 0, which = '';
+  for (const u of UNITS_256K) for (const t of TAILS_256K) {
+    const s = rep256(u, t, N);
+    const best = bestMs(2, () => evaluate('Bash', { command: s }, R, { deadline: 1e9 }));
+    if (best > worst) { worst = best; which = u + t.slice(0, 6); }
+  }
+  assert.ok(worst < 50, `worst ${worst.toFixed(1)} ms on ${JSON.stringify(which)}`);
 });

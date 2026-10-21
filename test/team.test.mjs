@@ -9,6 +9,7 @@ import { pingPeerSigned, classifyMove, onHomeNetwork, withHomeSubnets, NONCE_TTL
 import { readTeamConfig, writeTeamExample, sanitizeSessions, startTeamServer, fetchPeer, TEAM_EXAMPLE, signRequest, requestSignature, responseSignature, verifyRequest, createNonceGuard, noteRateCheck, validHostHeader, sameSubnet, myPrefixes, SESSIONS_MAX, RESPONSE_MAX } from '../team/peer.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'agentdesk-team-'));
+const until = async (cond, ms = 5000) => { const t0 = Date.now(); while (!cond()) { if (Date.now() - t0 > ms) throw new Error('timeout'); await new Promise(r => setTimeout(r, 5)); } };
 const ID = { a: '11111111-1111-4111-8111-111111111111', b: '22222222-2222-4222-8222-222222222222', c: '33333333-3333-4333-8333-333333333333' };
 const listen = async (server) => { await new Promise(r => server.listen(0, '127.0.0.1', r)); return `127.0.0.1:${server.address().port}`; };
 // a signed request the way fetchPeer / postNote build it (for tests that need to send something odd)
@@ -379,8 +380,10 @@ test('discovery: two beacons on 127.0.0.1 hear each other and ignore themselves'
     await new Promise(r => s.send(encodeBeacon({ name: 'will', port: 7441, id: ID.b }), pa, '127.0.0.1', r));
     await new Promise(r => s.send(encodeBeacon({ name: 'neo', port: 7331, id: ID.a }), pb, '127.0.0.1', r));
     await new Promise(r => s.send(encodeBeacon({ name: 'neo', port: 7331, id: ID.a }), pa, '127.0.0.1', r));   // its own id
-    await new Promise(r => setTimeout(r, 150));
-    assert.deepEqual(heardA.map(p => [p.name, p.host, p.id]), [['will', '127.0.0.1:7441', ID.b]]);
+    // a third teammate's beacon last: once it is heard, the own-id one before it (same socket, in order) was handled
+    await new Promise(r => s.send(encodeBeacon({ name: 'sam', port: 7551, id: ID.c }), pa, '127.0.0.1', r));
+    await until(() => heardA.length >= 2 && heardB.length >= 1);
+    assert.deepEqual(heardA.map(p => [p.name, p.host, p.id]), [['will', '127.0.0.1:7441', ID.b], ['sam', '127.0.0.1:7551', ID.c]]);
     assert.deepEqual(heardB.map(p => [p.name, p.host, p.id]), [['neo', '127.0.0.1:7331', ID.a]]);
   } finally { s.close(); a.stop(); b.stop(); }
 });
