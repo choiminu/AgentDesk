@@ -5,35 +5,35 @@ import { createServer } from 'node:net';
 import { EventEmitter } from 'node:events';
 import { isLocalNetworkDenied, localNetworkVerdict, pollVerdict, nextLocalNetwork, parseGateway, localProbeTargets, probeLan, defaultGateway, resetGatewayCache, GATEWAY_TTL_MS, LOCAL_NETWORK_SETTINGS_URL, PRIVACY_SETTINGS_URL } from '../team/localnet.mjs';
 
-const IFACES = { en0: [{ family: 'IPv4', address: '192.168.10.120', internal: false }], lo0: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] };
+const IFACES = { en0: [{ family: 'IPv4', address: '192.168.77.120', internal: false }], lo0: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] };
 const MAC = { platform: 'darwin', ifaces: IFACES };
 
 test('isLocalNetworkDenied: EHOSTUNREACH to my /24 on macOS → denied', () => {
-  assert.equal(isLocalNetworkDenied('EHOSTUNREACH', '192.168.10.31:7331', MAC), true);
-  assert.equal(isLocalNetworkDenied('ENETUNREACH', '192.168.10.31:7331', MAC), true);
+  assert.equal(isLocalNetworkDenied('EHOSTUNREACH', '192.168.77.31:7331', MAC), true);
+  assert.equal(isLocalNetworkDenied('ENETUNREACH', '192.168.77.31:7331', MAC), true);
   // the shapes fetch / net errors come in
-  assert.equal(isLocalNetworkDenied({ code: 'EHOSTUNREACH' }, '192.168.10.31:7331', MAC), true);
-  assert.equal(isLocalNetworkDenied({ cause: { code: 'EHOSTUNREACH' } }, '192.168.10.31', MAC), true);
+  assert.equal(isLocalNetworkDenied({ code: 'EHOSTUNREACH' }, '192.168.77.31:7331', MAC), true);
+  assert.equal(isLocalNetworkDenied({ cause: { code: 'EHOSTUNREACH' } }, '192.168.77.31', MAC), true);
 });
 
 test('isLocalNetworkDenied: other subnet, other errors, loopback, bad input → not denied', () => {
-  assert.equal(isLocalNetworkDenied('EHOSTUNREACH', '192.168.11.31:7331', MAC), false);
+  assert.equal(isLocalNetworkDenied('EHOSTUNREACH', '192.168.78.31:7331', MAC), false);
   assert.equal(isLocalNetworkDenied('EHOSTUNREACH', '10.0.0.5:7331', MAC), false);
-  for (const e of ['ECONNREFUSED', 'timeout', 'ETIMEDOUT', 'token mismatch', 'HTTP 500', '', null, undefined]) assert.equal(isLocalNetworkDenied(e, '192.168.10.31:7331', MAC), false, String(e));
+  for (const e of ['ECONNREFUSED', 'timeout', 'ETIMEDOUT', 'token mismatch', 'HTTP 500', '', null, undefined]) assert.equal(isLocalNetworkDenied(e, '192.168.77.31:7331', MAC), false, String(e));
   assert.equal(isLocalNetworkDenied('EHOSTUNREACH', '127.0.0.1:7331', MAC), false);
   assert.equal(isLocalNetworkDenied('EHOSTUNREACH', 'pc.local:7331', MAC), false);
   assert.equal(isLocalNetworkDenied('EHOSTUNREACH', '', MAC), false);
 });
 
 test('isLocalNetworkDenied: never on other platforms', () => {
-  for (const platform of ['linux', 'win32']) assert.equal(isLocalNetworkDenied('EHOSTUNREACH', '192.168.10.31:7331', { platform, ifaces: IFACES }), false);
+  for (const platform of ['linux', 'win32']) assert.equal(isLocalNetworkDenied('EHOSTUNREACH', '192.168.77.31:7331', { platform, ifaces: IFACES }), false);
 });
 
 test('localNetworkVerdict: any success → ok; all denied → denied; else unknown', () => {
-  const den = { host: '192.168.10.31:7331', ok: false, error: 'EHOSTUNREACH' };
-  assert.equal(localNetworkVerdict([den, { host: '192.168.10.32:7331', ok: true }], MAC), 'ok');
-  assert.equal(localNetworkVerdict([den, { ...den, host: '192.168.10.1:80' }], MAC), 'denied');
-  assert.equal(localNetworkVerdict([den, { host: '192.168.10.1:80', ok: false, error: 'timeout' }], MAC), 'unknown');
+  const den = { host: '192.168.77.31:7331', ok: false, error: 'EHOSTUNREACH' };
+  assert.equal(localNetworkVerdict([den, { host: '192.168.77.32:7331', ok: true }], MAC), 'ok');
+  assert.equal(localNetworkVerdict([den, { ...den, host: '192.168.77.1:80' }], MAC), 'denied');
+  assert.equal(localNetworkVerdict([den, { host: '192.168.77.1:80', ok: false, error: 'timeout' }], MAC), 'unknown');
   assert.equal(localNetworkVerdict([{ ...den, host: '10.0.0.5:7331' }], MAC), 'unknown');
   assert.equal(localNetworkVerdict([], MAC), 'unknown');
   assert.equal(localNetworkVerdict(null, MAC), 'unknown');
@@ -52,21 +52,21 @@ test('nextLocalNetwork: evidence replaces the state, unknown keeps it', () => {
 });
 
 test('parseGateway reads `route -n get default`', () => {
-  assert.equal(parseGateway('   route to: default\ndestination: default\n    gateway: 192.168.10.1\n  interface: en0\n'), '192.168.10.1');
+  assert.equal(parseGateway('   route to: default\ndestination: default\n    gateway: 192.168.77.1\n  interface: en0\n'), '192.168.77.1');
   assert.equal(parseGateway('route: writing to routing socket: not in table'), '');
   assert.equal(parseGateway('    gateway: fe80::1%en0'), '');
   assert.equal(parseGateway(undefined), '');
 });
 
 test('localProbeTargets: same-subnet teammate first, then gateway (or <my /24>.1), at most 2', () => {
-  const peers = [{ name: 'far', host: '10.0.0.5:7331' }, { name: 'me', host: '127.0.0.1:7331' }, { name: 'will', host: '192.168.10.31:7331' }];
-  assert.deepEqual(localProbeTargets(peers, '192.168.10.1', IFACES), ['192.168.10.31:7331', '192.168.10.1:80']);
-  assert.deepEqual(localProbeTargets([], '192.168.10.1', IFACES), ['192.168.10.1:80']);
+  const peers = [{ name: 'far', host: '10.0.0.5:7331' }, { name: 'me', host: '127.0.0.1:7331' }, { name: 'will', host: '192.168.77.31:7331' }];
+  assert.deepEqual(localProbeTargets(peers, '192.168.77.1', IFACES), ['192.168.77.31:7331', '192.168.77.1:80']);
+  assert.deepEqual(localProbeTargets([], '192.168.77.1', IFACES), ['192.168.77.1:80']);
   // gateway on another subnet / unknown → <my /24>.1
-  assert.deepEqual(localProbeTargets([], '10.1.1.1', IFACES), ['192.168.10.1:80']);
-  assert.deepEqual(localProbeTargets([], '', IFACES), ['192.168.10.1:80']);
+  assert.deepEqual(localProbeTargets([], '10.1.1.1', IFACES), ['192.168.77.1:80']);
+  assert.deepEqual(localProbeTargets([], '', IFACES), ['192.168.77.1:80']);
   // the teammate is the gateway address: not twice
-  assert.deepEqual(localProbeTargets([{ name: 'gw', host: '192.168.10.1:7331' }], '192.168.10.1', IFACES), ['192.168.10.1:7331']);
+  assert.deepEqual(localProbeTargets([{ name: 'gw', host: '192.168.77.1:7331' }], '192.168.77.1', IFACES), ['192.168.77.1:7331']);
   // no LAN interface at all → nothing to knock on
   assert.deepEqual(localProbeTargets(peers, '', { lo0: IFACES.lo0 }), []);
 });
@@ -89,13 +89,13 @@ test('Settings URLs: the Local Network pane, then Privacy & Security', () => {
 });
 
 test('localNetworkVerdict: a loopback teammate (this PC) says nothing — it cannot hide a denial', () => {
-  const den = { host: '192.168.10.31:7331', ok: false, error: 'EHOSTUNREACH' };
+  const den = { host: '192.168.77.31:7331', ok: false, error: 'EHOSTUNREACH' };
   assert.equal(localNetworkVerdict([{ host: '127.0.0.1:1', ok: true }, den], MAC), 'denied');
   assert.equal(localNetworkVerdict([{ host: 'localhost:7331', ok: true }, den], MAC), 'denied');
   assert.equal(localNetworkVerdict([{ host: '127.0.0.1:1', ok: true }], MAC), 'unknown');
   // teamPoll's shape: [{ p: peer, r: fetch result }]
   assert.equal(pollVerdict([{ p: { host: '127.0.0.1:7441' }, r: { ok: true } }, { p: { host: den.host }, r: { ok: false, error: 'EHOSTUNREACH' } }], MAC), 'denied');
-  assert.equal(pollVerdict([{ p: { host: '192.168.10.32:7331' }, r: { ok: true } }, { p: { host: den.host }, r: { ok: false, error: 'EHOSTUNREACH' } }], MAC), 'ok');
+  assert.equal(pollVerdict([{ p: { host: '192.168.77.32:7331' }, r: { ok: true } }, { p: { host: den.host }, r: { ok: false, error: 'EHOSTUNREACH' } }], MAC), 'ok');
   assert.equal(pollVerdict(null, MAC), 'unknown');
 });
 
@@ -110,18 +110,18 @@ function fakeSocket(act) {
   };
 }
 test('probeLan: a timeout counts as getting through; EHOSTUNREACH does not', async () => {
-  assert.deepEqual(await probeLan('192.168.10.1:80', 1500, { connectFn: fakeSocket('timeout') }), { host: '192.168.10.1:80', ok: true, error: 'timeout' });
-  assert.deepEqual(await probeLan('192.168.10.1:80', 1500, { connectFn: fakeSocket('EHOSTUNREACH') }), { host: '192.168.10.1:80', ok: false, error: 'EHOSTUNREACH' });
-  assert.equal((await probeLan('192.168.10.1:80', 1500, { connectFn: fakeSocket('ECONNRESET') })).ok, true);
-  assert.equal((await probeLan('192.168.10.1:80', 1500, { connectFn: fakeSocket('ENETUNREACH') })).ok, false);
+  assert.deepEqual(await probeLan('192.168.77.1:80', 1500, { connectFn: fakeSocket('timeout') }), { host: '192.168.77.1:80', ok: true, error: 'timeout' });
+  assert.deepEqual(await probeLan('192.168.77.1:80', 1500, { connectFn: fakeSocket('EHOSTUNREACH') }), { host: '192.168.77.1:80', ok: false, error: 'EHOSTUNREACH' });
+  assert.equal((await probeLan('192.168.77.1:80', 1500, { connectFn: fakeSocket('ECONNRESET') })).ok, true);
+  assert.equal((await probeLan('192.168.77.1:80', 1500, { connectFn: fakeSocket('ENETUNREACH') })).ok, false);
 });
 
 test('defaultGateway: one `route` run per minute, again at once when my addresses change', async () => {
   resetGatewayCache();
-  let runs = 0; const run = async () => { runs++; return '192.168.10.1'; };
+  let runs = 0; const run = async () => { runs++; return '192.168.77.1'; };
   const base = { platform: 'darwin', ifaces: IFACES, run };
-  assert.equal(await defaultGateway({ ...base, now: 0 }), '192.168.10.1');
-  assert.equal(await defaultGateway({ ...base, now: 5000 }), '192.168.10.1');
+  assert.equal(await defaultGateway({ ...base, now: 0 }), '192.168.77.1');
+  assert.equal(await defaultGateway({ ...base, now: 5000 }), '192.168.77.1');
   assert.equal(runs, 1);
   await defaultGateway({ ...base, now: GATEWAY_TTL_MS + 1 });
   assert.equal(runs, 2, 'expired');

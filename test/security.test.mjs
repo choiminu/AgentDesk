@@ -52,7 +52,7 @@ test('mask: tokens, keys, connection URIs, card / account numbers and e-mail add
     ['aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'wJalrXUtnFEMI'],
     ['mysql://app:pw@db.internal:3306/pay', 'db.internal'], ['postgres://u@10.0.0.9/x', '10.0.0.9'], ['mongodb+srv://c.mongodb.net/db', 'mongodb.net'],
     ['card 4111111111111111', '4111111111111111'], ['card 4111-1111-1111-1111', '4111-1111'], ['acct 110 123 456 789', '456 789'],
-    ['ping neo@eximbay.com', 'neo@eximbay.com'],
+    ['ping ops@example.invalid', 'ops@example.invalid'],
     ['ghp_abcdefghijklmnopqrstuvwxyz0123', 'ghp_'], ['token=supersecret1', 'supersecret1'],
   ];
   for (const [input, leak] of cases) assert.ok(!mask(input).includes(leak), `${input} → ${mask(input)}`);

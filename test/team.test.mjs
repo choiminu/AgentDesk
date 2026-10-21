@@ -65,9 +65,9 @@ test('sanitizeSessions forces types, lengths and characters (a modified teammate
 });
 
 test('sanitizeSessions masks secrets in free text', () => {
-  const [o] = sanitizeSessions([{ id: 'a', name: 'deploy xoxb-1234567890-abcdefghij', now: 'connecting mysql://app:pw@db.internal:3306/pay as neo@eximbay.com', tool: 'Bearer abcdefghijklmnop', branch: 'fix/4111111111111111', report: { text: 'card 4111 1111 1111 1111 refunded', at: 1 }, files: ['src/AKIAABCDEFGHIJKLMNOP.txt'] }]);
+  const [o] = sanitizeSessions([{ id: 'a', name: 'deploy xoxb-1234567890-abcdefghij', now: 'connecting mysql://app:pw@db.internal:3306/pay as ops@example.invalid', tool: 'Bearer abcdefghijklmnop', branch: 'fix/4111111111111111', report: { text: 'card 4111 1111 1111 1111 refunded', at: 1 }, files: ['src/AKIAABCDEFGHIJKLMNOP.txt'] }]);
   const all = JSON.stringify(o);
-  for (const leak of ['xoxb-', 'mysql://', 'eximbay.com', 'abcdefghijklmnop', '4111111111111111', '4111 1111', 'AKIAABCDEFGHIJKLMNOP']) assert.ok(!all.includes(leak), leak);
+  for (const leak of ['xoxb-', 'mysql://', 'example.invalid', 'abcdefghijklmnop', '4111111111111111', '4111 1111', 'AKIAABCDEFGHIJKLMNOP']) assert.ok(!all.includes(leak), leak);
 });
 
 test('request signatures: valid once, within ±120 s, bound to body, path and the receiving host', () => {

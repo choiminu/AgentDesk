@@ -306,7 +306,7 @@ test('input: dangerous text → 403 blocked with the rule, logged, never typed',
 });
 
 test('interrupt and last answer (POST, grant in the body): the answer is masked, keeps line breaks, ≤ 8000 characters', async () => {
-  const secret = 'deploy with xoxb-1234567890-abcdefghij\nthen mail neo@eximbay.com\u0007\n' + 'y'.repeat(REMOTE_LAST_MAX + 500);
+  const secret = 'deploy with xoxb-1234567890-abcdefghij\nthen mail ops@example.invalid\u0007\n' + 'y'.repeat(REMOTE_LAST_MAX + 500);
   const { server, calls, grant } = setup({ sessions: [{ id: WT_PAY, status: 'running', handle: 'tmux:%1', lastMsg: secret }] });
   const host = await listen(server);
   const g = grant(WT_PAY), pid = P(WT_PAY);
@@ -319,7 +319,7 @@ test('interrupt and last answer (POST, grant in the body): the answer is masked,
     assert.equal((await raw(host, 't0k', 'GET', `/v1/sessions/${pid}/last?grant=${g}`)).status, 405, 'the grant never travels in a URL');
     const r = await remoteLast({ name: 'neo', host }, 't0k', pid, g);
     assert.equal(r.ok, true); assert.equal(r.at, 5);
-    for (const leak of ['xoxb-', 'eximbay.com', '\u0007']) assert.ok(!r.text.includes(leak), leak);
+    for (const leak of ['xoxb-', 'example.invalid', '\u0007']) assert.ok(!r.text.includes(leak), leak);
     assert.ok(r.text.includes('\n'), 'line breaks kept');
     assert.ok(r.text.length <= REMOTE_LAST_MAX);
   } finally { server.close(); }
@@ -417,7 +417,7 @@ test('server: bypass / unknown permission mode at input time → 409; same IP co
 });
 
 test('screen: signed, delegated callers only; masked, no ANSI / control characters, capped; fail closed when unreadable', async () => {
-  const screen = ['\u001b[31m⏺ deploying\u001b[0m', 'token xoxb-1234567890-abcdefghij here', 'mail neo@eximbay.com\u0007', '\u001b]0;title\u0007❯ '];
+  const screen = ['\u001b[31m⏺ deploying\u001b[0m', 'token xoxb-1234567890-abcdefghij here', 'mail ops@example.invalid\u0007', '\u001b]0;title\u0007❯ '];
   const { server, calls, grant, tick } = setup({ sessions: [
     { id: WT_PAY, name: 'payout', status: 'waiting', handle: 'tmux:%1', agent: 'claude', permissionMode: 'default', screen },
     { id: 'wt3', name: 'ask', status: 'waiting', needsInput: true, handle: 'tmux:%3', screen: ['Do you want to proceed?', '❯ 1. Yes'] },
@@ -439,7 +439,7 @@ test('screen: signed, delegated callers only; masked, no ANSI / control characte
     assert.ok(r.at > 0);
     assert.equal(r.lines.length, screen.length);
     const all = r.lines.join('\n');
-    for (const leak of ['xoxb-', 'eximbay.com', '\u0007', '\u001b', '[31m', 'title']) assert.ok(!all.includes(leak), leak);
+    for (const leak of ['xoxb-', 'example.invalid', '\u0007', '\u001b', '[31m', 'title']) assert.ok(!all.includes(leak), leak);
     assert.equal(r.lines[0], '⏺ deploying');
     assert.equal(r.lines.at(-1), '❯');
     // one "viewed" entry per session and teammate per 10 minutes — polling does not flood the log
@@ -561,7 +561,7 @@ test('M1 screenLines: a secret wrapped across rows is masked in every row it tou
   const lt = lastText(rows.join('\n'));
   for (const part of [tok.slice(4, 14), tok.slice(14, 30), tok.slice(30)]) assert.ok(!lt.includes(part), part);
   // a secret within one row keeps the usual label
-  assert.deepEqual(screenLines(['mail neo@eximbay.com']), ['mail [MASKED EMAIL]']);
+  assert.deepEqual(screenLines(['mail ops@example.invalid']), ['mail [MASKED EMAIL]']);
 });
 
 test('M2: private key body without its BEGIN line, and BEGIN without END, are masked', () => {
