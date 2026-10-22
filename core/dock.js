@@ -36,7 +36,12 @@
 //   popWidth(kind, workWidth) → panel width: 'term' (terminal window, opened by a hover) min(720, 90 % of the work
 //     area), 'tipSmall' (the compact hover card) 260; both cut to the work area
 //   popExtra(kind) → room the window needs for that panel (its height plus a gap on both sides); 'bubbles' /
-//     'bubblesBig' = the choice bubbles (one hovered bubble grows)
+//     'bubblesBig' = the choice bubbles (one hovered bubble grows); 'bubblesDone' = only completion bubbles;
+//     'usage' = the plan-limit card (the compact card's size). height (bubble kinds): the tallest bubble shown
+//     (bubbleHeight) instead of the default
+//   bubbleHeight(optionCount, big) → a choice bubble's height for that many options: head, the question (3 rows, big:
+//     6), one button row each, a message row and the padding — at least bubbleH / bubbleBigH, at most bubbleMaxH /
+//     bubbleBigMaxH (past that the options scroll inside the bubble)
 //   bubbleLayout(items, { winWidth, gap }) → { placed: [{ key, x, width, tail }], dropped: [key] }
 //     items [{ key, anchor, since, width }]: one choice bubble per tile, centred on its tile (anchor) and pushed
 //     sideways so none overlap, inside the window (POP.margin); when they do not all fit the oldest (smallest since) go
@@ -67,6 +72,21 @@
 //   popRect({ winWidth, width, anchor, dir, stripHeight, height, room }) → { x, width, height, top, bottom }
 //     x centred on anchor (a tile's centre, or the bar's) and clamped inside the window; top (dir 'down') or bottom
 //     (dir 'up') = the bar's height plus the gap; height cut to the room left (room = dockBounds extra)
+//   numberedTiles(mine) → [{ key, n }] the first nine of my tiles (piles skipped), n = 1 … 9 left to right (⌘1 … ⌘9)
+//   digitOf(e) → 1 … 9 for a keydown of the digit keys 1 … 9 (e.code DigitN / NumpadN, else e.key), else 0
+//   bubbleKeyTarget(list) → the key of the choice bubble the digit keys answer: [{ key, shown, big }] — the only one
+//     shown, else the shown one that is big (hovered); '' when several are shown and none is big
+//   bubbleKeyAllowed({ target, prevTarget, since, now, repeat, armMs }) → may a digit key answer the target bubble now:
+//     not a held key's repeat, not when the target is not the one recorded (prevTarget, since = when it became the
+//     target), not within armMs (800) of that — a digit meant for one bubble never lands on the next
+//   stateClock(clock, tiles, now) → [{ key, from, to, ms }] the state changes since the last call (ms: how long the
+//     previous state lasted); clock: Map key →
+//     { state, since } (updated in place: new keys start at seed when it is a past time, else now; keys not in tiles
+//     go); tiles [{ key, state, seed }]
+//   ageLabel(ms) → how long a state has lasted: '' under a minute, '3m' … '59m', then '1h', '2h' … (whole hours)
+//   ageWarn(state, ms) → true when that is long: waiting for input ≥ 10 min, working ≥ 30 min
+//   usageRows(claude) → [{ k: 's'|'w', pct, resetsAt }] the plan-limit windows that have a percentage (session,
+//     weekly); pct 0 … 100 rounded, resetsAt ms or 0
 //   screenLines(lines, { mask, maxLines, lineMax, maxBytes }) → a terminal screen made safe to show: ANSI sequences and
 //     format characters removed, masked (mask(rows) → rows, e.g. AgentDeskMask.maskRows), control characters
 //     blanked, at most maxLines (200) lines of lineMax (400) characters and maxBytes (24 KB) of UTF-8 — the newest kept
@@ -251,16 +271,24 @@ function dockBounds(input) {
 }
 
 // ── panels in the room above / below the bar ──
-const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 120, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 240, bubbleBigW: 340, bubbleH: 240, bubbleBigH: 340, tail: 6 };
+const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 120, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 240, bubbleBigW: 340, bubbleH: 240, bubbleBigH: 340, bubbleMaxH: 420, bubbleBigMaxH: 520, doneW: 220, tail: 6 };
+const BUBBLE_ROWS = { head: 24, q: 54, qBig: 108, opt: 46, msg: 18, pad: 16 };
 function popWidth(kind, workWidth) {
   const ww = Math.max(0, Math.floor(num(workWidth))), room = Math.max(0, ww - 2 * POP.margin);
   if (kind === 'term') return Math.min(POP.termW, Math.floor(ww * POP.termFrac), room);
-  if (kind === 'tipSmall') return Math.min(room, POP.tipSmallW);
+  if (kind === 'tipSmall' || kind === 'usage') return Math.min(room, POP.tipSmallW);
   return 0;
 }
-function popExtra(kind) {
-  const h = kind === 'term' ? POP.termH : kind === 'tipSmall' ? POP.tipSmallH : kind === 'bubbles' ? POP.bubbleH + POP.tail : kind === 'bubblesBig' ? POP.bubbleBigH + POP.tail : 0;
+function popExtra(kind, height) {
+  const tall = (kind === 'bubbles' || kind === 'bubblesBig' || kind === 'bubblesDone') && Number.isFinite(Number(height)) && Number(height) > 0;
+  if (tall) return Math.round(Number(height)) + POP.tail + 2 * POP.gap;
+  const h = kind === 'term' ? POP.termH : kind === 'tipSmall' || kind === 'usage' || kind === 'bubblesDone' ? POP.tipSmallH : kind === 'bubbles' ? POP.bubbleH + POP.tail : kind === 'bubblesBig' ? POP.bubbleBigH + POP.tail : 0;
   return h ? h + 2 * POP.gap : 0;
+}
+function bubbleHeight(optionCount, big) {
+  const n = Math.max(0, Math.floor(num(optionCount))), R = BUBBLE_ROWS;
+  const h = R.head + (big ? R.qBig : R.q) + n * R.opt + R.msg + R.pad;
+  return big ? clamp(h, POP.bubbleBigH, POP.bubbleBigMaxH) : clamp(h, POP.bubbleH, POP.bubbleMaxH);
 }
 function popRect(input) {
   const i = input && typeof input === 'object' ? input : {};
@@ -396,6 +424,66 @@ function workFrame(step, reading) {
   return reading ? 5 + (Math.floor(s / 2) % 2) : 3 + (s % 2);
 }
 
+// ── keys, how long a state has lasted, the plan-limit card ──
+function numberedTiles(mine) {
+  const out = [];
+  for (const x of Array.isArray(mine) ? mine : []) {
+    if (!x || x.bundle || x.key == null) continue;
+    out.push({ key: x.key, n: out.length + 1 });
+    if (out.length >= 9) break;
+  }
+  return out;
+}
+function digitOf(e) {
+  if (!e || typeof e !== 'object') return 0;
+  const m = /^(?:Digit|Numpad)([1-9])$/.exec(String(e.code || '')) || /^([1-9])$/.exec(String(e.key || ''));
+  return m ? Number(m[1]) : 0;
+}
+function bubbleKeyTarget(list) {
+  const shown = (Array.isArray(list) ? list : []).filter(x => x && x.shown && x.key != null);
+  if (shown.length === 1) return shown[0].key;
+  const big = shown.filter(x => x.big);
+  return big.length === 1 ? big[0].key : '';
+}
+function bubbleKeyAllowed(input) {
+  const i = input && typeof input === 'object' ? input : {};
+  if (i.repeat === true || i.target == null || i.target === '' || i.target !== i.prevTarget) return false;
+  const arm = Number.isFinite(Number(i.armMs)) && Number(i.armMs) >= 0 ? Number(i.armMs) : 800;
+  const since = Number(i.since), now = Number(i.now);
+  return Number.isFinite(since) && Number.isFinite(now) && now - since >= arm;
+}
+function stateClock(clock, tiles, now) {
+  const t = num(now), changes = [], seen = new Set();
+  if (!clock || typeof clock.get !== 'function') return changes;
+  for (const x of Array.isArray(tiles) ? tiles : []) {
+    if (!x || x.key == null || seen.has(x.key)) continue;
+    seen.add(x.key);
+    const c = clock.get(x.key);
+    if (!c) { const s = num(x.seed); clock.set(x.key, { state: x.state, since: s > 0 && s <= t ? s : t }); continue; }
+    if (c.state !== x.state) { changes.push({ key: x.key, from: c.state, to: x.state, ms: Math.max(0, t - c.since) }); clock.set(x.key, { state: x.state, since: t }); }
+  }
+  for (const k of [...clock.keys()]) if (!seen.has(k)) clock.delete(k);
+  return changes;
+}
+function ageLabel(ms) {
+  const m = Math.floor(num(ms) / 60000);
+  if (!(m >= 1)) return '';
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h`;
+}
+function ageWarn(state, ms) {
+  const v = num(ms);
+  return (state === 'input' && v >= 10 * 60000) || (state === 'run' && v >= 30 * 60000);
+}
+function usageRows(claude) {
+  const c = claude && typeof claude === 'object' ? claude : {}, out = [];
+  for (const [k, w] of [['s', c.session], ['w', c.weekly]]) {
+    if (!w || typeof w !== 'object' || w.usedPercent == null || !Number.isFinite(Number(w.usedPercent))) continue;
+    const at = Number(w.resetsAt);
+    out.push({ k, pct: Math.max(0, Math.min(100, Math.round(Number(w.usedPercent)))), resetsAt: Number.isFinite(at) && at > 0 ? at : 0 });
+  }
+  return out;
+}
+
 // ── terminal screen text (the remote terminal view's rules, team/peer.mjs screenLines) ──
 const SCREEN = { lines: 200, lineMax: 400, bytes: 24 * 1024 };
 const FORMAT_RE = /\p{Cf}/gu;
@@ -443,7 +531,8 @@ function permAllowable(sm) {
 }
 
 const AgentDeskDock = { EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
-  POP, SCREEN, popWidth, popExtra, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame };
+  POP, SCREEN, popWidth, popExtra, bubbleHeight, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame,
+  numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows };
 root.AgentDeskDock = AgentDeskDock;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskDock;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
