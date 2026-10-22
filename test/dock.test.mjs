@@ -263,7 +263,8 @@ test('main: resize-window ignored while docked, saveBounds keeps the panel bound
 });
 
 test('widget dock permission line: whitelist from core, arming and answers through the panel\'s own functions', () => {
-  const f = between(html, 'function dockPermShow(r)', '\nfunction ');
+  const f = between(html, 'function dockPermLine(r)', '\nfunction ');
+  assert.match(between(html, 'function dockPermShow(r)', '\n}\n'), /const el = dockPermLine\(r\);/);
   assert.match(f, /AgentDeskDock\.permAllowable\(sm\)/);
   assert.match(f, /dataset\.truncated = cut \? '1' : '0'/);
   assert.match(f, /permArm\(el\)/);
@@ -285,19 +286,17 @@ test('dockBounds: missing / empty work area → null; junk numbers fall back', (
   assert.equal(b.width, 320); assert.equal(b.stripHeight, 72); assert.equal(b.x, 560);
 });
 
-// ── hover history panel / terminal window: sizes, window growth, placement ──
-const { popWidth, popExtra, popRect, screenLines, screenTurns, recentTurns, POP } = D;
+// ── terminal window (opened by a hover) / compact card: sizes, window growth, placement ──
+const { popWidth, popExtra, popRect, screenLines, POP } = D;
 
-test('popWidth / popExtra: hover panel 420 (300 when that is what fits), terminal min(720, 90 %), compact card as before', () => {
-  assert.equal(popWidth('tip', 1440), 420);
-  assert.equal(popWidth('tip', 400), 388, 'cut to the work area (6 px margins)');
-  assert.equal(popWidth('tip', 300), 288, 'a work area narrower than 300 + margins: what fits');
+test('popWidth / popExtra: terminal window min(720, 90 %), compact card as before; nothing else has a size', () => {
   assert.equal(popWidth('term', 1440), 720);
   assert.equal(popWidth('term', 700), 630, '90 % of the work area');
   assert.equal(popWidth('term', 320), 288);
   assert.equal(popWidth('tipSmall', 1440), 260);
-  assert.equal(popWidth('inbox', 1440), 0); assert.equal(popWidth('tip', 'x'), 0);
-  assert.equal(popExtra('tip'), POP.tipH + 2 * POP.gap); assert.equal(POP.tipH, 320);
+  assert.equal(popWidth('tipSmall', 200), 188, 'cut to the work area (6 px margins)');
+  assert.equal(popWidth('inbox', 1440), 0); assert.equal(popWidth('tip', 1440), 0, 'the old history panel is gone'); assert.equal(popWidth('term', 'x'), 0);
+  assert.equal(popExtra('tip'), 0);
   assert.equal(popExtra('term'), POP.termH + 2 * POP.gap); assert.equal(POP.termH, 420);
   assert.equal(popExtra('tipSmall'), 132, 'the compact card keeps the old room');
   assert.equal(popExtra(''), 0); assert.equal(popExtra('inbox'), 0);
@@ -349,74 +348,305 @@ test('screenLines: ANSI / format characters gone, masked row by row, control cha
   assert.deepEqual(screenLines(null), []); assert.deepEqual(screenLines([null, 5]), ['', '5']);
 });
 
-test('screenTurns + recentTurns: prompts and answers from a Claude Code screen, the last turns cut to 6 lines', () => {
-  const screen = [
-    '╭───────────────╮', '│ ✻ Welcome     │', '╰───────────────╯', '',
-    '❯ 첫 질문', '', '⏺ 첫 답', '',
-    '❯ fix the bug', '  in core/dock.js', '',
-    '⏺ Reading the file.', '  ⎿  Read 222 lines', '', '⏺ Fixed:', '  1', '  2', '  3', '  4', '  5', '  6', '',
-    '✻ Thinking… (esc to interrupt)', '',
-    '────────────────────────────────', '❯ ', '────────────────────────────────', '  ⏵⏵ bypass permissions on',
-  ];
-  const turns = screenTurns(screen);
-  assert.deepEqual(turns.map(x => x.role), ['user', 'agent', 'user', 'agent']);
-  assert.equal(turns[2].text, 'fix the bug\nin core/dock.js');
-  assert.ok(!turns.some(x => /Welcome|Thinking|bypass|────/.test(x.text)), 'banner, spinner, input box left out');
-  const r = recentTurns(turns, { maxTurns: 3, maxLines: 6 });
-  assert.equal(r.length, 3); assert.equal(r[0].role, 'agent'); assert.deepEqual(r[0].lines, ['첫 답']);
-  const last = r[2];
-  assert.equal(last.cut, true); assert.equal(last.lines.length, 6); assert.match(last.lines[5], /…$/);
-  assert.equal(last.lines[0], 'Reading the file.');
-  assert.deepEqual(screenTurns(['plain shell', '$ ls']), [], 'no prompt / answer markers: no turns');
-  // a choice menu is not a prompt: "❯ 1. Yes" and indented ❯ rows belong to the answer
-  const menu = screenTurns(['❯ deploy it', '', '⏺ Proceed?', '  ❯ 1. Yes', '    2. No', '❯ 2. No, and tell Claude', ' ❯ indented']);
-  assert.deepEqual(menu.map(x => x.role), ['user', 'agent']);
-  assert.match(menu[1].text, /1\. Yes/); assert.ok(!menu.some(x => x.role === 'user' && /Yes|No|indented/.test(x.text)));
-  assert.deepEqual(screenTurns(null), []);
-});
-
-test('recentTurns: blank rows collapsed, empty turns dropped, long lines cut, junk ignored', () => {
-  const r = recentTurns([null, 5, { role: 'user', text: '\n\n a \n\n\n b \n\n' }, { role: 'x', text: '   ' }, { text: 'y'.repeat(500) }]);
-  assert.deepEqual(r.map(x => x.role), ['user', 'agent']);
-  assert.deepEqual(r[0].lines, [' a', '', ' b']);
-  assert.equal([...r[1].lines[0]].length, 300); assert.match(r[1].lines[0], /…$/);
-  assert.equal(recentTurns(Array.from({ length: 9 }, (_, i) => ({ text: `t${i}` }))).length, 4, 'default: the last 4 turns');
-  assert.deepEqual(recentTurns(undefined), []);
-});
-
-test('widget dock: hover panel and terminal window — data sources, masking, shared terminal view, click / Enter / Esc', () => {
+test('widget dock: hover opens the terminal window, a click goes to the terminal — data, masking, shared view, keys', () => {
   const read = between(html, 'async function dockScreenRead(', '\n}\n');
   assert.match(read, /window\.orca\.terminalRead\(h, true\)/);
   assert.match(read, /AgentDeskDock\.screenLines\(extractTail\(res\), \{ mask: rows => AgentDeskMask\.maskRows\(rows\) \}\)/, 'the remote view\'s row masking');
   assert.match(read, /Date\.now\(\) - c\.at < DOCK_SCREEN_MS/, 'one read per handle per second');
-  const turns = between(html, 'function dockTipTurns(', '\n}\n');
-  assert.match(turns, /AgentDeskDock\.recentTurns\(AgentDeskDock\.screenTurns\(c\.lines\)/);
-  assert.match(turns, /AgentDeskMask\.mask\(/, 'the hook / report text is masked too');
   const tip = between(html, 'function dockTipHtml(', '\n}\n');
   assert.ok(tip.includes("${esc(x.peer ? `@${x.owner} / ${x.name}` : x.name)}"), 'the session name through esc()');
-  assert.ok(tip.includes("${esc((v.role === 'user' ? '› ' : '') + v.lines.join("), 'the turns through esc()');
-  assert.ok(tip.includes('${esc(clean(now, 160))}') && tip.includes('${esc(clean(msg, 200))}'), '지금 하는 일 / the last answer: masked, cut, escaped');
-  assert.match(between(html, 'function dockTipPoll()', '\n}\n'), /setTimeout\(dockTipPoll, DOCK_SCREEN_MS\)/);
-  assert.match(between(html, 'function dockTipHide()', '\n}\n'), /clearTimeout\(dockTipPollT\)/, 'polling stops when the panel goes');
+  assert.ok(tip.includes('${esc(clean(now, 120))}') && tip.includes('${esc(clean(msg, 200))}'), 'the card: 지금 하는 일 / the last answer masked, cut, escaped');
+  // hover: the terminal window (setting on, a session with a terminal / delegated to me), else the card
+  const hover = between(html, 'function dockHover(key)', '\nfunction dockHoverLeave');
+  assert.match(hover, /if \(open && dockTyping\(\)\) return;/, 'typing in a window: another tile does not switch it');
+  assert.match(hover, /if \(!dockCfg\.hoverTerm \|\| !dockTermable\(x\)\) \{[\s\S]*dockTipShow\(key\)/);
+  assert.match(hover, /dockTermFor\(y\); dockHoverOpened = !!dockTermBg\(\);\n\s*\}, open \? 80 : DOCK_HOVER_MS\)/);
+  assert.match(html, /const DOCK_HOVER_MS = 200, DOCK_LEAVE_MS = 300;/);
+  assert.match(between(html, 'function dockTermFor(x)', '\n}\n'), /dockTermOpen\(x\)/);
+  // it stays while the pointer is on the tiles / the window or the user types (focus or text); else it goes 300 ms later
+  assert.match(between(html, 'function dockTyping()', '\n}\n'), /inp\.value\.trim\(\) \|\| \(document\.activeElement === inp && inp\.dataset\.sent !== '1'\)/);
+  const hold = between(html, 'function dockHoverHold(over)', '\n}\n');
+  assert.match(hold, /over == null \? bg\.matches\(':hover'\) \|\| \$\('dock-tiles'\)\.matches\(':hover'\) : over/);
+  assert.match(hold, /return dockTyping\(\) \|\| on \|\| !!\$\('team-modal'\);/);
+  // the timers ask main where the pointer is (events replayed after a resize must not open / close anything)
+  assert.match(between(html, 'async function dockPointerOn(', '\n}\n'), /window\.orca\.dock\(\{ cursor: true \}\)[\s\S]*document\.elementFromPoint\(p\.x, p\.y\)/);
+  const leave = between(html, 'function dockHoverLeave()', '\n}\n');
+  assert.match(leave, /const over = await dockPointerOn\(DOCK_HOVER_SEL\);[\s\S]*if \(dockTermBg\(\) && dockHoverOpened && !dockHoverHold\(over\)\) dockTermClose\(true\);[^\n]*\n\s*\}, DOCK_LEAVE_MS\)/);
+  assert.doesNotMatch(leave, /dockHoverT|dockHoverGen/, 'a leave never cancels a pending hover');
+  assert.match(hover, /const on = await dockPointerOn\(tileSel\);\n\s*if \(gen !== dockHoverGen\) return;\n\s*if \(on === false\) \{ dockHoverLeave\(\); return; \}/);
+  assert.match(between(main, 'ipcMain.handle("orca:dock"', '\n});'), /if \(r\.cursor === true\) \{[\s\S]*screen\.getCursorScreenPoint\(\)[\s\S]*getContentBounds\(\)/);
+  assert.match(html, /\$\('dock-tiles'\)\.addEventListener\('mouseover', e => \{ const b = e\.target\.closest\('\.dock-tile'\); if \(b\) dockHover\(b\.dataset\.key\); \}\);/);
+  assert.match(html, /\$\('dock-tiles'\)\.addEventListener\('mouseleave', dockHoverLeave\);/);
+  assert.match(html, /window\.addEventListener\('blur', \(\) => \{ if \(dockOn && dockTermBg\(\) && !\$\('team-modal'\)\) dockTermClose\(true\); \}\);/, 'the widget loses the focus: it goes');
+  assert.doesNotMatch(html, /dockTipPoll|dockTipTurns|recentTurns|screenTurns/, 'the history panel is gone');
   // the terminal window: the remote view's markup, local reads / send / interrupt, permission line from the bar
   const open = between(html, 'function dockTermOpen(x)', '\nfunction dockTermSchedule');
   assert.match(open, /termViewHtml\(/); assert.match(open, /dockSendTo\(ys, hh, text\)/);
   assert.match(open, /await teamConfirm\([\s\S]*window\.orca\.terminalInterrupt\(now\.hh\)/, 'interrupt after a confirm');
   assert.match(open, /dockFocusTerminal\(y\)/);
   assert.match(between(html, 'async function dockSendTo(', '\n}\n'), /window\.orca\.terminalSend\(handle, text, true, 15\)[\s\S]*accepted[\s\S]*turn_started/);
-  assert.match(between(html, 'function dockTermSync()', '\n}\n'), /x\.canInput && !perm/);
+  assert.match(between(html, 'function dockTermSync()', '\n}\n'), /\(x\.canInput \|\| st\.freeText\) && !perm/);
   assert.match(between(html, 'function dockPermShow(r)', '\n}\n'), /\(dockTerm && \$\('pt-perm'\)\) \|\| \$\('dock-perm'\)/);
   assert.match(between(html, 'function peerRemoteTermOpen(', '\n}\n'), /termViewHtml\(/, 'the teammate view uses the same markup');
+  // a click: straight to the terminal (no timer); a teammate's delegated session: its remote window
   const click = between(html, "$('dock-tiles').addEventListener('click'", '\n});');
-  assert.match(click, /dockOpenT = setTimeout\(\(\) => \{[^\n]*dockTileOpen\(y\)[^\n]*\}, 250\)/, 'a click opens after 250 ms');
-  assert.match(between(html, "$('dock-tiles').addEventListener('dblclick'", '\n});'), /clearTimeout\(dockOpenT\)/, 'a double-click cancels it');
+  assert.match(click, /dockTermClose\(true\); dockTipHide\(\); dockSel = x\.key; dockDraw\(\);\n\s*dockFocusTerminal\(x\);$/, 'my session: switchTo at once');
+  assert.doesNotMatch(click, /setTimeout/, 'no delay');
+  assert.match(click, /if \(x\.delegated && dockTermKey\(\) !== x\.key\) dockTermFor\(x\)/);
+  assert.match(between(html, 'async function dockFocusTerminal(', '\n}\n'), /await api\.switchTo\(h\)/);
+  assert.match(html, /\$\('dock-go'\)\.addEventListener\('click', \(\) => \{ const x = dockModelNow && dockModelNow\.selected; if \(x && !x\.bundle\) dockOpenCard\(x\); \}\);/, '▤: the panel card');
   assert.match(open, /if \(!st\.alive\) return;[^\n]*\n\s*const now = cur\(\); if \(!now\.hh\) return;\n\s*const r = await window\.orca\.terminalInterrupt\(now\.hh\)/, 'looked up again after the confirm');
-  assert.match(between(html, "$('dock-tiles').addEventListener('keydown'", '\n});'), /e\.key === 'Enter'[\s\S]*dockTileOpen\(x\)/);
+  const keys = between(html, "$('dock-tiles').addEventListener('keydown'", '\n});');
+  assert.match(keys, /e\.key === 'Enter' && \(e\.metaKey \|\| e\.ctrlKey\)[\s\S]*dockFocusTerminal\(x\)/, '⌘Enter: the terminal');
+  assert.match(keys, /if \(e\.key === 'Enter'\) \{[\s\S]*dockTermFor\(x\)/, 'Enter: the terminal window');
   assert.match(html, /if \(\$\('peer-term'\) \|\| \$\('dock-term'\)\) \{[^\n]*peerRemoteTermClose\(\);[^\n]*dockTermClose\(\); dockTileFocus\(k\)/, 'Esc closes either window, focus back on the tile');
-  assert.match(html, /if \(dockOn && dockTipKey\) \{ const k = dockTipKey; dockTipHide\(\); dockTileFocus\(k\)/, 'Esc closes the hover panel');
+  assert.match(html, /if \(dockOn && dockTipKey\) \{ const k = dockTipKey; dockTipHide\(\); dockTileFocus\(k\)/, 'Esc closes the hover card');
   assert.match(between(html, 'function dockQuickDraw(m)', '\n}\n'), /input\.hidden = send\.hidden = mode === 'perm' \|\| !!term/, 'one input line at a time');
   // main: the bar's own rectangle inside a wider window
   assert.match(between(main, 'function dockStripRect(', '\n}'), /cur\.x \+ \(last\.stripX \|\| 0\)/);
   assert.match(between(main, 'function dockShape(', '\n}'), /x: b\.stripX \|\| 0/);
   assert.match(between(main, 'function dockApply(', '\n}\n'), /popWidth: dockNum\(r\.popWidth, 0, 4000\)/);
+});
+
+// ── choice bubbles / tiles at work: layout, activity, tool marks, frames ──
+test('bubbleLayout: centred on their tiles, pushed apart, kept inside, the oldest dropped first', () => {
+  const L = D.bubbleLayout;
+  const one = L([{ key: 'a', anchor: 500, since: 1 }], { winWidth: 1000 });
+  assert.deepEqual(one, { placed: [{ key: 'a', x: 380, width: 240, tail: 120 }], dropped: [] });
+  // two tiles 50 px apart: side by side, no overlap, tails still on their tiles
+  const two = L([{ key: 'a', anchor: 300, since: 1 }, { key: 'b', anchor: 350, since: 2 }], { winWidth: 1000 });
+  const [a, b] = two.placed;
+  assert.ok(a.x + a.width + 6 <= b.x, 'no overlap'); assert.equal(two.dropped.length, 0);
+  assert.equal(a.x + a.tail, 300); assert.ok(b.tail >= 14 && b.tail <= 226);
+  // edges: clamped inside the window (6 px margin)
+  const edge = L([{ key: 'a', anchor: 5, since: 1 }, { key: 'b', anchor: 995, since: 2 }], { winWidth: 1000 });
+  assert.equal(edge.placed[0].x, 6); assert.equal(edge.placed[1].x + edge.placed[1].width, 994);
+  // three in 500 px: only two fit, the oldest goes
+  const many = L([{ key: 'new', anchor: 100, since: 30 }, { key: 'old', anchor: 120, since: 10 }, { key: 'mid', anchor: 140, since: 20 }], { winWidth: 500 });
+  assert.deepEqual(many.dropped, ['old']); assert.deepEqual(many.placed.map(x => x.key), ['new', 'mid']);
+  for (const p of many.placed) assert.ok(p.x >= 6 && p.x + p.width <= 494);
+  // a wider (hovered) bubble among normal ones
+  const mixed = L([{ key: 'a', anchor: 200, since: 1, width: 340 }, { key: 'b', anchor: 220, since: 2 }], { winWidth: 900 });
+  assert.equal(mixed.placed[0].width, 340); assert.ok(mixed.placed[0].x + 340 + 6 <= mixed.placed[1].x);
+  assert.deepEqual(L(null, { winWidth: 500 }), { placed: [], dropped: [] });
+  // one bubble wider than the window: narrowed to it, not dropped (a window under 352 px still shows a grown bubble)
+  assert.deepEqual(L([{ key: 'a', anchor: 50, width: 340 }], { winWidth: 300 }).placed.map(p => [p.x, p.width]), [[6, 288]]);
+  assert.deepEqual(L([{ key: 'a', anchor: 10 }], { winWidth: 100 }).placed.map(p => p.width), [88]);
+  assert.equal(L([{ key: 'a', anchor: 5 }], { winWidth: 12 }).dropped.length, 1, 'no room at all');
+  const pair = L([{ key: 'a', anchor: 50, since: 1, width: 340 }, { key: 'b', anchor: 60, since: 2 }], { winWidth: 300 });
+  assert.deepEqual([pair.dropped, pair.placed.map(p => [p.key, p.width])], [['a'], [['b', 240]]], 'several: the oldest still goes');
+  assert.equal(D.popExtra('bubbles'), D.POP.bubbleH + D.POP.tail + 2 * D.POP.gap);
+  assert.ok(D.popExtra('bubblesBig') > D.popExtra('bubbles'));
+});
+
+test('promptContext: the prompt box above a numbered choice (the command a permission prompt asks about)', () => {
+  const box = ['earlier output', '╭────────╮', '│ Bash command             │', '│                          │', '│   rm -rf ~/              │', '│   Remove the home folder │', '│                          │', '│ Do you want to proceed?  │', '│ ❯ 1. Yes                 │', "│   2. Yes, and don't ask  │", '│   3. No                  │', '╰────────╯'];
+  assert.equal(D.promptContext(box), 'Bash command\n\nrm -rf ~/\nRemove the home folder\n\nDo you want to proceed?');
+  const ask = ['old', '────────────', '☐ 범위', '', '어디까지?', '', '❯ 1. 결제만', '     설명', '  2. 둘 다', 'Enter to select'];
+  assert.equal(D.promptContext(ask), '☐ 범위\n\n어디까지?', 'stops at a rule; option descriptions are not context');
+  assert.equal(D.promptContext(['  2. x', '❯ 3. y']), ''); assert.equal(D.promptContext(['plain']), ''); assert.equal(D.promptContext(null), '');
+  assert.equal(D.promptContext(Array.from({ length: 30 }, (_, i) => 'line ' + i).concat(['❯ 1. ok'])).split('\n').length, 14, 'at most 14 rows');
+});
+
+test('activityLevels / toolGlyph / workFrame: the working tile', () => {
+  assert.deepEqual(D.activityLevels([1000, 2000, 55000, 59000], 60000), [1, 0, 0, 0, 0, 1]);
+  assert.deepEqual(D.activityLevels([59000, 59500, 50000], 60000), [0, 0, 0, 0, 0.5, 1]);
+  assert.deepEqual(D.activityLevels([], 60000), [0, 0, 0, 0, 0, 0]);
+  assert.deepEqual(D.activityLevels([70000, -5, 'x', null], 60000), [0, 0, 0, 0, 0, 0], 'future / junk times ignored');
+  assert.equal(D.activityLevels([1], 2, { buckets: 3 }).length, 3);
+  assert.equal(D.toolGlyph('Bash'), '$'); assert.equal(D.toolGlyph('Edit'), '✎'); assert.equal(D.toolGlyph('Read'), '≡');
+  assert.equal(D.toolGlyph('Grep(pattern)'), '⌕'); assert.equal(D.toolGlyph('mcp__slack__post'), '⚙');
+  assert.equal(D.toolGlyph('Skill'), 'Sk'); assert.equal(D.toolGlyph(''), ''); assert.equal(D.toolGlyph(null), '');
+  assert.deepEqual([0, 1, 2, 3].map(s => D.workFrame(s)), [3, 4, 3, 4], 'typing: 3 ↔ 4 every frame');
+  assert.deepEqual([0, 1, 2, 3].map(s => D.workFrame(s, true)), [5, 5, 6, 6], 'reading: 5 ↔ 6 every other frame');
+});
+
+test('widget dock: choice bubbles reuse the popover parser, the shared answer path, the permission line and the guard', () => {
+  assert.match(html, /<script src="core\/guard\.js"><\/script>/);
+  const sync = between(html, 'function dockAskSync()', '\n}\n');
+  assert.match(sync, /x\.state !== 'ask'/); assert.match(sync, /dockAskDrop\(k\)/, 'a session that stopped waiting loses its bubble');
+  const scan = between(html, 'function dockAskScan(lines)', '\n}\n');
+  for (const re of [/officeParseChoice\(lines\)/, /AgentDeskDock\.promptContext\(lines\)/, /AgentDeskDock\.promptBox\(lines, 200\)/, /AgentDeskDock\.permPrompt\(lines, parsed\.options\)/]) assert.match(scan, re);
+  assert.match(between(html, 'async function dockAskRead(', '\n}\n'), /const s = dockAskScan\(c\.lines\);/);
+  const fill = between(html, 'function dockAskFill(a)', '\n}\n');
+  assert.match(fill, /el\.appendChild\(dockPermLine\(a\.perm\)\)/, 'permission requests: the bar\'s permission line');
+  // H1 / M2: the guardrail reads the whole box with wraps undone; Claude Code's permission prompts follow the bar's
+  // [허용] rule; "don't ask again" never
+  const read = between(html, 'async function dockAskRead(', '\n}\n');
+  assert.match(read, /\.\.\.AgentDeskDock\.guardTexts\(s\.box\)/);
+  assert.match(read, /a\.userGuard = null;[^\n]*\n[\s\S]*const sig = s\.sig, ug = await dockGuardUser\(a\.texts\);/, 'the user rules: through main');
+  assert.match(fill, /const local = p \? dockGuardLocal\(a\.texts \|\| \[\]\)/);
+  assert.match(fill, /a\.userGuard \|\| \{ blocked: true, pending: true/, 'not answered yet = a hit');
+  assert.match(fill, /lockYes = danger\.blocked \|\| \(pa\.perm && !pa\.allowable\)/);
+  assert.match(fill, /never = AgentDeskDock\.PERM_NEVER_RE\.test\(o\.label\) \|\| !\(n >= 1 && n <= 9\)/, 'L4: one key, 1 … 9');
+  assert.match(fill, /const role = never \? 'never' : lockYes && !\(pa\.perm && DOCK_NO_RE\.test\(o\.label\)\) \? 'allow' : 'opt';/, 'L5: "No" only on permission prompts');
+  assert.match(fill, /el\.dataset\.truncated = lockYes \? '1' : '0'/);
+  assert.match(between(html, 'function permArm(el)', '\n}'), /b\.dataset\.perm === 'never' \|\| \(b\.dataset\.perm === 'allow' && el\.dataset\.truncated === '1'\)/, '"never" stays off after arming');
+  assert.match(html, /const dockAskLocked = \(el, b\) => b\.dataset\.perm === 'never' \|\| \(b\.dataset\.perm === 'allow' && el\.dataset\.truncated === '1'\);/);
+  assert.match(between(html, 'function dockAskWire(a)', '\n}\n'), /if \(b && !b\.disabled && !dockAskLocked\(el, b\)\)/, 'checked again on click');
+  assert.match(fill, /permArm\(el\)/, 'armed like a permission panel');
+  assert.match(fill, /qLines\.slice\(0, max\)/); assert.match(fill, /data-more="1"/);
+  for (const v of ['esc(a.name || \'\')', 'esc(q)', 'esc(o.label)', 'esc(o.desc)', 'esc(a.sent)', 'esc(a.err)']) assert.ok(fill.includes(v), v);
+  assert.match(between(html, 'async function dockAskAnswer(', '\n}\n'), /await choiceSend\(a\.handle, n,/);
+  assert.match(between(html, 'async function officeAnswer(', '\n}\n'), /await choiceSend\(a\.handle, n,/, 'the popover uses the same path');
+  // M1: the prompt is read again before the first key (and before the Enter); a changed one sends nothing
+  assert.match(between(html, 'async function choiceSend(', '\n}\n'), /if \(!await stillUp\(\)\) \{[^\n]*e\.changed = true; throw e; \}\n\s*const r1 = await window\.orca\.terminalSend\(handle, String\(n\), false, 0\)[\s\S]*if \(await stillUp\(\)\) await window\.orca\.terminalSend\(handle, String\(n\), true, 5\)/);
+  const answer = between(html, 'async function dockAskAnswer(', '\n}\n');
+  assert.match(answer, /const c = await dockScreenRead\(a\.handle, true\), x = dockTileOf\(a\.key\);\n\s*return !!\(c\.lines && x && x\.state === 'ask'\) && dockAskScan\(c\.lines\)\.sig === sig;/);
+  assert.match(answer, /if \(err && err\.changed\) \{ a\.err = err\.message; a\.armedSig = ''; a\.readAt = 0; \}/, 'read again, armed again');
+  assert.match(between(html, 'async function officeAnswer(', '\n}\n'), /if \(e\.changed && officeAsk === a\) \{ a\.lastSig = ''; officeAskRefresh\(\); \}/);
+  assert.match(between(html, 'function dockAskPlace()', '\n}\n'), /AgentDeskDock\.bubbleLayout\(items/);
+  assert.match(between(html, 'function dockHover(key)', '\nfunction dockHoverLeave'), /if \(dockAskOn\(key\)\) \{ dockAskGrowAt\(key, tileSel\); return; \}/, 'a bubble\'s tile grows it instead of opening the window');
+  assert.match(between(html, 'async function dockAskGrowAt(', '\n}\n'), /const gen = \+\+dockAskGrowGen;\n\s*if \(await dockPointerOn\(sel\) === false \|\| gen !== dockAskGrowGen\) return;/, 'grown only where the pointer really is, by the latest hover');
+  assert.match(between(html, 'function dockPopKind()', '\n}\n'), /if \(dockTermBg\(\)\) return 'term';\n\s*if \(dockAskVisible\(\)\)/, 'the window wins over the bubbles');
+});
+
+test('widget dock: one animation loop, stopped when hidden, off by the setting or reduced motion', () => {
+  const tick = between(html, 'function dockAnimTick()', '\n}\n');
+  assert.match(tick, /AgentDeskDock\.workFrame\(dockAnimStep/); assert.match(tick, /dockAnimNext\(\);/);
+  assert.doesNotMatch(tick, /requestAnimationFrame/, 'no frame request per frame: one timer per animation step');
+  assert.match(html, /function dockAnimNext\(\) \{ dockAnimT = setTimeout\(\(\) => \{ dockAnimT = 0; dockAnimRaf = requestAnimationFrame\(dockAnimTick\); \}, DOCK_FRAME_MS\); \}/);
+  assert.match(html, /\.st-run \.dock-act\.breathe \{ animation: dockActBreath/, 'the breathing bar: CSS');
+  assert.match(html, /const dockAnimAllowed = \(\) => dockOn && dockCfg\.anim && !dockReduced\.matches && !document\.hidden;/);
+  assert.match(html, /const DOCK_FRAME_MS = 200;/);
+  assert.equal((html.match(/requestAnimationFrame\(dockAnimTick\)/g) || []).length, 1, 'one place asks for a frame');
+  assert.match(html, /#page-dock\.dock-still \*, #page-dock\.dock-still \*::after \{ animation: none !important; \}/);
+  assert.match(html, /@media \(prefers-reduced-motion: reduce\) \{\n\s*#page-dock \*, #page-dock \*::after, \.dock-bubble \{ animation: none !important; transition: none !important; \}/);
+  assert.match(between(html, 'function dockTileDeco()', '\n}\n'), /AgentDeskDock\.activityLevels\(\(s\.recentTools \|\| \[\]\)/);
+});
+
+// ── security review: Claude Code's permission prompts in a bubble, wrapped commands, the whole prompt box ──
+await import('../core/guard.js');
+const G = globalThis.AgentDeskGuard;
+const flagged = rows => D.guardTexts(rows).some(s => G.isDangerous(s).blocked);
+const bashPrompt = (body, width = 120) => ['─'.repeat(width), ' Bash command', '', ...body.map(b => '   ' + b), '', ' Do you want to proceed?', ' ❯ 1. Yes', "   2. Yes, and don't ask again for this command", '   3. No, and tell Claude what to do differently (esc)'];
+const OPTS = [{ label: 'Yes' }, { label: "Yes, and don't ask again for this command" }, { label: 'No, and tell Claude what to do differently (esc)' }];
+
+test('guardTexts / promptBox: a command the terminal wrapped is still caught; the whole box, not 14 rows', () => {
+  assert.equal(flagged(D.promptBox(bashPrompt(['rm -r', 'f ~/', 'Remove the home folder']))), true, 'rm -r / f ~/');
+  assert.equal(flagged(D.promptBox(bashPrompt(['git push --for', 'ce origin main', 'Push']))), true, 'git push --for / ce origin main');
+  assert.equal(G.isDangerous('rm -r f ~/').blocked, false, 'joined with a space it slips past (why both forms)');
+  // the dangerous command 20 rows above the options: outside promptContext's 14, inside promptBox's 60
+  const tall = ['─'.repeat(100), ' Bash command', '', '   rm -rf ~/', ...Array.from({ length: 20 }, (_, i) => '   # note ' + i), '', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. No'];
+  assert.equal(D.promptContext(tall).includes('rm -rf'), false);
+  assert.equal(flagged(D.promptBox(tall)), true);
+  assert.equal(D.promptBox(Array.from({ length: 100 }, (_, i) => 'r' + i).concat(['❯ 1. ok'])).length, 60, 'at most 60 rows');
+  // a bordered box: only its own rows (output above the box is not part of it)
+  const boxed = ['rm -rf ~/ was discussed earlier', '╭──────╮', '│ Bash command │', '│   ls │', '│ Do you want to proceed? │', '│ ❯ 1. Yes │', '│   2. No │', '╰──────╯'];
+  assert.deepEqual(D.promptBox(boxed), ['Bash command', 'ls', 'Do you want to proceed?']);
+  assert.equal(flagged(D.promptBox(boxed)), false);
+  assert.equal(flagged(D.promptBox(bashPrompt(['npm test', 'Run the tests']))), false, 'a harmless command stays harmless');
+  assert.deepEqual(D.guardTexts(['a', 'b', '', 'c']), ['a b c', 'ab c', 'ab']);
+  assert.deepEqual(D.promptBox(['plain']), []);
+});
+
+test('permPrompt: Claude Code permission prompts, and when the bar may say yes (its [허용] rule)', () => {
+  const ok = D.permPrompt(bashPrompt(['npm test', 'Run the tests']), OPTS);
+  assert.deepEqual(ok, { perm: true, kind: 'bash', allowable: true, command: 'npm test' });
+  assert.equal(D.permPrompt(bashPrompt(['npm test']), OPTS).allowable, true, 'no description');
+  assert.equal(D.permPrompt(bashPrompt(['npm test &&', 'npm run build', 'Build']), OPTS).allowable, false, 'several rows');
+  assert.equal(D.permPrompt(bashPrompt(['x'.repeat(81)]), OPTS).allowable, false, 'longer than PERM_LINE_MAX');
+  assert.equal(D.permPrompt(bashPrompt(['x'.repeat(80)]), OPTS).allowable, true);
+  assert.equal(D.permPrompt(bashPrompt(['npm run test -- --watch…']), OPTS).allowable, false, 'cut');
+  assert.equal(D.permPrompt(bashPrompt(['npm test |']), OPTS).allowable, false, 'continued');
+  assert.equal(D.permPrompt(bashPrompt(['npm test', 'Run the tests'], 60), OPTS).allowable, false, 'a narrow terminal: the 2nd row may be a wrap');
+  const edit = D.permPrompt([' Edit file', ' src/a.js', ' Do you want to make this edit to a.js?', ' ❯ 1. Yes', "   2. Yes, and don't ask again this session", '   3. No'], [{ label: 'Yes' }, { label: "Yes, and don't ask again this session" }, { label: 'No' }]);
+  assert.deepEqual([edit.perm, edit.kind, edit.allowable], [true, 'edit', false], 'file edits: never from the bar');
+  const write = D.permPrompt([' Write file', ' Do you want to create notes.md?', ' ❯ 1. Yes', '   2. No'], [{ label: 'Yes' }, { label: 'No' }]);
+  assert.deepEqual([write.perm, write.kind, write.allowable], [true, 'edit', false]);
+  const fetchp = D.permPrompt([' Fetch', ' https://example.com', ' Do you want to allow Claude to fetch this content?', ' ❯ 1. Yes', '   2. No'], [{ label: 'Yes' }, { label: 'No' }]);
+  assert.deepEqual([fetchp.perm, fetchp.kind, fetchp.allowable], [true, 'other', false]);
+  assert.equal(D.permPrompt(['Pick one', '❯ 1. a', '  2. b'], [{ label: 'a' }, { label: "b, don't ask again" }]).perm, true, 'a "don\'t ask again" option alone marks it');
+  const q = D.permPrompt(['☐ 범위', '어디까지?', '❯ 1. 결제만', '  2. 둘 다'], [{ label: '결제만' }, { label: '둘 다' }]);
+  assert.deepEqual([q.perm, q.allowable], [false, true], 'an AskUserQuestion is not a permission prompt');
+  for (const l of ["Yes, and don't ask again", 'Yes, and don’t ask again for git', 'yes, DONT ASK AGAIN']) assert.match(l, D.PERM_NEVER_RE);
+  assert.doesNotMatch('Yes', D.PERM_NEVER_RE);
+});
+
+test('widget dock: security review lows — fail-closed guard, setting, re-arming, key range, "No", cursor IPC', () => {
+  // L3: built-in rules here, user rules in main (guardTest); failed / timed out / cut / too long = a hit
+  const user = between(html, 'async function dockGuardUser(texts)', '\n}\n');
+  assert.match(user, /window\.orca\.guardTest\('Bash', all, 'warn'\)/);
+  assert.match(user, /if \(all\.length > DOCK_GUARD_MAX\) return \{ blocked: true/);
+  assert.match(user, /if \(!r \|\| r\.ok === false\) return \{ blocked: true/);
+  assert.match(user, /if \(r\.timedOut \|\| r\.cut \|\| \(Array\.isArray\(r\.slow\) && r\.slow\.length\)\) return \{ blocked: true/);
+  assert.match(user, /catch \{ return \{ blocked: true/);
+  assert.doesNotMatch(html, /window\.orca\.guardConfig\(\)[^\n]*dockGuard/, 'the rules never come to the page for this');
+  // L1
+  assert.match(html, /dockCfg\.ask = \['on', 'options', 'off'\]\.includes\(c\.ask\) \? c\.ask : 'on';/);
+  assert.match(between(html, 'function dockAskSync()', '\n}\n'), /if \(dockCfg\.ask === 'off'\) \{/);
+  assert.match(between(html, 'function dockAskFill(a)', '\n}\n'), /q && dockCfg\.ask !== 'options'/);
+  // L2
+  assert.match(between(html, 'function dockAskPlace()', '\n}\n'), /if \(a\.x != null && a\.x !== g\.x\) dockAskArm\(a\);/);
+  assert.match(between(html, 'function dockAskArm(a)', '\n}\n'), /permArm\(line \|\| a\.el\)/);
+  // L4
+  assert.match(between(html, 'async function dockAskAnswer(', '\n}\n'), /!\(Number\.isInteger\(n\) && n >= 1 && n <= 9\)/);
+  // L5
+  const NO = new RegExp(html.match(/const DOCK_NO_RE = \/(.+?)\/i;/)[1], 'i');
+  for (const l of ['No', 'No, and tell Claude what to do differently (esc)', 'No and stop', 'no']) assert.match(l, NO, l);
+  for (const l of ['Nothing', 'Notify the team', 'Node 20', '아니오 말고 예', 'Cancel everything']) assert.doesNotMatch(l, NO, l);
+  // L6
+  const cur = between(main, '  if (r.cursor === true) {', '\n  }\n');
+  assert.match(cur, /if \(_e\.sender !== mainWindow\.webContents\) return null;/);
+  assert.match(cur, /now - dockCursor\.at > 50/);
+});
+
+test('widget dock: code review — card exclusion, free text, mute, forced reads, timers, narrow bar, quick line, cursor zoom', () => {
+  // M2: only a tile's own bubble keeps its card away
+  assert.match(between(html, 'function dockTipShow(key)', '\n}\n'), /dockTermBg\(\) \|\| dockAskOn\(key\)\)/);
+  // M4: a free-text option → its digit, then the terminal window with a usable input line; [전체 보기] always
+  const answer = between(html, 'async function dockAskAnswer(', '\n}\n');
+  assert.match(answer, /if \(DOCK_FREE_RE\.test\(label\)\) \{[\s\S]*if \(!await same\(\)\)[\s\S]*terminalSend\(a\.handle, String\(n\), false, 0\)[\s\S]*dockTerm\.freeText = true/);
+  assert.match(between(html, 'function dockAskFill(a)', '\n}\n'), /\+ `<button class="bb-more" data-more="1">/);
+  for (const l of ['Type something.', 'Other', '직접 입력', '기타']) assert.match(l, new RegExp(html.match(/const DOCK_FREE_RE = \/(.+?)\/i;/)[1], 'i'), l);
+  // L5: the answered prompt stays away 5 s and comes back armed
+  assert.match(answer, /dockAskSentSig\.set\(a\.key, \{ sig, at: Date\.now\(\) \}\)/);
+  const place = between(html, 'function dockAskPlace()', '\n}\n');
+  assert.match(place, /if \(dockAskMuted\(a\)\) \{ a\.el\.hidden = true; a\.muted = true; continue; \}/);
+  assert.match(place, /if \(a\.muted\) \{ a\.muted = false; dockAskArm\(a\); \}/);
+  // L6
+  assert.match(between(html, 'async function dockScreenRead(h, force)', '\n}\n'), /while \(c && c\.busy\) \{[^}]*if \(!force\) return c;\n\s*try \{ await c\.p; \} catch \{\}/);
+  // L7
+  assert.match(between(html, 'function dockHoverLeave()', '\n}\n'), /if \(!dockOn\) \{ if \(t === dockLeaveT\) dockLeaveT = 0; return; \}/);
+  // L9: by the bar's width
+  assert.doesNotMatch(html, /@media \(max-width: 420px\) \{   \/\* the narrowest bar/);
+  assert.match(between(html, 'function dockWinSet(b)', '\n}\n'), /classList\.toggle\('dock-narrow', \(b\.stripWidth \|\| b\.width\) <= DOCK_NARROW\)/);
+  // L10
+  assert.match(between(html, 'function dockAskSync()', '\n}\n'), /seen2 && \(!a\.el \|\| a\.placed \|\| !a\.sig \|\| a\.muted\)\) dockAskRead\(a\)/);
+  // L11
+  assert.match(between(html, 'function dockAskRender()', '\n}\n'), /if \(dockModelNow\) dockQuickDraw\(dockModelNow\);/);
+  // L12
+  assert.match(between(main, '  if (r.cursor === true) {', '\n  }\n'), /getZoomFactor\(\)[\s\S]*\(p\.x - c\.x\) \/ z/);
+  // L13
+  assert.match(between(html, "$('dock-tiles').addEventListener('keydown'", '\n});'), /else dockHint\(t\(x\.delegated \? '팀원 세션의 터미널로는 갈 수 없습니다/);
+});
+
+test('permPrompt / PERM_NEVER_RE: the plan prompt and every standing-permission option', () => {
+  const lines = ['─'.repeat(100), ' Ready to code?', '', " Here is Claude's plan:", ' 1. edit a.js', ' 2. run tests', '', ' Would you like to proceed?', '', ' ❯ 1. Yes, and auto-accept edits', '   2. Yes, and manually approve edits', '   3. No, keep planning'];
+  const opts = [{ n: 1, label: 'Yes, and auto-accept edits' }, { n: 2, label: 'Yes, and manually approve edits' }, { n: 3, label: 'No, keep planning' }];
+  const p = D.permPrompt(lines, opts);
+  assert.deepEqual([p.perm, p.allowable], [true, false], 'a permission prompt the bar cannot say yes to');
+  // the bubble's roles (dockAskFill): never / allow (locked: not allowable) / opt
+  const NO = new RegExp(html.match(/const DOCK_NO_RE = \/(.+?)\/i;/)[1], 'i');
+  const role = o => (D.PERM_NEVER_RE.test(o.label) || !(o.n >= 1 && o.n <= 9)) ? 'never' : (p.perm && !p.allowable) && !(p.perm && NO.test(o.label)) ? 'allow' : 'opt';
+  assert.deepEqual(opts.map(role), ['never', 'allow', 'opt'], 'only "No, keep planning" can be pressed');
+  const bypass = D.permPrompt([' Would you like to proceed?', ' ❯ 1. Yes, and bypass permissions', '   2. No, keep planning'], [{ n: 1, label: 'Yes, and bypass permissions' }, { n: 2, label: 'No, keep planning' }]);
+  assert.equal(bypass.perm, true);
+  for (const l of ["Yes, and don't ask again", 'Yes, do not ask again for git', 'Yes, never ask again', "Yes, allow all edits during this session", 'Yes, and auto-accept edits', 'Yes, and bypass permissions', 'Always allow']) assert.match(l, D.PERM_NEVER_RE, l);
+  for (const l of ['Yes', 'Yes, and manually approve edits', 'No, keep planning', 'Allow once']) assert.doesNotMatch(l, D.PERM_NEVER_RE, l);
+  // L-b / L-c (source)
+  assert.match(between(html, 'async function officeAnswer(', '\n}\n'), /!!\(live && live\.needsInput\) && JSON\.stringify\(still\) === a\.lastSig/);
+  const user = between(html, 'async function dockGuardUser(texts)', '\n}\n');
+  assert.match(user, /window\.orca\.guardTest\('Bash', all, 'warn'\)/, 'judged even with the guardrail off');
+  assert.match(user, /\(Array\.isArray\(r\.slow\) && r\.slow\.length\)\) return \{ blocked: true/);
+});
+
+test('optionRun: only the prompt\'s own numbered run (a plan\'s numbered steps above it are not options)', () => {
+  const o = (n, label) => ({ n, label });
+  assert.deepEqual(D.optionRun([o(1, 'edit a.js'), o(2, 'run tests'), o(1, 'Yes, and auto-accept edits'), o(2, 'Yes, and manually approve edits'), o(3, 'No, keep planning')]).map(x => x.label),
+    ['Yes, and auto-accept edits', 'Yes, and manually approve edits', 'No, keep planning']);
+  assert.deepEqual(D.optionRun([o(1, 'a'), o(2, 'b'), o(3, 'c')]).map(x => x.n), [1, 2, 3]);
+  assert.deepEqual(D.optionRun([o(1, 'a'), o(3, 'c')]).map(x => x.n), [3], 'a gap ends the run');
+  assert.deepEqual(D.optionRun(null), []); assert.deepEqual(D.optionRun([null, o('x', 'y')]), []);
+  assert.match(between(html, 'function dockAskScan(lines)', '\n}\n'), /parsed\.options = AgentDeskDock\.optionRun\(parsed\.options\)/);
 });
