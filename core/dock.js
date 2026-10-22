@@ -33,20 +33,43 @@
 //   permAllowable(summary) → may the bar offer [허용] for this permission request (see below)
 //
 //   Panels in the room above / below the bar (the renderer draws them; the window is asked for popExtra() of room):
-//   popWidth(kind, workWidth) → panel width: 'tip' (hover history) 420 cut to the work area (300 when that is what
-//     fits), 'term' (terminal window) min(720, 90 % of the work area), 'tipSmall' (the compact card) 260
-//   popExtra(kind) → room the window needs for that panel (its height plus a gap on both sides)
+//   popWidth(kind, workWidth) → panel width: 'term' (terminal window, opened by a hover) min(720, 90 % of the work
+//     area), 'tipSmall' (the compact hover card) 260; both cut to the work area
+//   popExtra(kind) → room the window needs for that panel (its height plus a gap on both sides); 'bubbles' /
+//     'bubblesBig' = the choice bubbles (one hovered bubble grows)
+//   bubbleLayout(items, { winWidth, gap }) → { placed: [{ key, x, width, tail }], dropped: [key] }
+//     items [{ key, anchor, since, width }]: one choice bubble per tile, centred on its tile (anchor) and pushed
+//     sideways so none overlap, inside the window (POP.margin); when they do not all fit the oldest (smallest since) go
+//     first, and the last one is narrowed to the window rather than dropped. tail = the tile's x inside the bubble (for its little pointer), kept off the rounded corners.
+//   activityLevels(times, now, { buckets, span }) → [0 … 1] per bucket, oldest first: tool calls (timestamps) in the
+//     last span ms (default 6 buckets of 10 s), scaled to the busiest bucket
+//   promptContext(lines, max) → the text of the prompt box a numbered choice sits in: the rows above its options (box
+//     borders stripped) up to the box's top, a rule or max (14) rows — for a permission prompt that is the command it
+//     asks about, which the choice parser's question (the paragraph right above the options) leaves out
+//   promptBox(lines, max) → [row] the whole prompt box above a numbered choice (borders stripped): up to the box's top,
+//     the first row outside a bordered box, or a rule; at most max (60) rows — what the guardrail looks at
+//   guardTexts(rows) → texts for the guardrail: all rows joined with spaces; each paragraph (rows between blank rows)
+//     joined with nothing, paragraphs with spaces; and every two neighbouring rows joined with nothing — a command
+//     the terminal wrapped mid-word ("rm -r" / "f ~/") reads whole in the latter forms. Any of them flagged = flagged.
+//   permPrompt(lines, options) → { perm, kind: 'bash' | 'edit' | 'other' | '', allowable, command }
+//     perm: Claude Code's own permission prompt ("Do you want to proceed / make this edit / create / allow", the plan
+//     mode's "Would you like to proceed?", a
+//     "don't ask again" option, a "Bash command" / "Edit file" / "Write file" header). allowable: the bar's [허용]
+//     rule — a one-row Bash command of at most PERM_LINE_MAX characters, not cut, not wrapped (with at most its
+//     one-row description); file edits and other permission prompts never. PERM_NEVER_RE: options that grant a
+//     standing permission ("don't ask again", "during this session", "auto-accept edits", "bypass permissions",
+//     "always allow") — never offered by the dock.
+//   optionRun(options) → the options of the prompt itself: the last run numbered n-1, n, … up to the last one (a numbered
+//     list above the question — a plan's steps — is not one of its options: its digits would answer the prompt)
+//   toolGlyph(tool) → a 1–2 character mark for a tool name (Bash $, Edit ✎, Read ≡ …); '' for none
+//   workFrame(step, reading) → the sprite sheet column of a working character (office frames): typing 3 ↔ 4 every
+//     step, reading 5 ↔ 6 every other step
 //   popRect({ winWidth, width, anchor, dir, stripHeight, height, room }) → { x, width, height, top, bottom }
 //     x centred on anchor (a tile's centre, or the bar's) and clamped inside the window; top (dir 'down') or bottom
 //     (dir 'up') = the bar's height plus the gap; height cut to the room left (room = dockBounds extra)
 //   screenLines(lines, { mask, maxLines, lineMax, maxBytes }) → a terminal screen made safe to show: ANSI sequences and
-//     format characters removed, masked (mask(rows) → rows, e.g. AgentDeskMask.maskLines), control characters
+//     format characters removed, masked (mask(rows) → rows, e.g. AgentDeskMask.maskRows), control characters
 //     blanked, at most maxLines (200) lines of lineMax (400) characters and maxBytes (24 KB) of UTF-8 — the newest kept
-//   screenTurns(lines) → [{ role: 'user' | 'agent', text }] read from a Claude Code screen (screenLines output):
-//     "❯ text" rows are prompts (not a choice menu's "❯ 1. …" / indented ❯), "⏺" rows start an answer; the banner above the first turn, spinner / rule rows and
-//     the input box at the bottom are left out
-//   recentTurns(entries, { maxTurns, maxLines, lineMax }) → the last maxTurns (4) non-empty turns
-//     [{ role, lines, cut }], each at most maxLines (6) lines (cut: true, the last line ends in "…")
 (function (root) {
 'use strict';
 const STATES = ['ask', 'err', 'input', 'run', 'done'];
@@ -228,16 +251,15 @@ function dockBounds(input) {
 }
 
 // ── panels in the room above / below the bar ──
-const POP = { gap: 6, margin: 6, tipW: 420, tipMinW: 300, tipH: 320, tipSmallW: 260, tipSmallH: 120, termW: 720, termFrac: 0.9, termH: 420 };
+const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 120, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 240, bubbleBigW: 340, bubbleH: 240, bubbleBigH: 340, tail: 6 };
 function popWidth(kind, workWidth) {
   const ww = Math.max(0, Math.floor(num(workWidth))), room = Math.max(0, ww - 2 * POP.margin);
   if (kind === 'term') return Math.min(POP.termW, Math.floor(ww * POP.termFrac), room);
-  if (kind === 'tip') return Math.min(room, Math.max(POP.tipMinW, Math.min(POP.tipW, room)));
   if (kind === 'tipSmall') return Math.min(room, POP.tipSmallW);
   return 0;
 }
 function popExtra(kind) {
-  const h = kind === 'term' ? POP.termH : kind === 'tip' ? POP.tipH : kind === 'tipSmall' ? POP.tipSmallH : 0;
+  const h = kind === 'term' ? POP.termH : kind === 'tipSmall' ? POP.tipSmallH : kind === 'bubbles' ? POP.bubbleH + POP.tail : kind === 'bubblesBig' ? POP.bubbleBigH + POP.tail : 0;
   return h ? h + 2 * POP.gap : 0;
 }
 function popRect(input) {
@@ -251,6 +273,127 @@ function popRect(input) {
   if (i.room != null && Number.isFinite(Number(i.room))) height = Math.min(height, Math.max(0, Math.round(Number(i.room)) - 2 * POP.gap));
   const down = i.dir === 'down';
   return { x, width, height, top: down ? off : null, bottom: down ? null : off };
+}
+
+function bubbleLayout(items, opts) {
+  const o = opts && typeof opts === 'object' ? opts : {};
+  const W = Math.max(0, num(o.winWidth)), m = POP.margin, gap = o.gap == null ? POP.gap : Math.max(0, num(o.gap));
+  let list = (Array.isArray(items) ? items : []).filter(x => x && x.key != null)
+    .map((x, i) => ({ key: x.key, anchor: num(x.anchor), since: num(x.since), width: Math.max(1, Math.round(num(x.width) || POP.bubbleW)), i }));
+  const dropped = [];
+  const need = l => l.reduce((n, x) => n + x.width, 0) + Math.max(0, l.length - 1) * gap;
+  while (list.length > 1 && need(list) > W - 2 * m) {   // the oldest goes first (ties: the one listed first)
+    const old = list.reduce((a, b) => (b.since < a.since ? b : a));
+    dropped.push(old.key); list = list.filter(x => x !== old);
+  }
+  // the last one is narrowed to the window instead (nothing left at all only when there is no room)
+  if (list.length === 1 && list[0].width > W - 2 * m) {
+    if (W - 2 * m >= 1) list[0].width = Math.floor(W - 2 * m); else { dropped.push(list[0].key); list = []; }
+  }
+  list.sort((a, b) => a.anchor - b.anchor || a.i - b.i);
+  const xs = list.map(x => Math.max(m, Math.round(x.anchor - x.width / 2)));
+  for (let k = 1; k < list.length; k++) xs[k] = Math.max(xs[k], xs[k - 1] + list[k - 1].width + gap);   // push right
+  for (let k = list.length - 1; k >= 0; k--) {   // then back inside the right edge
+    const lim = k === list.length - 1 ? W - m - list[k].width : xs[k + 1] - gap - list[k].width;
+    xs[k] = Math.min(xs[k], lim);
+  }
+  const placed = list.map((x, k) => {
+    const lo = Math.min(14, x.width / 2), tail = Math.round(clamp(x.anchor - xs[k], lo, x.width - lo));
+    return { key: x.key, x: xs[k], width: x.width, tail };
+  });
+  return { placed, dropped };
+}
+function activityLevels(times, now, opts) {
+  const o = opts && typeof opts === 'object' ? opts : {};
+  const n = posInt(o.buckets, 6), span = num(o.span) > 0 ? num(o.span) : 60000, t = num(now), size = span / n;
+  const counts = new Array(n).fill(0);
+  for (const v of Array.isArray(times) ? times : []) {
+    const age = t - num(v);
+    if (!(age >= 0 && age < span)) continue;
+    counts[n - 1 - Math.floor(age / size)]++;
+  }
+  const top = Math.max(...counts);
+  return counts.map(c => (top ? c / top : 0));
+}
+const OPT_RE = /^\s*❯?\s*\d+\.\s+\S/;
+const unbox = l => String(l == null ? '' : l).replace(/^\s*[│┃]\s?/, '').replace(/\s?[│┃]\s*$/, '').replace(/\s+$/, '');
+// index of the first option of the last option block that has a ❯ cursor (-1: none)
+function optionTop(rows) {
+  let i = -1;
+  for (let k = rows.length - 1; k >= 0; k--) if (/^\s*❯\s*\d+\.\s+\S/.test(rows[k])) { i = k; break; }
+  if (i < 0) return -1;
+  while (i > 0 && OPT_RE.test(rows[i - 1]) || (i > 0 && /^\s{3,}\S/.test(rows[i - 1]) && i > 1 && OPT_RE.test(rows[i - 2]))) i--;   // up to the first option
+  return i;
+}
+const trimBlank = out => { while (out.length && !out[0]) out.shift(); while (out.length && !out[out.length - 1]) out.pop(); return out; };
+function promptContext(lines, max) {
+  const raw = Array.isArray(lines) ? lines : [], rows = raw.map(unbox), i = optionTop(rows);
+  if (i < 0) return '';
+  const out = [], cap = posInt(max, 14);
+  for (let k = i - 1; k >= 0 && out.length < cap; k--) {
+    const r = String(raw[k] == null ? '' : raw[k]).trim();
+    if (/^[╭┌]/.test(r) || /^[─━]{8,}$/.test(r)) break;   // the box's top / a rule
+    out.unshift(rows[k].trim());
+  }
+  return trimBlank(out).join('\n').replace(/\n{3,}/g, '\n\n');
+}
+function promptBox(lines, max) {
+  const raw = (Array.isArray(lines) ? lines : []).map(l => String(l == null ? '' : l)), rows = raw.map(unbox), i = optionTop(rows);
+  if (i < 0) return [];
+  const boxed = /^\s*[│┃]/.test(raw[i]), out = [], cap = posInt(max, 60);
+  for (let k = i - 1; k >= 0 && out.length < cap; k--) {
+    const r = raw[k].trim();
+    if (/^[╭┌]/.test(r) || /^[─━]{8,}$/.test(r) || (boxed && !/^[│┃]/.test(r))) break;
+    out.unshift(rows[k].trim());
+  }
+  return trimBlank(out);
+}
+function guardTexts(rows) {
+  const v = (Array.isArray(rows) ? rows : []).map(r => String(r == null ? '' : r).trim());
+  const blocks = [[]];
+  for (const r of v) { if (r) blocks[blocks.length - 1].push(r); else if (blocks[blocks.length - 1].length) blocks.push([]); }
+  const out = [v.filter(Boolean).join(' '), blocks.filter(b => b.length).map(b => b.join('')).join(' ')];
+  for (let i = 0; i + 1 < v.length; i++) if (v[i] && v[i + 1]) out.push(v[i] + v[i + 1]);   // each wrap point on its own
+  return out;
+}
+const PERM_Q_RE = /do you want to (proceed|make this edit|create|allow)|would you like to proceed/i;
+// a standing permission (this and later requests, this session, every edit, no prompts at all): never from the dock
+const PERM_NEVER_RE = /(?:don['’]?t|do not|never) ask again|during this session|auto-accept|bypass permissions|always allow/i;
+const HEAD_BASH_RE = /^bash command\b/i, HEAD_EDIT_RE = /^(edit|write|create|update|overwrite)\s+(file|notebook)\b/i;
+function permPrompt(lines, options) {
+  const box = promptBox(lines), opts = Array.isArray(options) ? options : [], head = box.find(Boolean) || '';
+  const perm = PERM_Q_RE.test(box.join('\n')) || opts.some(o => o && PERM_NEVER_RE.test(String(o.label || ''))) || HEAD_BASH_RE.test(head) || HEAD_EDIT_RE.test(head);
+  if (!perm) return { perm: false, kind: '', allowable: true, command: '' };
+  const kind = HEAD_BASH_RE.test(head) ? 'bash' : HEAD_EDIT_RE.test(head) ? 'edit' : 'other';
+  if (kind !== 'bash') return { perm, kind, allowable: false, command: '' };
+  // between the header and the question: the command, then maybe its one-row description
+  const qi = box.findIndex(r => PERM_Q_RE.test(r));
+  const body = box.slice(box.indexOf(head) + 1, qi < 0 ? box.length : qi).filter(Boolean);
+  const command = body[0] || '', len = [...command].length;
+  // a narrow terminal may have wrapped the command onto the row we would take for its description
+  const width = Math.max(0, ...(Array.isArray(lines) ? lines : []).map(l => [...String(l == null ? '' : l)].length));
+  const allowable = !!command && qi >= 0 && body.length <= 2 && len <= PERM_LINE_MAX && !/(…|\.\.\.)$/.test(command)
+    && !/[\\|&;]$/.test(command) && !(body.length === 2 && width <= PERM_LINE_MAX + 4);
+  return { perm, kind, allowable, command };
+}
+function optionRun(options) {
+  const list = Array.isArray(options) ? options.filter(o => o && Number.isInteger(Number(o.n))) : [];
+  let i = list.length - 1;
+  while (i > 0 && Number(list[i - 1].n) === Number(list[i].n) - 1) i--;
+  return list.slice(Math.max(0, i));
+}
+const TOOL_GLYPHS = { Bash: '$', BashOutput: '$', KillShell: '$', Edit: '✎', MultiEdit: '✎', Write: '✎', NotebookEdit: '✎', Read: '≡', NotebookRead: '≡',
+  Grep: '⌕', Glob: '⌕', LS: '⌕', WebFetch: '⊕', WebSearch: '⊕', Task: '◎', Agent: '◎', TodoWrite: '☑' };
+function toolGlyph(tool) {
+  const base = String(tool == null ? '' : tool).split(/[\s:(]/)[0].replace(CTRL_RE, '');
+  if (!base) return '';
+  if (TOOL_GLYPHS[base]) return TOOL_GLYPHS[base];
+  if (/^mcp__/.test(base)) return '⚙';
+  return [...base].slice(0, 2).join('');
+}
+function workFrame(step, reading) {
+  const s = Math.max(0, Math.floor(num(step)));
+  return reading ? 5 + (Math.floor(s / 2) % 2) : 3 + (s % 2);
 }
 
 // ── terminal screen text (the remote terminal view's rules, team/peer.mjs screenLines) ──
@@ -285,56 +428,6 @@ function screenLines(lines, opts) {
   return out.reverse();
 }
 
-// ── conversation turns (hover history panel) ──
-const RULE_RE = /^[─━]{8,}/;
-const SPIN_RE = /^(?:[✻✶✳✢✽]\s|[·*]\s.*(?:…|esc to interrupt))/;
-function screenTurns(lines) {
-  const rows = (Array.isArray(lines) ? lines : []).map(l => String(l == null ? '' : l).replace(/\s+$/, ''));
-  // the input box at the bottom (a rule, then the ❯ line): it and what follows it are not the conversation
-  let end = rows.length;
-  for (let i = rows.length - 2; i >= 0; i--) if (RULE_RE.test(rows[i].trim()) && /^[❯>]/.test(rows[i + 1].trim())) { end = i; break; }
-  const out = []; let cur = null;
-  for (let i = 0; i < end; i++) {
-    const t = rows[i].trim();
-    // a prompt: "❯ text" at the row's start — not a choice menu's cursor ("❯ 1. Yes", or an indented ❯)
-    if (/^❯\s*\S/.test(t) && !/^\s/.test(rows[i]) && !/^❯\s*\d+\.\s/.test(t)) { cur = { role: 'user', lines: [t.replace(/^❯\s*/, '')], open: true }; out.push(cur); continue; }
-    if (t.startsWith('⏺')) {
-      if (!cur || cur.role !== 'agent') { cur = { role: 'agent', lines: [] }; out.push(cur); }
-      cur.lines.push(t.replace(/^⏺\s*/, '')); continue;
-    }
-    if (!cur || RULE_RE.test(t) || SPIN_RE.test(t)) continue;   // the banner above the first turn, rules, spinners
-    if (cur.role === 'user') {
-      if (!t) { cur.open = false; continue; }
-      if (cur.open) { cur.lines.push(t); continue; }
-      cur = { role: 'agent', lines: [] }; out.push(cur);   // output after the prompt (hook / tool lines) belongs to the answer
-    }
-    cur.lines.push(rows[i].replace(/^\s{1,2}/, ''));
-  }
-  return out.map(x => ({ role: x.role, text: x.lines.join('\n') })).filter(x => x.text.trim());
-}
-function recentTurns(entries, opts) {
-  const o = opts && typeof opts === 'object' ? opts : {};
-  const maxTurns = posInt(o.maxTurns, 4), maxLines = posInt(o.maxLines, 6), lineMax = posInt(o.lineMax, 300);
-  const list = [];
-  for (const e of Array.isArray(entries) ? entries : []) {
-    if (!e || typeof e !== 'object') continue;
-    const rows = [];
-    for (const l of String(e.text == null ? '' : e.text).replace(/\r\n?/g, '\n').split('\n')) {
-      const v = l.replace(/\t/g, '  ').replace(CTRL_RE, '').replace(/\s+$/, '');
-      if (!v.trim() && (!rows.length || !rows[rows.length - 1].trim())) continue;   // no leading blank rows, no runs of them
-      rows.push(v);
-    }
-    while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
-    if (rows.length) list.push({ role: e.role === 'user' ? 'user' : 'agent', rows });
-  }
-  return list.slice(-maxTurns).map(({ role, rows }) => {
-    const cut = rows.length > maxLines;
-    const lines = rows.slice(0, maxLines).map(l => { const a = [...l]; return a.length > lineMax ? a.slice(0, lineMax - 1).join('') + '…' : l; });
-    if (cut) lines[lines.length - 1] = lines[lines.length - 1].replace(/…?$/, '…');
-    return { role, lines, cut };
-  });
-}
-
 // [허용] in the bar: only what one short line shows in full — a one-line Bash command or a one-line other request,
 // at most PERM_LINE_MAX characters, not cut by the hook. File edits (Edit / Write / MultiEdit / NotebookEdit — the panel
 // shows their diff), anything cut, empty or multi-line → answered in the panel ([거부] works for every request).
@@ -350,7 +443,7 @@ function permAllowable(sm) {
 }
 
 const AgentDeskDock = { EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
-  POP, SCREEN, popWidth, popExtra, popRect, screenLines, screenTurns, recentTurns };
+  POP, SCREEN, popWidth, popExtra, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame };
 root.AgentDeskDock = AgentDeskDock;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskDock;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

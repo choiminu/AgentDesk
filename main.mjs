@@ -878,12 +878,15 @@ ipcMain.on("orca:resize-window", (_e, w, h, forceHeight) => {
 //   it is wider: bounds.stripX / stripWidth); pop = the part of that room the panel covers: on Windows / Linux the
 //   window is cut to the bar plus that band (setShape), so the rest is neither drawn (no black box: the window is not
 //   transparent there) nor clickable.
+// { cursor: true } → { x, y }: the pointer in page coordinates (also outside the window), for hit tests that must not
+//   trust mouseover / mouseleave replayed after a resize.
 // { hit: bool } → while docked, whether the pointer is over something clickable; elsewhere clicks pass through to the
 //   windows behind (macOS / Windows: setIgnoreMouseEvents with forward, so the page still sees the pointer come back).
 // { on: false } → the panel's bounds, size limits, resizability, vibrancy and mouse handling back (always, try/finally).
 // A user drag of the bar is reported to the page (roca:dock-moved { cx, y }); moves made here are not. When a display
 // is added / removed / rearranged, the last request is placed again (roca:dock-moved { dir, reflow: true }).
 let dockState = null;   // { panel: bounds before docking, req: last request, last: last dockBounds result, setAt, moveT }
+let dockCursor = null;   // { at, x, y }: the last cursor answer (reused for 50 ms)
 const dockHooked = new WeakSet();
 let dockScreenHooked = false;
 const dockNum = (v, lo, hi) => (Number.isFinite(Number(v)) ? Math.min(Math.max(Number(v), lo), hi) : 0);
@@ -937,6 +940,15 @@ function dockReflow() {
 ipcMain.handle("orca:dock", (_e, req) => {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
   const r = req && typeof req === "object" ? req : {};
+  if (r.cursor === true) {   // the pointer's place in this window's page (the dock's hover timers check it)
+    if (_e.sender !== mainWindow.webContents) return null;   // only the widget's own page
+    const now = Date.now();
+    if (!dockCursor || now - dockCursor.at > 50) {
+      const p = screen.getCursorScreenPoint(), c = mainWindow.getContentBounds(), z = mainWindow.webContents.getZoomFactor() || 1;
+      dockCursor = { at: now, x: (p.x - c.x) / z, y: (p.y - c.y) / z };   // the page's CSS pixels (elementFromPoint)
+    }
+    return { x: dockCursor.x, y: dockCursor.y };
+  }
   if (typeof r.hit === "boolean") {
     if (dockState && !IS_LINUX) mainWindow.setIgnoreMouseEvents(!r.hit, { forward: true });
     return null;
