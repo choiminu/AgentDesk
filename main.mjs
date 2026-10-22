@@ -965,7 +965,7 @@ ipcMain.handle("orca:dock", (_e, req) => {
     try {
       mainWindow.setIgnoreMouseEvents(false);
       dockShape(null);
-      if (IS_MAC) mainWindow.setVibrancy("under-window");
+      if (IS_MAC) { mainWindow.setVibrancy("under-window"); mainWindow.setHasShadow(true); }
     } finally {
       mainWindow.setResizable(true);
       mainWindow.setMinimumSize(Math.min(280, w), Math.min(44, h));
@@ -977,7 +977,10 @@ ipcMain.handle("orca:dock", (_e, req) => {
   if (!dockState) {
     dockState = { panel: mainWindow.getBounds(), req: null, last: null, setAt: 0, moveT: null };
     mainWindow.setResizable(false);
-    if (IS_MAC) mainWindow.setVibrancy(null);   // the room above the bar stays see-through (the bar draws its own background)
+    // the room above the bar stays see-through (the bar draws its own background). No system window shadow either: macOS
+    // shapes it from the opaque pixels and keeps a stale copy while the window grows and shrinks for the panels, which
+    // showed as dark bands and edges around the terminal window — the bar and the panels carry their own CSS shadows
+    if (IS_MAC) { mainWindow.setVibrancy(null); mainWindow.setHasShadow(false); }
     if (!dockHooked.has(mainWindow)) { dockHooked.add(mainWindow); mainWindow.on("move", dockOnMove); }
     if (!dockScreenHooked) { dockScreenHooked = true; for (const ev of ["display-added", "display-removed", "display-metrics-changed"]) screen.on(ev, dockReflow); }
   }

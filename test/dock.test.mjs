@@ -256,6 +256,11 @@ test('main orca:dock: on keeps the panel bounds and unlocks the width; off resto
   assert.match(apply, /AgentDeskDock\.dockBounds\(/);
 });
 
+test('main: dock mode turns the system window shadow off (stale shadows showed as dark bands) and back on when leaving', () => {
+  assert.match(main, /if \(IS_MAC\) \{ mainWindow\.setVibrancy\(null\); mainWindow\.setHasShadow\(false\); \}/);
+  assert.match(main, /if \(IS_MAC\) \{ mainWindow\.setVibrancy\("under-window"\); mainWindow\.setHasShadow\(true\); \}/);
+});
+
 test('main: resize-window ignored while docked, saveBounds keeps the panel bounds, displays re-place the bar', () => {
   assert.match(between(main, 'ipcMain.on("orca:resize-window"', 'const [curW'), /if \(!mainWindow \|\| dockState\) return;/);
   assert.match(between(main, 'function saveBounds()', '\n}'), /dockState \? dockState\.panel : mainWindow\.getBounds\(\)/);

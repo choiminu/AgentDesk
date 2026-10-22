@@ -528,10 +528,10 @@ test('v1 mode: screen: one read per session at a time — parallel requests shar
     const bodies = await Promise.all(all.map(r => r.json()));
     assert.ok(bodies.every(b => JSON.stringify(b.lines) === JSON.stringify(bodies[0].lines)));
     assert.equal((await read()).status, 200);
-    assert.equal(calls.screen.length, 1, 'reused within 1 s');
+    assert.equal(calls.screen.length, 1, 'reused within 2 s');
     tick(REMOTE_SCREEN_CACHE_MS);
     assert.equal((await read()).status, 200);
-    assert.equal(calls.screen.length, 2, 'read again after 1 s');
+    assert.equal(calls.screen.length, 2, 'read again after 2 s');
   } finally { server.close(); }
 });
 
