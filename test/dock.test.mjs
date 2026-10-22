@@ -409,6 +409,9 @@ test('widget dock: hover opens the terminal window, a click goes to the terminal
   assert.match(between(html, 'function dockTileHtml(x)', '\n}\n'), /<span class="dock-name" aria-hidden="true">\$\{esc\(x\.name\)\}<\/span>/);
   assert.match(html, /\.dock-tiles\.s40 \.dock-name \{ display: none; \}/);
   assert.match(html, /\.dock-tile \{ position: relative; width: 56px; height: 56px;/);
+  // the terminal window opens over its tile; my tiles: pinned first, then the latest activity on the left
+  assert.match(between(html, 'function dockPopGeom(kind)', '\n}\n'), /const key = kind === 'term' \? dockTermKey\(\) : dockTipKey;[\s\S]*if \(tile\) \{ const r = tile\.getBoundingClientRect\(\); anchor = r\.left \+ r\.width \/ 2; \}\n\s*else if \(kind !== 'term'\) return null;/);
+  assert.match(between(html, 'function dockSessions()', '\n}\n'), /\.sort\(\(a, b\) => a\.pin - b\.pin \|\| \(b\.s\.time \|\| 0\) - \(a\.s\.time \|\| 0\) \|\| a\.i - b\.i\)/);
   // the screen wraps instead of scrolling sideways; a row of box-drawing rules is one thin line
   assert.match(html, /\.peer-term \.pt-screen \{ white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: hidden; \}/);
   assert.match(between(html, 'function termScreenHtml(lines)', '\n}\n'), /TERM_RULE_RE\.test\(l\) \? '<span class="pt-rule"><\/span>' : esc\(l\) \+ '\\n'/);
