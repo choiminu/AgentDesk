@@ -26,7 +26,27 @@
 //     the bar (hover card, review queue) — the window grows upward by that much (dir 'up'); when the bar sits too high
 //     for that it grows downward instead (dir 'down', the room is under the bar); never past the work area.
 //
+//     popWidth (with extra > 0): the width of the panel shown in that room; when it is wider than the bar the window
+//     grows sideways around the bar (the bar itself does not move): stripX = the bar's left edge inside the window,
+//     stripWidth = the bar's width, workWidth = the work area's width (for popWidth()).
+//
 //   permAllowable(summary) → may the bar offer [허용] for this permission request (see below)
+//
+//   Panels in the room above / below the bar (the renderer draws them; the window is asked for popExtra() of room):
+//   popWidth(kind, workWidth) → panel width: 'tip' (hover history) 420 cut to the work area (300 when that is what
+//     fits), 'term' (terminal window) min(720, 90 % of the work area), 'tipSmall' (the compact card) 260
+//   popExtra(kind) → room the window needs for that panel (its height plus a gap on both sides)
+//   popRect({ winWidth, width, anchor, dir, stripHeight, height, room }) → { x, width, height, top, bottom }
+//     x centred on anchor (a tile's centre, or the bar's) and clamped inside the window; top (dir 'down') or bottom
+//     (dir 'up') = the bar's height plus the gap; height cut to the room left (room = dockBounds extra)
+//   screenLines(lines, { mask, maxLines, lineMax, maxBytes }) → a terminal screen made safe to show: ANSI sequences and
+//     format characters removed, masked (mask(rows) → rows, e.g. AgentDeskMask.maskLines), control characters
+//     blanked, at most maxLines (200) lines of lineMax (400) characters and maxBytes (24 KB) of UTF-8 — the newest kept
+//   screenTurns(lines) → [{ role: 'user' | 'agent', text }] read from a Claude Code screen (screenLines output):
+//     "❯ text" rows are prompts (not a choice menu's "❯ 1. …" / indented ❯), "⏺" rows start an answer; the banner above the first turn, spinner / rule rows and
+//     the input box at the bottom are left out
+//   recentTurns(entries, { maxTurns, maxLines, lineMax }) → the last maxTurns (4) non-empty turns
+//     [{ role, lines, cut }], each at most maxLines (6) lines (cut: true, the last line ends in "…")
 (function (root) {
 'use strict';
 const STATES = ['ask', 'err', 'input', 'run', 'done'];
@@ -199,7 +219,120 @@ function dockBounds(input) {
   const above = stripY - wa.y, below = wa.y + wa.height - (stripY + stripHeight);
   const dir = want <= above || above >= below ? 'up' : 'down';
   const extra = Math.min(want, dir === 'up' ? above : below);
-  return { x, y: dir === 'up' ? stripY - extra : stripY, width, height: stripHeight + extra, stripY, stripHeight, extra, dir };
+  // a panel wider than the bar: the window grows sideways around the bar's centre, inside the work area
+  const popW = extra > 0 ? Math.round(Math.max(0, num(i.popWidth))) : 0;
+  const winW = Math.round(Math.min(wa.width, Math.max(width, popW ? popW + 2 * MARGIN : 0)));
+  const winX = Math.round(clamp(x + width / 2 - winW / 2, wa.x, wa.x + wa.width - winW));
+  return { x: winX, y: dir === 'up' ? stripY - extra : stripY, width: winW, height: stripHeight + extra, stripX: x - winX, stripWidth: width,
+    stripY, stripHeight, extra, dir, workWidth: wa.width };
+}
+
+// ── panels in the room above / below the bar ──
+const POP = { gap: 6, margin: 6, tipW: 420, tipMinW: 300, tipH: 320, tipSmallW: 260, tipSmallH: 120, termW: 720, termFrac: 0.9, termH: 420 };
+function popWidth(kind, workWidth) {
+  const ww = Math.max(0, Math.floor(num(workWidth))), room = Math.max(0, ww - 2 * POP.margin);
+  if (kind === 'term') return Math.min(POP.termW, Math.floor(ww * POP.termFrac), room);
+  if (kind === 'tip') return Math.min(room, Math.max(POP.tipMinW, Math.min(POP.tipW, room)));
+  if (kind === 'tipSmall') return Math.min(room, POP.tipSmallW);
+  return 0;
+}
+function popExtra(kind) {
+  const h = kind === 'term' ? POP.termH : kind === 'tip' ? POP.tipH : kind === 'tipSmall' ? POP.tipSmallH : 0;
+  return h ? h + 2 * POP.gap : 0;
+}
+function popRect(input) {
+  const i = input && typeof input === 'object' ? input : {};
+  const W = Math.max(0, Math.round(num(i.winWidth))), m = POP.margin;
+  const width = Math.max(0, Math.min(Math.round(num(i.width)), W - 2 * m));
+  const anchor = i.anchor != null && Number.isFinite(Number(i.anchor)) ? Number(i.anchor) : W / 2;
+  const x = Math.round(clamp(anchor - width / 2, m, Math.max(m, W - m - width)));
+  const off = Math.round(Math.max(0, num(i.stripHeight))) + POP.gap;
+  let height = Math.round(Math.max(0, num(i.height)));
+  if (i.room != null && Number.isFinite(Number(i.room))) height = Math.min(height, Math.max(0, Math.round(Number(i.room)) - 2 * POP.gap));
+  const down = i.dir === 'down';
+  return { x, width, height, top: down ? off : null, bottom: down ? null : off };
+}
+
+// ── terminal screen text (the remote terminal view's rules, team/peer.mjs screenLines) ──
+const SCREEN = { lines: 200, lineMax: 400, bytes: 24 * 1024 };
+const FORMAT_RE = /\p{Cf}/gu;
+// ANSI sequences: core/mask.js ANSI_RE (the remote terminal view's), loaded before this file / imported by the caller
+const ansiRe = () => (root.AgentDeskMask && root.AgentDeskMask.ANSI_RE) || /\u001b\[[0-9;:?<=>]*[ -/]*[@-~]|\u001b[@-_]/g;
+const SCREEN_CTRL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
+const posInt = (v, d) => (Number.isInteger(v) && v > 0 ? v : d);
+function utf8Len(s) {
+  let n = 0;
+  for (const ch of s) { const c = ch.codePointAt(0); n += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4; }
+  return n;
+}
+function screenLines(lines, opts) {
+  const o = opts && typeof opts === 'object' ? opts : {};
+  const maxLines = posInt(o.maxLines, SCREEN.lines), lineMax = posInt(o.lineMax, SCREEN.lineMax), maxBytes = posInt(o.maxBytes, SCREEN.bytes);
+  const src = (Array.isArray(lines) ? lines : []).slice(-maxLines * 2)
+    .map(l => String(l == null ? '' : l).slice(0, lineMax * 4).replace(ansiRe(), '').replace(FORMAT_RE, '').replace(/[\r\n]/g, ' '));
+  if (!src.length) return [];
+  let rows = src;
+  if (typeof o.mask === 'function') {
+    rows = o.mask(src);
+    if (!Array.isArray(rows) || rows.length !== src.length) return [];   // a masker that does not answer row for row: show nothing
+  }
+  const out = []; let size = 0;
+  for (let i = rows.length - 1; i >= 0 && out.length < maxLines; i--) {
+    const l = [...String(rows[i] == null ? '' : rows[i]).replace(SCREEN_CTRL_RE, ' ').replace(/\s+$/, '')].slice(0, lineMax).join('');
+    size += utf8Len(l) + 1; if (size > maxBytes) break;
+    out.push(l);
+  }
+  return out.reverse();
+}
+
+// ── conversation turns (hover history panel) ──
+const RULE_RE = /^[─━]{8,}/;
+const SPIN_RE = /^(?:[✻✶✳✢✽]\s|[·*]\s.*(?:…|esc to interrupt))/;
+function screenTurns(lines) {
+  const rows = (Array.isArray(lines) ? lines : []).map(l => String(l == null ? '' : l).replace(/\s+$/, ''));
+  // the input box at the bottom (a rule, then the ❯ line): it and what follows it are not the conversation
+  let end = rows.length;
+  for (let i = rows.length - 2; i >= 0; i--) if (RULE_RE.test(rows[i].trim()) && /^[❯>]/.test(rows[i + 1].trim())) { end = i; break; }
+  const out = []; let cur = null;
+  for (let i = 0; i < end; i++) {
+    const t = rows[i].trim();
+    // a prompt: "❯ text" at the row's start — not a choice menu's cursor ("❯ 1. Yes", or an indented ❯)
+    if (/^❯\s*\S/.test(t) && !/^\s/.test(rows[i]) && !/^❯\s*\d+\.\s/.test(t)) { cur = { role: 'user', lines: [t.replace(/^❯\s*/, '')], open: true }; out.push(cur); continue; }
+    if (t.startsWith('⏺')) {
+      if (!cur || cur.role !== 'agent') { cur = { role: 'agent', lines: [] }; out.push(cur); }
+      cur.lines.push(t.replace(/^⏺\s*/, '')); continue;
+    }
+    if (!cur || RULE_RE.test(t) || SPIN_RE.test(t)) continue;   // the banner above the first turn, rules, spinners
+    if (cur.role === 'user') {
+      if (!t) { cur.open = false; continue; }
+      if (cur.open) { cur.lines.push(t); continue; }
+      cur = { role: 'agent', lines: [] }; out.push(cur);   // output after the prompt (hook / tool lines) belongs to the answer
+    }
+    cur.lines.push(rows[i].replace(/^\s{1,2}/, ''));
+  }
+  return out.map(x => ({ role: x.role, text: x.lines.join('\n') })).filter(x => x.text.trim());
+}
+function recentTurns(entries, opts) {
+  const o = opts && typeof opts === 'object' ? opts : {};
+  const maxTurns = posInt(o.maxTurns, 4), maxLines = posInt(o.maxLines, 6), lineMax = posInt(o.lineMax, 300);
+  const list = [];
+  for (const e of Array.isArray(entries) ? entries : []) {
+    if (!e || typeof e !== 'object') continue;
+    const rows = [];
+    for (const l of String(e.text == null ? '' : e.text).replace(/\r\n?/g, '\n').split('\n')) {
+      const v = l.replace(/\t/g, '  ').replace(CTRL_RE, '').replace(/\s+$/, '');
+      if (!v.trim() && (!rows.length || !rows[rows.length - 1].trim())) continue;   // no leading blank rows, no runs of them
+      rows.push(v);
+    }
+    while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+    if (rows.length) list.push({ role: e.role === 'user' ? 'user' : 'agent', rows });
+  }
+  return list.slice(-maxTurns).map(({ role, rows }) => {
+    const cut = rows.length > maxLines;
+    const lines = rows.slice(0, maxLines).map(l => { const a = [...l]; return a.length > lineMax ? a.slice(0, lineMax - 1).join('') + '…' : l; });
+    if (cut) lines[lines.length - 1] = lines[lines.length - 1].replace(/…?$/, '…');
+    return { role, lines, cut };
+  });
 }
 
 // [허용] in the bar: only what one short line shows in full — a one-line Bash command or a one-line other request,
@@ -216,7 +349,8 @@ function permAllowable(sm) {
   return !!v.trim() && !/[\r\n]/.test(v) && [...v].length <= PERM_LINE_MAX;
 }
 
-const AgentDeskDock = { EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip };
+const AgentDeskDock = { EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
+  POP, SCREEN, popWidth, popExtra, popRect, screenLines, screenTurns, recentTurns };
 root.AgentDeskDock = AgentDeskDock;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskDock;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

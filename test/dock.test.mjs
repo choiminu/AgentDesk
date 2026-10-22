@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+await import('../core/mask.js');   // AgentDeskMask.ANSI_RE / maskRows, as the renderer loads it first
 await import('../core/dock.js');
 const D = globalThis.AgentDeskDock;
 const { dockModel, dockBounds, stateOf, tilesWidth, TILE } = D;
@@ -165,7 +166,7 @@ const WA = { x: 0, y: 25, width: 1440, height: 875 };   // a laptop work area un
 
 test('dockBounds: bottom centre of the work area, width and height clamped', () => {
   const b = dockBounds({ workArea: WA, contentWidth: 800, height: 72 });
-  assert.deepEqual(b, { x: 320, y: 25 + 875 - 72 - D.MARGIN, width: 800, height: 72, stripY: 25 + 875 - 72 - D.MARGIN, stripHeight: 72, extra: 0, dir: 'up' });
+  assert.deepEqual(b, { x: 320, y: 25 + 875 - 72 - D.MARGIN, width: 800, height: 72, stripX: 0, stripWidth: 800, stripY: 25 + 875 - 72 - D.MARGIN, stripHeight: 72, extra: 0, dir: 'up', workWidth: 1440 });
   assert.equal(dockBounds({ workArea: WA, contentWidth: 100 }).width, 320, 'at least 320');
   assert.equal(dockBounds({ workArea: WA, contentWidth: 5000 }).width, Math.floor(1440 * 0.9), 'at most 90 % of the work area');
   assert.equal(dockBounds({ workArea: WA, contentWidth: 800, height: 20 }).stripHeight, 64);
@@ -271,7 +272,7 @@ test('widget dock permission line: whitelist from core, arming and answers throu
   assert.doesNotMatch(f, /window\.orca\.perm/, 'no permission IPC of its own');
   // permArm keeps [허용] off while data-truncated is 1 (the dock relies on it)
   assert.match(between(html, 'function permArm(el)', '\n}'), /b\.dataset\.perm === 'allow' && el\.dataset\.truncated === '1'/);
-  // toasts reach the bar's hint line; clicks only select (no delayed terminal switch)
+  // toasts reach the bar's hint line
   assert.match(between(html, 'function showInAppToast(', '\n}'), /if \(typeof dockOn !== 'undefined' && dockOn\) dockHint\(/);
   assert.doesNotMatch(html, /dockClickT/);
 });
@@ -282,4 +283,140 @@ test('dockBounds: missing / empty work area → null; junk numbers fall back', (
   assert.equal(dockBounds(null), null);
   const b = dockBounds({ workArea: WA, contentWidth: 'abc', height: NaN, remembered: { cx: 'x', y: null } });
   assert.equal(b.width, 320); assert.equal(b.stripHeight, 72); assert.equal(b.x, 560);
+});
+
+// ── hover history panel / terminal window: sizes, window growth, placement ──
+const { popWidth, popExtra, popRect, screenLines, screenTurns, recentTurns, POP } = D;
+
+test('popWidth / popExtra: hover panel 420 (300 when that is what fits), terminal min(720, 90 %), compact card as before', () => {
+  assert.equal(popWidth('tip', 1440), 420);
+  assert.equal(popWidth('tip', 400), 388, 'cut to the work area (6 px margins)');
+  assert.equal(popWidth('tip', 300), 288, 'a work area narrower than 300 + margins: what fits');
+  assert.equal(popWidth('term', 1440), 720);
+  assert.equal(popWidth('term', 700), 630, '90 % of the work area');
+  assert.equal(popWidth('term', 320), 288);
+  assert.equal(popWidth('tipSmall', 1440), 260);
+  assert.equal(popWidth('inbox', 1440), 0); assert.equal(popWidth('tip', 'x'), 0);
+  assert.equal(popExtra('tip'), POP.tipH + 2 * POP.gap); assert.equal(POP.tipH, 320);
+  assert.equal(popExtra('term'), POP.termH + 2 * POP.gap); assert.equal(POP.termH, 420);
+  assert.equal(popExtra('tipSmall'), 132, 'the compact card keeps the old room');
+  assert.equal(popExtra(''), 0); assert.equal(popExtra('inbox'), 0);
+});
+
+test('dockBounds: a panel wider than the bar grows the window sideways around it; the bar does not move', () => {
+  const bar = dockBounds({ workArea: WA, contentWidth: 400 });
+  const b = dockBounds({ workArea: WA, contentWidth: 400, extra: popExtra('term'), popWidth: 720 });
+  assert.equal(b.width, 720 + 2 * D.MARGIN); assert.equal(b.stripWidth, 400);
+  assert.equal(b.x + b.stripX, bar.x, 'the bar keeps its screen x'); assert.equal(b.stripY, bar.stripY);
+  assert.equal(b.extra, 432); assert.equal(b.workWidth, 1440);
+  // near the right edge: the window is clamped into the work area, the bar stays where it was
+  const r = dockBounds({ workArea: WA, contentWidth: 400, extra: 332, popWidth: 420, remembered: { cx: 1430, y: 700 } });
+  const r0 = dockBounds({ workArea: WA, contentWidth: 400, remembered: { cx: 1430, y: 700 } });
+  assert.equal(r.x + r.width, 1440); assert.equal(r.x + r.stripX, r0.x); assert.ok(r.stripX > 0);
+  // narrower than the bar, no room, or a tiny work area: no change / never wider than the work area
+  assert.equal(dockBounds({ workArea: WA, contentWidth: 800, extra: 332, popWidth: 420 }).width, 800);
+  assert.equal(dockBounds({ workArea: WA, contentWidth: 400, extra: 0, popWidth: 720 }).width, 400);
+  const tiny = dockBounds({ workArea: { x: 0, y: 0, width: 320, height: 800 }, contentWidth: 320, extra: 432, popWidth: 720 });
+  assert.equal(tiny.width, 320); assert.equal(tiny.stripX, 0);
+});
+
+test('popRect: centred on the anchor, clamped inside the window, above or below the bar, cut to the room', () => {
+  assert.deepEqual(popRect({ winWidth: 1000, width: 420, anchor: 500, dir: 'up', stripHeight: 72, height: 320, room: 332 }),
+    { x: 290, width: 420, height: 320, top: null, bottom: 78 });
+  assert.equal(popRect({ winWidth: 1000, width: 420, anchor: 20 }).x, 6, 'left edge');
+  assert.equal(popRect({ winWidth: 1000, width: 420, anchor: 990 }).x, 1000 - 6 - 420, 'right edge');
+  const d = popRect({ winWidth: 320, width: 720, anchor: 100, dir: 'down', stripHeight: 72, height: 420, room: 200 });
+  assert.equal(d.width, 308); assert.equal(d.x, 6); assert.equal(d.top, 78); assert.equal(d.bottom, null); assert.equal(d.height, 188);
+  for (const [w, a] of [[1440, 0], [1440, 1440], [320, 160], [900, -50]]) {
+    for (const width of [300, 420, 720]) { const g = popRect({ winWidth: w, width, anchor: a }); assert.ok(g.x >= 6 && g.x + g.width <= w - 6, `${w}/${a}/${width}`); }
+  }
+  const j = popRect(null); assert.equal(j.width, 0); assert.equal(j.height, 0);
+});
+
+test('screenLines: ANSI / format characters gone, masked row by row, control characters blanked, 200 lines / 24 KB', () => {
+  assert.deepEqual(screenLines(['\u001b[38:5:1mx\u001b[0m', '\u009b1my', 'a\u001bPq#0\u001b\\b']), ['x', 'y', 'ab'], 'the shared ANSI_RE (":" CSI, 8-bit CSI, DCS)');
+  assert.deepEqual(screenLines(['\u001b[31mred\u001b[0m  ', 'a\tb\u0007c', 'x​y', '\u001b]0;title\u0007ok']), ['red', 'a b c', 'xy', 'ok']);
+  const masked = screenLines(['token=abcd1234efgh', 'plain'], { mask: rows => rows.map(r => r.replace(/token=\S+/, 'token=[MASKED]')) });
+  assert.deepEqual(masked, ['token=[MASKED]', 'plain']);
+  assert.deepEqual(screenLines(['a', 'b'], { mask: () => ['only one'] }), [], 'a masker that does not answer row for row: nothing shown');
+  assert.deepEqual(screenLines(['a'], { mask: () => null }), []);
+  const many = Array.from({ length: 500 }, (_, i) => `line ${i}`);
+  const out = screenLines(many); assert.equal(out.length, 200); assert.equal(out[199], 'line 499', 'the newest lines are kept');
+  const wide = Array.from({ length: 200 }, () => '가'.repeat(400));   // 1200 bytes a line
+  const cut = screenLines(wide); assert.ok(cut.length < 200);
+  assert.ok(cut.reduce((n, l) => n + Buffer.byteLength(l) + 1, 0) <= 24 * 1024);
+  assert.equal(screenLines(['x'.repeat(1000)])[0].length, 400);
+  assert.deepEqual(screenLines(null), []); assert.deepEqual(screenLines([null, 5]), ['', '5']);
+});
+
+test('screenTurns + recentTurns: prompts and answers from a Claude Code screen, the last turns cut to 6 lines', () => {
+  const screen = [
+    '╭───────────────╮', '│ ✻ Welcome     │', '╰───────────────╯', '',
+    '❯ 첫 질문', '', '⏺ 첫 답', '',
+    '❯ fix the bug', '  in core/dock.js', '',
+    '⏺ Reading the file.', '  ⎿  Read 222 lines', '', '⏺ Fixed:', '  1', '  2', '  3', '  4', '  5', '  6', '',
+    '✻ Thinking… (esc to interrupt)', '',
+    '────────────────────────────────', '❯ ', '────────────────────────────────', '  ⏵⏵ bypass permissions on',
+  ];
+  const turns = screenTurns(screen);
+  assert.deepEqual(turns.map(x => x.role), ['user', 'agent', 'user', 'agent']);
+  assert.equal(turns[2].text, 'fix the bug\nin core/dock.js');
+  assert.ok(!turns.some(x => /Welcome|Thinking|bypass|────/.test(x.text)), 'banner, spinner, input box left out');
+  const r = recentTurns(turns, { maxTurns: 3, maxLines: 6 });
+  assert.equal(r.length, 3); assert.equal(r[0].role, 'agent'); assert.deepEqual(r[0].lines, ['첫 답']);
+  const last = r[2];
+  assert.equal(last.cut, true); assert.equal(last.lines.length, 6); assert.match(last.lines[5], /…$/);
+  assert.equal(last.lines[0], 'Reading the file.');
+  assert.deepEqual(screenTurns(['plain shell', '$ ls']), [], 'no prompt / answer markers: no turns');
+  // a choice menu is not a prompt: "❯ 1. Yes" and indented ❯ rows belong to the answer
+  const menu = screenTurns(['❯ deploy it', '', '⏺ Proceed?', '  ❯ 1. Yes', '    2. No', '❯ 2. No, and tell Claude', ' ❯ indented']);
+  assert.deepEqual(menu.map(x => x.role), ['user', 'agent']);
+  assert.match(menu[1].text, /1\. Yes/); assert.ok(!menu.some(x => x.role === 'user' && /Yes|No|indented/.test(x.text)));
+  assert.deepEqual(screenTurns(null), []);
+});
+
+test('recentTurns: blank rows collapsed, empty turns dropped, long lines cut, junk ignored', () => {
+  const r = recentTurns([null, 5, { role: 'user', text: '\n\n a \n\n\n b \n\n' }, { role: 'x', text: '   ' }, { text: 'y'.repeat(500) }]);
+  assert.deepEqual(r.map(x => x.role), ['user', 'agent']);
+  assert.deepEqual(r[0].lines, [' a', '', ' b']);
+  assert.equal([...r[1].lines[0]].length, 300); assert.match(r[1].lines[0], /…$/);
+  assert.equal(recentTurns(Array.from({ length: 9 }, (_, i) => ({ text: `t${i}` }))).length, 4, 'default: the last 4 turns');
+  assert.deepEqual(recentTurns(undefined), []);
+});
+
+test('widget dock: hover panel and terminal window — data sources, masking, shared terminal view, click / Enter / Esc', () => {
+  const read = between(html, 'async function dockScreenRead(', '\n}\n');
+  assert.match(read, /window\.orca\.terminalRead\(h, true\)/);
+  assert.match(read, /AgentDeskDock\.screenLines\(extractTail\(res\), \{ mask: rows => AgentDeskMask\.maskRows\(rows\) \}\)/, 'the remote view\'s row masking');
+  assert.match(read, /Date\.now\(\) - c\.at < DOCK_SCREEN_MS/, 'one read per handle per second');
+  const turns = between(html, 'function dockTipTurns(', '\n}\n');
+  assert.match(turns, /AgentDeskDock\.recentTurns\(AgentDeskDock\.screenTurns\(c\.lines\)/);
+  assert.match(turns, /AgentDeskMask\.mask\(/, 'the hook / report text is masked too');
+  const tip = between(html, 'function dockTipHtml(', '\n}\n');
+  assert.ok(tip.includes("${esc(x.peer ? `@${x.owner} / ${x.name}` : x.name)}"), 'the session name through esc()');
+  assert.ok(tip.includes("${esc((v.role === 'user' ? '› ' : '') + v.lines.join("), 'the turns through esc()');
+  assert.ok(tip.includes('${esc(clean(now, 160))}') && tip.includes('${esc(clean(msg, 200))}'), '지금 하는 일 / the last answer: masked, cut, escaped');
+  assert.match(between(html, 'function dockTipPoll()', '\n}\n'), /setTimeout\(dockTipPoll, DOCK_SCREEN_MS\)/);
+  assert.match(between(html, 'function dockTipHide()', '\n}\n'), /clearTimeout\(dockTipPollT\)/, 'polling stops when the panel goes');
+  // the terminal window: the remote view's markup, local reads / send / interrupt, permission line from the bar
+  const open = between(html, 'function dockTermOpen(x)', '\nfunction dockTermSchedule');
+  assert.match(open, /termViewHtml\(/); assert.match(open, /dockSendTo\(ys, hh, text\)/);
+  assert.match(open, /await teamConfirm\([\s\S]*window\.orca\.terminalInterrupt\(now\.hh\)/, 'interrupt after a confirm');
+  assert.match(open, /dockFocusTerminal\(y\)/);
+  assert.match(between(html, 'async function dockSendTo(', '\n}\n'), /window\.orca\.terminalSend\(handle, text, true, 15\)[\s\S]*accepted[\s\S]*turn_started/);
+  assert.match(between(html, 'function dockTermSync()', '\n}\n'), /x\.canInput && !perm/);
+  assert.match(between(html, 'function dockPermShow(r)', '\n}\n'), /\(dockTerm && \$\('pt-perm'\)\) \|\| \$\('dock-perm'\)/);
+  assert.match(between(html, 'function peerRemoteTermOpen(', '\n}\n'), /termViewHtml\(/, 'the teammate view uses the same markup');
+  const click = between(html, "$('dock-tiles').addEventListener('click'", '\n});');
+  assert.match(click, /dockOpenT = setTimeout\(\(\) => \{[^\n]*dockTileOpen\(y\)[^\n]*\}, 250\)/, 'a click opens after 250 ms');
+  assert.match(between(html, "$('dock-tiles').addEventListener('dblclick'", '\n});'), /clearTimeout\(dockOpenT\)/, 'a double-click cancels it');
+  assert.match(open, /if \(!st\.alive\) return;[^\n]*\n\s*const now = cur\(\); if \(!now\.hh\) return;\n\s*const r = await window\.orca\.terminalInterrupt\(now\.hh\)/, 'looked up again after the confirm');
+  assert.match(between(html, "$('dock-tiles').addEventListener('keydown'", '\n});'), /e\.key === 'Enter'[\s\S]*dockTileOpen\(x\)/);
+  assert.match(html, /if \(\$\('peer-term'\) \|\| \$\('dock-term'\)\) \{[^\n]*peerRemoteTermClose\(\);[^\n]*dockTermClose\(\); dockTileFocus\(k\)/, 'Esc closes either window, focus back on the tile');
+  assert.match(html, /if \(dockOn && dockTipKey\) \{ const k = dockTipKey; dockTipHide\(\); dockTileFocus\(k\)/, 'Esc closes the hover panel');
+  assert.match(between(html, 'function dockQuickDraw(m)', '\n}\n'), /input\.hidden = send\.hidden = mode === 'perm' \|\| !!term/, 'one input line at a time');
+  // main: the bar's own rectangle inside a wider window
+  assert.match(between(main, 'function dockStripRect(', '\n}'), /cur\.x \+ \(last\.stripX \|\| 0\)/);
+  assert.match(between(main, 'function dockShape(', '\n}'), /x: b\.stripX \|\| 0/);
+  assert.match(between(main, 'function dockApply(', '\n}\n'), /popWidth: dockNum\(r\.popWidth, 0, 4000\)/);
 });

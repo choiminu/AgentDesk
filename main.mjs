@@ -872,11 +872,12 @@ ipcMain.on("orca:resize-window", (_e, w, h, forceHeight) => {
 });
 
 // ── dock mode: the widget as a thin bar on the bottom edge of the work area (core/dock.js dockBounds) ──
-// { on: true, contentWidth, height, extra, pop: { x, width }, remembered: { cx, y } } → bounds; the first call keeps the
-//   panel's bounds. extra = room for the hover card / review queue (above the bar, or below it when the bar sits high:
-//   bounds.dir); pop = the part of that room the card / queue covers: on Windows / Linux the window is cut to the bar
-//   plus that band (setShape), so the rest is neither drawn (no black box: the window is not transparent there)
-//   nor clickable.
+// { on: true, contentWidth, height, extra, popWidth, pop: { x, width }, remembered: { cx, y } } → bounds; the first call
+//   keeps the panel's bounds. extra = room for the hover panel / terminal window / review queue (above the bar, or below
+//   it when the bar sits high: bounds.dir); popWidth = that panel's width (the window grows sideways around the bar when
+//   it is wider: bounds.stripX / stripWidth); pop = the part of that room the panel covers: on Windows / Linux the
+//   window is cut to the bar plus that band (setShape), so the rest is neither drawn (no black box: the window is not
+//   transparent there) nor clickable.
 // { hit: bool } → while docked, whether the pointer is over something clickable; elsewhere clicks pass through to the
 //   windows behind (macOS / Windows: setIgnoreMouseEvents with forward, so the page still sees the pointer come back).
 // { on: false } → the panel's bounds, size limits, resizability, vibrancy and mouse handling back (always, try/finally).
@@ -888,7 +889,7 @@ let dockScreenHooked = false;
 const dockNum = (v, lo, hi) => (Number.isFinite(Number(v)) ? Math.min(Math.max(Number(v), lo), hi) : 0);
 // the bar's own rectangle inside the current window (the room for the card / queue is above or below it)
 function dockStripRect(cur, last) {
-  return { x: cur.x, y: last.dir === "down" ? cur.y : cur.y + cur.height - last.stripHeight, width: cur.width, height: last.stripHeight };
+  return { x: cur.x + (last.stripX || 0), y: last.dir === "down" ? cur.y : cur.y + cur.height - last.stripHeight, width: last.stripWidth || cur.width, height: last.stripHeight };
 }
 function dockOnMove() {
   if (!dockState || !dockState.last || Date.now() - dockState.setAt < 400) return;
@@ -905,7 +906,7 @@ function dockShape(b, pop) {
   let rects = [];
   if (b && b.extra > 0 && pop && typeof pop === "object") {
     const x = Math.round(dockNum(pop.x, 0, b.width)), w = Math.round(dockNum(pop.width, 0, b.width - x));
-    const bar = { x: 0, y: b.dir === "down" ? 0 : b.extra, width: b.width, height: b.stripHeight };
+    const bar = { x: b.stripX || 0, y: b.dir === "down" ? 0 : b.extra, width: b.stripWidth || b.width, height: b.stripHeight };
     rects = w > 0 ? [bar, { x, y: b.dir === "down" ? b.stripHeight : 0, width: w, height: b.extra }] : [bar];
   }
   try { mainWindow.setShape(rects); } catch {}
@@ -916,7 +917,7 @@ function dockApply(r) {
   const wa = screen.getDisplayMatching(last ? dockStripRect(cur, last) : cur).workArea;
   const rem = r.remembered && typeof r.remembered === "object" ? { cx: Number(r.remembered.cx), y: Number(r.remembered.y) } : null;
   const b = globalThis.AgentDeskDock.dockBounds({
-    workArea: wa, contentWidth: dockNum(r.contentWidth, 0, 20000), height: dockNum(r.height, 0, 200), extra: dockNum(r.extra, 0, 2000), remembered: rem,
+    workArea: wa, contentWidth: dockNum(r.contentWidth, 0, 20000), height: dockNum(r.height, 0, 200), extra: dockNum(r.extra, 0, 2000), popWidth: dockNum(r.popWidth, 0, 4000), remembered: rem,
   });
   if (!b) return null;
   dockState.last = b; dockState.setAt = Date.now();
