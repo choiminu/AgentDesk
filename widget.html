@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-8sMbGiFXUuoVqusb6bUXc1ofVxjnVufDzmDOlkMY+9w='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-CAJ1vIHAXKiw8OHlUUh0fmhZNICUWUcAv7oB9ckt+ds='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2788,6 +2788,7 @@ function inboxToggle(open) {
   if (dockOn) $('dock-inbox').setAttribute('aria-expanded', inboxQOpen ? 'true' : 'false');
   if (!inboxQOpen) { el.hidden = true; el.innerHTML = ''; inboxQSig = ''; clearTimeout(inboxQArmT); if (dockOn) { dockAskPlace(); dockBoundsSync(); } return; }
   // dock mode: the list opens above the bar (the window grows upward while it is open)
+  if (dockOn) dockWake();
   if (dockOn) { dockTipHide(); dockTermClose(true); dockPopPlace(); dockBoundsSync(); }
   else { el.style.bottom = ''; el.style.top = `${Math.round(document.querySelector('.header').getBoundingClientRect().bottom) + 2}px`; }
   el.hidden = false; inboxDraw();
@@ -2887,11 +2888,14 @@ function dockPermMap() {
   for (const r of permSorted()) { const s = permSessionOf(r.sessionId); if (s && !m.has(s.id)) m.set(s.id, r); }
   return m;
 }
-// my sessions in the dashboard's order: hidden ones left out, finished ones only when pinned or active in the last 24 h
+// my sessions, pinned first and then by latest activity (newest on the left): hidden ones left out, finished ones only
+// when pinned or active in the last 24 h
 function dockSessions() {
   const now = Date.now(), perm = dockPermMap();
   return sessions.filter(s => !hiddenSessions.has(s.id) && (s.status !== 'done' || pinnedSessions.has(s.id) || (s.time && now - s.time < DONE_RECENT_MS)))
-    .map(s => ({ id: s.id, name: s.name, status: s.status, needsInput: s.needsInput, hasPerm: perm.has(s.id), subs: s.subagents || [], handle: !!handles.get(s.id) }));
+    .map((s, i) => ({ s, i, pin: pinnedSessions.has(s.id) ? 0 : 1 }))
+    .sort((a, b) => a.pin - b.pin || (b.s.time || 0) - (a.s.time || 0) || a.i - b.i)   // pinned first, then the latest activity leftmost
+    .map(({ s }) => ({ id: s.id, name: s.name, status: s.status, needsInput: s.needsInput, hasPerm: perm.has(s.id), subs: s.subagents || [], handle: !!handles.get(s.id) }));
 }
 // teammates' sessions, only while team sharing works (as the review queue's team kinds)
 function dockPeers() {
@@ -3061,17 +3065,17 @@ function dockPopKind() {
   if (dockAskVisible()) return [...dockAsk.values()].some(a => a.placed && a.big) ? 'bubblesBig' : 'bubbles';
   return dockTipKey ? 'tipSmall' : '';
 }
-// a panel's place in the window: the hover panel over its tile, the terminal window over the bar's centre
+// a panel's place in the window: over its tile (popRect clamps it inside the window), the terminal window at the
+// bar's centre only when its tile is not in the row
 function dockPopGeom(kind) {
   const w = dockWin && dockWin.width ? dockWin : null, winWidth = w ? w.width : window.innerWidth;
   const stripX = w ? w.stripX || 0 : 0, stripW = w ? w.stripWidth || winWidth : winWidth;
   const want = AgentDeskDock.popWidth(kind, (w && w.workWidth) || (window.screen && window.screen.availWidth) || winWidth);
   let anchor = stripX + stripW / 2;
-  if (kind !== 'term') {
-    const tile = dockTipKey && $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(dockTipKey)}"]`);
-    if (!tile) return null;
-    const r = tile.getBoundingClientRect(); anchor = r.left + r.width / 2;
-  }
+  const key = kind === 'term' ? dockTermKey() : dockTipKey;   // the panel sits over the tile it belongs to
+  const tile = key && $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(key)}"]`);
+  if (tile) { const r = tile.getBoundingClientRect(); anchor = r.left + r.width / 2; }
+  else if (kind !== 'term') return null;   // the terminal window falls back to the bar's centre (its tile folded into "+N")
   const P = AgentDeskDock.POP, height = kind === 'term' ? P.termH : P.tipSmallH;
   const room = w && w.extra > 0 ? w.extra : AgentDeskDock.popExtra(kind);
   return { want, ...AgentDeskDock.popRect({ winWidth, width: want, anchor, dir: dockDir, stripHeight: DOCK_H, height, room }) };
@@ -3150,6 +3154,7 @@ function dockTipHtml(x) {
     + (now ? `<div class="tp-now">${esc(clean(now, 120))}</div>` : '') + (msg ? `<div class="tp-msg">${esc(clean(msg, 200))}</div>` : '');
 }
 function dockTipShow(key) {
+  dockWake();
   const x = dockTileOf(key), tile = $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(key)}"]`), tip = $('dock-tip');
   if (!x || !tile || inboxQOpen || dockTermBg() || dockAskOn(key)) { dockTipHide(); return; }   // the window / its bubble show more than the card
   const html = dockTipHtml(x);
@@ -3230,6 +3235,7 @@ function dockHoverHold(over) {
   return dockTyping() || on || !!$('team-modal');
 }
 function dockHover(key) {
+  dockWake();
   clearTimeout(dockHoverT); dockHoverT = 0; clearTimeout(dockLeaveT); dockLeaveT = 0;
   const gen = ++dockHoverGen, x = dockTileOf(key), open = dockTermKey();
   if (!x || open === key) return;
@@ -3291,6 +3297,7 @@ function dockTermFor(x) {
   else dockHint(t('위임받은 팀원 세션만 터미널 창을 열 수 있습니다 (더블클릭: 팀 탭)'), 'err');   // not delegated: nothing opens
 }
 function dockTermOpen(x) {
+  dockWake();
   dockTermClose(true);
   const s = dockLocal(x), h = s && handles.get(s.id);
   if (!h) { dockHint(t('이 세션의 터미널을 찾을 수 없습니다'), 'err', true); return; }
@@ -3482,6 +3489,7 @@ async function dockAskRead(a) {
   a.userGuard = ug; a.dirty = true; dockAskRender();
 }
 function dockAskRender() {
+  if (dockAskVisible()) dockWake();
   const box = $('dock-asks');
   for (const a of dockAsk.values()) {
     if (a.kind === 'choice' && !a.sig) continue;   // first read not back yet
@@ -3797,12 +3805,14 @@ document.addEventListener('visibilitychange', () => {
   if (dockTerm) dockTermPoll(dockTerm);
   dockAnimKick();
 });
-// fade when the pointer leaves the bar (1.5 s), back to full when it returns
+// fade when the pointer leaves the bar (1.5 s), back to full when it returns — never while a panel (terminal window,
+// card, bubbles, queue) is open: a faded window lets what is behind it show through the panel as dark bands
+function dockWake() { clearTimeout(dockFadeT); if (dockOn) window.orca.setOpacity(1); }
 document.documentElement.addEventListener('mouseleave', () => {
   clearTimeout(dockFadeT);
-  if (dockOn && dockCfg.opacity < 1) dockFadeT = setTimeout(() => { if (dockOn && !inboxQOpen && !dockTermBg()) window.orca.setOpacity(dockCfg.opacity); }, 1500);
+  if (dockOn && dockCfg.opacity < 1) dockFadeT = setTimeout(() => { if (dockOn && !dockPopKind()) window.orca.setOpacity(dockCfg.opacity); }, 1500);
 });
-document.documentElement.addEventListener('mouseenter', () => { clearTimeout(dockFadeT); if (dockOn) window.orca.setOpacity(1); });
+document.documentElement.addEventListener('mouseenter', dockWake);
 window.addEventListener('resize', () => { if (dockOn) dockRender(); });
 // the user dragged the bar: remember the spot (main reports only moves it did not make itself)
 window.orca.onDockMoved(p => {
@@ -8379,7 +8389,7 @@ function peerRemoteTermOpen(owner, sid) {
   bg.innerHTML = termViewHtml({ label: t('원격 터미널'), title: `🔑 ${esc(t('터미널'))} · @${esc(owner)} / ${esc(s ? s.name : sid)}`,
     intro: t('상대 화면을 그대로 보여 줍니다 (민감 정보는 가려짐). 승인·선택 프롬프트는 소유자만 답할 수 있습니다.') });
   bg.addEventListener('mousedown', e => { if (e.target === bg) peerRemoteTermClose(); });
-  if (dockOn) { bg.classList.add('docked'); dockTermClose(); dockTipHide(); }   // the dock bar: in the room above / below it
+  if (dockOn) { dockWake(); bg.classList.add('docked'); dockTermClose(); dockTipHide(); }   // the dock bar: in the room above / below it
   document.body.appendChild(bg);
   if (dockOn) dockHoverWire(bg);
   const st = peerTerm = { owner, sid, timer: 0, delay: PEER_TERM_MS, busy: false, sending: false, refocus: false, lastText: null, alive: true, canInput: false };
