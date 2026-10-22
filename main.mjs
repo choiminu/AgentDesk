@@ -872,7 +872,8 @@ ipcMain.on("orca:resize-window", (_e, w, h, forceHeight) => {
 });
 
 // ── dock mode: the widget as a thin bar on the bottom edge of the work area (core/dock.js dockBounds) ──
-// { on: true, contentWidth, height, extra, popWidth, pop: { x, width }, remembered: { cx, y } } → bounds; the first call
+// { on: true, contentWidth, height, extra, popWidth, pop: { x, width }, remembered: { [displayId]: { cx, y, at } }, hidden } →
+//   bounds + displayId (the display the bar is on; core/dock.js dockPickDisplay picks it and its spot); the first call
 //   keeps the panel's bounds. extra = room for the hover panel / terminal window / review queue (above the bar, or below
 //   it when the bar sits high: bounds.dir); popWidth = that panel's width (the window grows sideways around the bar when
 //   it is wider: bounds.stripX / stripWidth); pop = the part of that room the panel covers: on Windows / Linux the
@@ -883,8 +884,9 @@ ipcMain.on("orca:resize-window", (_e, w, h, forceHeight) => {
 // { hit: bool } → while docked, whether the pointer is over something clickable; elsewhere clicks pass through to the
 //   windows behind (macOS / Windows: setIgnoreMouseEvents with forward, so the page still sees the pointer come back).
 // { on: false } → the panel's bounds, size limits, resizability, vibrancy and mouse handling back (always, try/finally).
-// A user drag of the bar is reported to the page (roca:dock-moved { cx, y }); moves made here are not. When a display
-// is added / removed / rearranged, the last request is placed again (roca:dock-moved { dir, reflow: true }).
+// A user drag of the bar is reported to the page (roca:dock-moved { cx, y, displayId }); moves made here are not. When a
+// display is added / removed / rearranged, the last request is placed again (roca:dock-moved { dir, displayId, reflow:
+// true }): a bar whose saved display is gone goes to the primary display's default place.
 let dockState = null;   // { panel: bounds before docking, req: last request, last: last dockBounds result, setAt, moveT }
 let dockCursor = null;   // { at, x, y }: the last cursor answer (reused for 50 ms)
 const dockHooked = new WeakSet();
@@ -900,14 +902,18 @@ function dockOnMove() {
   dockState.moveT = setTimeout(() => {
     if (!dockState || !dockState.last || !mainWindow || mainWindow.isDestroyed() || Date.now() - dockState.setAt < 400) return;
     const s = dockStripRect(mainWindow.getBounds(), dockState.last);
-    mainWindow.webContents.send("roca:dock-moved", { cx: Math.round(s.x + s.width / 2), y: s.y });
+    mainWindow.webContents.send("roca:dock-moved", { cx: Math.round(s.x + s.width / 2), y: s.y, displayId: String(screen.getDisplayMatching(s).id) });
   }, 300);
 }
-// Windows / Linux: draw (and hit-test) only the bar plus the card / queue band; [] = the whole window again
-function dockShape(b, pop) {
+// Windows / Linux: draw (and hit-test) only the bar plus the card / queue band; [] = the whole window again. Linux has
+// no click-through: while the bar is auto-hidden only the 8 px edge it still shows takes the pointer
+const DOCK_PEEK = 8;
+function dockShape(b, pop, hidden) {
   if (IS_MAC || typeof mainWindow.setShape !== "function") return;
   let rects = [];
-  if (b && b.extra > 0 && pop && typeof pop === "object") {
+  if (b && hidden === true && IS_LINUX) {
+    rects = [{ x: b.stripX || 0, y: b.dir === "down" ? 0 : (b.extra || 0) + b.stripHeight - DOCK_PEEK, width: b.stripWidth || b.width, height: DOCK_PEEK }];
+  } else if (b && b.extra > 0 && pop && typeof pop === "object") {
     const x = Math.round(dockNum(pop.x, 0, b.width)), w = Math.round(dockNum(pop.width, 0, b.width - x));
     const bar = { x: b.stripX || 0, y: b.dir === "down" ? 0 : b.extra, width: b.stripWidth || b.width, height: b.stripHeight };
     rects = w > 0 ? [bar, { x, y: b.dir === "down" ? b.stripHeight : 0, width: w, height: b.extra }] : [bar];
@@ -916,26 +922,32 @@ function dockShape(b, pop) {
 }
 function dockApply(r) {
   const cur = mainWindow.getBounds(), last = dockState.last;
-  // the display the bar is on now (the panel's display on the first call)
-  const wa = screen.getDisplayMatching(last ? dockStripRect(cur, last) : cur).workArea;
-  const rem = r.remembered && typeof r.remembered === "object" ? { cx: Number(r.remembered.cx), y: Number(r.remembered.y) } : null;
+  // the display: the one the bar is on once placed; else the window's when a spot is saved for it, the last saved one
+  // that still exists, the primary display (spots saved, their displays gone), or the window's (nothing saved)
+  const pick = globalThis.AgentDeskDock.dockPickDisplay({
+    displays: screen.getAllDisplays().map(d => ({ id: String(d.id), workArea: d.workArea })),
+    barId: last ? String(screen.getDisplayMatching(dockStripRect(cur, last)).id) : null, hereId: String(screen.getDisplayMatching(cur).id),
+    primaryId: String(screen.getPrimaryDisplay().id), remembered: r.remembered,
+  });
+  const wa = pick ? pick.workArea : screen.getDisplayMatching(cur).workArea;
   const b = globalThis.AgentDeskDock.dockBounds({
-    workArea: wa, contentWidth: dockNum(r.contentWidth, 0, 20000), height: dockNum(r.height, 0, 200), extra: dockNum(r.extra, 0, 2000), popWidth: dockNum(r.popWidth, 0, 4000), remembered: rem,
+    workArea: wa, contentWidth: dockNum(r.contentWidth, 0, 20000), height: dockNum(r.height, 0, 200), extra: dockNum(r.extra, 0, 2000), popWidth: dockNum(r.popWidth, 0, 4000), remembered: pick ? pick.rem : null,
   });
   if (!b) return null;
+  if (pick) b.displayId = pick.id;
   dockState.last = b; dockState.setAt = Date.now();
   // maxWidth 480 is the panel's limit; the bar may be as wide as the work area
   mainWindow.setMinimumSize(Math.min(280, b.width), Math.min(44, b.height));
   mainWindow.setMaximumSize(Math.max(480, wa.width), Math.max(b.height, wa.height));
   mainWindow.setBounds({ x: b.x, y: b.y, width: b.width, height: b.height });
-  dockShape(b, r.pop);
+  dockShape(b, r.pop, r.hidden === true);
   return b;
 }
 function dockReflow() {
   if (!dockState || !dockState.req || !mainWindow || mainWindow.isDestroyed()) return;
   dockState.last = null;   // the old display may be gone: start from where the window is now
   const b = dockApply(dockState.req);
-  if (b) mainWindow.webContents.send("roca:dock-moved", { dir: b.dir, reflow: true });
+  if (b) mainWindow.webContents.send("roca:dock-moved", { dir: b.dir, displayId: b.displayId || "", reflow: true });
 }
 ipcMain.handle("orca:dock", (_e, req) => {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
@@ -985,7 +997,12 @@ ipcMain.handle("orca:dock", (_e, req) => {
     if (!dockScreenHooked) { dockScreenHooked = true; for (const ev of ["display-added", "display-removed", "display-metrics-changed"]) screen.on(ev, dockReflow); }
   }
   dockState.req = r;
-  if (!(dockNum(r.extra, 0, 2000) > 0)) mainWindow.setIgnoreMouseEvents(false);   // no room around the bar: all of it is clickable
+  // no room around the bar: all of it is clickable — unless it is auto-hidden (core dockHitPlan: clicks pass through
+  // with forward, so the pointer coming back still reaches the page; Linux has no click-through: dockShape instead)
+  if (!(dockNum(r.extra, 0, 2000) > 0)) {
+    const plan = globalThis.AgentDeskDock.dockHitPlan({ hidden: r.hidden === true, extra: 0 });
+    if (IS_LINUX) mainWindow.setIgnoreMouseEvents(false); else mainWindow.setIgnoreMouseEvents(!plan.hit, { forward: true });
+  }
   return dockApply(r);
 });
 

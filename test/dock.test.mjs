@@ -121,7 +121,7 @@ test('dockModel: zero room → no tiles at all (the right-hand buttons keep thei
 
 test('dockModel: teammates at most 8 tiles + "+N", delegated ones first', () => {
   const peers = Array.from({ length: 12 }, (_, k) => ({ peer: 'kim', id: `p${k}`, status: 'done', delegated: k === 11 }));
-  const m = dockModel({ sessions: [sess('a', 'running')], peers });
+  const m = dockModel({ sessions: [sess('a', 'running')], peers, groupPeers: false });   // not grouped by teammate: the pile
   assert.equal(m.peers.length, 9);
   assert.ok(m.peers.some(x => x.key === 'peer:kim/p11'), 'the delegated session stays visible');
   const pile = m.peers[8];
@@ -170,8 +170,8 @@ test('dockBounds: bottom centre of the work area, width and height clamped', () 
   assert.deepEqual(b, { x: 320, y: 25 + 875 - 72 - D.MARGIN, width: 800, height: 72, stripX: 0, stripWidth: 800, stripY: 25 + 875 - 72 - D.MARGIN, stripHeight: 72, extra: 0, dir: 'up', workWidth: 1440 });
   assert.equal(dockBounds({ workArea: WA, contentWidth: 100 }).width, 320, 'at least 320');
   assert.equal(dockBounds({ workArea: WA, contentWidth: 5000 }).width, Math.floor(1440 * 0.9), 'at most 90 % of the work area');
-  assert.equal(dockBounds({ workArea: WA, contentWidth: 800, height: 20 }).stripHeight, 64);
-  assert.equal(dockBounds({ workArea: WA, contentWidth: 800, height: 200 }).stripHeight, 76);
+  assert.equal(dockBounds({ workArea: WA, contentWidth: 800, height: 20 }).stripHeight, D.STRIP_MIN);
+  assert.equal(dockBounds({ workArea: WA, contentWidth: 800, height: 200 }).stripHeight, D.STRIP_MAX);
   assert.equal(dockBounds({ workArea: WA }).stripHeight, 72);
 });
 
@@ -865,4 +865,185 @@ test('renderer: the bubble clips its content; the question shrinks, then the opt
   assert.match(place, /want = dockAskHeight\(a\)/);
   assert.match(place, /dockAskH = show \? Math\.max\(0, \.\.\.lay\.placed\.map\(/);
   assert.match(between(html, 'function dockBoundsSync(natural)', '\n}\n'), /AgentDeskDock\.popExtra\(kind, dockAskH\)/);
+});
+
+// ── dock batch 2: sizes, teammate groups, a spot per display; summary line, timer ring, auto-hide ──
+test('stripHeight / dockModel size: sm = 40 px only, md as before, lg = 64 px (40 px to fit)', () => {
+  assert.deepEqual([D.stripHeight('sm'), D.stripHeight('md'), D.stripHeight('lg')], [60, 72, 84]);
+  assert.equal(D.stripHeight('md', true), 72 + D.TICKER_H);
+  assert.equal(D.stripHeight('junk'), 72);
+  assert.ok(D.STRIP_MAX >= D.stripHeight('lg', true) && D.STRIP_MIN <= D.stripHeight('sm'), 'every size fits dockBounds\' clamp');
+  const two = [sess('a', 'running'), sess('b', 'done')];
+  assert.equal(dockModel({ sessions: two, size: 'sm' }).size, 40);
+  assert.equal(dockModel({ sessions: two }).size, 56);
+  assert.equal(dockModel({ sessions: two, size: 'lg' }).size, 64);
+  assert.equal(dockModel({ sessions: two, size: 'lg', width: 2 * 64 + TILE.gap - 1 }).size, 40, 'lg falls back to 40 px when 64 do not fit');
+  assert.equal(tilesWidth(dockModel({ sessions: two, size: 'lg' })), 2 * 64 + TILE.gap);
+});
+
+const pp = (peer, k, status, extra) => ({ peer, id: `${peer}${k}`, name: `${peer}-${k}`, status, ...extra });
+test('dockModel groupPeers: automatic past PEER_GROUP_AT teammate tiles, one tile per teammate', () => {
+  assert.equal(D.PEER_GROUP_AT, 6);
+  const six = [pp('kim', 1, 'done'), pp('kim', 2, 'done'), pp('kim', 3, 'done'), pp('lee', 1, 'done'), pp('lee', 2, 'done'), pp('park', 1, 'done')];
+  assert.equal(dockModel({ peers: six }).peers.length, 6, 'six: not grouped (the boundary)');
+  const seven = [...six, pp('park', 2, 'done')];
+  const m = dockModel({ peers: seven });
+  assert.deepEqual(m.peers.map(x => x.key), ['group:kim', 'group:lee', 'group:park']);
+  assert.deepEqual(m.peers.map(x => x.count), [3, 2, 2]);
+  assert.ok(m.peers.every(x => x.group && x.bundle && x.name.startsWith('@')));
+  assert.equal(m.hidden, 7, 'every grouped session is out of sight');
+  assert.deepEqual(dockModel({ peers: [...six, pp('choi', 1, 'done')] }).peers.map(x => x.key).slice(-1), ['peer:choi/choi1'], 'a teammate with one session keeps its tile');
+  assert.equal(dockModel({ peers: seven, groupPeers: false }).peers.length, 7, 'off: never grouped');
+  assert.deepEqual(dockModel({ peers: six.slice(0, 2), groupPeers: true }).peers.map(x => x.key), ['group:kim'], 'on: grouped whatever the count');
+});
+
+test('dockModel groupPeers: the most urgent state, badges and subagents summed', () => {
+  const peers = [pp('kim', 1, 'done'), pp('kim', 2, 'running', { subs: 2 }), pp('kim', 3, 'waiting', { needsInput: true }), pp('kim', 4, 'error', { subs: 1 })];
+  const inbox = [{ target: { page: 'team', peer: 'kim', sessionId: 'kim1' } }, { target: { page: 'team', peer: 'kim', sessionId: 'kim2' } }, { target: { page: 'team', peer: 'kim', sessionId: 'kim2' } }];
+  const g = dockModel({ peers, inbox, groupPeers: true }).peers[0];
+  assert.equal(g.state, 'ask', 'ask > err > input > run > done');
+  assert.equal(g.badge, 3); assert.equal(g.subs, 3); assert.equal(g.delegated, false);
+  assert.deepEqual(g.keys, ['peer:kim/kim1', 'peer:kim/kim2', 'peer:kim/kim3', 'peer:kim/kim4']);
+  assert.equal(dockModel({ peers: peers.slice(0, 2), groupPeers: true }).peers[0].state, 'run');
+  // groups folded into the "+N" pile count their sessions, and the pile lists session keys
+  const many = Array.from({ length: 11 }, (_, k) => [pp(`p${k}`, 1, 'done'), pp(`p${k}`, 2, 'done')]).flat();
+  const m = dockModel({ peers: many });
+  const pile = m.peers[m.peers.length - 1];
+  assert.equal(pile.key, 'more:peer'); assert.equal(pile.count, 2 * (11 - D.MAX_PEERS));
+  assert.ok(pile.keys.every(k => k.startsWith('peer:')), 'session keys, not group keys');
+});
+
+const DISPS = [{ id: '1', workArea: { x: 0, y: 25, width: 1440, height: 875 } }, { id: '2', workArea: { x: 1440, y: 0, width: 1920, height: 1080 } }];
+test('dockPickDisplay: the bar stays on its display once placed; else the window\'s display with a saved spot', () => {
+  const rem = { 1: { cx: 700, y: 800, at: 1 }, 2: { cx: 2000, y: 1000, at: 2 } };
+  assert.deepEqual(D.dockPickDisplay({ displays: DISPS, barId: '1', hereId: '2', primaryId: '1', remembered: rem }), { id: '1', workArea: DISPS[0].workArea, rem: { cx: 700, y: 800 } });
+  assert.deepEqual(D.dockPickDisplay({ displays: DISPS, barId: '2', remembered: {} }).rem, null, 'placed, no spot there: the default place');
+  assert.equal(D.dockPickDisplay({ displays: DISPS, hereId: '1', primaryId: '1', remembered: rem }).id, '1');
+  assert.equal(D.dockPickDisplay({ displays: DISPS, hereId: '2', primaryId: '1', remembered: { 1: { cx: 700, y: 800 } } }).id, '1', 'no spot here: the saved display that exists');
+  assert.equal(D.dockPickDisplay({ displays: DISPS, hereId: '1', primaryId: '1', remembered: { 2: { cx: 2000, y: 9, at: 5 }, 9: { cx: 1, y: 1, at: 9 } } }).id, '2', 'the newest saved display that still exists');
+});
+
+test('dockPickDisplay: saved displays all gone → the primary display\'s default place; nothing saved → the window\'s; old single spot', () => {
+  const gone = D.dockPickDisplay({ displays: DISPS, hereId: '2', primaryId: '1', remembered: { 7: { cx: 10, y: 10, at: 3 } } });
+  assert.deepEqual([gone.id, gone.rem], ['1', null]);
+  const none = D.dockPickDisplay({ displays: DISPS, hereId: '2', primaryId: '1', remembered: null });
+  assert.deepEqual([none.id, none.rem], ['2', null]);
+  const legacy = D.dockPickDisplay({ displays: DISPS, hereId: '1', primaryId: '1', remembered: { cx: 2000, y: 500 } });
+  assert.deepEqual([legacy.id, legacy.rem], ['2', { cx: 2000, y: 500 }], 'the old { cx, y } counts on the display it lies on');
+  assert.equal(D.dockPickDisplay({ displays: [] }), null);
+  assert.deepEqual(D.posEntries({ 1: { cx: 'x', y: 1 }, 2: null, 3: { cx: 5, y: 6 } }).map(e => e.id), ['3'], 'junk dropped');
+  assert.deepEqual(D.posEntries([1, 2]), []);
+});
+
+test('main: the bar\'s display comes from dockPickDisplay; moves and reflows report the display id', () => {
+  const apply = between(main, 'function dockApply(', '\n}\n');
+  assert.match(apply, /AgentDeskDock\.dockPickDisplay\(\{/);
+  assert.match(apply, /barId: last \? String\(screen\.getDisplayMatching\(dockStripRect\(cur, last\)\)\.id\) : null/);
+  assert.match(apply, /primaryId: String\(screen\.getPrimaryDisplay\(\)\.id\), remembered: r\.remembered/);
+  assert.match(apply, /remembered: pick \? pick\.rem : null/);
+  assert.match(between(main, 'function dockOnMove()', '\n}\n'), /displayId: String\(screen\.getDisplayMatching\(s\)\.id\)/);
+  assert.match(between(main, 'function dockReflow()', '\n}\n'), /dockState\.last = null;/, 'a display change places it afresh (the primary display when its own is gone)');
+  const moved = between(html, 'window.orca.onDockMoved(p => {', '\n});');
+  assert.match(moved, /\/\^\\d\{1,20\}\$\/\.test\(String\(p\.displayId \|\| ''\)\)/, 'only digit ids become keys');
+  assert.match(moved, /pos\[id\] = \{ cx: Math\.round\(cx\), y: Math\.round\(y\), at: Date\.now\(\) \}/);
+  assert.match(html, /const es = AgentDeskDock\.posEntries\(c\.pos\);/, 'the old single spot migrates');
+});
+
+test('renderer: summary line — masked, 60 characters, escaped, redrawn only on change; scrolls only with motion allowed', () => {
+  const f = between(html, 'function dockTickerDraw(mine)', '\n}\n');
+  assert.match(f, /AgentDeskDock\.clip\(AgentDeskMask\.mask\(String\(v\)\.slice\(0, 240\)\), 60\)/);
+  assert.match(f, /nowSummaries\.get\(s\.id\)/, 'the dashboard card\'s summary');
+  assert.match(f, /`<b>\$\{esc\(n\)\}<\/b>: \$\{esc\(v\)\}`/);
+  assert.match(f, /if \(sig === dockTickerSig\) return;/);
+  assert.match(f, /const move = dockCfg\.anim && !dockReduced\.matches;/);
+  assert.match(html, /\.dock-ticker\.run:hover \.tk-in \{ animation-play-state: paused; \}/);
+  assert.match(between(html, 'function dockSizeApply()', '\n}\n'), /DOCK_H = AgentDeskDock\.stripHeight\(dockCfg\.size, dockCfg\.ticker\);/);
+});
+
+test('renderer: timer ring follows the timer page, opens it, flashes when it ends', () => {
+  assert.match(between(html, 'function updatePomoDisplay()', '\n}\n'), /dockTimerDraw\(\);/);
+  assert.match(between(html, 'function pomoTick()', '\n}\n'), /dockTimerEnd\(\);/);
+  assert.match(between(html, 'function dockTimerDraw()', '\n}\n'), /const on = !!pomoRunning && pomoTotal > 0/);
+  assert.match(html, /\$\('dock-timer'\)\.addEventListener\('click', e => \{ e\.stopPropagation\(\); dockLeave\('pomodoro'\); \}\);/);
+  assert.match(html, /\.dock-strip\.flash \{ animation: dockFlash/);
+});
+
+test('renderer: teammate groups — their own tile, a card listing the sessions, a click goes to the Team tab', () => {
+  assert.match(between(html, 'function dockTileHtml(x)', '\n}\n'), /class="dock-tile peer peer-group st-\$\{st\}"/);
+  assert.match(between(html, 'function dockTipHtml(x)', '\n}\n'), /if \(x\.group\) \{/);
+  const routes = html.match(/if \(x\.bundle\) \{ dockLeave\(x\.key === 'more:me' \? 'dashboard' : 'team'\); return; \}/g) || [];
+  assert.equal(routes.length, 2, 'click and Enter');
+});
+
+test('renderer: auto-hide — 2 s after leaving, click-through while hidden, back on any wake / message', () => {
+  const leave = between(html, "document.documentElement.addEventListener('mouseleave', () => {", '\n});');
+  assert.match(leave, /if \(dockOn && dockCfg\.autoHide\) dockHideT = setTimeout\(/);
+  assert.match(leave, /!dockPopKind\(\) && \$\('dock-msg'\)\.hidden && !dockTyping\(\)\) dockHideSet\(true\)/);
+  assert.match(html, /function dockWake\(\) \{ clearTimeout\(dockFadeT\); dockHideSet\(false\);/);
+  assert.match(between(html, 'function dockHint(text, cls, hard)', '\n}\n'), /dockHideSet\(false\);/);
+  assert.match(between(html, 'function dockHideSet(on)', '\n}\n'), /window\.orca\.dock\(\{ hit: plan\.hit \}\)/, 'hit from dockHitPlan');
+  assert.match(html, /#page-dock\.dock-hidden \.dock-strip \{ transform: translateY\(calc\(var\(--dock-h, 72px\) - 8px\)\); \}/);
+});
+
+// ── batch 2 review: delegated / selected tiles stay out of groups; who takes the pointer while auto-hidden ──
+test('dockModel groupPeers: a session delegated to me keeps its own tile even with groupPeers: true', () => {
+  const peers = [pp('kim', 1, 'running', { delegated: true }), pp('kim', 2, 'done'), pp('kim', 3, 'done')];
+  const m = dockModel({ peers, groupPeers: true });
+  assert.deepEqual(m.peers.map(x => x.key), ['peer:kim/kim1', 'group:kim']);
+  assert.equal(m.peers[1].count, 2);
+  // only the delegated one and one more: nothing left to fold
+  assert.deepEqual(dockModel({ peers: peers.slice(0, 2), groupPeers: true }).peers.map(x => x.key), ['peer:kim/kim1', 'peer:kim/kim2']);
+});
+
+test('dockModel groupPeers: the selected session keeps its own tile (and stays selected)', () => {
+  const peers = [pp('kim', 1, 'done'), pp('kim', 2, 'done'), pp('kim', 3, 'done')];
+  const m = dockModel({ peers, groupPeers: true, selectedId: 'peer:kim/kim2' });
+  assert.deepEqual(m.peers.map(x => x.key), ['peer:kim/kim2', 'group:kim']);
+  assert.equal(m.selected.key, 'peer:kim/kim2'); assert.equal(m.peers[0].selected, true);
+});
+
+test('dockHitPlan: while hidden a bounds request with no room keeps the click-through', () => {
+  assert.deepEqual(D.dockHitPlan({ hidden: true, popKind: '', extra: 0 }), { hit: false, sendWithBounds: true });
+  assert.deepEqual(D.dockHitPlan({ hidden: 'yes' }), { hit: true, sendWithBounds: false }, 'only true hides');
+});
+
+test('dockHitPlan: coming back takes the pointer again even with a panel open', () => {
+  assert.deepEqual(D.dockHitPlan({ hidden: false, popKind: 'bubbles', extra: 252 }), { hit: true, sendWithBounds: false });
+  assert.deepEqual(D.dockHitPlan({ hidden: false, popKind: '', extra: 0 }), { hit: true, sendWithBounds: false });
+  assert.deepEqual(D.dockHitPlan(null), { hit: true, sendWithBounds: false });
+});
+
+test('dockEdge: approval > error > working; nothing for waiting / done', () => {
+  assert.equal(D.dockEdge([{ state: 'run' }, { state: 'err' }, { state: 'ask' }]), 'ask');
+  assert.equal(D.dockEdge([{ state: 'run' }, { state: 'err' }]), 'err');
+  assert.equal(D.dockEdge([{ state: 'input' }, { state: 'run' }]), 'run');
+  assert.equal(D.dockEdge([{ state: 'input' }, { state: 'done' }]), '');
+  assert.equal(D.dockEdge(null), '');
+});
+
+test('main / renderer: the hit plan is used on both sides; Linux shapes the hidden bar to its 8 px edge', () => {
+  const h = between(main, 'ipcMain.handle("orca:dock"', '\n});');
+  assert.match(h, /AgentDeskDock\.dockHitPlan\(\{ hidden: r\.hidden === true, extra: 0 \}\)/);
+  assert.match(h, /if \(IS_LINUX\) mainWindow\.setIgnoreMouseEvents\(false\); else mainWindow\.setIgnoreMouseEvents\(!plan\.hit, \{ forward: true \}\);/);
+  assert.doesNotMatch(h, /mainWindow\.setIgnoreMouseEvents\(false\);   \/\/ no room around the bar/, 'the old unconditional reset is gone');
+  assert.match(between(main, 'function dockShape(b, pop, hidden)', '\n}\n'), /if \(b && hidden === true && IS_LINUX\)/);
+  assert.match(between(main, 'function dockApply(', '\n}\n'), /dockShape\(b, r\.pop, r\.hidden === true\)/);
+  assert.match(between(html, 'function dockBoundsSync(natural)', '\n}\n'), /hidden: AgentDeskDock\.dockHitPlan\(\{ hidden: dockHidden, popKind: kind, extra \}\)\.sendWithBounds/);
+  const hs = between(html, 'function dockHideSet(on)', '\n}\n');
+  assert.match(hs, /const plan = AgentDeskDock\.dockHitPlan\(\{ hidden: v, popKind: dockPopKind\(\) \}\);/);
+  assert.match(hs, /window\.orca\.dock\(\{ hit: plan\.hit \}\)/);
+  assert.doesNotMatch(hs, /else if \(!dockPopKind\(\)\)/, 'no panel condition on coming back');
+});
+
+test('renderer: hidden edge colour and a new approval un-hides; the summary line reads its width only on resize', () => {
+  const draw = between(html, 'function dockDraw() {', '\n}\n');
+  assert.match(draw, /const edge = AgentDeskDock\.dockEdge\(full\.mine\)/);
+  assert.match(draw, /if \(\[\.\.\.asks\]\.some\(k => !dockAskKeys\.has\(k\)\)\) dockHideSet\(false\);/);
+  assert.match(html, /#page-dock\.dock-hidden\.edge-ask \.dock-strip \{ box-shadow: inset 0 4px 0 var\(--yellow\); \}/);
+  const tk = between(html, 'function dockTickerDraw(mine)', '\n}\n');
+  assert.doesNotMatch(tk, /el\.clientWidth/, 'no layout read on every draw');
+  assert.match(tk, /dockTickerMasked\.get\(v\)/);
+  assert.match(tk, /if \(dockTickerMasked\.size >= 64\)/);
+  assert.match(html, /\.dock-ticker\.run \{ -webkit-app-region: no-drag; \}/);
+  assert.doesNotMatch(html, /\.dock-ticker \{[^}]*no-drag/, 'still: part of the drag area');
 });
