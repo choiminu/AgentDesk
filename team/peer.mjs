@@ -46,7 +46,7 @@ import "../core/team.js";   // globalThis.AgentDeskTeam (clean, publicSessionId)
 import "../core/guard.js";  // globalThis.AgentDeskGuard (isDangerous)
 import { kidOf, teamTag, reqKeyInput, resKeyInput, verifyKey, PUB_RE, KID_RE, KSIG_RE, KEY_TRUST } from "./identity.mjs";
 import { validateRemoteText, resolveDelegatedSession, permissionOk, hostIpv4, GRANT_RE, REMOTE_RATE, REMOTE_LAST_MAX, REMOTE_SCREEN_RATE, REMOTE_SCREEN_LINES, REMOTE_SCREEN_LINE_MAX, REMOTE_SCREEN_BYTES, REMOTE_SCREEN_LOG_MS, REMOTE_SCREEN_CACHE_MS } from "./remote.mjs";
-const { mask, secretRanges } = globalThis.AgentDeskMask;
+const { mask, maskRows, ANSI_RE } = globalThis.AgentDeskMask;
 const { clean, publicSessionId, PUBLIC_ID_RE, sanitizeSafety } = globalThis.AgentDeskTeam;
 const { isDangerous } = globalThis.AgentDeskGuard;
 
@@ -458,70 +458,12 @@ function readBody(req, limit) {
 // phase 3: /v1/sessions/<public session id>/(input|interrupt|last|screen)
 const REMOTE_PATH_RE = /^\/v1\/sessions\/([^/]{1,320})\/(input|interrupt|last|screen)$/;
 const REMOTE_BODY_MAX = 24 * 1024;   // 4,000 characters of Hangul are 12 KB of UTF-8, plus the JSON around them
-// ANSI sequences: CSI; OSC ended by BEL / ST, or cut short by the next ESC; an unterminated OSC loses only its
-// "ESC ] Ps ;" head (the text after it stays); any other two-byte ESC sequence
-const ANSI_RE = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b\r\n]*(?:\u0007|\u001b\\|(?=\u001b))|\u001b\][0-9]*;?|\u001b[@-_]/g;
+// ANSI sequences (CSI, 8-bit CSI, DCS, OSC …): core/mask.js ANSI_RE
 // invisible format characters (zero-width space / joiners, bidi marks, BOM …) would split a token so no pattern matches
 const FORMAT_RE = /\p{Cf}/gu;
 const CTRL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
-const PEM_BEGIN_RE = /-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----/, PEM_END_RE = /-----END [A-Z ]{0,40}PRIVATE KEY-----/;
-const KEY_ROW_RE = /^[A-Za-z0-9+\/]{60,}={0,2}$/, KEY_RUN_ROW_RE = /^[A-Za-z0-9+\/]{40,}={0,2}$/, B64_ROW_RE = /^[A-Za-z0-9+\/]+={0,2}$/;
-const MASKED_KEY = "[MASKED PRIVATE KEY]";
-// key body looks random: digits, upper- and lower-case letters all present (a row of "xxxx…" or "====…" is not one)
-const keyRow = (t, re) => re.test(t) && /[0-9]/.test(t) && /[A-Z]/.test(t) && /[a-z]/.test(t);
-// rows of text (a terminal screen, an answer split at its line breaks) masked so that nothing leaks at a row boundary:
-//  - a secret wrapped over rows is found in the rows joined WITHOUT a separator and cut out of every row it touches
-//  - a private key: from a BEGIN line on (to its END line, or to the last row when END is not there), back from an END
-//    line whose BEGIN scrolled off, and rows that look like key body (one base64 row of 60+ characters, or 3+ rows of
-//    40+ in a row, with the short base64 row that ends them; digits and both cases present)
-//  - then mask() per row. The result has exactly one row per input row.
-export function maskRows(rows) {
-  const src = (Array.isArray(rows) ? rows : []).map(r => String(r ?? ""));
-  const out = src.slice();
-  const starts = []; let pos = 0;
-  for (const r of src) { starts.push(pos); pos += r.length; }
-  const cuts = src.map(() => []);
-  for (const [a, b] of secretRanges(src.join(""))) {
-    let i = 0; while (i + 1 < src.length && starts[i + 1] <= a) i++;
-    if (i + 1 >= src.length || starts[i + 1] >= b) continue;   // inside one row: mask() below sees it whole
-    for (; i < src.length && starts[i] < b; i++) {
-      const s = Math.max(a, starts[i]) - starts[i], e = Math.min(b, starts[i] + src[i].length) - starts[i];
-      if (e > s) cuts[i].push([s, e]);
-    }
-  }
-  cuts.forEach((c, i) => {
-    if (!c.length) return;
-    c.sort((x, y) => x[0] - y[0]);
-    let s = "", at = 0;
-    for (const [a, b] of c) { if (b <= at) continue; s += src[i].slice(at, Math.max(a, at)) + "[MASKED]"; at = b; }
-    out[i] = s + src[i].slice(at);
-  });
-  const key = src.map(() => false);
-  let inPem = false;
-  for (let i = 0; i < src.length; i++) {
-    if (inPem) { key[i] = true; if (PEM_END_RE.test(src[i])) inPem = false; continue; }
-    const b = src[i].search(PEM_BEGIN_RE);
-    if (b >= 0) {
-      if (PEM_END_RE.test(src[i].slice(b))) continue;   // one-line key: mask() below
-      inPem = true; const bo = out[i].search(PEM_BEGIN_RE);
-      out[i] = bo >= 0 ? out[i].slice(0, bo) + MASKED_KEY : MASKED_KEY; continue;
-    }
-    if (PEM_END_RE.test(src[i])) {   // BEGIN is above the rows I have
-      key[i] = true;
-      for (let j = i - 1; j >= 0 && !key[j] && (B64_ROW_RE.test(src[j].trim()) || !src[j].trim()); j--) key[j] = true;
-    }
-  }
-  for (let i = 0; i < src.length; i++) {
-    const t = src[i].trim();
-    if (keyRow(t, KEY_ROW_RE)) key[i] = true;
-    if (keyRow(t, KEY_RUN_ROW_RE)) {
-      let j = i; while (j < src.length && keyRow(src[j].trim(), KEY_RUN_ROW_RE)) j++;
-      if (j - i >= 3) { for (let k = i; k < j; k++) key[k] = true; if (j < src.length && B64_ROW_RE.test(src[j].trim())) key[j] = true; }
-      i = j - 1;
-    }
-  }
-  return out.map((l, i) => key[i] ? MASKED_KEY : mask(l));
-}
+// rows masked across row boundaries (wrapped secrets, private key bodies): core/mask.js maskRows (also used by the dock)
+export { maskRows };
 // a session's last answer as it may leave (server) or enter (client): masked (maskRows over its lines, after invisible
 // format characters are dropped), line breaks kept, other control characters gone, at most REMOTE_LAST_MAX characters
 export function lastText(v) {

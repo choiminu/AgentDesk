@@ -209,3 +209,39 @@ test('checkJql: control characters dropped, length capped, only credentials refu
   for (const q of [`text ~ "${SLACK}"`, `text ~ "xox${ZW}b-0000000000-FAKEFAKEFAKE"`, 'text ~ "password=fakepass000"', `text ~ "${URI}"`, 'text ~ "AKIA0000000000FAKE00"', 'text ~ "Bearer fakefakefake"', 'text ~ "-----BEGIN PRIVATE KEY----- x -----END PRIVATE KEY-----"'])
     assert.match(O.checkJql(q).error, /credential/, q);
 });
+
+// ── core maskRows (the remote terminal view and the dock's terminal screens share it; team/peer.mjs re-exports it) ──
+test('core maskRows: team/peer.mjs re-exports the core function', () => {
+  assert.equal(maskRows, globalThis.AgentDeskMask.maskRows);
+});
+test('core maskRows: a token wrapped over two rows is masked in both rows (maskLines alone leaks the tail)', () => {
+  const { maskRows: rowsMask, maskLines } = globalThis.AgentDeskMask;
+  const tok = 'ghp_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4';
+  const rows = ['export GH=' + tok.slice(0, 14), tok.slice(14) + ' # end'];
+  assert.ok(maskLines(rows).join('').includes(tok.slice(14)), 'row by row, the tail stays (why maskRows is used)');
+  const out = rowsMask(rows);
+  assert.equal(out.length, 2);
+  assert.ok(!out.join('').includes(tok.slice(4, 14)) && !out.join('').includes(tok.slice(14)), JSON.stringify(out));
+  assert.match(out[0], /^export GH=\[MASKED\]$/); assert.match(out[1], /^\[MASKED\] # end$/);
+});
+test('core maskRows: a private key body without its BEGIN line is masked; plain rows stay', () => {
+  const { maskRows: rowsMask } = globalThis.AgentDeskMask;
+  const body = Array.from({ length: 4 }, (_, i) => 'MIIEowIBAAKCAQEAx' + 'Qk9zR2a7Lm3Np8Vt' + i + 'Yb5Hc1Jd6Ke4Wf0Xg');
+  const out = rowsMask(['$ cat key.pem', ...body, 'Zq9=', '-----END RSA PRIVATE KEY-----', '$ ls']);
+  assert.deepEqual(out, ['$ cat key.pem', ...Array(6).fill('[MASKED PRIVATE KEY]'), '$ ls']);
+  const lone = rowsMask(['note', 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj', 'done']);
+  assert.deepEqual(lone, ['note', '[MASKED PRIVATE KEY]', 'done'], 'one 60+ character base64 row with digits and both cases');
+  assert.deepEqual(rowsMask(['x'.repeat(80), 'hello']), ['x'.repeat(80), 'hello'], 'a row of one letter is not a key');
+  assert.deepEqual(rowsMask(null), []);
+});
+test('core ANSI_RE: CSI with ":" parameters, 8-bit CSI, DCS and OSC are stripped; text stays', () => {
+  const { ANSI_RE } = globalThis.AgentDeskMask;
+  const strip = s => s.replace(ANSI_RE, '');
+  assert.equal(strip('\u001b[38:2::255:0:0mred\u001b[0m'), 'red');
+  assert.equal(strip('\u009b31mred\u009b0m'), 'red');
+  assert.equal(strip('a\u001bPq#0;2;0;0;0\u001b\\b'), 'ab');
+  assert.equal(strip('a\u001bP1$r0m\u009cb'), 'ab');
+  assert.equal(strip('\u001b]0;title\u0007ok'), 'ok');
+  assert.equal(strip('\u001b[?25lx\u001b[>4;2my'), 'xy');
+  assert.equal(strip('a\u001bPunterminated'), 'aunterminated', 'an unterminated DCS loses only its head');
+});

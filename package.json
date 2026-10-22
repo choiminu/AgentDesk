@@ -129,5 +129,8 @@
   },
   "author": "choiminu",
   "license": "MIT",
-  "homepage": "https://github.com/choiminu/AgentDesk"
+  "homepage": "https://github.com/choiminu/AgentDesk",
+  "allowScripts": {
+    "electron@36.9.5": true
+  }
 }
