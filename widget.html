@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-ZsAi5MOYqqxsXC6pt+T/ugRFVIRBTAfZWdYVb5tv2wY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-rBX6yNihnJQi53G8cUw9iWIvvRAysu7YBqaopb11g7E='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -3501,7 +3501,6 @@ async function dockGuardUser(texts) {
 }
 function dockAskScan(lines) {
   const parsed = lines ? officeParseChoice(lines) : null;
-  if (parsed) parsed.options = AgentDeskDock.optionRun(parsed.options);   // a numbered list above the question is not an option
   const context = parsed ? AgentDeskDock.promptContext(lines) : '', box = parsed ? AgentDeskDock.promptBox(lines, 200) : [];
   const perm = parsed ? AgentDeskDock.permPrompt(lines, parsed.options) : { perm: false, allowable: true };
   return { parsed, context, box, perm, sig: JSON.stringify([parsed, box]) };
@@ -6304,12 +6303,16 @@ function officeParseChoice(lines) {
     break;
   }
   if (last < 0) return null;
-  const options = [];
+  const all = [], at = [];   // at[k]: the screen row of all[k]
   for (let i = first; i <= last; i++) {
     const m = clean[i].match(/^\s*(❯)?\s*(\d+)\.\s+(.*)$/);
-    if (m) options.push({ n: +m[2], label: m[3].trim(), desc: '', selected: !!m[1] });
-    else if (options.length && !isNoise(clean[i])) options[options.length - 1].desc += (options[options.length - 1].desc ? ' ' : '') + clean[i].trim();
+    if (m) { all.push({ n: +m[2], label: m[3].trim(), desc: '', selected: !!m[1] }); at.push(i); }
+    else if (all.length && !isNoise(clean[i])) all[all.length - 1].desc += (all[all.length - 1].desc ? ' ' : '') + clean[i].trim();
   }
+  // the prompt's own options: the last run numbered 1, 2, 3 … — a numbered list right above the question (a plan's
+  // steps) is part of the question, not an option (its digits would answer the prompt); the question starts above it
+  const options = AgentDeskDock.optionRun(all);
+  if (options.length) first = at[all.indexOf(options[0])];
   // a real prompt always marks the highlighted option with ❯; plain numbered lists in the transcript never do
   if (!options.some(o => o.selected)) return null;
   const q = [];

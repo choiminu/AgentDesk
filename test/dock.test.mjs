@@ -648,5 +648,31 @@ test('optionRun: only the prompt\'s own numbered run (a plan\'s numbered steps a
   assert.deepEqual(D.optionRun([o(1, 'a'), o(2, 'b'), o(3, 'c')]).map(x => x.n), [1, 2, 3]);
   assert.deepEqual(D.optionRun([o(1, 'a'), o(3, 'c')]).map(x => x.n), [3], 'a gap ends the run');
   assert.deepEqual(D.optionRun(null), []); assert.deepEqual(D.optionRun([null, o('x', 'y')]), []);
-  assert.match(between(html, 'function dockAskScan(lines)', '\n}\n'), /parsed\.options = AgentDeskDock\.optionRun\(parsed\.options\)/);
+  assert.match(between(html, 'function officeParseChoice(lines)', '\n}\n'), /const options = AgentDeskDock\.optionRun\(all\);/, 'the shared parser (dashboard, office, dock)');
+});
+
+// ── the shared choice parser (dashboard / office popover and the dock's bubbles), run as it is in the page ──
+const officeParseChoice = new Function('AgentDeskDock', between(html, 'function officeParseChoice(lines)', '\nlet officeAsk') + '\nreturn officeParseChoice;')(D);
+
+test('officeParseChoice: a plan\'s numbered steps above the question stay in the question, not in the options', () => {
+  const plan = ['⏺ Ready to code?', '', " Here is Claude's plan:", ' 1. edit a.js', ' 2. run the tests', '', ' Would you like to proceed?', '', ' ❯ 1. Yes, and auto-accept edits', '   2. Yes, and manually approve edits', '   3. No, keep planning'];
+  const p = officeParseChoice(plan);
+  assert.deepEqual(p.options.map(o => [o.n, o.label, o.selected]), [[1, 'Yes, and auto-accept edits', true], [2, 'Yes, and manually approve edits', false], [3, 'No, keep planning', false]]);
+  assert.equal(p.question, 'Would you like to proceed?');
+  // the steps right above the question (no blank row between): still not options, and part of the question
+  const tight = ['Steps:', ' 1. edit a.js', ' 2. run the tests', 'Proceed?', ' ❯ 1. Yes', '   2. No'];
+  const q = officeParseChoice(tight);
+  assert.deepEqual(q.options.map(o => o.label), ['Yes', 'No']);
+  assert.match(q.question, /Proceed\?/);
+});
+
+test('officeParseChoice: prompts it already read stay the same; a list without the ❯ cursor is not a prompt', () => {
+  const ask = ['⏺ 범위를 정해야 합니다.', '', '어디까지?', '', '❯ 1. 결제만', '     정산은 그대로', '  2. 둘 다', '  3. Type something.', '', 'Enter to select'];
+  const p = officeParseChoice(ask);
+  assert.deepEqual(p.options.map(o => [o.n, o.label, o.desc]), [[1, '결제만', '정산은 그대로'], [2, '둘 다', ''], [3, 'Type something.', '']]);
+  assert.equal(p.question, '어디까지?');
+  const box = ['╭────╮', '│ Do you want to proceed? │', '│ ❯ 1. Yes │', "│   2. Yes, and don't ask again │", '│   3. No │', '╰────╯'];
+  assert.deepEqual(officeParseChoice(box).options.map(o => o.n), [1, 2, 3]);
+  assert.equal(officeParseChoice(['1. a', '2. b', '3. c']), null);
+  assert.equal(officeParseChoice([]), null);
 });
