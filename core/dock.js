@@ -11,6 +11,17 @@
 //                (unless the pile is the only slot left)
 //     width:    pixels available for tiles (both groups and the separator between them); missing = no limit
 //     maxTiles: optional cap on the number of tiles (piles included)
+//     size:     'sm' | 'md' | 'lg' (TILE_SIZES; default 'md'): sm = 40 px tiles only, lg = 64 px tiles (40 px to fit)
+//     groupPeers: true / false; missing = automatic: more than PEER_GROUP_AT teammate tiles → one tile per teammate
+//                with two or more sessions (a teammate with one session keeps its tile); a session delegated to me
+//                and the selected one always keep their own tiles (only the rest, two or more, fold)
+//   group: { key: 'group:<owner>', bundle: true, group: true, peer, owner, name: '@owner', count, keys, state, badge,
+//     subs, delegated: false }  (a teammate's sessions as one tile: the most urgent state, badges and subagents summed)
+//   dockHitPlan({ hidden, popKind, extra }) → { hit, sendWithBounds } who takes the pointer: hit = whether the bar
+//     takes clicks (false while auto-hidden: they pass through; true as soon as it comes back, panels or not — the
+//     pointer handler narrows it to the panels afterwards); sendWithBounds = the bounds request carries hidden: true,
+//     so a request with no room (extra 0), which otherwise makes the whole window clickable, keeps the click-through
+//   dockEdge(tiles) → the colour of a hidden bar's visible edge: 'ask' > 'err' > 'run' among the tiles, else ''
 //   tile: { key, id, peer, owner, name, state, badge, subs, delegated, canInput, selected, bundle: false }
 //     id / peer are exact (lookup keys); owner (the teammate's name) and name are cut and cleaned (display)
 //   pile: { key: 'more:me'|'more:peer', bundle: true, count, keys, state, badge }  ("+N" — what did not fit)
@@ -19,6 +30,13 @@
 //   Fit: 56 px tiles when everything fits, else 40 px, else 40 px with a "+N" pile; teammates at most MAX_PEERS (+N).
 //   Folding keeps the most urgent tiles (and the selected one) and keeps their original order.
 //
+//   stripHeight(size, ticker) → the bar's height for a size (STRIP_HEIGHTS) plus TICKER_H when the summary line shows
+//   dockPickDisplay({ displays: [{ id, workArea }], barId, hereId, primaryId, remembered }) → { id, workArea, rem }
+//     which display the bar goes on and the remembered spot there. remembered: { [displayId]: { cx, y, at } } (an old
+//     single { cx, y } counts for the display it lies on). barId (the display the bar is on now, once placed) keeps
+//     it there; otherwise the display the window is on when a spot is saved for it, else the display saved last that
+//     still exists, else — spots saved but none of their displays left — the primary display's default place; with
+//     nothing saved, the window's display. rem = that display's spot or null (the default place).
 //   dockBounds({ workArea, contentWidth, height, extra, remembered }) → { x, y, width, height, stripY, stripHeight, extra, dir }
 //     The bar sits at the bottom centre of the work area (MARGIN above its bottom edge), STRIP_MIN–STRIP_MAX high,
 //     MIN_WIDTH … MAX_FRAC × work-area width wide. remembered { cx, y } (the bar's centre x and top y after a drag)
@@ -95,8 +113,12 @@
 const STATES = ['ask', 'err', 'input', 'run', 'done'];
 const RANK = { ask: 0, err: 1, input: 2, run: 3, done: 4 };
 const TILE = { big: 56, small: 40, gap: 4, sep: 9 };   // big: the character with its name beneath; small: the character only
-const MAX_PEERS = 8;
-const STRIP_MIN = 64, STRIP_MAX = 76, STRIP_DEFAULT = 72;
+// tile sizes per dock size (the "도크 크기" setting): sm has no named tiles, lg starts at 64 px
+const TILE_SIZES = { sm: { big: 40, small: 40 }, md: { big: TILE.big, small: TILE.small }, lg: { big: 64, small: 40 } };
+const STRIP_HEIGHTS = { sm: 60, md: 72, lg: 84 }, TICKER_H = 14;
+const MAX_PEERS = 8, PEER_GROUP_AT = 6;
+const STRIP_MIN = 56, STRIP_MAX = STRIP_HEIGHTS.lg + TICKER_H + 2, STRIP_DEFAULT = 72;
+const stripHeight = (size, ticker) => (STRIP_HEIGHTS[size] || STRIP_HEIGHTS.md) + (ticker ? TICKER_H : 0);
 const MIN_WIDTH = 320, MAX_FRAC = 0.9, MARGIN = 6;
 const NAME_MAX = 40;
 // C0 / DEL / C1 controls, bidi marks, embeddings, overrides and isolates, BOM (as core/inbox.js)
@@ -188,20 +210,23 @@ function dockModel(input) {
     peersAll.push({ key, id, peer, owner: clip(peer, NAME_MAX), name: clip(s.name || id, NAME_MAX), state, badge: badges.get(key) || 0,
       subs: subsOf(s.subs), delegated: s.delegated === true, canInput: false, selected: key === sel, bundle: false });
   }
-  // teammates: at most MAX_PEERS tiles (the selected one, delegated ones and urgent ones first), the rest in a "+N" pile
-  const peerTiles = peersAll.length > MAX_PEERS ? foldPeers(peersAll, MAX_PEERS + 1, sel) : peersAll;
+  // many teammate sessions: one tile per teammate; then at most MAX_PEERS tiles (the selected one, delegated ones and
+  // urgent ones first), the rest in a "+N" pile
+  const grouped = i.groupPeers === true || (i.groupPeers !== false && peersAll.length > PEER_GROUP_AT) ? groupByPeer(peersAll, sel) : peersAll;
+  const peerTiles = grouped.length > MAX_PEERS ? foldPeers(grouped, MAX_PEERS + 1, sel) : grouped;
+  const T = TILE_SIZES[i.size] || TILE_SIZES.md;
 
   const width = i.width == null || !Number.isFinite(Number(i.width)) ? Infinity : Math.max(0, Number(i.width));
   const maxTiles = Number.isInteger(i.maxTiles) && i.maxTiles >= 0 ? i.maxTiles : Infinity;
   const nMine = mineAll.length, nPeer = peerTiles.length, total = nMine + nPeer;
   const sep = nMine && nPeer ? TILE.sep + TILE.gap : 0;
-  let size = TILE.big, mine = mineAll, peers = peerTiles;
-  if (total > maxTiles || need(total, TILE.big) + sep > width) {
-    size = TILE.small;
-    if (total > maxTiles || need(total, TILE.small) + sep > width) {
+  let size = T.big, mine = mineAll, peers = peerTiles;
+  if (total > maxTiles || need(total, T.big) + sep > width) {
+    size = T.small;
+    if (total > maxTiles || need(total, T.small) + sep > width) {
       // how many 40 px tiles fit; mine come first, teammates get about a third (at least one, and what mine leave
       // over). Fewer than two slots after the separator: no teammate group (and no separator) at all.
-      const slots = w => { const c = Math.floor((w + TILE.gap) / (TILE.small + TILE.gap)); return Math.max(0, Math.min(Number.isFinite(c) ? c : total, maxTiles)); };
+      const slots = w => { const c = Math.floor((w + TILE.gap) / (T.small + TILE.gap)); return Math.max(0, Math.min(Number.isFinite(c) ? c : total, maxTiles)); };
       const both = nMine && nPeer && slots(width - sep) >= 2;
       const cap = both ? slots(width - sep) : slots(width);
       let peerCap = !nPeer ? 0 : !nMine ? Math.min(nPeer, cap) : both ? Math.min(nPeer, Math.max(1, Math.floor(cap / 3))) : 0;
@@ -217,26 +242,83 @@ function dockModel(input) {
   return { size, mine, peers, selected, hidden: mineAll.length + peersAll.length - visible, total: mineAll.length + peersAll.length };
 }
 
-// re-fold the teammate group (which may already end in a pile) into `cap` slots
+// a teammate's sessions as one tile (two or more of them), in the order the teammates first appear
+function groupByPeer(list, sel) {
+  const by = new Map();
+  for (const x of list) { if (!by.has(x.peer)) by.set(x.peer, []); by.get(x.peer).push(x); }
+  const out = [];
+  const loose = x => x.delegated || x.key === sel;   // delegated to me / selected: always a tile of its own
+  for (const [peer, all] of by) {
+    out.push(...all.filter(loose));
+    const xs = all.filter(x => !loose(x));
+    if (xs.length < 2) { out.push(...xs); continue; }
+    const state = xs.reduce((s, x) => (RANK[x.state] < RANK[s] ? x.state : s), 'done');
+    out.push({ key: `group:${peer}`, bundle: true, group: true, id: '', peer, owner: xs[0].owner, name: clip(`@${peer}`, NAME_MAX), count: xs.length,
+      keys: xs.map(x => x.key), state, badge: xs.reduce((n, x) => n + x.badge, 0), subs: Math.min(99, xs.reduce((n, x) => n + x.subs, 0)),
+      delegated: false, canInput: false, selected: false });
+  }
+  return out;
+}
+function dockHitPlan(input) {
+  const hidden = !!(input && typeof input === 'object' && input.hidden === true);
+  return { hit: !hidden, sendWithBounds: hidden };
+}
+function dockEdge(tiles) {
+  let best = '';
+  for (const x of Array.isArray(tiles) ? tiles : []) {
+    const st = x && x.state;
+    if ((st === 'ask' || st === 'err' || st === 'run') && (!best || RANK[st] < RANK[best])) best = st;
+  }
+  return best;
+}
+// re-fold the teammate group (which may already end in a pile, and may hold teammate groups) into `cap` slots
 function foldPeers(tiles, cap, sel) {
-  const singles = [], pile = tiles.find(x => x.bundle);
-  for (const x of tiles) if (!x.bundle) singles.push(x);
+  const singles = [], pile = tiles.find(x => x.key === 'more:peer');
+  for (const x of tiles) if (x !== pile) singles.push(x);
   if (cap <= 0) return [];
   const keep = Math.max(0, cap - 1);
   const ranked = singles.map((x, idx) => ({ x, idx })).sort((a, b) =>
     (b.x.key === sel) - (a.x.key === sel) || (b.x.delegated - a.x.delegated) || RANK[a.x.state] - RANK[b.x.state] || a.idx - b.idx);
   const kept = new Set(ranked.slice(0, keep).map(r => r.idx));
   const shown = singles.filter((_, k) => kept.has(k)), rest = singles.filter((_, k) => !kept.has(k));
-  const count = rest.length + (pile ? pile.count : 0);
+  const count = rest.reduce((n, x) => n + (x.group ? x.count : 1), 0) + (pile ? pile.count : 0);
   if (!count) return shown;
   const restStates = rest.map(x => x.state).concat(pile ? [pile.state] : []);
   const state = restStates.reduce((s, v) => (RANK[v] < RANK[s] ? v : s), 'done');
-  shown.push({ key: 'more:peer', bundle: true, count, keys: rest.map(x => x.key).concat(pile ? pile.keys : []), state,
+  shown.push({ key: 'more:peer', bundle: true, count, keys: rest.flatMap(x => (x.group ? x.keys : [x.key])).concat(pile ? pile.keys : []), state,
     badge: rest.reduce((n, x) => n + x.badge, 0) + (pile ? pile.badge : 0) });
   return shown;
 }
 
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+
+// remembered spots: [{ id, cx, y, at }] ('legacy' = the old single { cx, y }); at most 16, junk dropped
+function posEntries(rem) {
+  if (!rem || typeof rem !== 'object' || Array.isArray(rem)) return [];
+  const fin = v => v != null && v !== '' && Number.isFinite(Number(v));
+  if (fin(rem.cx) && fin(rem.y)) return [{ id: 'legacy', cx: Number(rem.cx), y: Number(rem.y), at: 0 }];
+  return Object.keys(rem).slice(0, 16).map(id => [id, rem[id]]).filter(([, p]) => p && typeof p === 'object' && fin(p.cx) && fin(p.y))
+    .map(([id, p]) => ({ id: String(id), cx: Number(p.cx), y: Number(p.y), at: num(p.at) }));
+}
+function dockPickDisplay(input) {
+  const i = input && typeof input === 'object' ? input : {};
+  const ds = (Array.isArray(i.displays) ? i.displays : []).filter(d => d && d.id != null && d.workArea && typeof d.workArea === 'object');
+  if (!ds.length) return null;
+  const byId = id => (id == null ? null : ds.find(d => String(d.id) === String(id)) || null);
+  const inside = (wa, p) => p.cx >= num(wa.x) && p.cx <= num(wa.x) + num(wa.width) && p.y >= num(wa.y) && p.y < num(wa.y) + num(wa.height);
+  const entries = posEntries(i.remembered);
+  const dispOf = e => (e.id === 'legacy' ? ds.find(d => inside(d.workArea, e)) || null : byId(e.id));
+  const spotOn = d => { const e = entries.find(x => dispOf(x) === d); return e ? { cx: e.cx, y: e.y } : null; };
+  const out = d => ({ id: String(d.id), workArea: d.workArea, rem: spotOn(d) });
+  const bar = byId(i.barId);
+  if (bar) return out(bar);   // placed already: it stays on its display
+  const here = byId(i.hereId);
+  if (here && spotOn(here)) return out(here);
+  const saved = entries.filter(dispOf).sort((a, b) => b.at - a.at)[0];
+  if (saved) return out(dispOf(saved));
+  const d = entries.length ? byId(i.primaryId) || ds[0] : here || byId(i.primaryId) || ds[0];
+  return { id: String(d.id), workArea: d.workArea, rem: null };
+}
 
 function dockBounds(input) {
   const i = input && typeof input === 'object' ? input : {};
@@ -530,7 +612,7 @@ function permAllowable(sm) {
   return !!v.trim() && !/[\r\n]/.test(v) && [...v].length <= PERM_LINE_MAX;
 }
 
-const AgentDeskDock = { EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
+const AgentDeskDock = { dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, TICKER_H, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
   POP, SCREEN, popWidth, popExtra, bubbleHeight, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame,
   numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows };
 root.AgentDeskDock = AgentDeskDock;
