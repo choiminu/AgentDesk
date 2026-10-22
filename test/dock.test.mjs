@@ -415,8 +415,8 @@ test('widget dock: hover opens the terminal window, a click goes to the terminal
   assert.match(html, /\.dock-tiles\.s40 \.dock-name \{ display: none; \}/);
   assert.match(html, /\.dock-tile \{ position: relative; width: 56px; height: 56px;/);
   // the terminal window opens over its tile; my tiles: pinned first, then the latest activity on the left
-  assert.match(between(html, 'function dockPopGeom(kind)', '\n}\n'), /const key = kind === 'term' \? dockTermKey\(\) : dockTipKey;[\s\S]*if \(tile\) \{ const r = tile\.getBoundingClientRect\(\); anchor = r\.left \+ r\.width \/ 2; \}\n\s*else if \(kind !== 'term'\) return null;/);
-  assert.match(between(html, 'function dockSessions()', '\n}\n'), /\.sort\(\(a, b\) => a\.pin - b\.pin \|\| \(b\.s\.time \|\| 0\) - \(a\.s\.time \|\| 0\) \|\| a\.i - b\.i\)/);
+  assert.match(between(html, 'function dockPopGeom(kind)', '\n}\n'), /const key = kind === 'term' \? dockTermKey\(\) : (?:kind === 'add' \|\| kind === 'menu'(?: \|\| kind === 'drop')? \? \(dockPop && dockPop\.key\) : )?dockTipKey;[\s\S]*if \(tile\) \{ const r = tile\.getBoundingClientRect\(\); anchor = r\.left \+ r\.width \/ 2; \}\n\s*else if \(kind !== 'term'\) return null;/);
+  assert.match(between(html, 'function dockSessions()', '\n}\n'), /AgentDeskDock\.orderSessions\(shown, dockCfg\.order, pinnedSessions\)/);
   // the screen wraps instead of scrolling sideways; a row of box-drawing rules is one thin line
   assert.match(html, /\.peer-term \.pt-screen \{ white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: hidden; \}/);
   assert.match(between(html, 'function termScreenHtml(lines)', '\n}\n'), /TERM_RULE_RE\.test\(l\) \? '<span class="pt-rule"><\/span>' : esc\(l\) \+ '\\n'/);
@@ -521,7 +521,7 @@ test('widget dock: choice bubbles reuse the popover parser, the shared answer pa
   assert.match(between(html, 'function dockAskPlace()', '\n}\n'), /AgentDeskDock\.bubbleLayout\(items/);
   assert.match(between(html, 'function dockHover(key)', '\nfunction dockHoverLeave'), /if \(dockAskOn\(key\)\) \{ dockAskGrowAt\(key, tileSel\); return; \}/, 'a bubble\'s tile grows it instead of opening the window');
   assert.match(between(html, 'async function dockAskGrowAt(', '\n}\n'), /const gen = \+\+dockAskGrowGen;\n\s*if \(await dockPointerOn\(sel\) === false \|\| gen !== dockAskGrowGen\) return;/, 'grown only where the pointer really is, by the latest hover');
-  assert.match(between(html, 'function dockPopKind()', '\n}\n'), /if \(dockTermBg\(\)\) return 'term';\n\s*if \(dockAskVisible\(\)\)/, 'the window wins over the bubbles');
+  assert.match(between(html, 'function dockPopKind()', '\n}\n'), /if \(dockTermBg\(\)\) return 'term';\n(?:\s*if \(dockPop\) return dockPop\.kind;[^\n]*\n)?\s*if \(dockAskVisible\(\)\)/, 'the window wins over the bubbles');
 });
 
 test('widget dock: one animation loop, stopped when hidden, off by the setting or reduced motion', () => {
@@ -616,7 +616,7 @@ test('widget dock: security review lows — fail-closed guard, setting, re-armin
 
 test('widget dock: code review — card exclusion, free text, mute, forced reads, timers, narrow bar, cursor zoom', () => {
   // M2: only a tile's own bubble keeps its card away
-  assert.match(between(html, 'function dockTipShow(key)', '\n}\n'), /dockTermBg\(\) \|\| dockAskOn\(key\)\)/);
+  assert.match(between(html, 'function dockTipShow(key)', '\n}\n'), /dockTermBg\(\) \|\| (?:dockPop \|\| )?dockAskOn\(key\)\)/);
   // M4: a free-text option → its digit, then the terminal window with a usable input line; [전체 보기] always
   const answer = between(html, 'async function dockAskAnswer(', '\n}\n');
   assert.match(answer, /if \(DOCK_FREE_RE\.test\(label\)\) \{[\s\S]*if \(!await same\(\)\)[\s\S]*terminalSend\(a\.handle, String\(n\), false, 0\)[\s\S]*dockTerm\.freeText = true/);
@@ -1038,7 +1038,7 @@ test('main / renderer: the hit plan is used on both sides; Linux shapes the hidd
 test('renderer: hidden edge colour and a new approval un-hides; the summary line reads its width only on resize', () => {
   const draw = between(html, 'function dockDraw() {', '\n}\n');
   assert.match(draw, /const edge = AgentDeskDock\.dockEdge\(full\.mine\)/);
-  assert.match(draw, /if \(\[\.\.\.asks\]\.some\(k => !dockAskKeys\.has\(k\)\)\) dockHideSet\(false\);/);
+  assert.match(draw, /if \(\[\.\.\.asks\]\.some\(k => !dockAskKeys\.has\(k\)\)\) \{ dockHideSet\(false\); if \(dockPop && dockPop\.kind === 'menu'\) dockPopClose\(\); \}/, 'a new approval: back, and a tile menu makes way for its bubble');
   assert.match(html, /#page-dock\.dock-hidden\.edge-ask \.dock-strip \{ box-shadow: inset 0 4px 0 var\(--yellow\); \}/);
   const tk = between(html, 'function dockTickerDraw(mine)', '\n}\n');
   assert.doesNotMatch(tk, /el\.clientWidth/, 'no layout read on every draw');
@@ -1046,4 +1046,159 @@ test('renderer: hidden edge colour and a new approval un-hides; the summary line
   assert.match(tk, /if \(dockTickerMasked\.size >= 64\)/);
   assert.match(html, /\.dock-ticker\.run \{ -webkit-app-region: no-drag; \}/);
   assert.doesNotMatch(html, /\.dock-ticker \{[^}]*no-drag/, 'still: part of the drag area');
+});
+
+// ── dock batch 3: drag to reorder and pin, "+" new session, drop to send ──
+test('orderSessions: the drag order first, then pinned, then the latest activity', () => {
+  const L = [{ id: 'a', time: 1 }, { id: 'b', time: 5 }, { id: 'c', time: 3 }, { id: 'd', time: 4 }];
+  assert.deepEqual(D.orderSessions(L, [], new Set()).map(x => x.id), ['b', 'd', 'c', 'a'], 'latest activity leftmost');
+  assert.deepEqual(D.orderSessions(L, [], new Set(['a'])).map(x => x.id), ['a', 'b', 'd', 'c'], 'pinned first');
+  assert.deepEqual(D.orderSessions(L, ['c', 'a'], new Set(['d'])).map(x => x.id), ['c', 'a', 'd', 'b'], 'the order, then pinned, then the rest');
+  assert.deepEqual(D.orderSessions(L, ['zz', 'b', 'b'], []).map(x => x.id), ['b', 'd', 'c', 'a'], 'unknown and repeated ids do no harm');
+  assert.deepEqual(D.orderSessions(null, null, null), []);
+});
+
+test('moveInOrder / dropOrder: where a dragged tile lands, and what is saved', () => {
+  assert.deepEqual(D.moveInOrder(['a', 'b', 'c'], 'c', 'a'), ['c', 'a', 'b']);
+  assert.deepEqual(D.moveInOrder(['a', 'b', 'c'], 'a', null), ['b', 'c', 'a'], 'no target: the end');
+  assert.deepEqual(D.moveInOrder(['a', 'b'], 'x', 'nope'), ['a', 'b', 'x'], 'a target not in it: the end');
+  assert.deepEqual(D.moveInOrder(['a', 'b'], 'a', 'a'), ['b', 'a'], 'on itself: the end');
+  assert.deepEqual(D.dropOrder(['a', 'b', 'c', 'd'], 'd', 'b'), ['a', 'd'], 'kept up to the dropped tile; the rest stay in activity order');
+  assert.deepEqual(D.dropOrder(['a', 'b', 'c'], 'a', null), ['b', 'c', 'a']);
+  assert.deepEqual(D.orderSessions([{ id: 'a', time: 9 }, { id: 'b', time: 8 }, { id: 'c', time: 7 }, { id: 'd', time: 6 }], D.dropOrder(['a', 'b', 'c', 'd'], 'd', 'b'), []).map(x => x.id), ['a', 'd', 'b', 'c'], 'the row shows the drop');
+});
+
+test('worktreeNameOf: spaces removed, 64 characters, only names Orca takes', () => {
+  assert.equal(D.worktreeNameOf('  fix login  bug '), 'fixloginbug');
+  assert.equal(D.worktreeNameOf('a'.repeat(80)).length, 64);
+  assert.equal(D.worktreeNameOf('-rm'), '', 'not starting with a dash');
+  assert.equal(D.worktreeNameOf('a;b'), '');
+  assert.equal(D.worktreeNameOf('ep-1234_v2.1'), 'ep-1234_v2.1');
+  assert.equal(D.worktreeNameOf(null), '');
+});
+
+test('dropAccepts: only my session waiting for input with a terminal, no permission request', () => {
+  const ok = { key: 'me:a', state: 'input', canInput: true, bundle: false, peer: '' };
+  assert.equal(D.dropAccepts(ok), true);
+  assert.equal(D.dropAccepts(ok, { hasPerm: true }), false, 'a permission request pending');
+  for (const st of ['run', 'ask', 'err', 'done']) assert.equal(D.dropAccepts({ ...ok, state: st }), false, st);
+  assert.equal(D.dropAccepts({ ...ok, canInput: false }), false, 'no terminal');
+  assert.equal(D.dropAccepts({ ...ok, key: 'peer:kim/a', peer: 'kim' }), false, 'a teammate\'s');
+  assert.equal(D.dropAccepts({ key: 'more:me', bundle: true, state: 'input', canInput: true }), false, 'a pile');
+  assert.equal(D.dropAccepts(null), false);
+});
+
+test('dropPayload: paths not contents, URLs as they are, text masked and cut to 2000', () => {
+  assert.deepEqual(D.dropPayload({ paths: ['/tmp/a b.txt', '/tmp/c'] }), { ok: true, kind: 'files', text: '"/tmp/a b.txt"\n"/tmp/c"', cut: false });   // every path quoted: a bare /path would read as a slash command
+  assert.deepEqual(D.dropPayload({ uris: '# comment\r\nhttps://example.com/x\n' }), { ok: true, kind: 'url', text: 'https://example.com/x', cut: false });
+  const secret = D.dropPayload({ text: 'token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 here' });
+  assert.equal(secret.ok, true); assert.doesNotMatch(secret.text, /sk-ant-api03-abcdefghij/, 'masked before it goes');
+  const long = D.dropPayload({ text: 'x'.repeat(2500) });
+  assert.equal(long.cut, true); assert.equal(long.text.length, 2000);
+  assert.equal(D.dropPayload({ text: 'y'.repeat(2000) }).cut, false);
+  assert.equal(D.dropPayload({ text: '   ' }).ok, false, 'nothing to send');
+  assert.equal(D.dropPayload({ paths: ['/p'], text: 'ignored' }).text, '"/p"', 'files win');
+  assert.equal(D.popExtra('add'), 2 * D.POP.tipSmallH + 2 * D.POP.gap, 'the "+" panel: twice the card');
+});
+
+test('renderer: tiles follow orderSessions; the drag runs through dragStep; a drop saves dropOrder, pins and says so; unpin in the tile menu', () => {
+  assert.match(between(html, 'function dockSessions()', '\n}\n'), /AgentDeskDock\.orderSessions\(shown, dockCfg\.order, pinnedSessions\)/);
+  const step = between(html, 'function dockDragDo(ev, e)', '\n}\n');
+  assert.match(step, /const prev = dockDrag, r = AgentDeskDock\.dragStep\(prev, ev\);/);
+  assert.match(step, /src\.addEventListener\('lostpointercapture', \(\) => dockDragDo\(\{ type: 'cancel' \}\), \{ once: true \}\)/);
+  assert.match(step, /AgentDeskDock\.dropOrder\(visible, prev\.id, bx \? bx\.id : null\)/);
+  assert.match(step, /pinnedSessions\.add\(prev\.id\); dockPinSave\(\);/);
+  assert.match(step, /dockHint\(t\('📌 고정됨 — 우클릭으로 해제'\), '', true\);/, 'L2: the pin is announced');
+  assert.equal((step.match(/dropOrder/g) || []).length, 1, 'only the drop action changes the order');
+  assert.match(between(html, "$('dock-tiles').addEventListener('pointerdown'", '\n});'), /movable: !!\(x && !x\.bundle && !x\.peer\)/);
+  assert.match(html, /document\.addEventListener\('pointermove', e => \{ if \(dockDrag\) dockDragDo\(\{ type: 'move', x: e\.clientX, y: e\.clientY, buttons: e\.buttons \}, e\); \}\);/);
+  assert.match(between(html, 'function dockDraw() {', '\n}\n'), /if \(sig !== dockSig && !\(dockDrag && dockDrag\.on\)\) \{ dockSig = sig; dockTilesDraw\(m\); \}/, 'no redraw mid-drag');
+  assert.match(html, /if \(dockDrag && dockDrag\.on\) \{ e\.preventDefault\(\); return; \}   \/\/ not in the middle of a drag/, '⌘1–9 waits');
+  assert.match(between(html, "$('dock-tiles').addEventListener('click'", '\n});'), /if \(dockClickEat\) \{ dockClickEat = false; return; \}/);
+  assert.match(between(html, 'function dockHover(key)', '\n}\n'), /if \(\(dockDrag && dockDrag\.on\) \|\| dockPop\) return;/);
+  assert.match(between(html, 'function dockUnpin(id)', '\n}\n'), /pinnedSessions\.delete\(id\); dockPinSave\(\);/);
+  assert.match(between(html, 'function dockPinSave()', '\n'), /localStorage\.setItem\('roca-pinned'/, 'the dashboard\'s pins');
+});
+
+test('renderer: "+" new session — the Jira dispatch call, a listed repository only, cleaned name, closes on Esc / outside / leaving', () => {
+  const c = between(html, 'async function dockAddCreate()', '\n}\n');
+  assert.match(c, /window\.orca\.worktreeCreate\(\{ name, repo, agent: 'claude', prompt: '' \}\)\.catch\(err => \(\{ ok: false, error: err\.message \}\)\)/);
+  assert.match(c, /if \(!repo \|\| !p\.repos\.includes\(repo\)\)/, 'no free-typed repository');
+  assert.match(c, /AgentDeskDock\.worktreeNameOf\(/);
+  assert.match(c, /AgentDeskJira\.errorText\(r\)/);
+  assert.match(between(html, 'async function dockAddOpen()', '\n}\n'), /window\.orca\.repos\(\)/);
+  assert.match(between(html, 'function dockPopKind()', '\n}\n'), /if \(dockPop\) return dockPop\.kind;/);
+  assert.match(html, /if \(dockOn && dockPop\) \{ const k = dockPop\.key; dockPopClose\(\); dockTileFocus\(k\); return; \}/, 'Esc');
+  assert.match(between(html, 'function dockLeave(page)', '\n}\n'), /dockPop = null; \$\('dock-pop'\)\.hidden = true;/);
+});
+
+test('renderer: a drop is checked (dropSafeText) and confirmed in an armed panel before dockSendTo; nothing stored', () => {
+  const drop = between(html, "$('dock-tiles').addEventListener('drop'", '\n});');
+  assert.match(drop, /if \(!dockDropOk\(x\)\)/);
+  assert.match(drop, /AgentDeskDock\.dropPayload\(\{ paths,/);
+  assert.match(drop, /window\.orca\.getPathForFile\(f\)/, 'the path, not the file');
+  assert.match(drop, /if \(p\.kind !== 'files'\) \{ const safe = AgentDeskDock\.dropSafeText\(text\);/);
+  assert.match(drop, /dockDropConfirm\(x, text, p\.cut\);/);
+  assert.doesNotMatch(drop, /dockSendTo|terminalSend|localStorage|dockSave/, 'the drop itself sends and stores nothing');
+  const c = between(html, 'function dockDropConfirm(x, text, cut)', '\n}\n');
+  assert.match(c, /dockPopOpen\('drop', x\.key,/);
+  assert.match(c, /<pre class="dp-prev">\$\{esc\(prev\)\}<\/pre>/, 'the masked text, escaped');
+  assert.match(c, /\[\.\.\.text\]\.slice\(0, DOCK_DROP_PREVIEW\)/);
+  assert.match(c, /permArm\(el\);/, '[보내기] armed like a permission panel');
+  assert.match(c, /if \(go\.disabled \|\| !d\) return;/);
+  assert.match(c, /!dockDropOk\(y\)/, 'checked again when sent');
+  assert.match(c, /await dockSendTo\(ys, h, d\.text\)/);
+  assert.doesNotMatch(c, /localStorage|dockSave/);
+  assert.match(html, /const DOCK_DROP_MAX = 2000, DOCK_DROP_PREVIEW = 300;/);
+  // L4: the permission map once per drag, reasons in words
+  assert.match(html, /\$\('dock-tiles'\)\.addEventListener\('dragenter', \(\) => \{ if \(!dockDropPerms\) dockDropPerms = dockPermMap\(\); \}\);/);
+  assert.doesNotMatch(between(html, "$('dock-tiles').addEventListener('dragover'", '\n});'), /dockPermMap\(\)/);
+  assert.match(html, /const DOCK_DROP_ERR = \{ 'no masker':/);
+  assert.match(between(html, 'function dockDropConfirm(x, text, cut)', '\n}\n'), /dockPop\.drop = \{ key: x\.key, sid: s\.id, text, cut \};/);
+});
+
+test('renderer: one worktree at a time from "+" (dockAddBusy), whatever the panel does', () => {
+  assert.match(between(html, 'async function dockAddOpen()', '\n}\n'), /if \(dockAddBusy\) \{ dockPopOpen\('add', 'add:me',/);
+  const c = between(html, 'async function dockAddCreate()', '\n}\n');
+  assert.match(c, /if \(!p \|\| p\.kind !== 'add' \|\| dockAddBusy\) return;/);
+  assert.match(c, /dockAddBusy = true;[\s\S]*await window\.orca\.worktreeCreate\([\s\S]*dockAddBusy = false;/);
+});
+
+test('dragStep: a click, a drag, a long press — and a lost release never saves an order', () => {
+  const G = D.dragStep, down = { type: 'down', key: 'me:a', id: 'a', x: 10, y: 10, movable: true };
+  let r = G(null, down); assert.equal(r.action, 'arm');
+  assert.equal(G(r.state, { type: 'move', x: 14, y: 12, buttons: 1 }).action, 'none', 'under 6 px');
+  assert.equal(G(r.state, { type: 'up' }).action, 'click');
+  const on = G(r.state, { type: 'move', x: 16, y: 10, buttons: 1 });
+  assert.equal(on.action, 'start'); assert.equal(on.state.on, true);
+  assert.equal(G(on.state, { type: 'move', x: 40, y: 10, buttons: 1 }).action, 'mark');
+  assert.deepEqual(G(on.state, { type: 'up' }), { state: null, action: 'drop' });
+  // M2: dragging with no button down (the release went elsewhere / a redraw lost the capture) is a cancel, and a
+  // later release then does nothing
+  const lost = G(on.state, { type: 'move', x: 40, y: 10, buttons: 0 });
+  assert.deepEqual(lost, { state: null, action: 'cancel' });
+  assert.equal(G(lost.state, { type: 'up' }).action, 'none');
+  assert.deepEqual(G(on.state, { type: 'cancel' }), { state: null, action: 'cancel' }, 'lostpointercapture / pointercancel');
+});
+
+test('dragStep: long press opens the menu (no drag after it); teammates\' tiles never arm', () => {
+  const G = D.dragStep, s0 = G(null, { type: 'down', key: 'me:a', id: 'a', x: 0, y: 0, movable: true }).state;
+  const lg = G(s0, { type: 'long' });
+  assert.equal(lg.action, 'menu');
+  assert.equal(G(lg.state, { type: 'move', x: 50, y: 0, buttons: 1 }).action, 'none', 'held: no drag after the menu');
+  assert.equal(G(lg.state, { type: 'up' }).action, 'eat', 'the click after a long press is not a click');
+  const on = G(s0, { type: 'move', x: 9, y: 0, buttons: 1 }).state;
+  assert.equal(G(on, { type: 'long' }).action, 'none', 'dragging: the timer does nothing');
+  assert.deepEqual(G(null, { type: 'down', key: 'peer:kim/x', id: 'x', movable: false }), { state: null, action: 'none' });
+  assert.equal(G(null, { type: 'move', x: 1, y: 1, buttons: 1 }).action, 'none');
+  assert.equal(D.DRAG_PX, 6);
+});
+
+test('dropSafeText: text Claude Code would read as a command is refused', () => {
+  assert.deepEqual(D.dropSafeText('please look at this'), { ok: true, reason: '' });
+  for (const v of ['/clear', '  /compact now', '!rm -rf ~', '# remember this']) assert.deepEqual(D.dropSafeText(v), { ok: false, reason: 'command' }, v);
+  assert.deepEqual(D.dropSafeText('   '), { ok: false, reason: 'empty' });
+  assert.deepEqual(D.dropSafeText(null), { ok: false, reason: 'empty' });
+  assert.equal(D.dropSafeText('https://example.com/a').ok, true);
+  assert.equal(D.popExtra('drop'), D.popExtra('add'));
 });

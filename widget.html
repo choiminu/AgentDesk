@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-L9qZrSuryA1YbdooTNkU2UKSkodHL9hy10Le3xG+jdw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-BAeO51ht9NAQLOVA87MQyIcl+Akmb3KultdLG9HvE6Q='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1607,6 +1607,18 @@
   .dock-tiles.s64 .dock-num { font-size: 9px; line-height: 14px; }
   .dock-tiles.s64 .dock-age { font-size: 10px; }
   #page-dock.dock-sz-lg .dock-btn { font-size: var(--fs-md, 14px); }
+  /* "+": a new session (a narrow tile at the end of my group, whatever the tile size) */
+  #dock-tiles .dock-tile.add { width: 28px; padding: 0; justify-content: center; border-style: dashed; color: var(--text3); font: 600 16px/1 var(--sans); }
+  #dock-tiles .dock-tile.add:hover { color: var(--text); }
+  /* dragging a tile of mine to a new place: the tile being moved fades, a bar marks where it lands */
+  .dock-tiles.dragging { -webkit-app-region: no-drag; }   /* the gaps between tiles stop moving the window mid-drag */
+  .dock-tiles.dragging .dock-tile { cursor: grabbing; }
+  .dock-tile.drag-src { opacity: 0.45; }
+  .dock-tile.drop-before { box-shadow: -3px 0 0 var(--accent); }
+  .dock-tile.drop-after { box-shadow: 3px 0 0 var(--accent); }
+  /* something dragged in from outside: tiles that take it are lit, the rest say no */
+  .dock-tile.can-drop { border-color: var(--green); box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 45%, transparent); }
+  .dock-tile.no-drop { opacity: 0.5; cursor: not-allowed; }
   /* a teammate's sessions folded into one tile: @name, how many, the most urgent state */
   .dock-cnt { position: absolute; top: 3px; left: 4px; font: 700 9px/12px var(--mono); color: var(--text2); pointer-events: none; }
   /* ⌘1 … ⌘9: the tile's number, faint, left of its name (not on 40 px tiles, which have no name) */
@@ -1686,6 +1698,17 @@
   /* hover card (the hover setting off, a "+N" pile, a tile without a terminal window): name, state, 지금 하는 일, last answer */
   .dock-tip { position: fixed; z-index: 160; display: flex; flex-direction: column; gap: 2px; width: 260px; max-width: calc(100vw - 12px); padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-float); font-size: var(--fs-xs); color: var(--text2); pointer-events: none; }
   .dock-tip[hidden] { display: none; }
+  /* a panel the user opened in the room above the bar: the new-session form, a tile's menu */
+  .dock-pop { pointer-events: auto; overflow-y: auto; gap: 6px; }
+  .dock-pop label { display: flex; flex-direction: column; gap: 2px; color: var(--text3); }
+  .dock-pop select, .dock-pop input { width: 100%; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+  .dock-pop .dp-row { display: flex; align-items: center; gap: 6px; }
+  .dock-pop button { padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; cursor: pointer; }
+  .dock-pop button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .dock-pop button:disabled { opacity: 0.5; cursor: default; }
+  .dock-pop .dp-msg { color: var(--text3); overflow-wrap: anywhere; }
+  .dock-pop .dp-prev { margin: 0; max-height: 7.5em; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-xs)/1.45 var(--mono); color: var(--text); }
+  .dock-pop .perm-btns { display: inline-flex; }
   .dock-tip .tp-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
   .dock-tip b { flex: 0 1 auto; min-width: 0; color: var(--text); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dock-tip .tp-st { flex-shrink: 0; font-weight: 600; }
@@ -1872,6 +1895,7 @@
   <div class="page" id="page-dock" data-verbatim>
     <div class="dock-tip" id="dock-tip" role="tooltip" hidden></div>
     <div class="dock-tip" id="dock-utip" role="tooltip" hidden></div>
+    <div class="dock-tip dock-pop" id="dock-pop" role="dialog" hidden></div>
     <div class="dock-asks" id="dock-asks" hidden></div>
     <div class="dock-strip" id="dock-strip">
       <div class="dock-ticker" id="dock-ticker" hidden></div>
@@ -2192,7 +2216,11 @@ Object.assign(I18N, {
   '이 세션의 터미널을 찾을 수 없습니다': 'Cannot find this session\'s terminal',
   '도크: 방해 금지': 'Do not disturb', '도크: 방해 금지 켬': 'Do not disturb: on', '도크: 세션 한도': 'Session', '도크: 주간 한도': 'Weekly', '도크: 초기화': 'resets',
   '완료 말풍선': 'Completion bubbles', '내 세션이 작업을 마치면(작업 중 → 입력 대기·완료) 그 타일 위에 마지막 응답의 첫 줄을 8초 동안 띄웁니다. 누르면 터미널로 갑니다.': 'When a session of yours stops working (running → waiting / done), the first line of its last answer shows over its tile for 8 s. Click it to go to the terminal.',
-  '가드레일 규칙 꺼짐': 'Guardrail rule turned off', '도크: 타이머': 'Timer', '도크: 눌러서 팀 탭에서 봅니다': 'click to see them on the Team tab',
+  '가드레일 규칙 꺼짐': 'Guardrail rule turned off', '도크: 새 세션': 'New session', '도크: 저장소': 'Repository', '도크: 이름': 'Name', '도크: 만들기': 'Create', '도크: 고정 해제': 'Unpin',
+  '고정되지 않은 세션입니다 — 끌어서 옮기면 고정됩니다': 'Not pinned — drag it to a new place to pin it', '이 세션에는 지금 보낼 수 없습니다 (입력 대기일 때만)': 'Cannot send to this session now (only while it waits for input)',
+  '보낼 수 없습니다': 'Cannot send', '2000자로 잘림': 'cut to 2000 characters', '보낼까요?': 'Send this?',
+  '📌 고정됨 — 우클릭으로 해제': '📌 Pinned — right-click to unpin', '마스킹을 할 수 없어 보내지 않았습니다': 'Not sent: masking is not available', '보낼 내용이 없습니다': 'Nothing to send', '내용이 너무 깁니다': 'Too long to send',
+  '/ · ! · # 로 시작하는 내용은 명령으로 읽힐 수 있어 보내지 않습니다': 'Not sent: text starting with / ! # would be read as a command', '도크: 타이머': 'Timer', '도크: 눌러서 팀 탭에서 봅니다': 'click to see them on the Team tab',
   '도크 크기': 'Dock size', '작게': 'Small', '보통': 'Medium', '크게': 'Large', '작게: 이름 없는 작은 타일과 낮은 띠. 크게: 큰 타일과 큰 글자.': 'Small: small tiles without names and a lower bar. Large: bigger tiles and text.',
   '한 줄 요약 띠': 'Summary ticker', '띠 위쪽에 내 세션마다 지금 하는 일 요약을 한 줄로 보여 줍니다. 길면 천천히 흐르고, 마우스를 올리면 멈춥니다.': 'A line along the top of the bar with what each of your sessions is doing. It scrolls slowly when long and stops while pointed at.',
   '마우스가 멀어지면 숨기기': 'Hide when the pointer leaves', '마우스가 띠를 떠나고 2초 뒤 띠가 화면 가장자리로 밀려 8px만 보입니다. 마우스를 가져가거나 말풍선·알림이 뜨면 바로 돌아옵니다.': 'Two seconds after the pointer leaves, the bar slides to the screen edge until 8 px show. It comes back when the pointer returns or a bubble or message appears.', '권한 요청은 버튼으로 답하세요': 'Answer a permission request with its buttons', '이 선택지는 도크에서 누를 수 없습니다': 'The dock never presses this option', '잠시 후 다시 누르세요': 'Wait a moment, then press it again',
@@ -2930,7 +2958,7 @@ inboxRender();
 const DOCK_INBOX_H = 360;
 let DOCK_H = 72;   // the bar's height: AgentDeskDock.stripHeight(size, ticker) (dockSizeApply)
 // localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, ticker, size, autoHide }
-let dockCfg = { start: false, opacity: 0.85, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, ticker: true, size: 'md', autoHide: false };
+let dockCfg = { start: false, opacity: 0.85, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, ticker: true, size: 'md', autoHide: false, order: [], addRepo: '' };   // order: my session ids in the user's drag order
 try {
   const c = JSON.parse(localStorage.getItem('roca-dock') || '{}') || {};
   dockCfg.start = c.start === true;
@@ -2943,6 +2971,8 @@ try {
   dockCfg.ticker = c.ticker !== false;          // the summary line along the top edge
   dockCfg.size = ['sm', 'md', 'lg'].includes(c.size) ? c.size : 'md';
   dockCfg.autoHide = c.autoHide === true;      // slide away when the pointer leaves
+  dockCfg.order = Array.isArray(c.order) ? c.order.filter(v => typeof v === 'string' && v && v.length <= 200).slice(0, 50) : [];
+  dockCfg.addRepo = typeof c.addRepo === 'string' && c.addRepo.length <= 500 ? c.addRepo : '';
   // a spot per display (an old single { cx, y } becomes 'legacy': main uses it on the display it lies on)
   const es = AgentDeskDock.posEntries(c.pos);
   if (es.length) dockCfg.pos = Object.fromEntries(es.map(e => [e.id, { cx: Math.round(e.cx), y: Math.round(e.y), at: e.at }]));
@@ -2975,10 +3005,10 @@ function dockPermMap() {
 // when pinned or active in the last 24 h
 function dockSessions() {
   const now = Date.now(), perm = dockPermMap();
-  return sessions.filter(s => !hiddenSessions.has(s.id) && (s.status !== 'done' || pinnedSessions.has(s.id) || (s.time && now - s.time < DONE_RECENT_MS)))
-    .map((s, i) => ({ s, i, pin: pinnedSessions.has(s.id) ? 0 : 1 }))
-    .sort((a, b) => a.pin - b.pin || (b.s.time || 0) - (a.s.time || 0) || a.i - b.i)   // pinned first, then the latest activity leftmost
-    .map(({ s }) => ({ id: s.id, name: s.name, status: s.status, needsInput: s.needsInput, hasPerm: perm.has(s.id), subs: s.subagents || [], handle: !!handles.get(s.id) }));
+  const shown = sessions.filter(s => !hiddenSessions.has(s.id) && (s.status !== 'done' || pinnedSessions.has(s.id) || (s.time && now - s.time < DONE_RECENT_MS)));
+  // the user's drag order first, then pinned, then the latest activity leftmost (AgentDeskDock.orderSessions)
+  return AgentDeskDock.orderSessions(shown, dockCfg.order, pinnedSessions)
+    .map(s => ({ id: s.id, name: s.name, status: s.status, needsInput: s.needsInput, hasPerm: perm.has(s.id), subs: s.subagents || [], handle: !!handles.get(s.id) }));
 }
 // teammates' sessions, only while team sharing works (as the review queue's team kinds)
 function dockPeers() {
@@ -2997,7 +3027,7 @@ const dockLocal = x => (x && !x.bundle && !x.peer ? sessions.find(s => s.id === 
 // everything in the bar but the tiles: padding, border, the separator, gaps, the right-hand buttons
 function dockFixedWidth() {
   const cs = getComputedStyle($('dock-strip')), gap = parseFloat(cs.columnGap) || 6;
-  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + 2 + 1 + 2 * gap + 4 + $('dock-right').offsetWidth;
+  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + 2 + 1 + 2 * gap + 4 + $('dock-right').offsetWidth + DOCK_ADD_W;
 }
 // a tile's state start when the bar first sees it: the dashboard's status change time (askSince for a choice)
 function dockSeed(x) {
@@ -3072,6 +3102,7 @@ function dockTimerEnd() {
   st.classList.remove('flash'); void st.offsetWidth; st.classList.add('flash');
   setTimeout(() => st.classList.remove('flash'), 1300);
 }
+const DOCK_ADD_W = 28 + 4;   // the "+" tile and its gap
 function dockLabels() {
   if (dockLabelLang === LANG) return;
   dockLabelLang = LANG;
@@ -3086,6 +3117,11 @@ function dockDraw() {
   // the window follows the content: every tile at 56 px plus the rest (main clamps it to 320 px … 90 % of the screen)
   const full = AgentDeskDock.dockModel({ sessions: mine, peers, inbox, selectedId: dockSel, size: dockCfg.size });
   if (dockSel && !full.selected) dockSel = '';
+  if (dockAddWant) {   // the session "+" just made: select its tile when it shows up
+    const hit = Date.now() - dockAddWant.at > 180000 ? null : full.mine.find(x => !x.bundle && ((dockAddWant.handle && handles.get(x.id) === dockAddWant.handle) || x.name === dockAddWant.name));
+    if (hit) dockSel = hit.key;
+    if (hit || Date.now() - dockAddWant.at > 180000) dockAddWant = null;
+  }
   if (!dockSel) {   // nothing chosen yet: the first of mine that waits for me
     const pick = full.mine.find(x => x.state === 'ask') || full.mine.find(x => x.state === 'input');
     if (pick) dockSel = pick.key;
@@ -3105,8 +3141,8 @@ function dockDraw() {
   for (const { key, n } of AgentDeskDock.numberedTiles(m.mine)) { const x = m.mine.find(y => y.key === key); if (x) x.num = n; }
   // a new selection alone only moves the highlight: the clicked tile stays the same node (its double-click still lands)
   const sig = JSON.stringify([LANG, m.size, [...m.mine, ...m.peers].map(({ age, ageWarn, ...x }) => ({ ...x, selected: false }))]);   // minutes: dockTileDeco
-  if (sig !== dockSig) { dockSig = sig; dockTilesDraw(m); }
-  else for (const b of $('dock-tiles').querySelectorAll('.dock-tile:not(.more)')) { const on = b.dataset.key === dockSel; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  if (sig !== dockSig && !(dockDrag && dockDrag.on)) { dockSig = sig; dockTilesDraw(m); }   // dragging: redrawn when it ends
+  else for (const b of $('dock-tiles').querySelectorAll('.dock-tile:not(.more):not(.add)')) { const on = b.dataset.key === dockSel; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   dockTileDeco();
   $('page-dock').classList.toggle('dock-still', !dockCfg.anim);
   dockAnimKick();
@@ -3120,7 +3156,7 @@ function dockDraw() {
   const edge = AgentDeskDock.dockEdge(full.mine), pd = $('page-dock');
   for (const k of ['ask', 'err', 'run']) pd.classList.toggle(`edge-${k}`, edge === k);
   const asks = new Set(full.mine.filter(x => x.state === 'ask').map(x => x.key));
-  if ([...asks].some(k => !dockAskKeys.has(k))) dockHideSet(false);
+  if ([...asks].some(k => !dockAskKeys.has(k))) { dockHideSet(false); if (dockPop && dockPop.kind === 'menu') dockPopClose(); }   // its bubble must show
   dockAskKeys = asks;
   if (dockTipKey) { if (dockTileOf(dockTipKey)) dockTipShow(dockTipKey); else dockTipHide(); }
 }
@@ -3144,7 +3180,8 @@ function dockTileHtml(x) {
 function dockTilesDraw(m) {
   const el = $('dock-tiles'), a = document.activeElement, fKey = a && el.contains(a) ? a.dataset.key : '';
   el.className = `dock-tiles s${m.size}`;
-  el.innerHTML = m.mine.map(dockTileHtml).join('') + (m.mine.length && m.peers.length ? '<span class="dock-gsep" aria-hidden="true"></span>' : '') + m.peers.map(dockTileHtml).join('');
+  const add = `<button class="dock-tile add" data-key="add:me" aria-label="${esc(dockT('도크: 새 세션'))}" title="${esc(dockT('도크: 새 세션'))}" tabindex="-1">＋</button>`;
+  el.innerHTML = m.mine.map(dockTileHtml).join('') + add + (m.peers.length ? '<span class="dock-gsep" aria-hidden="true"></span>' : '') + m.peers.map(dockTileHtml).join('');
   // one tab stop for the whole row (← → move inside it): the focused tile, else the selected one, else the first
   const tiles = [...el.querySelectorAll('.dock-tile')];
   const cur = tiles.find(b => b.dataset.key === fKey) || tiles.find(b => b.dataset.key === dockSel) || tiles[0];
@@ -3279,6 +3316,7 @@ function dockWinSet(b) {
 function dockPopKind() {
   if (inboxQOpen) return 'inbox';
   if (dockTermBg()) return 'term';
+  if (dockPop) return dockPop.kind;   // a panel the user opened: the new-session form, a tile's menu
   if (dockAskVisible()) return [...dockAsk.values()].some(a => a.placed && a.big) ? 'bubblesBig' : 'bubbles';
   if (dockDoneVisible()) return 'bubblesDone';
   return dockTipKey ? 'tipSmall' : dockUsageOn ? 'usage' : '';
@@ -3290,11 +3328,11 @@ function dockPopGeom(kind) {
   const stripX = w ? w.stripX || 0 : 0, stripW = w ? w.stripWidth || winWidth : winWidth;
   const want = AgentDeskDock.popWidth(kind, (w && w.workWidth) || (window.screen && window.screen.availWidth) || winWidth);
   let anchor = stripX + stripW / 2;
-  const key = kind === 'term' ? dockTermKey() : dockTipKey;   // the panel sits over the tile it belongs to (the limit card: the bars)
+  const key = kind === 'term' ? dockTermKey() : kind === 'add' || kind === 'menu' || kind === 'drop' ? (dockPop && dockPop.key) : dockTipKey;   // the panel sits over the tile it belongs to (the limit card: the bars)
   const tile = kind === 'usage' ? (!$('dock-usage').hidden && $('dock-usage')) : key && $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(key)}"]`);
   if (tile) { const r = tile.getBoundingClientRect(); anchor = r.left + r.width / 2; }
   else if (kind !== 'term') return null;   // the terminal window falls back to the bar's centre (its tile folded into "+N")
-  const P = AgentDeskDock.POP, height = kind === 'term' ? P.termH : P.tipSmallH;
+  const P = AgentDeskDock.POP, height = kind === 'term' ? P.termH : kind === 'add' || kind === 'drop' ? 2 * P.tipSmallH : P.tipSmallH;
   const room = w && w.extra > 0 ? w.extra : AgentDeskDock.popExtra(kind);
   return { want, ...AgentDeskDock.popRect({ winWidth, width: want, anchor, dir: dockDir, stripHeight: DOCK_H, height, room }) };
 }
@@ -3325,12 +3363,14 @@ function dockPopPlace() {
   if (term) { const g = dockPopGeom('term'); if (g) { put(term, g, true); tail(term, g, dockTermKey()); } }
   const ut = $('dock-utip');
   if (dockUsageOn && !ut.hidden) { const g = dockPopGeom('usage'); if (g) { put(ut, g, false); tail(ut, g, 'usage'); } }
+  const dp = $('dock-pop');
+  if (dockPop && !dp.hidden) { const g = dockPopGeom(dockPop.kind); if (g) { put(dp, g, false); tail(dp, g, dockPop.key); } }
   dockAskPlace();
 }
 // pointer over the empty room around the panel / queue → clicks go to the windows behind (main: setIgnoreMouseEvents)
 document.addEventListener('mousemove', e => {
   if (!dockOn || !dockPopKind()) return;
-  const hit = !!(e.target && e.target.closest && e.target.closest('#dock-strip, #inbox-panel, .peer-term, .team-modal-bg, .dock-bubble'));
+  const hit = !!(e.target && e.target.closest && e.target.closest('#dock-strip, #inbox-panel, .peer-term, .team-modal-bg, .dock-bubble, .dock-pop'));
   if (hit === dockHit) return;
   dockHit = hit; window.orca.dock({ hit }).catch(() => {});
 });
@@ -3387,7 +3427,7 @@ function dockTipHtml(x) {
 function dockTipShow(key) {
   dockWake();
   const x = dockTileOf(key), tile = $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(key)}"]`), tip = $('dock-tip');
-  if (!x || !tile || inboxQOpen || dockTermBg() || dockAskOn(key)) { dockTipHide(); return; }   // the window / its bubble show more than the card
+  if (!x || !tile || inboxQOpen || dockTermBg() || dockPop || dockAskOn(key)) { dockTipHide(); return; }   // the window / its bubble show more than the card
   if (dockDone.has(key)) { dockDoneDrop(key); dockAskPlace(); }   // its completion bubble: seen (the card says more)
   const html = dockTipHtml(x);
   if (html !== dockTipLast) { tip.innerHTML = html; dockTipLast = html; }
@@ -3467,6 +3507,7 @@ function dockHoverHold(over) {
   return dockTyping() || on || !!$('team-modal');
 }
 function dockHover(key) {
+  if ((dockDrag && dockDrag.on) || dockPop) return;   // dragging a tile / a panel the user opened: no hover windows
   dockWake();
   clearTimeout(dockHoverT); dockHoverT = 0; clearTimeout(dockLeaveT); dockLeaveT = 0;
   const gen = ++dockHoverGen, x = dockTileOf(key), open = dockTermKey();
@@ -3642,8 +3683,8 @@ const DOCK_ASK_MUTE_MS = 5000;
 const dockAskSentSig = new Map();   // tile key → { sig, at }: the prompt last answered from a bubble
 // the prompt just answered, still on the screen a moment later: not shown again (and not armed again) for 5 s
 const dockAskMuted = a => { const r = a.kind === 'choice' && !a.sent && dockAskSentSig.get(a.key); return !!(r && r.sig === a.sig && Date.now() - r.at < DOCK_ASK_MUTE_MS); };
-const dockAskVisible = () => dockOn && !inboxQOpen && !dockTermBg() && [...dockAsk.values()].some(a => a.placed);
-const dockDoneVisible = () => dockOn && !inboxQOpen && !dockTermBg() && [...dockDone.values()].some(d => d.placed);
+const dockAskVisible = () => dockOn && !inboxQOpen && !dockTermBg() && !dockPop && [...dockAsk.values()].some(a => a.placed);
+const dockDoneVisible = () => dockOn && !inboxQOpen && !dockTermBg() && !dockPop && [...dockDone.values()].some(d => d.placed);
 const dockAskOn = key => { const a = dockAsk.get(key); return !!(a && a.placed && dockAskVisible()); };
 // which sessions wait for a choice now: new bubbles, changed requests, finished ones gone; screens read every DOCK_ASK_MS
 function dockAskSync() {
@@ -3847,7 +3888,7 @@ const dockAskHeight = a => AgentDeskDock.bubbleHeight(a && a.kind === 'choice' &
 // side by side over their tiles (bubbleLayout); what does not fit waits (hidden), the oldest first
 function dockAskPlace() {
   const box = $('dock-asks'), P = AgentDeskDock.POP;
-  const show = dockOn && !inboxQOpen && !dockTermBg();
+  const show = dockOn && !inboxQOpen && !dockTermBg() && !dockPop;
   box.hidden = !show;
   const items = [];
   for (const a of dockAsk.values()) {
@@ -3956,6 +3997,230 @@ function dockDoneSync() {
   }
   if (gone) { dockAskPlace(); dockBoundsSync(); }
 }
+// ── panels the user opens in the room above the bar (#dock-pop): the "+" form and a tile's menu. One at a time;
+//    Esc, a click outside it or leaving the dock closes it; bubbles and hover windows wait while it is open ──
+let dockPop = null;   // { kind: 'add' | 'menu', key, repos }
+let dockAddWant = null;   // { name, handle, at }: the session "+" made, selected when its tile shows up
+function dockPopOpen(kind, key, html) {
+  dockTermClose(true); dockTipHide(); dockUsageHide();
+  dockPop = { kind, key };
+  const el = $('dock-pop'); el.innerHTML = html; el.hidden = false;
+  dockWake(); dockPopPlace(); dockAskPlace(); dockBoundsSync();
+  return el;
+}
+function dockPopClose() {
+  if (!dockPop) return;
+  dockPop = null;
+  const el = $('dock-pop'); el.hidden = true; el.innerHTML = '';
+  dockAskPlace(); dockBoundsSync();
+}
+document.addEventListener('mousedown', e => {
+  if (!dockOn || !dockPop || (e.target.closest && e.target.closest('#dock-pop, .dock-tile.add'))) return;
+  dockPopClose();
+}, true);
+// "+": a new session — an Orca worktree with Claude, as the Jira board's dispatch (window.orca.worktreeCreate, the
+// same arguments and errors, no prompt). The repository only from the list (Orca's repositories, the last one used
+// first; none registered: my sessions' repositories), the name without spaces, 64 characters
+let dockAddBusy = false;   // a worktree being made: the panel only says so until it is done (no second one)
+async function dockAddOpen() {
+  if (dockPop && dockPop.kind === 'add') { dockPopClose(); return; }
+  if (dockAddBusy) { dockPopOpen('add', 'add:me', `<div class="tp-head"><b>${esc(dockT('도크: 새 세션'))}</b></div><div class="dp-msg" id="dock-add-msg">${esc(t('워크트리 생성 중… (최대 3분)'))}</div>`); return; }
+  let repos = [];
+  try { const r = await window.orca.repos(); repos = (r?.result?.repos || []).filter(x => x && x.id).map(x => ({ value: `id:${x.id}`, label: String(x.displayName || x.path || x.id) })); } catch {}
+  if (!repos.length) {
+    const seen = new Set();
+    for (const s of [...sessions].sort((a, b) => (b.time || 0) - (a.time || 0))) {
+      const v = String(s.repo || '');
+      if (v && !v.startsWith('-') && v.length <= 500 && !seen.has(v)) { seen.add(v); repos.push({ value: v, label: v.split('/').filter(Boolean).pop() || v }); }
+    }
+  }
+  repos.sort((a, b) => (b.value === dockCfg.addRepo) - (a.value === dockCfg.addRepo));
+  if (!dockOn) return;
+  const el = dockPopOpen('add', 'add:me', `<div class="tp-head"><b>${esc(dockT('도크: 새 세션'))}</b></div>
+    <label>${esc(dockT('도크: 저장소'))}<select id="dock-add-repo">${repos.map(r => `<option value="${esc(r.value)}">${esc(r.label)}</option>`).join('')}</select></label>
+    <label>${esc(dockT('도크: 이름'))}<input type="text" id="dock-add-name" maxlength="64" spellcheck="false" autocomplete="off"></label>
+    <div class="dp-row"><button class="primary" id="dock-add-go">${esc(dockT('도크: 만들기'))}</button><span class="dp-msg" id="dock-add-msg">${repos.length ? '' : esc(t('Orca에 등록된 저장소가 없습니다'))}</span></div>`);
+  dockPop.repos = repos.map(r => r.value);
+  const name = el.querySelector('#dock-add-name');
+  el.querySelector('#dock-add-go').onclick = () => dockAddCreate();
+  name.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); dockAddCreate(); } });
+  name.focus();
+}
+async function dockAddCreate() {
+  const p = dockPop; if (!p || p.kind !== 'add' || dockAddBusy) return;
+  const el = $('dock-pop'), msg = el.querySelector('#dock-add-msg'), go = el.querySelector('#dock-add-go');
+  const repo = el.querySelector('#dock-add-repo').value, name = AgentDeskDock.worktreeNameOf(el.querySelector('#dock-add-name').value);
+  if (!repo || !p.repos.includes(repo)) { msg.textContent = t('저장소를 고르세요'); return; }   // only a listed repository
+  if (!name) { msg.textContent = t('이름은 영문·숫자·- _ . 만 쓸 수 있습니다'); return; }
+  dockAddBusy = true; go.disabled = true; msg.textContent = t('워크트리 생성 중… (최대 3분)');
+  const r = await window.orca.worktreeCreate({ name, repo, agent: 'claude', prompt: '' }).catch(err => ({ ok: false, error: err.message }));
+  dockAddBusy = false;
+  if (!r || r.ok === false) {
+    const why = `⚠ ${AgentDeskJira.errorText(r) || t('생성 실패')}`;
+    if (dockPop === p) { go.disabled = false; msg.textContent = why; }
+    else if (dockPop && dockPop.kind === 'add') dockPopClose();   // the "생성 중" notice: the pill says the rest
+    dockHint(why, 'err', true);
+    return;
+  }
+  const res = r.result || {};
+  dockAddWant = { name, handle: res.launch?.outcome?.handle || res.agentTerminalHandle || '', at: Date.now() };
+  dockCfg.addRepo = repo; dockSave();
+  if (dockPop && dockPop.kind === 'add') dockPopClose();   // the form, or the "생성 중" notice opened meanwhile
+  dockHint(`＋ ${dockT('도크: 새 세션')}: ${name}`, '', true);
+  fetchData();
+}
+// a tile's menu (right click / long press): "고정 해제" takes it out of the drag order and unpins it
+function dockMenuOpen(key) {
+  const x = dockTileOf(key), s = dockLocal(x); if (!s) return;
+  const fixed = pinnedSessions.has(s.id) || dockCfg.order.includes(s.id);
+  const el = dockPopOpen('menu', key, `<div class="tp-head"><b>${esc(s.name)}</b></div>` + (fixed
+    ? `<div class="dp-row"><button data-menu="unpin">📌 ${esc(dockT('도크: 고정 해제'))}</button></div>`
+    : `<div class="tp-meta">${esc(t('고정되지 않은 세션입니다 — 끌어서 옮기면 고정됩니다'))}</div>`));
+  const b = el.querySelector('[data-menu="unpin"]');
+  if (b) b.onclick = () => { dockUnpin(s.id); dockPopClose(); dockTileFocus(key); };
+}
+function dockPinSave() { try { localStorage.setItem('roca-pinned', JSON.stringify([...pinnedSessions])); } catch {} }
+function dockUnpin(id) {
+  dockCfg.order = dockCfg.order.filter(v => v !== id); dockSave();
+  pinnedSessions.delete(id); dockPinSave();
+  dockDraw();
+}
+// ── drag a tile of mine to a new place (pointer events: the bar's drag region moves the window, the tiles are
+//    buttons outside it). A move of DOCK_DRAG_PX or more is a drag — before that a release is a click; holding
+//    still DOCK_LONG_MS opens the tile's menu. The dropped place is saved (AgentDeskDock.dropOrder → roca-dock.order)
+//    and the tile pinned (the dashboard's pins). Hover windows wait while dragging; teammates' tiles, piles and
+//    groups do not move. ──
+const DOCK_LONG_MS = 550;   // the drag threshold: AgentDeskDock.DRAG_PX (6 px)
+let dockDrag = null;   // AgentDeskDock.dragStep's state: { key, id, x, y, on, long }
+let dockClickEat = false;
+const dockMineTiles = () => [...$('dock-tiles').querySelectorAll('.dock-tile')].filter(b => String(b.dataset.key).startsWith('me:'));
+function dockDropMark(cx) {
+  let before = null;
+  const tiles = dockMineTiles();
+  for (const b of tiles) { b.classList.remove('drop-before', 'drop-after'); const r = b.getBoundingClientRect(); if (!before && cx < r.left + r.width / 2) before = b; }
+  if (before) before.classList.add('drop-before'); else if (tiles.length) tiles[tiles.length - 1].classList.add('drop-after');
+  return before;
+}
+function dockDragEnd() {
+  $('dock-tiles').classList.remove('dragging');
+  for (const b of $('dock-tiles').querySelectorAll('.drag-src, .drop-before, .drop-after')) b.classList.remove('drag-src', 'drop-before', 'drop-after');
+}
+// the drag's steps (AgentDeskDock.dragStep): the core decides, this carries the action out
+let dockDragLongT = 0;
+function dockDragDo(ev, e) {
+  const prev = dockDrag, r = AgentDeskDock.dragStep(prev, ev);
+  dockDrag = r.state;
+  switch (r.action) {
+    case 'arm': clearTimeout(dockDragLongT); dockDragLongT = setTimeout(() => dockDragDo({ type: 'long' }), DOCK_LONG_MS); break;
+    case 'menu': dockMenuOpen(prev.key); break;
+    case 'start': {
+      clearTimeout(dockDragLongT);
+      clearTimeout(dockHoverT); dockHoverT = 0; dockHoverGen++; dockTipHide();
+      if (dockHoverOpened) dockTermClose(true);
+      $('dock-tiles').classList.add('dragging');
+      const src = $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(prev.key)}"]`);
+      if (src) {
+        src.classList.add('drag-src');
+        try { src.setPointerCapture(e.pointerId); } catch {}   // the release reaches us even off the tiles
+        src.addEventListener('lostpointercapture', () => dockDragDo({ type: 'cancel' }), { once: true });   // a lost capture ends the drag
+      }
+      dockDropMark(e.clientX);
+      break;
+    }
+    case 'mark': dockDropMark(e.clientX); break;
+    case 'cancel': clearTimeout(dockDragLongT); dockDragEnd(); dockRender(); break;   // tiles held back during the drag are drawn now
+    case 'eat': clearTimeout(dockDragLongT); dockClickEat = true; setTimeout(() => { dockClickEat = false; }, 0); break;
+    case 'click': clearTimeout(dockDragLongT); break;
+    case 'drop': {
+      clearTimeout(dockDragLongT);
+      dockClickEat = true; setTimeout(() => { dockClickEat = false; }, 0);
+      const before = dockDropMark(e.clientX), bx = before && dockTileOf(before.dataset.key);
+      dockDragEnd();
+      if (!dockOn || !dockModelNow) break;
+      const visible = dockModelNow.mine.filter(x => !x.bundle).map(x => x.id);
+      dockCfg.order = AgentDeskDock.dropOrder(visible, prev.id, bx ? bx.id : null).slice(0, 50); dockSave();
+      pinnedSessions.add(prev.id); dockPinSave();
+      dockDraw();
+      dockHint(t('📌 고정됨 — 우클릭으로 해제'), '', true);   // the drop pins it on the dashboard too: say so
+      break;
+    }
+  }
+}
+$('dock-tiles').addEventListener('pointerdown', e => {
+  if (!dockOn || e.button !== 0 || !e.isPrimary) return;
+  const b = e.target.closest('.dock-tile'), x = b && dockTileOf(b.dataset.key);
+  dockDragDo({ type: 'down', key: x ? x.key : null, id: x ? x.id : null, x: e.clientX, y: e.clientY, movable: !!(x && !x.bundle && !x.peer) }, e);   // only my own tiles move
+});
+document.addEventListener('pointermove', e => { if (dockDrag) dockDragDo({ type: 'move', x: e.clientX, y: e.clientY, buttons: e.buttons }, e); });
+document.addEventListener('pointerup', e => { if (dockDrag) dockDragDo({ type: 'up' }, e); });
+document.addEventListener('pointercancel', e => { if (dockDrag) dockDragDo({ type: 'cancel' }, e); });
+$('dock-tiles').addEventListener('contextmenu', e => {
+  if (!dockOn) return;
+  e.preventDefault();
+  const b = e.target.closest('.dock-tile'), x = b && dockTileOf(b.dataset.key);
+  if (x && !x.bundle && !x.peer) dockMenuOpen(x.key);
+});
+// ── drop on a tile: text, a URL or files (their paths, never their contents) dragged in from outside go to that
+//    session as a message (dockSendTo, the terminal window's input path) — only a session of mine waiting for input
+//    with a terminal and no permission request (AgentDeskDock.dropAccepts). Masked (maskForSend), cut to
+//    DOCK_DROP_MAX characters, one line as the input line sends it; kept nowhere. ──
+const DOCK_DROP_MAX = 2000, DOCK_DROP_PREVIEW = 300;
+let dockDropPerms = null;   // dockPermMap() for one drag over the tiles (dragenter), not once per dragover
+const dockDropOk = (x, perms) => { const s = dockLocal(x); return !!(s && handles.get(s.id)) && AgentDeskDock.dropAccepts(x, { hasPerm: (perms || dockPermMap()).has(s.id) }); };
+// dropPayload / dropSafeText reasons → words for the pill
+const DOCK_DROP_ERR = { 'no masker': '마스킹을 할 수 없어 보내지 않았습니다', 'body is empty': '보낼 내용이 없습니다', 'body is too long': '내용이 너무 깁니다', 'body is not text': '보낼 내용이 없습니다', empty: '보낼 내용이 없습니다', command: '/ · ! · # 로 시작하는 내용은 명령으로 읽힐 수 있어 보내지 않습니다' };
+const dockDropErr = code => t(DOCK_DROP_ERR[code] || '보낼 수 없습니다');
+function dockDropMarks(b, ok) {
+  for (const t0 of $('dock-tiles').querySelectorAll('.can-drop, .no-drop')) t0.classList.remove('can-drop', 'no-drop');
+  if (b) b.classList.add(ok ? 'can-drop' : 'no-drop');
+}
+$('dock-tiles').addEventListener('dragenter', () => { if (!dockDropPerms) dockDropPerms = dockPermMap(); });
+$('dock-tiles').addEventListener('dragover', e => {
+  const b = e.target.closest('.dock-tile'), x = b && dockTileOf(b.dataset.key), ok = !!x && dockDropOk(x, dockDropPerms);
+  e.preventDefault();
+  e.dataTransfer.dropEffect = ok ? 'copy' : 'none';
+  dockDropMarks(b, ok);
+});
+$('dock-tiles').addEventListener('dragleave', e => { if (!e.relatedTarget || !$('dock-tiles').contains(e.relatedTarget)) { dockDropMarks(null); dockDropPerms = null; } });
+// a drop never goes straight to the session: what a page put on the drag may differ from what it showed, and a
+// leading / ! # would be a command — so it is checked (dropSafeText), then shown masked in a confirm panel whose
+// [보내기] is armed like a permission panel (permArm, 0.8 s); Esc / a click outside / [취소] drop it
+$('dock-tiles').addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation();
+  dockDropMarks(null); dockDropPerms = null;
+  const b = e.target.closest('.dock-tile'), x = b && dockTileOf(b.dataset.key);
+  if (!x) return;
+  if (!dockDropOk(x)) { dockHint(t('이 세션에는 지금 보낼 수 없습니다 (입력 대기일 때만)'), 'err', true); return; }
+  const dt = e.dataTransfer, paths = [];
+  for (const f of dt.files || []) { try { const v = window.orca.getPathForFile(f); if (v) paths.push(v); } catch {} }
+  const p = AgentDeskDock.dropPayload({ paths, uris: paths.length ? '' : dt.getData('text/uri-list'), text: paths.length ? '' : dt.getData('text/plain') }, { max: DOCK_DROP_MAX });
+  if (!p.ok) { dockHint(dockDropErr(p.error), 'err', true); return; }
+  const text = p.text.replace(/\r?\n+/g, ' ').trim();   // one line, as the input line sends it
+  if (p.kind !== 'files') { const safe = AgentDeskDock.dropSafeText(text); if (!safe.ok) { dockHint(dockDropErr(safe.reason), 'err', true); return; } }
+  if (!text) { dockHint(dockDropErr('empty'), 'err', true); return; }
+  dockDropConfirm(x, text, p.cut);
+});
+function dockDropConfirm(x, text, cut) {
+  const s = dockLocal(x); if (!s) return;
+  const n = [...text].length, prev = [...text].slice(0, DOCK_DROP_PREVIEW).join('') + (n > DOCK_DROP_PREVIEW ? '…' : '');
+  const el = dockPopOpen('drop', x.key, `<div class="tp-head"><b>${esc(t('보낼까요?'))}</b><span class="tp-meta">→ ${esc(s.name)}</span></div>
+    <pre class="dp-prev">${esc(prev)}</pre>
+    <div class="tp-meta">${esc(LANG === 'en' ? `${n} characters` : `${n}자`)}${cut ? ` · ${esc(t('2000자로 잘림'))}` : ''}</div>
+    <div class="dp-row"><span class="perm-btns"><button class="primary" data-drop="send">${esc(t('보내기'))}</button></span><button data-drop="cancel">${esc(t('취소'))}</button></div>`);
+  dockPop.drop = { key: x.key, sid: s.id, text, cut };   // in memory until sent or dropped, never stored
+  permArm(el);   // [보내기] works after PERM_ARM_MS
+  el.querySelector('[data-drop="cancel"]').onclick = () => dockPopClose();
+  const go = el.querySelector('[data-drop="send"]');
+  go.onclick = async () => {
+    const d = dockPop && dockPop.kind === 'drop' ? dockPop.drop : null;
+    if (go.disabled || !d) return;
+    dockPopClose();
+    const y = dockTileOf(d.key), ys = dockLocal(y), h = ys && handles.get(ys.id);
+    if (!y || !ys || ys.id !== d.sid || !h || !dockDropOk(y)) { dockHint(t('이 세션에는 지금 보낼 수 없습니다 (입력 대기일 때만)'), 'err', true); return; }   // checked again
+    const r = await dockSendTo(ys, h, d.text), k = [...d.text].length;
+    dockHint(r.err ? r.msg : `${LANG === 'en' ? `Sent ${k} characters: ${ys.name}` : `${k}자 보냄: ${ys.name}`}${d.cut ? ` · ${t('2000자로 잘림')}` : ''}`, r.err ? 'err' : '', true);
+  };
+}
 // ── tiles at work: the current tool (s.tool) as a small mark, the last minute's tool calls (s.recentTools) as a bar
 //    under the tile (breathing while there are none: CSS), and the character's working frames — moved one frame every
 //    DOCK_FRAME_MS (a timer, then one requestAnimationFrame), only while a tile works, the widget is visible, the
@@ -4036,6 +4301,7 @@ function dockLeave(page) {
   for (const k of [...dockAsk.keys()]) dockAskDrop(k);
   for (const k of [...dockDone.keys()]) dockDoneDrop(k);
   dockClock.clear(); dockUsageOn = false; $('dock-utip').hidden = true;
+  dockPop = null; $('dock-pop').hidden = true; $('dock-pop').innerHTML = ''; clearTimeout(dockDragLongT); dockDrag = null; dockAddWant = null;
   clearInterval(dockAskT); dockAskT = 0; $('dock-asks').hidden = true; dockAnimStop(); dockScreen.clear();
   dockWin = null; for (const k of ['width', 'marginLeft', 'alignSelf']) $('dock-strip').style[k] = '';
   if (dockPermEl) { dockPermEl.remove(); dockPermEl = null; }
@@ -4073,7 +4339,10 @@ $('dock-dnd').addEventListener('click', e => {
 $('dock-usage').addEventListener('mouseenter', dockUsageShow);
 $('dock-usage').addEventListener('mouseleave', dockUsageHide);
 $('dock-tiles').addEventListener('click', e => {
-  const b = e.target.closest('.dock-tile'); const x = b && dockTileOf(b.dataset.key); if (!x) return;
+  if (dockClickEat) { dockClickEat = false; return; }   // the end of a drag / a long press, not a click
+  const b = e.target.closest('.dock-tile');
+  if (b && b.dataset.key === 'add:me') { dockAddOpen(); return; }
+  const x = b && dockTileOf(b.dataset.key); if (!x) return;
   if (x.bundle) { dockLeave(x.key === 'more:me' ? 'dashboard' : 'team'); return; }   // the "+N" pile / a teammate's group: the full list
   if (e.detail > 1) return;   // the second click of a double-click (the dblclick opens the panel card)
   clearTimeout(dockHoverT); dockHoverT = 0; dockHoverGen++; clearTimeout(dockLeaveT); dockLeaveT = 0;
@@ -4101,6 +4370,7 @@ $('dock-tiles').addEventListener('keydown', e => {
   if (j >= 0) { e.preventDefault(); e.stopPropagation(); tiles.forEach(b => { b.tabIndex = -1; }); tiles[j].tabIndex = 0; tiles[j].focus(); return; }
   if (e.key !== 'Enter' && e.key !== ' ') return;
   e.preventDefault(); e.stopPropagation();
+  if (tiles[i].dataset.key === 'add:me') { dockAddOpen(); return; }
   const x = dockTileOf(tiles[i].dataset.key); if (!x) return;
   if (x.bundle) { dockLeave(x.key === 'more:me' ? 'dashboard' : 'team'); return; }
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -4137,6 +4407,7 @@ document.addEventListener('keydown', e => {
   }
   const n = AgentDeskDock.digitOf(e); if (!n) return;
   if (e.metaKey || e.ctrlKey) {
+    if (dockDrag && dockDrag.on) { e.preventDefault(); return; }   // not in the middle of a drag
     const nt = AgentDeskDock.numberedTiles(dockModelNow ? dockModelNow.mine : [])[n - 1], x = nt && dockTileOf(nt.key);
     if (!x) return;
     e.preventDefault(); e.stopPropagation();
@@ -5758,6 +6029,7 @@ document.addEventListener('keydown', e => {
     if (ctxMenuEl) { closeCtxMenu(); return; }
     if ($('team-modal')) { closeTeamModal(); return; }
     // the terminal views (a docked one gives the focus back to its tile), then the dock's hover panel
+    if (dockOn && dockPop) { const k = dockPop.key; dockPopClose(); dockTileFocus(k); return; }
     if ($('peer-term') || $('dock-term')) { const k = dockOn ? dockTermKey() : ''; if ($('peer-term')) peerRemoteTermClose(); if ($('dock-term')) dockTermClose(); dockTileFocus(k); return; }
     if (dockOn && dockTipKey) { const k = dockTipKey; dockTipHide(); dockTileFocus(k); return; }
     if (currentPage === 'jira' && jb.drawer && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName || '')) { jb.drawer = ''; jbColsRender(); jbDrawerRender(); return; }
