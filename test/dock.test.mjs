@@ -77,15 +77,16 @@ test('dockModel: names are cut and cleaned (bidi / control characters)', () => {
   assert.equal(m.mine[0].id, 'a', 'ids stay exact');
 });
 
-test('dockModel: 48 px when everything fits, 40 px when only that fits', () => {
+test('dockModel: 56 px (name beneath) when everything fits, 40 px when only that fits', () => {
+  assert.equal(TILE.big, 56); assert.equal(TILE.small, 40);
   const four = ['a', 'b', 'c', 'd'].map(id => sess(id, 'running'));
-  const w48 = 4 * 48 + 3 * TILE.gap, w40 = 4 * 40 + 3 * TILE.gap;
-  assert.equal(dockModel({ sessions: four, width: w48 }).size, 48);
-  const m = dockModel({ sessions: four, width: w48 - 1 });
+  const w56 = 4 * 56 + 3 * TILE.gap, w40 = 4 * 40 + 3 * TILE.gap;
+  assert.equal(dockModel({ sessions: four, width: w56 }).size, 56);
+  const m = dockModel({ sessions: four, width: w56 - 1 });
   assert.equal(m.size, 40); assert.equal(m.mine.length, 4); assert.equal(m.hidden, 0);
   assert.equal(dockModel({ sessions: four, width: w40 }).mine.length, 4);
-  assert.equal(dockModel({ sessions: four }).size, 48, 'no width = no limit');
-  assert.equal(tilesWidth(dockModel({ sessions: four })), w48);
+  assert.equal(dockModel({ sessions: four }).size, 56, 'no width = no limit');
+  assert.equal(tilesWidth(dockModel({ sessions: four })), w56);
 });
 
 test('dockModel: overflow folds into a "+N" pile, keeping urgent and selected tiles in order', () => {
@@ -111,7 +112,7 @@ test('dockModel: pile badge sums the folded tiles; maxTiles caps the count', () 
   assert.equal(m.mine[1].bundle, true); assert.equal(m.mine[1].count, 3); assert.equal(m.mine[1].badge, 3);
 });
 
-test('dockModel: zero room → no tiles at all (the quick input line keeps its width)', () => {
+test('dockModel: zero room → no tiles at all (the right-hand buttons keep their width)', () => {
   const m = dockModel({ sessions: [sess('a', 'running'), sess('b', 'running')], width: 0 });
   assert.deepEqual(m.mine, []); assert.equal(m.hidden, 2);
   const one = dockModel({ sessions: [sess('a', 'running'), sess('b', 'running')], width: 40 });
@@ -273,8 +274,8 @@ test('widget dock permission line: whitelist from core, arming and answers throu
   assert.doesNotMatch(f, /window\.orca\.perm/, 'no permission IPC of its own');
   // permArm keeps [허용] off while data-truncated is 1 (the dock relies on it)
   assert.match(between(html, 'function permArm(el)', '\n}'), /b\.dataset\.perm === 'allow' && el\.dataset\.truncated === '1'/);
-  // toasts reach the bar's hint line
-  assert.match(between(html, 'function showInAppToast(', '\n}'), /if \(typeof dockOn !== 'undefined' && dockOn\) dockHint\(/);
+  // error toasts reach the bar's message pill; the rest stay out of the bar (the tiles' states tell them)
+  assert.match(between(html, 'function showInAppToast(', '\n}'), /if \(typeof dockOn !== 'undefined' && dockOn && el\.classList\.contains\('err'\)\) dockHint\(el\.textContent, 'err', true\);/);
   assert.doesNotMatch(html, /dockClickT/);
 });
 
@@ -386,7 +387,6 @@ test('widget dock: hover opens the terminal window, a click goes to the terminal
   assert.match(open, /dockFocusTerminal\(y\)/);
   assert.match(between(html, 'async function dockSendTo(', '\n}\n'), /window\.orca\.terminalSend\(handle, text, true, 15\)[\s\S]*accepted[\s\S]*turn_started/);
   assert.match(between(html, 'function dockTermSync()', '\n}\n'), /\(x\.canInput \|\| st\.freeText\) && !perm/);
-  assert.match(between(html, 'function dockPermShow(r)', '\n}\n'), /\(dockTerm && \$\('pt-perm'\)\) \|\| \$\('dock-perm'\)/);
   assert.match(between(html, 'function peerRemoteTermOpen(', '\n}\n'), /termViewHtml\(/, 'the teammate view uses the same markup');
   // a click: straight to the terminal (no timer); a teammate's delegated session: its remote window
   const click = between(html, "$('dock-tiles').addEventListener('click'", '\n});');
@@ -394,14 +394,29 @@ test('widget dock: hover opens the terminal window, a click goes to the terminal
   assert.doesNotMatch(click, /setTimeout/, 'no delay');
   assert.match(click, /if \(x\.delegated && dockTermKey\(\) !== x\.key\) dockTermFor\(x\)/);
   assert.match(between(html, 'async function dockFocusTerminal(', '\n}\n'), /await api\.switchTo\(h\)/);
-  assert.match(html, /\$\('dock-go'\)\.addEventListener\('click', \(\) => \{ const x = dockModelNow && dockModelNow\.selected; if \(x && !x\.bundle\) dockOpenCard\(x\); \}\);/, '▤: the panel card');
   assert.match(open, /if \(!st\.alive\) return;[^\n]*\n\s*const now = cur\(\); if \(!now\.hh\) return;\n\s*const r = await window\.orca\.terminalInterrupt\(now\.hh\)/, 'looked up again after the confirm');
   const keys = between(html, "$('dock-tiles').addEventListener('keydown'", '\n});');
   assert.match(keys, /e\.key === 'Enter' && \(e\.metaKey \|\| e\.ctrlKey\)[\s\S]*dockFocusTerminal\(x\)/, '⌘Enter: the terminal');
   assert.match(keys, /if \(e\.key === 'Enter'\) \{[\s\S]*dockTermFor\(x\)/, 'Enter: the terminal window');
   assert.match(html, /if \(\$\('peer-term'\) \|\| \$\('dock-term'\)\) \{[^\n]*peerRemoteTermClose\(\);[^\n]*dockTermClose\(\); dockTileFocus\(k\)/, 'Esc closes either window, focus back on the tile');
   assert.match(html, /if \(dockOn && dockTipKey\) \{ const k = dockTipKey; dockTipHide\(\); dockTileFocus\(k\)/, 'Esc closes the hover card');
-  assert.match(between(html, 'function dockQuickDraw(m)', '\n}\n'), /input\.hidden = send\.hidden = mode === 'perm' \|\| !!term/, 'one input line at a time');
+  // the bar has no input line of its own: the terminal window's line (and the bubbles) take the input and the answers
+  for (const id of ['dock-input', 'dock-send', 'dock-chip', 'dock-quick', 'dock-hint', 'dock-go']) assert.doesNotMatch(html, new RegExp(`id="${id}"`), `${id}: gone`);
+  assert.doesNotMatch(html, /function dockQuickDraw|function dockSend\(\)/);
+  assert.match(between(html, 'function dockPermShow(r)', '\n}\n'), /const box = \$\('pt-perm'\); if \(!box\) return;/, '[허용][거부] only in the terminal window');
+  assert.match(between(html, 'function dockPermSync()', '\n}\n'), /if \(perm && !dockAskOn\(x\.key\)\) dockPermShow\(perm\);/, 'a request in a bubble is answered there');
+  // the name under every character; 40 px tiles drop it
+  assert.match(between(html, 'function dockTileHtml(x)', '\n}\n'), /<span class="dock-name" aria-hidden="true">\$\{esc\(x\.name\)\}<\/span>/);
+  assert.match(html, /\.dock-tiles\.s40 \.dock-name \{ display: none; \}/);
+  assert.match(html, /\.dock-tile \{ position: relative; width: 56px; height: 56px;/);
+  // the screen wraps instead of scrolling sideways; a row of box-drawing rules is one thin line
+  assert.match(html, /\.peer-term \.pt-screen \{ white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: hidden; \}/);
+  assert.match(between(html, 'function termScreenHtml(lines)', '\n}\n'), /TERM_RULE_RE\.test\(l\) \? '<span class="pt-rule"><\/span>' : esc\(l\) \+ '\\n'/);
+  assert.match(html, /const TERM_RULE_RE = \/\^\\s\*\[╭┌╰└├┬┴\]\?\[─━═┄┅┈┉╌╍\]\{4,\}\[╮┐╯┘┤┬┴\]\?\\s\*\$\/;/);
+  for (const row of ['────────', '╭──────╮', '╰──────╯', '  ┌────┐  ']) assert.match(row, /^\s*[╭┌╰└├┬┴]?[─━═┄┅┈┉╌╍]{4,}[╮┐╯┘┤┬┴]?\s*$/, row);
+  for (const row of ['│ hello │', '─── Title ───', '---']) assert.doesNotMatch(row, /^\s*[╭┌╰└├┬┴]?[─━═┄┅┈┉╌╍]{4,}[╮┐╯┘┤┬┴]?\s*$/, row);
+  // results the user must see: the pill over the tiles (errors 5 s, the rest 3 s); plain hints are dropped
+  assert.match(between(html, 'function dockHint(text, cls, hard)', '\n}\n'), /if \(!dockOn \|\| !text \|\| \(cls !== 'err' && !hard\)\) return;/);
   // main: the bar's own rectangle inside a wider window
   assert.match(between(main, 'function dockStripRect(', '\n}'), /cur\.x \+ \(last\.stripX \|\| 0\)/);
   assert.match(between(main, 'function dockShape(', '\n}'), /x: b\.stripX \|\| 0/);
@@ -591,7 +606,7 @@ test('widget dock: security review lows — fail-closed guard, setting, re-armin
   assert.match(cur, /now - dockCursor\.at > 50/);
 });
 
-test('widget dock: code review — card exclusion, free text, mute, forced reads, timers, narrow bar, quick line, cursor zoom', () => {
+test('widget dock: code review — card exclusion, free text, mute, forced reads, timers, narrow bar, cursor zoom', () => {
   // M2: only a tile's own bubble keeps its card away
   assert.match(between(html, 'function dockTipShow(key)', '\n}\n'), /dockTermBg\(\) \|\| dockAskOn\(key\)\)/);
   // M4: a free-text option → its digit, then the terminal window with a usable input line; [전체 보기] always
@@ -614,7 +629,7 @@ test('widget dock: code review — card exclusion, free text, mute, forced reads
   // L10
   assert.match(between(html, 'function dockAskSync()', '\n}\n'), /seen2 && \(!a\.el \|\| a\.placed \|\| !a\.sig \|\| a\.muted\)\) dockAskRead\(a\)/);
   // L11
-  assert.match(between(html, 'function dockAskRender()', '\n}\n'), /if \(dockModelNow\) dockQuickDraw\(dockModelNow\);/);
+  assert.match(between(html, 'function dockAskRender()', '\n}\n'), /dockPermSync\(\);/);
   // L12
   assert.match(between(main, '  if (r.cursor === true) {', '\n  }\n'), /getZoomFactor\(\)[\s\S]*\(p\.x - c\.x\) \/ z/);
   // L13

@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-rBX6yNihnJQi53G8cUw9iWIvvRAysu7YBqaopb11g7E='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-8sMbGiFXUuoVqusb6bUXc1ofVxjnVufDzmDOlkMY+9w='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1547,15 +1547,20 @@
   .widget.docked > :not(#page-dock):not(.inbox-panel) { display: none !important; }
   .widget.docked .inbox-panel { max-height: none; }
   #page-dock { justify-content: flex-end; }
-  .dock-strip { display: flex; align-items: center; gap: 6px; height: 72px; flex-shrink: 0; padding: 0 8px; min-width: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 60%, var(--bg)) 0%, var(--bg) 100%); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 6px 18px rgba(0,0,0,0.18); font-variant-numeric: tabular-nums; -webkit-app-region: drag; }
-  .dock-strip button, .dock-strip input, .dock-chip { -webkit-app-region: no-drag; }
-  .dock-tiles { display: flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 6px 2px 8px; }
+  .dock-strip { position: relative; display: flex; align-items: center; gap: 6px; height: 72px; flex-shrink: 0; padding: 0 8px; min-width: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 60%, var(--bg)) 0%, var(--bg) 100%); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 6px 18px rgba(0,0,0,0.18); font-variant-numeric: tabular-nums; -webkit-app-region: drag; }
+  .dock-strip button { -webkit-app-region: no-drag; }
+  .dock-tiles { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; overflow: hidden; padding: 6px 2px; }
   .dock-tiles:empty { display: none; }
   .dock-tiles:empty + .dock-sep { display: none; }
   .dock-gsep { width: 1px; height: 32px; margin: 0 4px; background: linear-gradient(180deg, transparent, var(--border) 30%, var(--border) 70%, transparent); flex-shrink: 0; }
   .dock-sep { width: 1px; height: 40px; background: linear-gradient(180deg, transparent, var(--border) 25%, var(--border) 75%, transparent); flex-shrink: 0; }
-  .dock-tile { position: relative; width: 48px; height: 48px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 0 0 7px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text2); font: inherit; cursor: pointer; --ring: var(--text3); transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease, border-color 150ms ease; }
+  /* a tile: the character, its state ring under the feet, the session name beneath (56 px); 40 px tiles drop the name */
+  .dock-tile { position: relative; width: 56px; height: 56px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 0 0 18px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--surface); color: var(--text2); font: inherit; cursor: pointer; --ring: var(--text3); transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease, border-color 150ms ease; }
   .dock-tiles.s40 .dock-tile { width: 40px; height: 40px; padding-bottom: 5px; }
+  .dock-name { position: absolute; left: 3px; right: 3px; bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 9px/12px var(--sans); color: var(--text2); text-align: center; letter-spacing: -0.01em; pointer-events: none; }
+  .dock-tile.sel .dock-name, .dock-tile:hover .dock-name { color: var(--text); }
+  .dock-tile.st-done .dock-name { color: var(--text3); }
+  .dock-tiles.s40 .dock-name { display: none; }
   .dock-tile:hover { background: var(--surface-hover); transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.22); }
   .dock-tile.sel { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 0 0 1px var(--accent), 0 4px 10px rgba(0,0,0,0.22); }
   .dock-tile:active { transform: translateY(0) scale(0.97); }
@@ -1571,7 +1576,7 @@
   .dock-spr.k4 { background-image: url('assets/pixel/char_4.png'); } .dock-spr.k5 { background-image: url('assets/pixel/char_5.png'); }
   .dock-tile.st-done .dock-spr { opacity: 0.5; filter: grayscale(0.7); }
   /* the state as a floor ring under the character's feet */
-  .dock-dot { position: absolute; left: 50%; bottom: 5px; width: 22px; height: 6px; margin-left: -11px; border-radius: 50%; background: var(--ring); opacity: 0.55; }
+  .dock-dot { position: absolute; left: 50%; bottom: 16px; width: 22px; height: 6px; margin-left: -11px; border-radius: 50%; background: var(--ring); opacity: 0.55; }
   .dock-tiles.s40 .dock-dot { bottom: 3px; width: 18px; margin-left: -9px; }
   .st-run .dock-dot { opacity: 0.8; box-shadow: 0 0 6px var(--ring); }
   .st-input .dock-dot { animation: dockBreath 1.6s ease-in-out infinite; }
@@ -1590,7 +1595,8 @@
   @keyframes dockActBreath { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
   .dock-badge { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; border: 1px solid var(--red); background: var(--surface-raised); color: var(--red-text); font: 700 10px/14px var(--mono); text-align: center; }
   .dock-key { position: absolute; top: -4px; left: -3px; font-size: 10px; line-height: 1; }
-  .dock-subs { position: absolute; right: 4px; bottom: 9px; display: flex; flex-direction: column; gap: 2px; }
+  .dock-subs { position: absolute; right: 4px; top: 16px; display: flex; flex-direction: column; gap: 2px; }
+  .dock-tiles.s40 .dock-subs { top: auto; bottom: 9px; }
   .dock-subs i { width: 3px; height: 3px; border-radius: 50%; background: var(--accent); }
   .dock-tile.more { justify-content: center; padding: 0; font: 600 var(--fs-sm) var(--mono); color: var(--text2); }
   /* "도크 애니메이션" off, or the system asks for less motion: everything holds still (colours stay) */
@@ -1599,28 +1605,17 @@
     #page-dock *, #page-dock *::after, .dock-bubble { animation: none !important; transition: none !important; }
     .dock-tile:hover, .dock-tile.sel, .dock-tile:active { transform: none; }
   }
-  .dock-quick { flex: 1 1 280px; min-width: 170px; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
-  .dock-qrow { display: flex; align-items: center; gap: 4px; min-width: 0; }
-  .dock-chip { flex: 0 1 auto; max-width: 96px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--accent-dim); color: var(--accent-text); }
-  .dock-chip.none { background: var(--surface); color: var(--text3); }
-  .dock-go { flex-shrink: 0; width: 24px; height: 24px; border-radius: 8px; border: 1px solid var(--border); background: none; color: var(--text2); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
-  .dock-go:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
-  .dock-go:disabled { opacity: 0.4; cursor: default; }
   #page-dock.dock-down { justify-content: flex-start; }   /* the bar near the top of the screen: card / queue below it */
-  .dock-input { flex: 1 1 auto; min-width: 48px; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-sm); user-select: text; transition: border-color 150ms ease, box-shadow 150ms ease; }
-  .dock-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
-  .dock-input:disabled { opacity: 0.55; }
-  .dock-send { flex-shrink: 0; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent-text); font: inherit; font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
-  .dock-send:disabled { opacity: 0.45; cursor: default; }
-  .dock-input[hidden], .dock-send[hidden], .dock-perm[hidden], .dock-usage[hidden] { display: none; }
+  /* a result the user must see (a toast, a failed terminal switch): a pill over the tiles for a few seconds */
+  .dock-msg { position: absolute; left: 50%; top: 2px; transform: translateX(-50%); z-index: 3; max-width: calc(100% - 16px); padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-raised, var(--surface)); color: var(--text); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 4px 12px rgba(0,0,0,0.25); pointer-events: none; animation: dockPop 160ms ease-out; }
+  .dock-msg[hidden] { display: none; }
+  .dock-msg.err { border-color: var(--red); color: var(--red-text); }
+  .dock-perm[hidden], .dock-usage[hidden] { display: none; }
   .dock-perm { flex: 1 1 auto; min-width: 0; display: flex; }
   .dock-perm-in { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
   .dock-perm-what { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--fs-xs) var(--mono); color: var(--text2); }
   .dock-perm .perm-btns { flex-wrap: nowrap; flex-shrink: 0; gap: 4px; }
   .dock-perm .perm-btns button { padding: 3px 8px; }
-  .dock-hint { font-size: var(--fs-xs); color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 15px; }
-  .dock-hint.err { color: var(--red-text); }
-  .dock-hint.ok { color: var(--green-text); }
   .dock-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .dock-btn { height: 32px; min-width: 32px; padding: 0 8px; border-radius: 8px; border: none; background: none; color: var(--text2); font: inherit; font-size: var(--fs-sm); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
   .dock-btn:hover { background: var(--surface-hover); color: var(--text); }
@@ -1637,8 +1632,6 @@
   #page-dock.dock-narrow .dock-usage { display: none !important; }
   #page-dock.dock-narrow .dock-right { gap: 2px; }
   #page-dock.dock-narrow .dock-btn { height: 28px; min-width: 24px; padding: 0 4px; }
-  #page-dock.dock-narrow .dock-quick { min-width: 150px; }
-  #page-dock.dock-narrow .dock-send { padding: 0 7px; }
   /* hover card (the hover setting off, a "+N" pile, a tile without a terminal window): name, state, 지금 하는 일, last answer */
   .dock-tip { position: fixed; z-index: 160; display: flex; flex-direction: column; gap: 2px; width: 260px; max-width: calc(100vw - 12px); padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-float); font-size: var(--fs-xs); color: var(--text2); pointer-events: none; }
   .dock-tip[hidden] { display: none; }
@@ -1653,6 +1646,11 @@
   /* the terminal window (remote terminal view markup) docked in the room above / below the bar */
   .peer-term-bg.docked { inset: auto; display: block; background: none; z-index: 170; }
   .peer-term-bg.docked .peer-term { width: 100%; height: 100%; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.35); }
+  /* the screen: long rows wrap instead of scrolling sideways (a horizontal scrollbar under the text looked like a dark
+     line); a whole row of box-drawing rules (Claude Code's prompt frame) is drawn as one thin line */
+  .peer-term .pt-screen { white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: hidden; }
+  .peer-term .pt-rule { display: block; position: relative; height: 1.35em; }
+  .peer-term .pt-rule::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--border); }
   /* panels point at their tile: a small tail on the side of the bar (--tail: the tile's x inside the panel) */
   .dock-tip::after, .peer-term-bg.docked::after, .dock-bubble::after { content: ''; position: absolute; left: calc(var(--tail, 50%) - 6px); bottom: -6px; width: 10px; height: 10px; background: var(--surface); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); transform: rotate(45deg); }
   .dock-tip.down::after, .peer-term-bg.docked.down::after, .dock-bubble.down::after { top: -6px; bottom: auto; transform: rotate(225deg); }
@@ -1818,19 +1816,9 @@
     <div class="dock-tip" id="dock-tip" role="tooltip" hidden></div>
     <div class="dock-asks" id="dock-asks" hidden></div>
     <div class="dock-strip" id="dock-strip">
-      <div class="dock-tiles s48" id="dock-tiles" role="toolbar"></div>
+      <div class="dock-tiles s56" id="dock-tiles" role="toolbar"></div>
       <div class="dock-sep" aria-hidden="true"></div>
-      <div class="dock-quick" id="dock-quick">
-        <div class="dock-qrow">
-          <span class="dock-chip none" id="dock-chip"></span>
-          <button class="dock-go" id="dock-go" disabled>▤</button>
-          <input class="dock-input" id="dock-input" type="text" maxlength="2000" spellcheck="false" autocomplete="off" disabled>
-          <button class="dock-send" id="dock-send" disabled></button>
-          <div class="dock-perm" id="dock-perm" hidden></div>
-        </div>
-        <div class="dock-hint" id="dock-hint" aria-live="polite"></div>
-      </div>
-      <div class="dock-sep" aria-hidden="true"></div>
+      <div class="dock-msg" id="dock-msg" role="status" aria-live="polite" hidden></div>
       <div class="dock-right" id="dock-right">
         <button class="dock-btn" id="dock-inbox" aria-haspopup="true" aria-expanded="false">📥<span id="dock-inbox-n">0</span></button>
         <div class="dock-usage" id="dock-usage" role="img" hidden></div>
@@ -2125,8 +2113,8 @@ Object.assign(I18N, {
   '도크 흐리게': 'Dock fade', '마우스가 띠를 떠나고 1.5초 뒤 이 불투명도로 흐려집니다. 띠에 마우스를 올리면 다시 선명해집니다.': 'When the pointer leaves the bar, it fades to this opacity after 1.5 s; pointing at it brings it back.',
   '도크: 세션': 'Sessions', '도크: 팀원 세션': 'Teammate sessions', '도크: 대기열': 'queue', '도크: 서브에이전트': 'subagents', '도크: 위임받음': 'delegated to you',
   '도크: 작업 중': 'running', '도크: 입력 대기': 'waiting for input', '도크: 승인 필요': 'needs approval', '도크: 오류': 'error', '도크: 완료': 'done',
-  '도크: 세션 없음': 'No session', '도크: 전송': 'Send', '도크: 보냄': 'Sent', '도크: 허용': 'Allow', '도크: 이번만 허용': 'Allow once', '도크: 거부': 'Deny',
-  '도크: 빠른 입력': 'Quick input', '도크: 설정': 'Settings', '도크: 패널로 펼치기 (⌘⇧D)': 'Expand to the panel (⌘⇧D)', '도크: 검토 대기열': 'Review queue',
+  '도크: 보냄': 'Sent', '도크: 허용': 'Allow', '도크: 이번만 허용': 'Allow once', '도크: 거부': 'Deny',
+  '도크: 설정': 'Settings', '도크: 패널로 펼치기 (⌘⇧D)': 'Expand to the panel (⌘⇧D)', '도크: 검토 대기열': 'Review queue',
   '도크: 한도': 'Plan limits', '도크: 더 보기 — 눌러서 패널에서 봅니다': 'more — click to see them in the panel',
   '호버 시 터미널 창 열기': 'Open the terminal window on hover',
   '도크 애니메이션': 'Dock animation', '작업 중인 캐릭터의 움직임, 활동 바, 대기·승인 표시의 깜박임을 켭니다. 꺼도 상태 색은 그대로입니다.': 'Working characters move, the activity bars breathe and waiting / approval marks blink. Off: the state colours stay.',
@@ -2136,20 +2124,12 @@ Object.assign(I18N, {
   '검사할 내용이 너무 깁니다': 'Too long to check', '가드레일 확인 실패': 'Guardrail check failed', '가드레일 검사 시간·길이 초과': 'Guardrail check ran out of time or length', '가드레일 확인 중…': 'Checking with the guardrail…', '여기서는 허용할 수 없습니다 — 전체 보기에서 확인하세요': 'Cannot be allowed here — check it in the full view',
   '프롬프트가 바뀌었습니다 — 다시 확인하세요': 'The prompt changed — check it again', '선택지를 찾지 못했습니다 — 터미널 창에서 확인하세요': 'No choices found — check the terminal window', '터미널에서 확인하세요': 'check it in the terminal',
   '도크 타일에 마우스를 올리면 그 세션의 터미널 창(화면·입력 줄·[허용][거부])을 바로 띄웁니다. 끄면 이름·상태·지금 하는 일만 작은 카드로 보여 줍니다.': 'Pointing at a dock tile opens its terminal window (screen, input line, [Allow] [Deny]). Off: a small card with the name, state and current task.',
-  '도크: 패널에서 카드 보기 (더블클릭)': 'Its card in the panel (double-click)', '타일에 올리면 터미널 창, 누르면 그 터미널로 갑니다': 'Point at a tile for its terminal window; click to go to its terminal',
   '도크: 터미널로': 'Go to terminal', '중단 실패': 'Interrupt failed', '승인 필요': 'Needs approval',
   '내 세션의 터미널 화면입니다 (민감 정보는 가려짐). 입력 대기일 때만 보낼 수 있습니다.': 'This session\'s terminal screen (sensitive values masked). You can send only while it waits for input.',
   '입력 후 Enter — 세션에 그대로 전달됩니다': 'Type, then Enter — sent to the session as is',
-  '입력은 터미널 창에서 합니다 — Esc로 닫습니다': 'Type in the terminal window — Esc closes it',
   '위임받은 팀원 세션만 터미널 창을 열 수 있습니다 (더블클릭: 팀 탭)': 'Only teammate sessions delegated to you open a terminal window (double-click: Team tab)',
-  '위임받은 세션입니다 — 올리거나 눌러서 터미널 창을 엽니다': 'Delegated to you — point at it or click it to open its terminal window',
-  '메시지 입력 후 Enter': 'Type a message, then Enter', '입력할 수 없습니다': 'Input not available', '타일을 눌러 세션을 고르세요': 'Click a tile to pick a session',
-  '팀원 세션은 패널의 팀 탭에서 다룹니다 (더블클릭)': 'Teammate sessions are handled in the panel\'s Team tab (double-click)',
-  '이 세션의 터미널을 찾을 수 없습니다': 'Cannot find this session\'s terminal', '작업 중입니다 — 입력 대기가 되면 보낼 수 있습니다': 'Working — you can send once it waits for input',
-  '선택이 필요합니다 — 터미널에서 답하세요': 'Needs a choice — answer in the terminal', '입력 대기 상태가 아닙니다': 'Not waiting for input',
-  '권한 요청 — 내용을 확인한 뒤 답하세요 (전체 내용은 패널에서)': 'Permission request — check it before answering (full text in the panel)',
-  '여기서는 허용할 수 없습니다 — 패널에서 내용을 확인하세요': 'Cannot be allowed here — check the request in the panel', '도크: 패널에서 보기': 'View in panel',
-  '전송 중…': 'Sending…', '전송이 거부되었습니다': 'Send refused', '세션이 입력 대기 상태가 아닙니다': 'The session is not waiting for input', '전송 실패': 'Send failed',
+  '이 세션의 터미널을 찾을 수 없습니다': 'Cannot find this session\'s terminal',
+  '여기서는 허용할 수 없습니다 — 패널에서 내용을 확인하세요': 'Cannot be allowed here — check the request in the panel', '도크: 패널에서 보기': 'View in panel', '전송이 거부되었습니다': 'Send refused', '세션이 입력 대기 상태가 아닙니다': 'The session is not waiting for input', '전송 실패': 'Send failed',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -2427,8 +2407,8 @@ function showInAppToast(name, type, sessionId, onClick) {
   else if (type === 'error') { el.className = 'toast err'; el.textContent = `${mark ?? '⚠ '}${name}`; }
   else { el.className = 'toast'; el.textContent = `${mark ?? '✓ '}${name}`; }
   $('toasts').appendChild(el);
-  // dock mode hides the toast stack: the bar's hint line shows the message (an error stays there 5 s)
-  if (typeof dockOn !== 'undefined' && dockOn) dockHint(el.textContent, el.classList.contains('err') ? 'err' : '', true);
+  // dock mode hides the toast stack: an error shows as the bar's message pill (5 s); the rest the tiles' states already tell
+  if (typeof dockOn !== 'undefined' && dockOn && el.classList.contains('err')) dockHint(el.textContent, 'err', true);
 
   if (type === 'waiting' && sessionId) {
     persistentToasts.set(sessionId, el);
@@ -2806,7 +2786,7 @@ function inboxToggle(open) {
   const el = $('inbox-panel'), b = $('inbox-btn');
   b.setAttribute('aria-expanded', inboxQOpen ? 'true' : 'false');
   if (dockOn) $('dock-inbox').setAttribute('aria-expanded', inboxQOpen ? 'true' : 'false');
-  if (!inboxQOpen) { el.hidden = true; el.innerHTML = ''; inboxQSig = ''; clearTimeout(inboxQArmT); if (dockOn) { dockAskPlace(); dockQuickSig = ''; if (dockModelNow) dockQuickDraw(dockModelNow); dockBoundsSync(); } return; }
+  if (!inboxQOpen) { el.hidden = true; el.innerHTML = ''; inboxQSig = ''; clearTimeout(inboxQArmT); if (dockOn) { dockAskPlace(); dockBoundsSync(); } return; }
   // dock mode: the list opens above the bar (the window grows upward while it is open)
   if (dockOn) { dockTipHide(); dockTermClose(true); dockPopPlace(); dockBoundsSync(); }
   else { el.style.bottom = ''; el.style.top = `${Math.round(document.querySelector('.header').getBoundingClientRect().bottom) + 2}px`; }
@@ -2870,14 +2850,14 @@ document.addEventListener('click', e => { if (inboxQOpen && !e.target.closest('#
 inboxRender();
 
 // ── dock mode (header ▭, ⌘⇧D / Ctrl+Shift+D): the widget as a thin bar on the bottom edge of the screen. core/dock.js picks
-//    the tiles (state, badge, 48 / 40 px, "+N" pile) and the window bounds (main, orca:dock). Data comes from the same
+//    the tiles (state, badge, 56 / 40 px, "+N" pile) and the window bounds (main, orca:dock). Data comes from the same
 //    polls as the panel (fetchData / teamPageTick / permMount → inboxRender → dockRender); the panel's DOM stays hidden
 //    and the page-gated renders (office canvas, Jira, team list) idle because currentPage is 'dock'. Input, permission
 //    answers and terminal focus go through the existing paths (terminalSend as the chat panel, permArm / permDecide,
-//    api.switchTo as a card click). Hovering a tile opens its terminal window (the remote terminal view's markup, fed by
-//    this PC's terminal); clicking it goes to the real terminal. Panel sizes: core/dock.js POP. ──
-const DOCK_H = 72, DOCK_INBOX_H = 360, DOCK_QUICK_PREF = 300;
-const dockQuickMin = () => parseFloat(getComputedStyle($('dock-quick')).minWidth) || 170;   // CSS: 170 px, 150 px in a narrow bar (.dock-narrow)
+//    api.switchTo as a card click). The bar holds only the tiles (the session name under each character) and the
+//    right-hand buttons: hovering a tile opens its terminal window (the remote terminal view's markup, fed by this PC's
+//    terminal) with the input line and [허용][거부]; clicking it goes to the real terminal. Panel sizes: core/dock.js POP. ──
+const DOCK_H = 72, DOCK_INBOX_H = 360;
 let dockCfg = { start: false, opacity: 0.85, pos: null, hoverTerm: true, anim: true, ask: 'on' };   // localStorage roca-dock: { start, opacity, pos: { cx, y }, hoverTerm, anim, ask }
 try {
   const c = JSON.parse(localStorage.getItem('roca-dock') || '{}') || {};
@@ -2889,9 +2869,9 @@ try {
   if (c.pos && Number.isFinite(c.pos.cx) && Number.isFinite(c.pos.y)) dockCfg.pos = { cx: c.pos.cx, y: c.pos.y };
 } catch {}
 function dockSave() { try { localStorage.setItem('roca-dock', JSON.stringify(dockCfg)); } catch {} }
-let dockOn = false, dockPrev = null, dockSel = '', dockTimer = 0, dockSig = '', dockQuickSig = '', dockReqSig = '', dockNatural = 0;
-let dockModelNow = null, dockTipKey = '', dockTipT = 0, dockFadeT = 0, dockPermEl = null, dockSending = false, dockLabelLang = '';
-let dockDir = 'up', dockHit = null, dockHintHold = 0, dockHintHoldT = 0;   // room above / below the bar; pointer over a clickable part; error hint kept until
+let dockOn = false, dockPrev = null, dockSel = '', dockTimer = 0, dockSig = '', dockReqSig = '', dockNatural = 0;
+let dockModelNow = null, dockTipKey = '', dockTipT = 0, dockFadeT = 0, dockPermEl = null, dockLabelLang = '';
+let dockDir = 'up', dockHit = null, dockHintT = 0;   // room above / below the bar; pointer over a clickable part; the message pill's timer
 let dockWin = null;   // main's last bounds answer: { width, stripX, stripWidth, workWidth, extra, dir } (the window may be wider than the bar)
 let dockTipLast = '', dockHoverT = 0, dockHoverGen = 0, dockLeaveT = 0, dockHoverOpened = false;   // last card HTML; hover timer and its generation; leave timer; the window came from a hover
 const dockT = s => LANG === 'ko' ? String(s).replace(/^도크: /, '') : t(s);
@@ -2927,26 +2907,23 @@ function dockPeers() {
 }
 const dockTileOf = key => dockModelNow ? [...dockModelNow.mine, ...dockModelNow.peers].find(x => x.key === key) || null : null;
 const dockLocal = x => (x && !x.bundle && !x.peer ? sessions.find(s => s.id === x.id) || null : null);
-// everything in the bar but the tiles and the quick input line: padding, border, separators, gaps, the right-hand buttons
+// everything in the bar but the tiles: padding, border, the separator, gaps, the right-hand buttons
 function dockFixedWidth() {
   const cs = getComputedStyle($('dock-strip')), gap = parseFloat(cs.columnGap) || 6;
-  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + 2 + 2 + 4 * gap + 4 + $('dock-right').offsetWidth;
+  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + 2 + 1 + 2 * gap + 4 + $('dock-right').offsetWidth;
 }
 function dockLabels() {
   if (dockLabelLang === LANG) return;
   dockLabelLang = LANG;
   $('dock-tiles').setAttribute('aria-label', dockT('도크: 세션'));
-  $('dock-input').setAttribute('aria-label', dockT('도크: 빠른 입력'));
-  $('dock-send').textContent = dockT('도크: 전송');
-  $('dock-go').title = dockT('도크: 패널에서 카드 보기 (더블클릭)'); $('dock-go').setAttribute('aria-label', $('dock-go').title);
   for (const [id, k] of [['dock-settings', '도크: 설정'], ['dock-expand', '도크: 패널로 펼치기 (⌘⇧D)']]) { $(id).title = dockT(k); $(id).setAttribute('aria-label', dockT(k)); }
-  dockSig = dockQuickSig = '';
+  dockSig = '';
 }
 function dockDraw() {
   if (!dockOn) return;
   dockLabels();
   const mine = dockSessions(), peers = dockPeers(), inbox = inboxQItems;
-  // the window follows the content: every tile at 48 px plus the rest (main clamps it to 320 px … 90 % of the screen)
+  // the window follows the content: every tile at 56 px plus the rest (main clamps it to 320 px … 90 % of the screen)
   const full = AgentDeskDock.dockModel({ sessions: mine, peers, inbox, selectedId: dockSel });
   if (dockSel && !full.selected) dockSel = '';
   if (!dockSel) {   // nothing chosen yet: the first of mine that waits for me
@@ -2955,8 +2932,8 @@ function dockDraw() {
   }
   if (!dockWin) $('page-dock').classList.toggle('dock-narrow', window.innerWidth <= DOCK_NARROW);   // before main's first answer
   const fixed = dockFixedWidth();
-  dockBoundsSync(AgentDeskDock.tilesWidth(full) + fixed + DOCK_QUICK_PREF);
-  const m = AgentDeskDock.dockModel({ sessions: mine, peers, inbox, selectedId: dockSel, width: Math.max(0, ($('dock-strip').offsetWidth || window.innerWidth) - fixed - dockQuickMin()) });
+  dockBoundsSync(AgentDeskDock.tilesWidth(full) + fixed);
+  const m = AgentDeskDock.dockModel({ sessions: mine, peers, inbox, selectedId: dockSel, width: Math.max(0, ($('dock-strip').offsetWidth || window.innerWidth) - fixed) });
   dockModelNow = m;
   // a new selection alone only moves the highlight: the clicked tile stays the same node (its double-click still lands)
   const sig = JSON.stringify([LANG, m.size, [...m.mine, ...m.peers].map(x => ({ ...x, selected: false }))]);
@@ -2966,8 +2943,7 @@ function dockDraw() {
   $('page-dock').classList.toggle('dock-still', !dockCfg.anim);
   dockAnimKick();
   dockAskSync();
-  dockQuickDraw(m);
-  dockTermSync(); dockHoverCheck();
+  dockTermSync(); dockPermSync(); dockHoverCheck();
   dockRightDraw();
   if (dockTipKey) { if (dockTileOf(dockTipKey)) dockTipShow(dockTipKey); else dockTipHide(); }
 }
@@ -2981,7 +2957,7 @@ function dockTileHtml(x) {
   const lab = `${x.peer ? `@${x.owner} / ` : ''}${x.name} · ${dockT(DOCK_STATE_LABEL[st])}${x.delegated ? ` · ${dockT('도크: 위임받음')}` : ''}${n ? ` · ${dockT('도크: 대기열')} ${n}` : ''}${x.subs ? ` · ${dockT('도크: 서브에이전트')} ${x.subs}` : ''}`;
   const skin = officeSkin(x.peer ? `${x.peer}/${x.id}` : x.id);
   const subs = x.subs ? `<span class="dock-subs" aria-hidden="true">${'<i></i>'.repeat(Math.min(4, Number(x.subs) || 0))}</span>` : '';
-  return `<button class="dock-tile st-${st}${x.peer ? ' peer' : ''}${x.selected ? ' sel' : ''}" data-key="${esc(x.key)}" aria-label="${esc(lab)}" aria-pressed="${x.selected ? 'true' : 'false'}" tabindex="-1"><span class="dock-spr k${Number(skin) || 0}"></span><span class="dock-dot"></span><span class="dock-ask" aria-hidden="true">!</span><span class="dock-tool" aria-hidden="true"></span><span class="dock-act" aria-hidden="true">${'<i></i>'.repeat(6)}</span>${x.delegated ? '<span class="dock-key" aria-hidden="true">🔑</span>' : ''}${badge}${subs}</button>`;
+  return `<button class="dock-tile st-${st}${x.peer ? ' peer' : ''}${x.selected ? ' sel' : ''}" data-key="${esc(x.key)}" aria-label="${esc(lab)}" aria-pressed="${x.selected ? 'true' : 'false'}" tabindex="-1"><span class="dock-spr k${Number(skin) || 0}"></span><span class="dock-dot"></span><span class="dock-name" aria-hidden="true">${esc(x.name)}</span><span class="dock-ask" aria-hidden="true">!</span><span class="dock-tool" aria-hidden="true"></span><span class="dock-act" aria-hidden="true">${'<i></i>'.repeat(6)}</span>${x.delegated ? '<span class="dock-key" aria-hidden="true">🔑</span>' : ''}${badge}${subs}</button>`;
 }
 function dockTilesDraw(m) {
   const el = $('dock-tiles'), a = document.activeElement, fKey = a && el.contains(a) ? a.dataset.key : '';
@@ -2992,45 +2968,28 @@ function dockTilesDraw(m) {
   const cur = tiles.find(b => b.dataset.key === fKey) || tiles.find(b => b.dataset.key === dockSel) || tiles[0];
   if (cur) { cur.tabIndex = 0; if (fKey) cur.focus(); }
 }
-// the quick input line: what the selected tile allows (send / permission answer / why not)
-function dockQuickDraw(m) {
-  const x = m.selected, s = dockLocal(x), perm = s ? dockPermMap().get(s.id) : null, handle = s ? handles.get(s.id) : '';
-  const mode = !x ? 'none' : x.peer ? 'peer' : perm ? 'perm' : x.canInput && handle ? 'input' : 'off';
-  const term = dockTermKey();   // a terminal window is open: its own input line takes the input (no second one in the bar)
-  const inBubble = !!(x && mode === 'perm' && dockAskOn(x.key));   // its bubble shows the request: answered there
-  const sig = [LANG, x ? x.key : '', x ? x.name : '', x ? x.state : '', mode, perm ? perm.id : '', handle ? 1 : 0, term, inBubble].join('\u0001');
-  if (sig === dockQuickSig) return;
-  dockQuickSig = sig;
-  const chip = $('dock-chip'), input = $('dock-input'), send = $('dock-send');
-  chip.textContent = x ? (x.peer ? `@${x.owner} / ${x.name}` : x.name) : dockT('도크: 세션 없음');
-  chip.title = chip.textContent; chip.className = `dock-chip${x ? '' : ' none'}`;
-  input.hidden = send.hidden = mode === 'perm' || !!term; $('dock-perm').hidden = mode !== 'perm' || !!term || inBubble;
-  input.disabled = send.disabled = mode !== 'input' || dockSending;
-  $('dock-go').disabled = !x;   // the panel card (a teammate's: the team tab)
-  input.placeholder = t(mode === 'input' ? '메시지 입력 후 Enter' : '입력할 수 없습니다');
-  dockHint(t(term ? '입력은 터미널 창에서 합니다 — Esc로 닫습니다' : inBubble ? '말풍선에서 답하세요' : mode === 'none' ? '타일에 올리면 터미널 창, 누르면 그 터미널로 갑니다'
-    : mode === 'peer' ? (x.delegated ? '위임받은 세션입니다 — 올리거나 눌러서 터미널 창을 엽니다' : '위임받은 팀원 세션만 터미널 창을 열 수 있습니다 (더블클릭: 팀 탭)')
-    : mode === 'perm' ? '권한 요청 — 내용을 확인한 뒤 답하세요 (전체 내용은 패널에서)' : mode === 'input' ? '' : !handle ? '이 세션의 터미널을 찾을 수 없습니다'
-    : x.state === 'run' ? '작업 중입니다 — 입력 대기가 되면 보낼 수 있습니다' : x.state === 'ask' ? '선택이 필요합니다 — 터미널에서 답하세요' : '입력 대기 상태가 아닙니다'));
-  if (mode === 'perm' && !inBubble) dockPermShow(perm); else if (dockPermEl) { dockPermEl.remove(); dockPermEl = null; }
-}
-// the hint line under the input. hard = a result the user must see (toast, send result): an error then stays 5 s,
-// during which the quick line's own re-render leaves the line alone (and redraws it afterwards)
+// a result the user must see (an error toast relayed here, a failed terminal switch): a pill on the bar's upper edge,
+// 3 s (errors 5 s). The bar has no hint line of its own: the terminal window and the bubbles carry the guidance.
 function dockHint(text, cls, hard) {
-  if (!hard && Date.now() < dockHintHold) return;
-  const el = $('dock-hint'); el.textContent = text || ''; el.className = `dock-hint${cls ? ' ' + cls : ''}`; el.title = text || '';
-  if (hard && cls === 'err') {
-    dockHintHold = Date.now() + 5000;
-    clearTimeout(dockHintHoldT); dockHintHoldT = setTimeout(() => { dockHintHold = 0; dockQuickSig = ''; dockRender(); }, 5000);
-  }
+  if (!dockOn || !text || (cls !== 'err' && !hard)) return;
+  const el = $('dock-msg');
+  el.textContent = text; el.title = text; el.className = `dock-msg${cls ? ' ' + cls : ''}`; el.hidden = false;
+  clearTimeout(dockHintT); dockHintT = setTimeout(() => { el.hidden = true; }, cls === 'err' ? 5000 : 3000);
 }
-// [허용] [거부] for the selected session's oldest request: the permission panel's own rules — permArm (0.8 s before the
-// buttons work, [허용] stays off while data-truncated is 1) and permDecide (same IPC, same toasts). The bar shows one
-// short line, so [허용] is offered only for what that line shows in full (AgentDeskDock.permAllowable: a one-line Bash
-// command or short request, never a file edit, nothing cut); the rest carries data-truncated=1 and [패널에서 보기] opens
-// the panel on that request. [거부] always works.
+// [허용] [거부] for the open terminal window's session (its oldest request), in the window's input line: the permission
+// panel's own rules — permArm (0.8 s before the buttons work, [허용] stays off while data-truncated is 1) and permDecide
+// (same IPC, same toasts). The line is short, so [허용] is offered only for what it shows in full
+// (AgentDeskDock.permAllowable: a one-line Bash command or short request, never a file edit, nothing cut); the rest
+// carries data-truncated=1 and [패널에서 보기] opens the panel on that request. [거부] always works. A request shown in
+// the session's bubble is answered there instead (no second set of buttons).
+function dockPermSync() {
+  const st = dockTerm, bg = $('dock-term'), x = st && bg ? dockTileOf(st.key) : null, s = dockLocal(x);
+  const perm = s ? dockPermMap().get(s.id) : null;
+  if (perm && !dockAskOn(x.key)) dockPermShow(perm);   // (bubbles hide while a window is open: the guard is defensive)
+  else if (dockPermEl) { dockPermEl.remove(); dockPermEl = null; }
+}
 function dockPermShow(r) {
-  const box = (dockTerm && $('pt-perm')) || $('dock-perm');   // the terminal window's input line, when it is open
+  const box = $('pt-perm'); if (!box) return;
   if (dockPermEl && dockPermEl.dataset.permId === r.id && dockPermEl.parentNode === box) return;   // same request, already armed
   if (dockPermEl) dockPermEl.remove();
   const el = dockPermLine(r);
@@ -3215,8 +3174,8 @@ function dockSelect(key) {
 }
 // ── terminal window (a tile hover / Enter): the remote terminal view (termViewHtml, the same markup and rules as a
 //    teammate's delegated session) for my session, docked in the room above / below the bar. Screen: dockScreenRead
-//    every second while it is open and the widget is visible; input: terminalSend as the quick line, only while the
-//    session waits for input; a permission request: the bar's [허용][거부] (dockPermShow) in place of the input line;
+//    every second while it is open and the widget is visible; input: terminalSend as the chat panel, only while the
+//    session waits for input; a permission request: [허용][거부] (dockPermShow) in place of the input line;
 //    [중단]: terminalInterrupt after a confirm; [터미널로]: api.switchTo. A teammate's tile opens peerRemoteTermOpen
 //    (delegated sessions only) in the same place. Esc or ✕ closes it; see dockHover for when a hovered one goes. ──
 let dockTerm = null;   // { key, sid, timer, delay, busy, sending, refocus, lastText, alive, readErr, freeText }
@@ -3229,16 +3188,14 @@ function dockTermClose(all) {
   if (all && peerTerm) peerRemoteTermClose();
   dockTermClosed();
 }
-// either window closed: the room shrinks back and the input line returns to the bar — after the current task, so that
-// switching tiles (close, then open the next one) asks main for the final size once instead of shrinking first
+// either window closed: the room shrinks back — after the current task, so that switching tiles (close, then open the
+// next one) asks main for the final size once instead of shrinking first
 function dockTermClosed() {
   if (!dockOn) return;
   if (dockPermEl && !dockPermEl.isConnected) dockPermEl = null;   // it sat in the closed window's input line
   queueMicrotask(() => {
     if (!dockOn) return;
-    dockAskPlace();   // the bubbles come back (before the quick line asks whether a request is in one)
-    dockQuickSig = '';
-    if (dockModelNow) dockQuickDraw(dockModelNow);
+    dockAskPlace();   // the bubbles come back
     dockBoundsSync();
   });
 }
@@ -3330,7 +3287,8 @@ function dockHoverWire(bg) {
 function dockTermFor(x) {
   if (!x.peer) { dockTermOpen(x); return; }
   dockTermClose(true);
-  if (x.delegated) peerRemoteTermOpen(x.peer, x.id);   // not delegated: the quick line's hint says why nothing opens
+  if (x.delegated) peerRemoteTermOpen(x.peer, x.id);
+  else dockHint(t('위임받은 팀원 세션만 터미널 창을 열 수 있습니다 (더블클릭: 팀 탭)'), 'err');   // not delegated: nothing opens
 }
 function dockTermOpen(x) {
   dockTermClose(true);
@@ -3372,8 +3330,7 @@ function dockTermOpen(x) {
     if (r.sent) { input.value = ''; st.freeText = false; }
     dockTermSync(); dockTermPoll(st, true);
   });
-  dockQuickSig = ''; if (dockModelNow) dockQuickDraw(dockModelNow);
-  dockPopPlace(); dockBoundsSync(); dockTermSync();
+  dockPopPlace(); dockBoundsSync(); dockTermSync(); dockPermSync();
   dockTermPoll(st);
 }
 function dockTermSchedule(st, ms) { if (!st.alive) return; clearTimeout(st.timer); st.timer = setTimeout(() => dockTermPoll(st), ms); }
@@ -3388,7 +3345,7 @@ async function dockTermPoll(st, force) {
   if (!st.alive) return;
   const bg = $('dock-term'); if (!bg) return;
   st.readErr = c.err;
-  if (c.lines) termViewScreen(bg.querySelector('#pt-screen'), st, c.lines.map(l => esc(l)).join('\n'));
+  if (c.lines) termViewScreen(bg.querySelector('#pt-screen'), st, termScreenHtml(c.lines));
   st.delay = c.err ? Math.min(DOCK_TERM_MAX_MS, st.delay * 2) : DOCK_SCREEN_MS;   // back off while reads fail
   dockTermSync(); dockHoverCheck();
   dockTermSchedule(st, st.delay);
@@ -3406,6 +3363,7 @@ function dockTermSync() {
   status.textContent = t(label); status.className = 'pt-status' + (cls ? ' ' + cls : ''); status.title = st.readErr || '';
   bg.querySelector('.pt-prompt').hidden = input.hidden = !!perm;
   bg.querySelector('#pt-perm').hidden = !perm;
+  dockPermSync();
   bg.querySelector('#pt-go').disabled = bg.querySelector('#pt-stop').disabled = !h;
   if (st.sending) return;
   const canInput = !!(h && (x.canInput || st.freeText) && !perm);   // freeText: a bubble's "Type something." chose the text field
@@ -3536,7 +3494,7 @@ function dockAskRender() {
   }
   dockAskPlace();
   dockBoundsSync();
-  if (dockModelNow) dockQuickDraw(dockModelNow);   // a request shown in a bubble leaves the quick line (and comes back)
+  dockPermSync();   // a request shown in a bubble leaves the terminal window's input line (and comes back)
 }
 // the bubble's content: masked screen text (dockScreenRead) and request summaries, every value through esc()
 function dockAskFill(a) {
@@ -3728,31 +3686,13 @@ async function dockSendTo(s, handle, text) {
     return { sent: true, err: false, msg: `${dockT('도크: 보냄')}: ${s.name}` };
   } catch (err) { return { sent: false, err: true, msg: `${t('전송 실패')}: ${err.message || ''}` }; }
 }
-async function dockSend() {
-  const x = dockModelNow && dockModelNow.selected, s = dockLocal(x), handle = s && handles.get(s.id);
-  const input = $('dock-input'), send = $('dock-send'), text = input.value.replace(/\r?\n+/g, ' ').trim();
-  if (!text || dockSending || !handle || !x.canInput || dockPermMap().has(s.id)) return;
-  dockSending = true; input.disabled = send.disabled = true; dockHint(t('전송 중…'));
-  try {
-    const r = await dockSendTo(s, handle, text);
-    if (r.sent) input.value = '';
-    dockHint(r.msg, r.err ? 'err' : 'ok');
-  } finally {
-    dockSending = false;
-    const y = dockModelNow && dockModelNow.selected, ys = dockLocal(y);
-    const ok = !!(ys && y.canInput && handles.get(ys.id) && !dockPermMap().has(ys.id));
-    input.disabled = send.disabled = !ok;
-    if (ok) input.focus();
-    dockRender();
-  }
-}
 function dockEnter() {
   if (dockOn) return;
   inboxToggle(false); closeCtxMenu(); peerRemoteTermClose();   // a full-window remote terminal view: closed (the bar opens its own)
   const w = document.querySelector('.widget');
   dockPrev = { page: currentPage, minimized: isMinimized };
   if (isMinimized) w.classList.remove('minimized');   // the header-only window: the bar replaces it, leaving brings it back
-  dockOn = true; dockSig = dockQuickSig = dockReqSig = ''; dockLabelLang = '';
+  dockOn = true; dockSig = dockReqSig = ''; dockLabelLang = '';
   w.classList.add('docked');
   showPage('dock', { keepSize: true });
   dockDraw();   // draws, then asks main for the bar's bounds (the panel's bounds are kept there)
@@ -3761,14 +3701,14 @@ function dockEnter() {
 function dockLeave(page) {
   if (!dockOn) return;
   dockOn = false;
-  clearTimeout(dockTimer); dockTimer = 0; clearTimeout(dockFadeT); clearTimeout(dockTipT); clearTimeout(dockHintHoldT); dockHintHold = 0; dockHit = null;
+  clearTimeout(dockTimer); dockTimer = 0; clearTimeout(dockFadeT); clearTimeout(dockTipT); clearTimeout(dockHintT); $('dock-msg').hidden = true; dockHit = null;
   dockTipKey = dockTipLast = ''; $('dock-tip').hidden = true;
   clearTimeout(dockHoverT); clearTimeout(dockLeaveT); dockHoverT = dockLeaveT = 0; dockTermClose(true);
   for (const k of [...dockAsk.keys()]) dockAskDrop(k);
   clearInterval(dockAskT); dockAskT = 0; $('dock-asks').hidden = true; dockAnimStop(); dockScreen.clear();
   dockWin = null; for (const k of ['width', 'marginLeft', 'alignSelf']) $('dock-strip').style[k] = '';
   if (dockPermEl) { dockPermEl.remove(); dockPermEl = null; }
-  dockQuickSig = dockReqSig = '';
+  dockReqSig = '';
   if (inboxQOpen) inboxToggle(false);
   window.orca.setOpacity(1);
   window.orca.dock({ on: false }).catch(() => {});
@@ -3791,12 +3731,6 @@ $('dock-btn').addEventListener('click', () => dockEnter());
 $('dock-expand').addEventListener('click', () => dockLeave());
 $('dock-settings').addEventListener('click', () => dockLeave('settings'));
 $('dock-inbox').addEventListener('click', e => { e.stopPropagation(); inboxToggle(); });
-$('dock-send').addEventListener('click', () => dockSend());
-$('dock-input').addEventListener('keydown', e => {
-  e.stopPropagation();
-  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); dockSend(); }
-  else if (e.key === 'Escape') e.target.blur();
-});
 $('dock-tiles').addEventListener('click', e => {
   const b = e.target.closest('.dock-tile'); const x = b && dockTileOf(b.dataset.key); if (!x) return;
   if (x.bundle) { dockLeave(x.key === 'more:peer' ? 'team' : 'dashboard'); return; }   // the "+N" pile: the full list
@@ -3816,11 +3750,9 @@ $('dock-tiles').addEventListener('dblclick', e => {
   const b = e.target.closest('.dock-tile'); const x = b && dockTileOf(b.dataset.key); if (!x || x.bundle) return;
   dockOpenCard(x);
 });
-// ▤: the selected session's card in the panel (as a double-click)
-$('dock-go').addEventListener('click', () => { const x = dockModelNow && dockModelNow.selected; if (x && !x.bundle) dockOpenCard(x); });
 // keyboard: ← → Home End move between tiles, Enter opens the terminal window (its input line when it can take input),
-// ⌘Enter / Ctrl+Enter goes to the terminal (a click), Space selects (and goes to the bar's input line when it can take
-// input); Esc closes the window (document handler)
+// ⌘Enter / Ctrl+Enter goes to the terminal (a click), Space selects (the focus stays on the tile); Esc closes the
+// window (document handler)
 $('dock-tiles').addEventListener('keydown', e => {
   const tiles = [...$('dock-tiles').querySelectorAll('.dock-tile')], i = tiles.indexOf(document.activeElement);
   if (i < 0) return;
@@ -3846,9 +3778,7 @@ $('dock-tiles').addEventListener('keydown', e => {
     return;
   }
   dockSelect(x.key);
-  const inp = $('dock-input');
-  if (!inp.disabled && !inp.hidden) inp.focus();
-  else { const t0 = $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(x.key)}"]`); if (t0) t0.focus(); }
+  const t0 = $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(x.key)}"]`); if (t0) t0.focus();
 });
 $('dock-tiles').addEventListener('mouseover', e => { const b = e.target.closest('.dock-tile'); if (b) dockHover(b.dataset.key); });
 $('dock-tiles').addEventListener('mouseleave', dockHoverLeave);
@@ -8424,6 +8354,12 @@ function termViewHtml(o) {
     <div class="pt-msg" id="pt-msg">${esc(o.intro)}</div>
   </div>`;
 }
+// screen rows → the <pre>'s HTML: every row through esc(); a row that is nothing but box-drawing rules (Claude Code's
+// prompt frame, as wide as the terminal) becomes one thin line instead of a run of dashes that wraps or scrolls
+const TERM_RULE_RE = /^\s*[╭┌╰└├┬┴]?[─━═┄┅┈┉╌╍]{4,}[╮┐╯┘┤┬┴]?\s*$/;
+function termScreenHtml(lines) {
+  return lines.map(l => (TERM_RULE_RE.test(l) ? '<span class="pt-rule"></span>' : esc(l) + '\n')).join('');
+}
 // new screen text (already escaped): stay at the bottom (like a terminal) unless the user scrolled up to read
 function termViewScreen(pre, st, text) {
   if (text === st.lastText) return;
@@ -8447,7 +8383,7 @@ function peerRemoteTermOpen(owner, sid) {
   document.body.appendChild(bg);
   if (dockOn) dockHoverWire(bg);
   const st = peerTerm = { owner, sid, timer: 0, delay: PEER_TERM_MS, busy: false, sending: false, refocus: false, lastText: null, alive: true, canInput: false };
-  if (dockOn) { dockPopPlace(); dockBoundsSync(); dockQuickSig = ''; if (dockModelNow) dockQuickDraw(dockModelNow); }
+  if (dockOn) { dockPopPlace(); dockBoundsSync(); }
   const input = bg.querySelector('#pt-input'), msg = bg.querySelector('#pt-msg');
   const say = (text, kind) => { msg.textContent = text; msg.classList.toggle('error', kind === 'error'); };
   bg.querySelector('#pt-close').onclick = peerRemoteTermClose;
@@ -8485,7 +8421,7 @@ async function peerTermPoll(st) {
   let final = false;
   if (r.ok) {
     st.delay = PEER_TERM_MS;
-    termViewScreen(pre, st, (r.lines || []).map(l => esc(l)).join('\n'));
+    termViewScreen(pre, st, termScreenHtml(r.lines || []));
     // the same rule as the input buttons: waiting at the prompt, not on a permission / choice prompt, not ended
     st.canInput = r.status === 'waiting' && r.needsInput !== true && r.ended !== true;
     if (r.ended) setStatus('종료됨', 'err');

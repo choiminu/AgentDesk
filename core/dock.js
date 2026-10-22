@@ -2,7 +2,7 @@
 // functions only (no DOM, no timers, no storage); the renderer draws the tiles, main places the window.
 //
 //   dockModel({ sessions, peers, inbox, selectedId, maxTiles, width }) →
-//     { size: 48|40, mine: [tile], peers: [tile], selected: tile|null, hidden: n, total: n }
+//     { size: 56|40, mine: [tile], peers: [tile], selected: tile|null, hidden: n, total: n }
 //     sessions: [{ id, name, status, needsInput, hasPerm, subs, handle }]   my sessions, in the order to show them
 //     peers:    [{ peer, id, name, status, needsInput, delegated, subs }]         teammate sessions (the caller passes [] when
 //                                                                           team sharing is off)
@@ -16,7 +16,7 @@
 //   pile: { key: 'more:me'|'more:peer', bundle: true, count, keys, state, badge }  ("+N" — what did not fit)
 //     state: 'ask' (approval needed) > 'err' > 'input' (waiting for input) > 'run' > 'done' — the pile shows the most
 //     urgent state among what it holds.
-//   Fit: 48 px tiles when everything fits, else 40 px, else 40 px with a "+N" pile; teammates at most MAX_PEERS (+N).
+//   Fit: 56 px tiles when everything fits, else 40 px, else 40 px with a "+N" pile; teammates at most MAX_PEERS (+N).
 //   Folding keeps the most urgent tiles (and the selected one) and keeps their original order.
 //
 //   dockBounds({ workArea, contentWidth, height, extra, remembered }) → { x, y, width, height, stripY, stripHeight, extra, dir }
@@ -74,7 +74,7 @@
 'use strict';
 const STATES = ['ask', 'err', 'input', 'run', 'done'];
 const RANK = { ask: 0, err: 1, input: 2, run: 3, done: 4 };
-const TILE = { big: 48, small: 40, gap: 4, sep: 9 };
+const TILE = { big: 56, small: 40, gap: 4, sep: 9 };   // big: the character with its name beneath; small: the character only
 const MAX_PEERS = 8;
 const STRIP_MIN = 64, STRIP_MAX = 76, STRIP_DEFAULT = 72;
 const MIN_WIDTH = 320, MAX_FRAC = 0.9, MARGIN = 6;
