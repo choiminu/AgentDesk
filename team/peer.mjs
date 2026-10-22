@@ -20,7 +20,7 @@
 //                                              masked, no ANSI / control characters], status, needsInput, ended, at }
 //                                              | 409 busy (session not placeable / screen unreadable) | 429 (90/min per
 //                                              session and caller, a budget of its own — reads never use the input /
-//                                              interrupt one). One read per session at a time, reused for 1 s. Read-only:
+//                                              interrupt one). One read per session at a time, reused for 2 s. Read-only:
 //                                              the remote terminal view polls it; typing still goes through /input only.
 // :id is the public id (s_ + 24 hex of sha256(local id)). The grant must belong to the teammate whose PINNED key signed
 // the request (an address identifies nobody; grants and safety in /v1/sessions follow the same rule). Permission
@@ -738,12 +738,14 @@ export function startTeamServer(cfg, getSnapshot, opts = {}) {
       let r; try { r = remote.input ? await remote.input({ sessionId: sid, delegation: d, session, text }) : { ok: false, error: "no handler" }; } catch (e) { r = { ok: false, error: e.message }; } finally { inflight.delete(sid); }
       if (r && r.busy) { event({ kind: "input", result: "busy", text }); return json(409, { error: "busy" }); }
       event({ kind: "input", result: r && r.ok ? (r.accepted ? "accepted" : "sent") : "error", text, ...(r && !r.ok ? { error: r.error } : {}) });
+      if (r && r.ok) screenReads.delete(sid);   // the screen changed: the next read is fresh, not the cached one
       return r && r.ok ? json(200, { ok: true, accepted: !!r.accepted }) : json(503, { error: "session terminal unavailable" });
     }
     if (!session) { event({ kind: "interrupt", result: "busy" }); return json(409, { error: "busy" }); }
     let r; try { r = remote.interrupt ? await remote.interrupt({ sessionId: sid, delegation: d, session }) : { ok: false }; } catch (e) { r = { ok: false, error: e.message }; }
     if (r && r.unsupported) { event({ kind: "interrupt", result: "unsupported" }); return json(409, { error: "unsupported" }); }
     event({ kind: "interrupt", result: r && r.ok ? "accepted" : "error", ...(r && !r.ok ? { error: r.error } : {}) });
+    if (r && r.ok) screenReads.delete(sid);   // the screen changed: the next read is fresh, not the cached one
     return r && r.ok ? json(200, { ok: true }) : json(503, { error: "session terminal unavailable" });
   }
   server.requestTimeout = 10000;

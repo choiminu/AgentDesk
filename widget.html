@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-CAJ1vIHAXKiw8OHlUUh0fmhZNICUWUcAv7oB9ckt+ds='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-p+jcg/3APUsKcGpbIClh8iHF6ii1jTUK0K3/va7QLII='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -5775,6 +5775,19 @@ function officeFrame(now) {
   for (let i = teamFlights.length - 1; i >= 0; i--) { teamFlights[i].t += dt; if (teamFlights[i].t >= teamFlights[i].dur) teamFlights.splice(i, 1); }
   for (const p of officePets) officePetTick(p, dt, lounge, originX, usableW);
   officeParticlesTick(dt);
+  // frame-cap input for officeLoop. "Moving" = something changes between frames: a local character that is not seated
+  // (walking / pausing / leaving), fading or materializing (alpha < 1), reacting (reactT / alertT), a local session typing
+  // or waving (running / needsInput), a walking pet or one showing a heart, a debate speaker (meeting room), confetti,
+  // a team flight, a drag, or the 1.5 s settle after a relayout.
+  // Teammates' sessions do not count: their typing frames (>= 0.22 s each) still read at 10 fps, and counting them would
+  // keep the full rate whenever team sharing shows a running session.
+  officeMoving = now - officeStartedAt < 1500 || !!officeDrag || officeParticles.length > 0 || teamFlights.length > 0
+    || officePets.some(p => p.state === 'walk' || p.heartT > 0)
+    || !!(debateState.running && debateState.currentHandle);
+  if (!officeMoving) for (const c of officeChars.values()) {
+    if (c.state !== 'sit' || c.fading || c.alpha < 1 || c.reactT > 0 || c.alertT > 0
+      || (c.sess && (c.sess.status === 'running' || c.sess.needsInput))) { officeMoving = true; break; }
+  }
 
   // 4) draw: floors — corridor planks everywhere, then each station paints its own tile + tint
   const floorTop = OFFICE.WALL_H * T;
@@ -5923,6 +5936,7 @@ function officeFrame(now) {
   }
 
   if (peerZone) officeDrawPeerZone(ctx, im, peerZone, worldW, originX, graph.xs.filter(ax => ax >= 8 && ax <= worldW - 8), now, bob, pcFrame, zItems);
+  else officePeerFloorCache.clear();
 
   // walking / standing / fading characters
   officeMovers = [...officeChars.values()].filter(c => c.state !== 'sit' || c.fading);
@@ -6469,6 +6483,36 @@ function officeBuildPeerZone(y, originX, cols, SEAT_PX, SEAT_PY) {
   }
   return { y, h: yy - y, areas };
 }
+// teammates' sprites toned down once per (sheet, off): a canvas filter per draw is costly, so the filtered sheet is cached
+const officePeerSheetCache = new Map();   // `${sheet.src}|${off}` → canvas
+function officePeerSheet(sheet, off) {
+  const key = `${sheet.src}|${off ? 1 : 0}`;
+  const hit = officePeerSheetCache.get(key);
+  if (hit) return hit;
+  if (!sheet.complete || !sheet.naturalWidth) return null;   // not loaded yet: the caller falls back for this frame
+  const c = document.createElement('canvas'); c.width = sheet.naturalWidth; c.height = sheet.naturalHeight;
+  const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+  g.filter = off ? 'grayscale(1) brightness(0.85)' : 'saturate(0.5)';
+  g.drawImage(sheet, 0, 0);
+  officePeerSheetCache.set(key, c);
+  return c;
+}
+// teammates' floors: tiled once per area into an offscreen canvas, redrawn only when an input of the floor changes
+const officePeerFloorCache = new Map();   // peer name → { sig, canvas }
+function officePeerFloor(im, a, x0, y0, w) {
+  // the tile pattern hashes absolute world positions, so the origin is part of the signature as well as size, rows and state
+  const sig = `${x0},${y0},${w},${a.h},${a.seats.length},${a.off ? 1 : 0},${im.floor_grid ? 1 : 0}`;
+  let e = officePeerFloorCache.get(a.peer.name);
+  if (!e || e.sig !== sig) {
+    const c = (e && e.canvas) || document.createElement('canvas');
+    c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(a.h));   // resizing also clears it
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+    g.setTransform(1, 0, 0, 1, -x0, -y0);
+    officeTileArea(g, im, 'floor_grid', a.off ? '#c4c4ca' : '#cfd8e3', x0, y0, w, a.h);
+    e = { sig, canvas: c }; officePeerFloorCache.set(a.peer.name, e);
+  }
+  return e.canvas;
+}
 function officeDrawPeerWarn(ctx, x, y, level, now) {
   x = Math.round(x); y = Math.round(y);
   const blink = level === 'file' && Math.floor(now / 450) % 2 === 0;
@@ -6505,9 +6549,10 @@ function officeDrawPeerSeat(ctx, im, seat, area, now, bob, pcFrame) {
   if (!off && st === 'running') { const reading = officeIsReadingTool(sess.tool); frameCol = (reading ? 5 : 3) + (Math.floor(animT / (reading ? 0.45 : 0.22)) % 2); }
   else if (!off && st === 'waiting') { dir = 0; frameCol = sess.needsInput ? 3 + (Math.floor(animT / 0.5) % 2) : 0; }
   else dir = 0;
-  ctx.save(); ctx.filter = off ? 'grayscale(1) brightness(0.85)' : 'saturate(0.5)';
-  if (sheet) officeDrawChar(ctx, sheet, frameCol, dir, seat.chairX, seat.chairY, 1);
-  ctx.restore();
+  // the filter is baked once per (sheet, off) into a cached canvas (officePeerSheet); ctx.filter is never set per frame
+  const tinted = sheet ? officePeerSheet(sheet, off) : null;
+  if (tinted) officeDrawChar(ctx, tinted, frameCol, dir, seat.chairX, seat.chairY, 1);
+  else if (sheet) { ctx.save(); ctx.globalAlpha = 0.6; ctx.drawImage(sheet, frameCol * 16, (dir === 1 ? 1 : dir === 0 ? 0 : 2) * 32, 16, 32, Math.round(seat.chairX - 8), Math.round(seat.chairY - 24), 16, 32); ctx.restore(); }
   const headY = seat.chairY - 24;
   if (!off) {
     if (st === 'running') { const tool = officeToolLabel(sess.tool); officeDrawTag(ctx, seat.chairX, headY - 16, t(tool.label), tool.color, now); }
@@ -6522,12 +6567,22 @@ function officeDrawPeerSeat(ctx, im, seat, area, now, bob, pcFrame) {
   const cf = peerConflicts.find(c => c.owner === area.peer.name && c.peer === sess.id);
   if (cf) officeDrawPeerWarn(ctx, seat.chairX - 14, headY - 2, cf.level, now);
   if (!off && peerDelegatedToMe(area.peer.name, sess.id)) officeDrawKey(ctx, seat.chairX + 10, headY - 1);
-  officePeerSeats.push({ x: sx, y: sy, w: OFFICE.SEAT_W * OFFICE.T, h: OFFICE.SEAT_H * OFFICE.T, sess, owner: area.peer.name, off, chairX: seat.chairX, chairY: seat.chairY });
+  officePeerSeatMeta(seat, area);
+}
+// a teammate seat's hit-test / minimap record (also for culled areas, so the minimap keeps their dots)
+function officePeerSeatMeta(seat, area) {
+  if (!seat.sess) return;
+  officePeerSeats.push({ x: seat.sx, y: seat.sy, w: OFFICE.SEAT_W * OFFICE.T, h: OFFICE.SEAT_H * OFFICE.T, sess: seat.sess, owner: area.peer.name, off: area.off, chairX: seat.chairX, chairY: seat.chairY });
 }
 function officeDrawPeerZone(ctx, im, zone, worldW, originX, xs, now, bob, pcFrame, zItems) {
+  // culling: an area entirely outside the scrolled viewport (plus a margin for bubbles and the name plate) is not drawn at all
+  const wrap = $('office-wrap'), scale = $('office-canvas').__scale || 2, M = 48;
+  const viewTop = wrap.scrollTop / scale - M, viewBottom = (wrap.scrollTop + wrap.clientHeight) / scale + M;
+  for (const k of officePeerFloorCache.keys()) if (!zone.areas.some(a => a.peer.name === k)) officePeerFloorCache.delete(k);
   for (const a of zone.areas) {
     const fy = a.y - 12;
-    officeTileArea(ctx, im, 'floor_grid', a.off ? '#c4c4ca' : '#cfd8e3', 4, fy, worldW - 8, a.h);
+    if (fy + a.h < viewTop || fy > viewBottom) { for (const seat of a.seats) officePeerSeatMeta(seat, a); continue; }   // drawing only
+    ctx.drawImage(officePeerFloor(im, a, 4, fy, worldW - 8), 4, fy);
     ctx.fillStyle = 'rgba(30,28,40,0.55)'; ctx.fillRect(4, fy, worldW - 8, 2);
     ctx.fillStyle = officeRgba(a.off ? '#8a8a96' : a.color, 0.9); ctx.fillRect(4, fy + 2, worldW - 8, 1);
     if (a.off) { ctx.fillStyle = 'rgba(60,60,70,0.18)'; ctx.fillRect(4, fy + 3, worldW - 8, a.h - 3); }
@@ -7100,10 +7155,19 @@ function officeStep(ch, dt) {
   return ch.path.length === 0;
 }
 
-let officeLastDraw = 0;
+let officeLastDraw = 0, officeMoving = true, officeBlurred = false, officeWakeAt = 0;
+window.addEventListener('blur', () => { officeBlurred = true; });
+window.addEventListener('focus', () => { officeBlurred = false; officeLastDraw = 0; });
+// scrolling or pointing at the office draws at full rate for a moment (culled teammate areas come into view, hover feedback)
+for (const ev of ['scroll', 'pointermove', 'wheel']) $('office-wrap').addEventListener(ev, () => { officeWakeAt = performance.now(); }, { passive: true });
+window.addEventListener('resize', () => { officeWakeAt = performance.now(); });
 function officeLoop(now) {
   if (currentPage !== 'office') { officeRaf = null; return; }
-  if (officeReady && now - officeLastDraw >= 31) { officeLastDraw = now; officeFrame(now); }
+  // frame cap: 31 ms (~32 fps) while something moves (officeMoving, set by officeFrame) or right after input,
+  // 100 ms (10 fps) when everything is still, at least 66 ms (<= 15 fps) while the window is unfocused, nothing while hidden
+  let cap = officeMoving || now - officeWakeAt < 400 ? 31 : 100;
+  if (officeBlurred) cap = Math.max(cap, 66);
+  if (officeReady && !document.hidden && now - officeLastDraw >= cap) { officeLastDraw = now; officeFrame(now); }
   officeRaf = requestAnimationFrame(officeLoop);
 }
 function officeStart() {
@@ -8126,35 +8190,41 @@ function peerLocalNetHtml() {
     <div class="po-btns"><button class="set-btn primary" data-team="ln-settings">${esc(t('권한 설정 열기'))}</button></div>
   </div>`;
 }
-function teamRender() {
+// force: rebuild even when the markup is unchanged (after an action, e.g. to re-enable a button it disabled)
+function teamRender(force) {
   const bar = $('team-bar'), list = $('team-list'); if (!bar || !list) return;
+  // innerHTML is assigned only when the generated markup differs from the last assignment (bar and list separately);
+  // teamRenderAt marks a completed render (not the early return while a name is being typed)
+  const setBar = h => { if (force || bar.__html !== h) { bar.__html = h; bar.innerHTML = h; } };
+  const setList = h => { teamRenderAt = Date.now(); if (force || list.__html !== h) { list.__html = h; list.innerHTML = h; } };
   const st = teamStatus;
   if (!st.configured || st.error) {
-    bar.innerHTML = '';
-    list.innerHTML = `<div class="empty"><span class="empty-icon">👥</span><span class="empty-text">${esc(st.error ? st.error : t('팀 공유가 꺼져 있습니다'))}</span>
+    setBar('');
+    setList(`<div class="empty"><span class="empty-icon">👥</span><span class="empty-text">${esc(st.error ? st.error : t('팀 공유가 꺼져 있습니다'))}</span>
       <span class="empty-text" style="opacity:.8">${esc(t('~/.agentdesk/team.json 에 내 이름·공유 토큰·팀원 주소를 적으면 같은 망의 팀원 세션이 여기에 보입니다.'))}</span>
-      <button class="set-btn" data-team="setup" style="margin-top:8px">${esc(t(st.error ? '설정 파일 열기' : '팀 공유 켜기'))}</button></div>`;
+      <button class="set-btn" data-team="setup" style="margin-top:8px">${esc(t(st.error ? '설정 파일 열기' : '팀 공유 켜기'))}</button></div>`);
     return;
   }
   // typing a new name: do not rebuild the list under the cursor
   if (list.contains(document.activeElement) && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
   if (!st.hasToken) {
-    bar.innerHTML = `<b>${esc(st.name)}</b> · ${esc(t('아직 팀이 없습니다'))}`;
-    list.innerHTML = `<div class="peer-onboard">
+    setBar(`<b>${esc(st.name)}</b> · ${esc(t('아직 팀이 없습니다'))}`);
+    setList(`<div class="peer-onboard">
       <b>${esc(t('팀 공유 시작'))}</b>
       <div class="po-btns"><button class="set-btn primary" data-team="invite-create">${esc(t('우리 팀 만들기 (초대 코드 생성)'))}</button><button class="set-btn" data-team="invite-join">${esc(t('초대 코드로 합류'))}</button></div>
       <p>${esc(t('초대 코드에는 팀 비밀 토큰이 들어 있습니다. Slack DM 등 1:1 로만 전달하세요.'))}</p>
       <div class="po-me">${esc(t('내 이름'))} <input id="peer-name" value="${esc(st.name)}" maxlength="40" spellcheck="false"><button class="set-btn" data-team="rename">${esc(t('저장'))}</button></div>
       <div class="po-me">${esc(t('내 주소'))} <code>${esc(st.ip || '—')}:${esc(st.port)}</code> ${st.listening ? '' : `<span class="off">${esc(t('서버 꺼짐'))}</span>`}</div>
       <p>${esc(t('지금은 이 PC 안에서만 열려 있습니다. 팀을 만들거나 합류하면 같은 네트워크에 내 이름과 세션 상태가 공개됩니다.'))}</p>
-    </div>`;
+    </div>`);
     return;
   }
   const peers = Object.values(st.peers || {}).sort((a, b) => a.name.localeCompare(b.name));
   const up = peers.filter(p => p.ok).length;
-  bar.innerHTML = `<b>${esc(st.name)}</b> · ${st.paused ? `<span class="off">${esc(t('사무실 망 아님 — 공유 일시 중지'))}</span>` : !st.shared ? `<span class="off">${esc(t('공유 꺼짐 (이 PC만)'))}</span>` : st.listening ? `${esc(t('공유 중'))} :${esc(st.port)}` : `<span class="off">${esc(t('서버 꺼짐'))}</span>`} · ${esc(t('팀원'))} ${up}/${peers.length}${st.discovery ? ` · ${esc(t('자동 발견 켜짐'))}` : ''}`;
+  let barHtml = `<b>${esc(st.name)}</b> · ${st.paused ? `<span class="off">${esc(t('사무실 망 아님 — 공유 일시 중지'))}</span>` : !st.shared ? `<span class="off">${esc(t('공유 꺼짐 (이 PC만)'))}</span>` : st.listening ? `${esc(t('공유 중'))} :${esc(st.port)}` : `<span class="off">${esc(t('서버 꺼짐'))}</span>`} · ${esc(t('팀원'))} ${up}/${peers.length}${st.discovery ? ` · ${esc(t('자동 발견 켜짐'))}` : ''}`;
   const toMe = peers.reduce((n, p) => n + (p.delegatedToMe || []).length, 0);
-  bar.innerHTML += ` · ${esc(t('내가 위임한'))} ${(st.delegations || []).length} · ${esc(t('나에게 위임된'))} ${toMe}${teamSafetyBar(st.safety)}`;
+  barHtml += ` · ${esc(t('내가 위임한'))} ${(st.delegations || []).length} · ${esc(t('나에게 위임된'))} ${toMe}${teamSafetyBar(st.safety)}`;
+  setBar(barHtml);
   let html = peerLocalNetHtml() + peerPendingHtml() + peerNotesHtml() + peerDiscoveredHtml() + peerBoardHtml(peers);
   if (!peers.length) html += `<div class="empty"><span class="empty-icon">👥</span><span class="empty-text">${esc(t('team.json 의 peers 가 비어 있습니다'))}</span></div>`;
   const ord = { running: 0, waiting: 1, error: 2, done: 3 };
@@ -8168,7 +8238,7 @@ function teamRender() {
     if (!items.length) html += `<div class="empty" style="padding:6px 12px"><span class="empty-text">${esc(t(p.ok ? '세션 없음' : '세션 정보를 받지 못했습니다'))}</span></div>`;
     for (const s of items) html += teamPeerCard(s, p.name);
   }
-  list.innerHTML = html;
+  setList(html);
 }
 // conflicts: recomputed on every team tick; a new pair toasts once, then stays quiet for 30 minutes
 function peerUpdateConflicts() {
@@ -8353,7 +8423,7 @@ async function peerRemoteLastShow(owner, sid) {
 // /input path as the input modal — only while the session sits idle at its prompt. Permission / choice prompts stay
 // with the owner; no keys are forwarded.
 let peerTerm = null;   // { owner, sid, timer, delay, busy, sending, refocus, lastText, alive }
-const PEER_TERM_MS = 1500, PEER_TERM_MAX_MS = 15000;
+const PEER_TERM_MS = 1500, PEER_TERM_IDLE_MS = 3000, PEER_TERM_MAX_MS = 15000;   // running: 1.5 s, otherwise 3 s
 // the terminal view's markup (a teammate's delegated session here; my own session from the dock bar, dockTermOpen).
 // o.title is HTML (the caller escapes it); o.head: extra buttons in the title row; o.foot: extra parts of the input line
 function termViewHtml(o) {
@@ -8401,6 +8471,7 @@ function peerRemoteTermOpen(owner, sid) {
     const r = await peerRemoteInterrupt(owner, sid, true);
     if (!st.alive) return;
     if (r) say(r.ok ? t('중단을 보냈습니다') : peerRemoteResult(r)[0], r.ok ? undefined : 'error');
+    st.delay = PEER_TERM_MS; st.fastOnce = true;   // right after an action: the next read comes quickly once
     peerTermPoll(st);
   };
   input.addEventListener('keydown', async e => {
@@ -8413,6 +8484,7 @@ function peerRemoteTermOpen(owner, sid) {
     if (!st.alive) return;
     const [m, kind] = peerRemoteResult(r); say(m, kind);
     if (r.ok) input.value = '';
+    st.delay = PEER_TERM_MS; st.fastOnce = true;   // right after an action: the next read comes quickly once
     peerTermPoll(st);
   });
   peerTermPoll(st);
@@ -8430,7 +8502,7 @@ async function peerTermPoll(st) {
   const setStatus = (label, cls) => { status.textContent = t(label); status.className = 'pt-status' + (cls ? ' ' + cls : ''); status.title = ''; };
   let final = false;
   if (r.ok) {
-    st.delay = PEER_TERM_MS;
+    st.delay = r.status === 'running' || st.fastOnce ? PEER_TERM_MS : PEER_TERM_IDLE_MS; st.fastOnce = false;
     termViewScreen(pre, st, termScreenHtml(r.lines || []));
     // the same rule as the input buttons: waiting at the prompt, not on a permission / choice prompt, not ended
     st.canInput = r.status === 'waiting' && r.needsInput !== true && r.ended !== true;
@@ -8547,24 +8619,49 @@ async function peerHelloDecide(key, accept) {
   teamPageTick();
 }
 function teamFocusCard(owner, id) {
-  showPage('team'); teamRender();
+  showPage('team'); teamRender(true);   // forced: a fresh card, so the pulse animation restarts
   const el = id ? $('team-list').querySelector(`.session[data-peer="${CSS.escape(owner)}"][data-id="${CSS.escape(id)}"]`) : null;
   if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('pulse'); }
 }
-let jiraWorkersSig = '';
-async function teamPageTick() {
+let jiraWorkersSig = '', teamTickSig = '', teamRenderAt = 0, teamTickDirty = false, peerConflictCheckAt = 0;
+// fields that change on every poll while nothing shown changes (timestamps, latency): left out of the change signature
+const TEAM_SIG_SKIP = new Set(['rtt', 'at', 'checkedAt', 'nextAt', 'theirAt', 'lastOk']);
+// pure: the same (status, local) pair always gives the same string; local = teamSigLocal()
+function teamStatusSig(st, local) {
+  return JSON.stringify([st, local], (k, v) => TEAM_SIG_SKIP.has(k) ? undefined : v);
+}
+// my sessions feed the conflict check (repo / branch / files / active) and my rows on the team tab (report, ticket,
+// [세션에 전달] needs a handle); local notes feed the badge — so they are signed with the status
+function teamSigLocal() {
+  const jira = peerJiraMap();
+  return [sessions.map(s => [s.id, s.name, s.status, s.repo, s.branch, s.files, s.ended, s.isSub, !!handles.get(s.id), (peerReports.get(s.id) || {}).at, jira.get(s.id) || '']),
+    peerNotes.map(n => [n.id, n.state])];
+}
+// poll === true only from the 3 s interval; an explicit call (after an action, opening the tab) always refreshes everything
+async function teamPageTick(poll) {
+  poll = poll === true;
   try { teamStatus = await window.orca.teamStatus(); } catch { return; }
-  peerUpdateConflicts();
-  peerSafetyAlerts();
-  notifyPeersTick();
-  const jw = JSON.stringify([...jiraWorkersMap()]);
-  if (jw !== jiraWorkersSig) { jiraWorkersSig = jw; if (currentPage === 'jira') jiraRender(); }
-  const asks = Object.values(teamStatus.peers || {}).reduce((n, p) => n + (p.sessions || []).filter(s => s.needsInput && s.status !== 'done').length, 0);
-  const notesNew = peerNotes.filter(n => n.state === 'new').length + (teamStatus.pending || []).length;
-  const badge = $('badge-team'); if (badge) { badge.textContent = asks + notesNew; badge.hidden = asks + notesNew === 0; badge.title = notesNew ? `${t('받은 메모')} ${notesNew}` : ''; }
-  if (currentPage === 'team') teamRender();
+  const sig = teamStatusSig(teamStatus, teamSigLocal()), changed = sig !== teamTickSig;
+  teamTickSig = sig;
+  // a change seen while hidden leaves the tick dirty, so the next visible tick does the skipped work
+  const same = poll && !changed && !teamTickDirty;
+  // conflicts are rechecked at least once a minute even when unchanged, so a still-open pair re-toasts after 30 minutes
+  if (!same || Date.now() - peerConflictCheckAt >= 60000) { peerConflictCheckAt = Date.now(); peerUpdateConflicts(); }
+  if (!same) peerSafetyAlerts();
+  notifyPeersTick();   // every tick: it owns the re-notify timers
+  if (poll && document.hidden) { if (!same) teamTickDirty = true; return; }   // hidden widget: alerts above still go out, the rest waits for a visible tick
+  teamTickDirty = false;
+  if (!same) {
+    const jw = JSON.stringify([...jiraWorkersMap()]);
+    if (jw !== jiraWorkersSig) { jiraWorkersSig = jw; if (currentPage === 'jira') jiraRender(); }
+    const asks = Object.values(teamStatus.peers || {}).reduce((n, p) => n + (p.sessions || []).filter(s => s.needsInput && s.status !== 'done').length, 0);
+    const notesNew = peerNotes.filter(n => n.state === 'new').length + (teamStatus.pending || []).length;
+    const badge = $('badge-team'); if (badge) { badge.textContent = asks + notesNew; badge.hidden = asks + notesNew === 0; badge.title = notesNew ? `${t('받은 메모')} ${notesNew}` : ''; }
+  }
+  // unchanged status still re-renders every 30 s so relative times (timeAgo) stay current
+  if (currentPage === 'team' && (!same || Date.now() - teamRenderAt >= 30000)) teamRender(!poll);
   if (currentPage === 'settings') { const el = $('set-team-status'); if (el) el.textContent = teamSettingsText(); }
-  inboxRender();
+  if (!same) inboxRender();
 }
 function teamSettingsText() {
   const st = teamStatus;
@@ -8573,7 +8670,8 @@ function teamSettingsText() {
   const peers = Object.values(st.peers || {});
   return `${st.shared && st.localNetwork === 'denied' ? `${t('로컬 네트워크 권한 없음')} · ` : ''}${st.listening ? `${t('공유 중')} ${st.name} :${st.port}` : t('서버 꺼짐')} · ${t('팀원')} ${peers.filter(p => p.ok).length}/${peers.length}${peers.filter(p => !p.ok).length ? ` (${peers.filter(p => !p.ok).map(p => `${p.name}: ${p.error}`).join(', ')})` : ''}${(st.discovered || []).length ? ` · ${t('발견됨')} ${st.discovered.length} — ${t('팀 탭에서 추가')}` : ''}`;
 }
-setInterval(teamPageTick, 3000); setTimeout(teamPageTick, 4000);
+setInterval(() => teamPageTick(true), 3000); setTimeout(teamPageTick, 4000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) teamPageTick(); });   // catch up right away when shown
 $('team-list').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-team]'); if (!b) return;
   const act = b.dataset.team;

@@ -34,7 +34,7 @@ export const REMOTE_LAST_MAX = 8000;
 // the remote terminal view (read-only screen, polled about every 1.5 s while the window is open): its own budget, so
 // reading never eats the input / interrupt one. 90 a minute leaves room for two open windows on one session.
 export const REMOTE_SCREEN_RATE = 90;              // screen reads per minute per session and caller
-export const REMOTE_SCREEN_CACHE_MS = 1000;        // one screen read per session at a time, its result reused this long
+export const REMOTE_SCREEN_CACHE_MS = 2000;        // one screen read per session at a time, its result reused this long
 export const REMOTE_SCREEN_LINES = 200;            // last lines of the screen
 export const REMOTE_SCREEN_LINE_MAX = 400;         // characters per line
 export const REMOTE_SCREEN_BYTES = 24 * 1024;      // UTF-8 bytes of all lines together
