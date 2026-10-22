@@ -280,7 +280,7 @@ test('widget dock permission line: whitelist from core, arming and answers throu
   // permArm keeps [허용] off while data-truncated is 1 (the dock relies on it)
   assert.match(between(html, 'function permArm(el)', '\n}'), /b\.dataset\.perm === 'allow' && el\.dataset\.truncated === '1'/);
   // error toasts reach the bar's message pill; the rest stay out of the bar (the tiles' states tell them)
-  assert.match(between(html, 'function showInAppToast(', '\n}'), /if \(typeof dockOn !== 'undefined' && dockOn && el\.classList\.contains\('err'\)\) dockHint\(el\.textContent, 'err', true\);/);
+  assert.match(between(html, 'function showInAppToast(', '\n}'), /if \(typeof dockOn !== 'undefined' && dockOn && el\.classList\.contains\('err'\)(?: && \(!dockQuiet\(\) \|\| \(opts && \(opts\.security \|\| opts\.user\)\)\))?\) dockHint\(el\.textContent, 'err', true\);/);
   assert.doesNotMatch(html, /dockClickT/);
 });
 
@@ -597,7 +597,7 @@ test('widget dock: security review lows — fail-closed guard, setting, re-armin
   assert.doesNotMatch(html, /window\.orca\.guardConfig\(\)[^\n]*dockGuard/, 'the rules never come to the page for this');
   // L1
   assert.match(html, /dockCfg\.ask = \['on', 'options', 'off'\]\.includes\(c\.ask\) \? c\.ask : 'on';/);
-  assert.match(between(html, 'function dockAskSync()', '\n}\n'), /if \(dockCfg\.ask === 'off'\) \{/);
+  assert.match(between(html, 'function dockAskSync()', '\n}\n'), /if \(dockCfg\.ask === 'off'(?: \|\| dockCfg\.dnd)?\) \{/);
   assert.match(between(html, 'function dockAskFill(a)', '\n}\n'), /q && dockCfg\.ask !== 'options'/);
   // L2
   assert.match(between(html, 'function dockAskPlace()', '\n}\n'), /if \(a\.x != null && a\.x !== g\.x\) dockAskArm\(a\);/);
@@ -698,4 +698,171 @@ test('officeParseChoice: prompts it already read stay the same; a list without t
   assert.deepEqual(officeParseChoice(box).options.map(o => o.n), [1, 2, 3]);
   assert.equal(officeParseChoice(['1. a', '2. b', '3. c']), null);
   assert.equal(officeParseChoice([]), null);
+});
+
+// ── dock batch: ⌘1–9, bubble digit keys, time in state, limit card, completion bubbles, do not disturb ──
+test('numberedTiles / digitOf: ⌘1 … ⌘9 count my tiles left to right, piles left out', () => {
+  const mine = [{ key: 'me:a' }, { key: 'more:me', bundle: true }, { key: 'me:b' }, null];
+  assert.deepEqual(D.numberedTiles(mine), [{ key: 'me:a', n: 1 }, { key: 'me:b', n: 2 }]);
+  const many = Array.from({ length: 12 }, (_, i) => ({ key: `me:${i}` }));
+  assert.equal(D.numberedTiles(many).length, 9, 'nine at most');
+  assert.deepEqual(D.numberedTiles(null), []);
+  assert.equal(D.digitOf({ code: 'Digit3', key: '#' }), 3, 'the key, not the character (Shift layouts)');
+  assert.equal(D.digitOf({ code: 'Numpad9' }), 9);
+  assert.equal(D.digitOf({ key: '5' }), 5);
+  assert.equal(D.digitOf({ code: 'Digit0', key: '0' }), 0, '0 is not an option key');
+  assert.equal(D.digitOf({ key: 'a' }), 0); assert.equal(D.digitOf(null), 0);
+});
+
+test('bubbleKeyTarget: the only bubble shown, else the grown one, else none', () => {
+  assert.equal(D.bubbleKeyTarget([{ key: 'a', shown: true }, { key: 'b', shown: false }]), 'a');
+  assert.equal(D.bubbleKeyTarget([{ key: 'a', shown: true }, { key: 'b', shown: true }]), '', 'several, none big: digits do nothing');
+  assert.equal(D.bubbleKeyTarget([{ key: 'a', shown: true }, { key: 'b', shown: true, big: true }]), 'b');
+  assert.equal(D.bubbleKeyTarget([{ key: 'a', shown: false, big: true }, { key: 'b', shown: true }]), 'b', 'a hidden big one does not count');
+  assert.equal(D.bubbleKeyTarget([]), ''); assert.equal(D.bubbleKeyTarget(null), '');
+});
+
+test('stateClock / ageLabel / ageWarn: time in the current state', () => {
+  const clock = new Map();
+  assert.deepEqual(D.stateClock(clock, [{ key: 'me:a', state: 'run', seed: 1000 }, { key: 'me:b', state: 'input', seed: 9e15 }], 5000), [], 'first sight: no change');
+  assert.equal(clock.get('me:a').since, 1000, 'a past seed is the start');
+  assert.equal(clock.get('me:b').since, 5000, 'a future seed is not');
+  assert.deepEqual(D.stateClock(clock, [{ key: 'me:a', state: 'input' }, { key: 'me:b', state: 'input' }], 9000), [{ key: 'me:a', from: 'run', to: 'input', ms: 8000 }], 'ms: how long the run lasted (1000 → 9000)');
+  assert.equal(clock.get('me:a').since, 9000); assert.equal(clock.get('me:b').since, 5000);
+  D.stateClock(clock, [{ key: 'me:a', state: 'input' }], 10000);
+  assert.equal(clock.has('me:b'), false, 'a tile that left the bar is forgotten');
+  assert.equal(D.ageLabel(59999), ''); assert.equal(D.ageLabel(3 * 60000), '3m'); assert.equal(D.ageLabel(12 * 60000 + 5), '12m');
+  assert.equal(D.ageLabel(60 * 60000), '1h'); assert.equal(D.ageLabel(2.9 * 3600000), '2h'); assert.equal(D.ageLabel(NaN), '');
+  assert.equal(D.ageWarn('input', 10 * 60000), true); assert.equal(D.ageWarn('input', 9 * 60000), false);
+  assert.equal(D.ageWarn('run', 30 * 60000), true); assert.equal(D.ageWarn('run', 29 * 60000), false);
+  assert.equal(D.ageWarn('done', 99 * 3600000), false);
+});
+
+test('usageRows / popExtra("usage"): the limit card rows and its room', () => {
+  assert.deepEqual(D.usageRows({ session: { usedPercent: 41.6, resetsAt: 1700000000000 }, weekly: { usedPercent: 120 } }),
+    [{ k: 's', pct: 42, resetsAt: 1700000000000 }, { k: 'w', pct: 100, resetsAt: 0 }]);
+  assert.deepEqual(D.usageRows({ session: { usedPercent: 'x' }, weekly: null }), []);
+  assert.deepEqual(D.usageRows(undefined), []);
+  assert.equal(D.popExtra('usage'), D.popExtra('tipSmall'));
+  assert.equal(D.popWidth('usage', 2000), D.popWidth('tipSmall', 2000));
+  assert.ok(D.popExtra('bubblesDone') > 0);
+});
+
+test('renderer: ⌘1 … ⌘9 go to the terminal as a click; tiles carry their number (not on 40 px tiles)', () => {
+  const kd = between(html, "document.addEventListener('keydown', e => {\n  if (!dockOn || e.isComposing", "\n});\n");
+  assert.match(kd, /if \(tag === 'input' \|\| tag === 'textarea'/, 'not while typing');
+  assert.match(kd, /AgentDeskDock\.numberedTiles\(dockModelNow \? dockModelNow\.mine : \[\]\)\[n - 1\]/);
+  assert.match(kd, /dockTermClose\(true\); dockTipHide\(\); dockSel = x\.key; dockDraw\(\);\n\s*dockFocusTerminal\(x\);/, 'the hovered window closes first');
+  assert.match(between(html, 'function dockTileHtml(x)', '\n}\n'), /<span class="dock-num" aria-hidden="true">\$\{num\}<\/span>/);
+  assert.match(html, /\.dock-tiles\.s40 \.dock-num \{ display: none; \}/);
+});
+
+test('bubbleKeyAllowed: a held key never answers', () => {
+  const ok = { target: 'me:a', prevTarget: 'me:a', since: 1000, now: 5000, armMs: 800 };
+  assert.equal(D.bubbleKeyAllowed(ok), true);
+  assert.equal(D.bubbleKeyAllowed({ ...ok, repeat: true }), false);
+});
+
+test('bubbleKeyAllowed: a target that just changed is not armed yet (a digit for the last bubble does not land)', () => {
+  assert.equal(D.bubbleKeyAllowed({ target: 'me:b', prevTarget: 'me:b', since: 1000, now: 1799, armMs: 800 }), false, 'within 0.8 s of the change');
+  assert.equal(D.bubbleKeyAllowed({ target: 'me:b', prevTarget: 'me:a', since: 0, now: 99999, armMs: 800 }), false, 'not the recorded target yet');
+  assert.equal(D.bubbleKeyAllowed({ target: '', prevTarget: '', since: 0, now: 99999 }), false, 'no target');
+  assert.equal(D.bubbleKeyAllowed(null), false);
+});
+
+test('bubbleKeyAllowed: the same target once armMs has passed (default 800)', () => {
+  assert.equal(D.bubbleKeyAllowed({ target: 'me:b', prevTarget: 'me:b', since: 1000, now: 1800, armMs: 800 }), true);
+  assert.equal(D.bubbleKeyAllowed({ target: 'me:b', prevTarget: 'me:b', since: 1000, now: 1799 }), false);
+  assert.equal(D.bubbleKeyAllowed({ target: 'me:b', prevTarget: 'me:b', since: 1000, now: 1800 }), true);
+});
+
+test('renderer: digit keys go through bubbleKeyAllowed and the bubble\'s own click; the target is tracked and outlined', () => {
+  const kd = between(html, "document.addEventListener('keydown', e => {\n  if (!dockOn || e.isComposing", "\n});\n");
+  assert.match(kd, /if \(e\.repeat \|\| a\.busy\) return;/);
+  assert.match(kd, /AgentDeskDock\.bubbleKeyAllowed\(\{ target: key, prevTarget: dockKeyTarget\.key, since: dockKeyTarget\.at, now: Date\.now\(\), repeat: e\.repeat, armMs: PERM_ARM_MS \}\)/);
+  assert.match(kd, /b\.click\(\);/);
+  assert.doesNotMatch(kd, /dockAskAnswer|choiceSend|permDecide/, 'no second answer path');
+  assert.match(kd, /e\.stopImmediatePropagation\(\); dockTileFocus\(inBubble\.dataset\.key\)/, 'Esc: focus back to the tile, the bubble stays');
+  const place = between(html, 'function dockAskPlace()', '\n}\n');
+  assert.match(place, /if \(kt !== dockKeyTarget\.key\) dockKeyTarget = \{ key: kt, at: Date\.now\(\) \};/);
+  assert.match(place, /classList\.toggle\('keyed'/);
+  assert.match(html, /\.dock-bubble\.keyed \{ outline: 2px solid var\(--accent\);/);
+});
+
+test('renderer: time in state — clocked in dockDraw, minutes in the tile signature, redrawn once a minute', () => {
+  const draw = between(html, 'function dockDraw() {', '\n}\n');
+  assert.match(draw, /AgentDeskDock\.stateClock\(dockClock,/);
+  assert.match(draw, /\.map\(\(\{ age, ageWarn, \.\.\.x \}\) => \(\{ \.\.\.x, selected: false \}\)\)/, 'minutes are not in the signature: no tile rebuild each minute');
+  assert.match(between(html, 'function dockTileDeco()', '\n}\n'), /ag\.textContent = v; ag\.classList\.toggle\('warn', !!\(x && x\.ageWarn\)\);/, 'updated in place');
+  assert.match(between(html, 'function dockEnter()', '\n}\n'), /dockAgeT = setInterval\(\(\) => \{ if \(dockOn && !document\.hidden\) dockRender\(\); \}, 60000\);/);
+  assert.match(between(html, 'function dockLeave(page)', '\n}\n'), /clearInterval\(dockAgeT\); dockAgeT = 0;/);
+  assert.match(html, /\.dock-age\.warn \{ color: var\(--yellow-text\); \}/);
+  assert.match(between(html, 'function dockLeave(page)', '\n}\n'), /dockClock\.clear\(\)/);
+});
+
+test('renderer: the limit card is its own pop kind with escaped rows', () => {
+  assert.match(between(html, 'function dockPopKind()', '\n}\n'), /dockUsageOn \? 'usage' : ''/);
+  const u = between(html, 'function dockUsageHtml()', '\n}\n');
+  assert.match(u, /AgentDeskDock\.usageRows\(lastRateLimits && lastRateLimits\.claude\)/);
+  assert.match(u, /esc\(when\(r\.k, r\.resetsAt\)\)/);
+  assert.match(html, /\$\('dock-usage'\)\.addEventListener\('mouseenter', dockUsageShow\);/);
+});
+
+test('renderer: completion bubbles — masked first line, laid out with the choice bubbles, not over a choice', () => {
+  const f = between(html, 'async function dockDoneFire(key)', '\n}\n');
+  assert.match(f, /if \(!dockOn \|\| !dockCfg\.done \|\| dockCfg\.dnd\) return;/);
+  assert.match(f, /extractLastResponse\(c\.lines\)/);
+  assert.match(f, /AgentDeskDock\.clip\(AgentDeskMask\.mask\(first\.slice\(0, 400\)\), 80\)/, 'masked before it is cut');
+  assert.match(f, /\$\{esc\(d\.text\)\}/);
+  assert.match(f, /dockDoneExpire\(d, DOCK_DONE_MS\)/);
+  const place = between(html, 'function dockAskPlace()', '\n}\n');
+  assert.match(place, /const tile = !dockAsk\.has\(d\.key\) &&/, 'no completion bubble over a choice bubble\'s tile');
+  assert.match(place, /key: `done:\$\{d\.key\}`/);
+  assert.match(between(html, 'function dockDraw() {', '\n}\n'), /c\.from === 'run' && c\.ms >= DOCK_DONE_MIN_RUN_MS && \(c\.to === 'input' \|\| c\.to === 'done'\)\) dockDoneFire\(c\.key\)/, 'only after 10 s of work');
+  assert.match(html, /DOCK_DONE_MIN_RUN_MS = 10000/);
+});
+
+test('renderer: do not disturb stops bubbles, pills and desktop alerts while docked', () => {
+  assert.match(html, /const dockQuiet = \(\) => dockOn && dockCfg\.dnd;/);
+  assert.match(between(html, 'function notifyFire(ev, name, owner, id) {', '\n}\n'), /^\s*if \(dockQuiet\(\)\) return;/m);
+  assert.match(between(html, 'function showInAppToast(', '\n}\n'), /el\.classList\.contains\('err'\) && \(!dockQuiet\(\) \|\| \(opts && \(opts\.security \|\| opts\.user\)\)\)\) dockHint/);
+  // M2: guardrail signals and the user's own results keep their pill; a rule switched off also alerts the desktop
+  for (const k of ['window.orca.onGuardHit(', 'window.orca.onGuardRuleDisabled(', 'window.orca.onGuardRuleSlow(']) assert.match(between(html, k, '\n});'), /\{ security: true \}\);/, k);
+  assert.match(between(html, 'window.orca.onGuardRuleDisabled(', '\n});'), /window\.orca\.notify\(t\('가드레일 규칙 꺼짐'\)/);
+  assert.match(between(html, 'async function permDecide(', '\n}\n'), /'error', undefined, undefined, \{ user: true \}\)/);
+  // L4: still on after a restart — said once when the bar opens
+  assert.match(between(html, 'function dockEnter()', '\n}\n'), /if \(dockCfg\.dnd\) dockHint\(dockT\('도크: 방해 금지 켬'\), '', true\);/);
+  assert.match(between(html, 'function dockAskSync()', '\n}\n'), /if \(dockCfg\.ask === 'off' \|\| dockCfg\.dnd\)/);
+  const btn = between(html, "$('dock-dnd').addEventListener('click'", '\n});');
+  assert.match(btn, /dockSave\(\)/); assert.match(btn, /dockAskSync\(\)/, 'off: the waiting bubbles come back at once');
+  assert.match(html, /<button class="dock-btn" id="dock-dnd" aria-pressed="false">🔕<\/button>/);
+});
+
+// ── choice bubbles with many options: the height grows with them, the box never spills ──
+test('bubbleHeight: grows with the options, within its floor and cap (big: a taller question)', () => {
+  const { bubbleHeight: H, POP } = D;
+  assert.equal(H(2, false), POP.bubbleH, 'two options: the old default');
+  assert.equal(H(4, false), 24 + 54 + 4 * 46 + 18 + 16);
+  assert.equal(H(6, false), 24 + 54 + 6 * 46 + 18 + 16);
+  assert.ok(H(6, false) > H(4, false) && H(4, false) > H(2, false));
+  assert.equal(H(20, false), POP.bubbleMaxH, 'capped: the options scroll past it');
+  assert.equal(H(2, true), POP.bubbleBigH);
+  assert.equal(H(6, true), Math.min(POP.bubbleBigMaxH, 24 + 108 + 6 * 46 + 18 + 16));
+  assert.equal(H(20, true), POP.bubbleBigMaxH);
+  assert.equal(H(-3, false), POP.bubbleH); assert.equal(H('x', true), POP.bubbleBigH);
+  assert.equal(D.popExtra('bubbles', H(6, false)), H(6, false) + POP.tail + 2 * POP.gap, 'the room asked of main follows the tallest bubble');
+  assert.equal(D.popExtra('bubbles', 0), D.popExtra('bubbles'), 'no height: the default');
+  assert.equal(D.popExtra('term', 999), D.popExtra('term'), 'other panels ignore it');
+});
+
+test('renderer: the bubble clips its content; the question shrinks, then the options scroll; the room is the tallest bubble', () => {
+  assert.match(html, /\.dock-bubble \{[^}]*overflow: hidden; overflow: clip; overflow-clip-margin: 8px; \}/, 'clip with a margin keeps the tail');
+  assert.match(html, /\.dock-bubble \.bb-q \{ margin: 0; flex: 0 1 auto; min-height: 2\.9em; max-height: 9em; overflow-y: auto;/);
+  assert.match(html, /\.dock-bubble \.bb-opts \{[^}]*flex: 0 1 auto; min-height: 0; overflow-y: auto;/);
+  assert.match(html, /\.dock-bubble \.bb-head \{[^}]*flex-shrink: 0; \}/);
+  assert.match(html, /\.dock-bubble \.bb-msg \{ flex-shrink: 0;/);
+  const place = between(html, 'function dockAskPlace()', '\n}\n');
+  assert.match(place, /want = dockAskHeight\(a\)/);
+  assert.match(place, /dockAskH = show \? Math\.max\(0, \.\.\.lay\.placed\.map\(/);
+  assert.match(between(html, 'function dockBoundsSync(natural)', '\n}\n'), /AgentDeskDock\.popExtra\(kind, dockAskH\)/);
 });
