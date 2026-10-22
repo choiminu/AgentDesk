@@ -22,6 +22,26 @@
 //     pointer handler narrows it to the panels afterwards); sendWithBounds = the bounds request carries hidden: true,
 //     so a request with no room (extra 0), which otherwise makes the whole window clickable, keeps the click-through
 //   dockEdge(tiles) → the colour of a hidden bar's visible edge: 'ask' > 'err' > 'run' among the tiles, else ''
+//   orderSessions(list, order, pinned) → list sorted for the bar: ids in order (the user's drag order) first, in that
+//     order; then pinned ones; then the latest activity (time) first; ties keep the list's order
+//   moveInOrder(order, id, beforeId) → a new order with id taken out and put right before beforeId (at the end when
+//     beforeId is missing / not in it / id itself)
+//   dropOrder(visibleIds, id, beforeId) → the order to save after a drag: the visible row with id moved, kept up to
+//     and including id (the tiles right of it stay in activity order)
+//   worktreeNameOf(raw) → a new session's worktree name: whitespace removed, at most 64 characters, '' when it is not
+//     a name Orca takes (letters, digits, - _ . ; starting with a letter or digit)
+//   dropAccepts(tile, { hasPerm }) → may something dropped on this tile be sent to it: one of my sessions waiting for
+//     input with a terminal (canInput), no permission request pending; never a teammate's, a pile, run / ask
+//   dropPayload({ paths, uris, text }, { max }) → { ok, kind: 'files'|'url'|'text', text, cut, error }: what a drop sends
+//     (paths: file paths — never their contents — one per line, quoted when they hold a space; uris: text/uri-list;
+//     text: plain text), masked by AgentDeskMask.maskForSend and cut to max (2000) characters (cut: it was longer)
+//   dropSafeText(text) → { ok, reason }: dropped text / a URL that Claude Code would not read as a prompt — empty
+//     ('empty') or starting with / (a slash command), ! (bash mode) or # (memory) ('command') is refused
+//   dragStep(state, ev) → { state, action } a tile drag as a state machine (state: null or { key, id, x, y, on, long }):
+//     down { key, id, x, y, movable } → 'arm' (not movable: 'none'); long (the hold timer) → 'menu' unless dragging;
+//     move { x, y, buttons } → 'start' once DRAG_PX away, then 'mark'; dragging with no button down (the release was
+//     lost) → 'cancel'; up → 'drop' (dragging) / 'eat' (after the menu) / 'click'; cancel (pointercancel, lost
+//     capture) → 'cancel'. Only 'drop' changes the order.
 //   tile: { key, id, peer, owner, name, state, badge, subs, delegated, canInput, selected, bundle: false }
 //     id / peer are exact (lookup keys); owner (the teammate's name) and name are cut and cleaned (display)
 //   pile: { key: 'more:me'|'more:peer', bundle: true, count, keys, state, badge }  ("+N" — what did not fit)
@@ -55,7 +75,8 @@
 //     area), 'tipSmall' (the compact hover card) 260; both cut to the work area
 //   popExtra(kind) → room the window needs for that panel (its height plus a gap on both sides); 'bubbles' /
 //     'bubblesBig' = the choice bubbles (one hovered bubble grows); 'bubblesDone' = only completion bubbles;
-//     'usage' = the plan-limit card (the compact card's size). height (bubble kinds): the tallest bubble shown
+//     'usage' = the plan-limit card (the compact card's size); 'menu' = a tile's menu (the same); 'add' = the new-session
+//     panel and 'drop' = the confirm panel for something dropped on a tile (twice the card's height, 280 wide). height (bubble kinds): the tallest bubble shown
 //     (bubbleHeight) instead of the default
 //   bubbleHeight(optionCount, big) → a choice bubble's height for that many options: head, the question (3 rows, big:
 //     6), one button row each, a message row and the padding — at least bubbleH / bubbleBigH, at most bubbleMaxH /
@@ -271,6 +292,82 @@ function dockEdge(tiles) {
   }
   return best;
 }
+function orderSessions(list, order, pinned) {
+  const ord = new Map();
+  for (const id of Array.isArray(order) ? order : []) if (!ord.has(String(id))) ord.set(String(id), ord.size);
+  const pin = pinned instanceof Set ? pinned : new Set(Array.isArray(pinned) ? pinned : []);
+  return (Array.isArray(list) ? list : []).filter(x => x && x.id != null)
+    .map((x, i) => ({ x, i, o: ord.has(String(x.id)) ? ord.get(String(x.id)) : Infinity, p: pin.has(x.id) ? 0 : 1 }))
+    .sort((a, b) => (a.o === b.o ? 0 : a.o - b.o) || a.p - b.p || num(b.x.time) - num(a.x.time) || a.i - b.i)
+    .map(e => e.x);
+}
+function moveInOrder(order, id, beforeId) {
+  const k = String(id), out = (Array.isArray(order) ? order : []).map(String).filter(v => v !== k);
+  const at = beforeId == null || String(beforeId) === k ? -1 : out.indexOf(String(beforeId));
+  if (at < 0) out.push(k); else out.splice(at, 0, k);
+  return out;
+}
+function dropOrder(visibleIds, id, beforeId) {
+  const out = moveInOrder(visibleIds, id, beforeId);
+  return out.slice(0, out.indexOf(String(id)) + 1);
+}
+function worktreeNameOf(raw) {
+  const v = [...String(raw == null ? '' : raw).replace(/\s+/g, '')].slice(0, 64).join('');
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(v) ? v : '';
+}
+function dropAccepts(tile, opts) {
+  const o = opts && typeof opts === 'object' ? opts : {};
+  return !!(tile && typeof tile === 'object' && !tile.bundle && !tile.peer && String(tile.key || '').startsWith('me:')
+    && tile.state === 'input' && tile.canInput === true && o.hasPerm !== true);
+}
+function dropPayload(input, opts) {
+  const i = input && typeof input === 'object' ? input : {}, o = opts && typeof opts === 'object' ? opts : {};
+  const max = posInt(o.max, 2000);
+  let kind = '', raw = '';
+  const paths = (Array.isArray(i.paths) ? i.paths : []).map(p => String(p == null ? '' : p)).filter(Boolean);
+  if (paths.length) { kind = 'files'; raw = paths.map(p => `"${p.replace(/"/g, '\\"')}"`).join('\n'); }   // always quoted: a bare /path would read as a slash command
+  else {
+    const uris = String(i.uris == null ? '' : i.uris).split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    if (uris.length) { kind = 'url'; raw = uris.join('\n'); }
+    else { kind = 'text'; raw = String(i.text == null ? '' : i.text); }
+  }
+  const M = root.AgentDeskMask;
+  if (!M || typeof M.maskForSend !== 'function') return { ok: false, kind, text: '', cut: false, error: 'no masker' };   // never unmasked
+  const r = M.maskForSend(raw, { max: 100000, hardMax: 100000 });
+  if (!r.ok) return { ok: false, kind, text: '', cut: false, error: r.error };
+  const all = [...r.text], cut = all.length > max;
+  return { ok: true, kind, text: cut ? all.slice(0, max).join('') : r.text, cut };
+}
+function dropSafeText(text) {
+  const v = String(text == null ? '' : text).trim();
+  if (!v) return { ok: false, reason: 'empty' };
+  if (/^[!/#]/.test(v)) return { ok: false, reason: 'command' };
+  return { ok: true, reason: '' };
+}
+const DRAG_PX = 6;
+function dragStep(state, ev) {
+  const st = state && typeof state === 'object' ? state : null, e = ev && typeof ev === 'object' ? ev : {};
+  const same = a => ({ state: st, action: a });
+  switch (e.type) {
+    case 'down':
+      if (!e.movable || e.key == null) return { state: null, action: st ? 'cancel' : 'none' };
+      return { state: { key: e.key, id: e.id, x: num(e.x), y: num(e.y), on: false, long: false }, action: 'arm' };
+    case 'long':
+      return st && !st.on && !st.long ? { state: { ...st, long: true }, action: 'menu' } : same('none');
+    case 'move':
+      if (!st || st.long) return same('none');
+      if (st.on && num(e.buttons) === 0) return { state: null, action: 'cancel' };   // the release never reached us
+      if (st.on) return same('mark');
+      return Math.hypot(num(e.x) - st.x, num(e.y) - st.y) < DRAG_PX ? same('none') : { state: { ...st, on: true }, action: 'start' };
+    case 'up':
+      if (!st) return same('none');
+      return { state: null, action: st.on ? 'drop' : st.long ? 'eat' : 'click' };
+    case 'cancel':
+      return { state: null, action: st ? 'cancel' : 'none' };
+    default:
+      return same('none');
+  }
+}
 // re-fold the teammate group (which may already end in a pile, and may hold teammate groups) into `cap` slots
 function foldPeers(tiles, cap, sel) {
   const singles = [], pile = tiles.find(x => x.key === 'more:peer');
@@ -353,18 +450,19 @@ function dockBounds(input) {
 }
 
 // ── panels in the room above / below the bar ──
-const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 120, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 240, bubbleBigW: 340, bubbleH: 240, bubbleBigH: 340, bubbleMaxH: 420, bubbleBigMaxH: 520, doneW: 220, tail: 6 };
+const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 120, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 240, bubbleBigW: 340, bubbleH: 240, bubbleBigH: 340, bubbleMaxH: 420, bubbleBigMaxH: 520, doneW: 220, addW: 280, tail: 6 };
 const BUBBLE_ROWS = { head: 24, q: 54, qBig: 108, opt: 46, msg: 18, pad: 16 };
 function popWidth(kind, workWidth) {
   const ww = Math.max(0, Math.floor(num(workWidth))), room = Math.max(0, ww - 2 * POP.margin);
   if (kind === 'term') return Math.min(POP.termW, Math.floor(ww * POP.termFrac), room);
-  if (kind === 'tipSmall' || kind === 'usage') return Math.min(room, POP.tipSmallW);
+  if (kind === 'tipSmall' || kind === 'usage' || kind === 'menu') return Math.min(room, POP.tipSmallW);
+  if (kind === 'add' || kind === 'drop') return Math.min(room, POP.addW);
   return 0;
 }
 function popExtra(kind, height) {
   const tall = (kind === 'bubbles' || kind === 'bubblesBig' || kind === 'bubblesDone') && Number.isFinite(Number(height)) && Number(height) > 0;
   if (tall) return Math.round(Number(height)) + POP.tail + 2 * POP.gap;
-  const h = kind === 'term' ? POP.termH : kind === 'tipSmall' || kind === 'usage' || kind === 'bubblesDone' ? POP.tipSmallH : kind === 'bubbles' ? POP.bubbleH + POP.tail : kind === 'bubblesBig' ? POP.bubbleBigH + POP.tail : 0;
+  const h = kind === 'term' ? POP.termH : kind === 'add' || kind === 'drop' ? 2 * POP.tipSmallH : kind === 'tipSmall' || kind === 'usage' || kind === 'menu' || kind === 'bubblesDone' ? POP.tipSmallH : kind === 'bubbles' ? POP.bubbleH + POP.tail : kind === 'bubblesBig' ? POP.bubbleBigH + POP.tail : 0;
   return h ? h + 2 * POP.gap : 0;
 }
 function bubbleHeight(optionCount, big) {
@@ -612,7 +710,7 @@ function permAllowable(sm) {
   return !!v.trim() && !/[\r\n]/.test(v) && [...v].length <= PERM_LINE_MAX;
 }
 
-const AgentDeskDock = { dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, TICKER_H, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
+const AgentDeskDock = { dropSafeText, dragStep, DRAG_PX, orderSessions, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, TICKER_H, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
   POP, SCREEN, popWidth, popExtra, bubbleHeight, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame,
   numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows };
 root.AgentDeskDock = AgentDeskDock;
