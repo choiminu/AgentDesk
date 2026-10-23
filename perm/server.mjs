@@ -13,9 +13,17 @@
 //   every answer carries X-AD-Sig = hex HMAC-SHA256(token, body); the hook prints the body only when it verifies, so a
 //   process that took over the socket path without the token cannot answer for the widget
 // The hook prints nothing for any other status, so every failure falls back to the terminal.
+// Windows (no Unix sockets there, no bash / curl / openssl by default): the server listens on a named pipe with a fresh
+// random name per run (\\.\pipe\agentdesk-perm-<32 hex>, created first-instance by libuv, so a pipe someone else
+// opened first makes listen fail instead of being shared), written next to the token in <dir>/perm-addr. The hook is a
+// Node script (perm-hook.cjs / guard-hook.cjs, run by node or by this app in Node mode through a .cmd wrapper) that
+// never sends the token itself: it sends X-AD-Nonce (32 hex) and X-AD-Perm-Auth = HMAC(token, nonce + "\n" +
+// sha256(body)), and the answer is signed over nonce + "\n" + body — so whatever answers the pipe learns nothing it
+// could reuse, and an old signed answer cannot be replayed. Same paths, limits, timeouts and outputs as the bash hook.
 // No rule is ever stored and nothing is decided automatically: decide() is only called from a button press.
 import { createServer } from "node:http";
 import { randomUUID, randomBytes, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { mkdirSync, chmodSync, unlinkSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import "../core/mask.js";   // globalThis.AgentDeskMask (used by core/perm.js)
@@ -51,6 +59,12 @@ export const PERM_MAX_BODY = 2 * 1024 * 1024;   // a Write of a large file sends
 export const PERM_TIMEOUT_DEFAULT = 90;          // seconds
 export const PERM_SOCK = "perm.sock";
 export const PERM_TOKEN = "perm-token";
+export const PERM_ADDR = "perm-addr";   // the address the hooks connect to (socket path, or the pipe name on Windows)
+export const PIPE_RE = /^\\\\\.\\pipe\\agentdesk-perm-[0-9a-f]{32}$/;
+// where the server listens: the 0600 socket inside the private dir, or on Windows a pipe nobody can guess
+export function permAddress(dir, platform = process.platform, rand = () => randomBytes(16).toString("hex")) {
+  return platform === "win32" ? `\\\\.\\pipe\\agentdesk-perm-${rand()}` : join(dir, PERM_SOCK);
+}
 
 // ~/.roca/perm-hook.sh, registered as a synchronous PermissionRequest command hook (timeout = timeoutSec + 10), and
 // ~/.roca/guard-hook.sh (PreToolUse guardrail, timeout 3 s) — the same script around a different path and time limit.
@@ -103,6 +117,90 @@ export const guardHookScript = () => signedHookScript({ path: GUARD_PATH, maxTim
 # goes through Claude Code's normal permission flow — when the widget is not running, the answer is not signed with
 # our token, takes over 2s, or anything fails.` });
 
+// ── Windows hooks (Node): perm-hook.cjs / guard-hook.cjs ──
+// kind "perm": the whole input, answer within timeoutSec + 5 s. kind "guard": only the fields the guard reads (when
+// the input parses), 2 s. Prints the answer only when it is a 200 with a valid signature over this request's nonce
+// and parses as a JSON object; anything else → nothing printed, exit 0 (the terminal prompt / the normal flow).
+export function nodeHookScript({ kind, dir, timeoutSec }) {
+  const isGuard = kind === "guard";
+  const path = isGuard ? GUARD_PATH : PERM_PATH, maxMs = (isGuard ? 2 : Number(timeoutSec || PERM_TIMEOUT_DEFAULT) + 5) * 1000;
+  return `// AgentDesk ${isGuard ? "guardrail hook (PreToolUse)" : "permission hook (PermissionRequest)"} for Windows — written by AgentDesk, rewritten on start.
+// Asks the AgentDesk widget over its private pipe and prints the widget's signed answer; prints nothing when the widget
+// is not running, the answer is late (${maxMs / 1000}s) or not signed for this request, or anything fails.
+"use strict";
+const fs = require("fs"), path = require("path"), http = require("http"), crypto = require("crypto");
+const DIR = ${JSON.stringify(dir)};
+const done = () => process.exit(0);
+if (process.env.AGENTDESK_RECALL) done();
+setTimeout(done, ${maxMs});
+let tok = "", addr = "";
+try { tok = fs.readFileSync(path.join(DIR, ${JSON.stringify(PERM_TOKEN)}), "utf8").replace(/[^a-f0-9]/g, ""); addr = fs.readFileSync(path.join(DIR, ${JSON.stringify(PERM_ADDR)}), "utf8").trim(); } catch { done(); }
+if (tok.length !== 64 || !(${PIPE_RE.toString()}.test(addr) || addr === path.join(DIR, ${JSON.stringify(PERM_SOCK)}))) done();
+const hmac = (s) => crypto.createHmac("sha256", tok).update(s).digest("hex");
+const chunks = [];
+process.stdin.on("data", (c) => chunks.push(c));
+process.stdin.on("error", done);
+process.stdin.on("end", () => {
+  let body = Buffer.concat(chunks);
+  if (!body.length) done();
+${isGuard ? `  try {
+    const j = JSON.parse(body.toString("utf8")), ti = j && j.tool_input && typeof j.tool_input === "object" ? j.tool_input : null;
+    body = Buffer.from(JSON.stringify({ session_id: j.session_id, cwd: j.cwd, permission_mode: j.permission_mode, hook_event_name: j.hook_event_name, tool_name: j.tool_name,
+      tool_input: ti ? { command: ti.command, file_path: ti.file_path, notebook_path: ti.notebook_path } : null }));
+  } catch {}
+` : ""}  const nonce = crypto.randomBytes(16).toString("hex");
+  const auth = hmac(nonce + "\\n" + crypto.createHash("sha256").update(body).digest("hex"));
+  const req = http.request({ socketPath: addr, path: ${JSON.stringify(path)}, method: "POST", headers: { Host: "localhost", "Content-Type": "application/json", "Content-Length": body.length, "X-AD-Nonce": nonce, "X-AD-Perm-Auth": auth } }, (res) => {
+    const got = []; let size = 0;
+    res.on("data", (c) => { size += c.length; if (size > 65536) done(); got.push(c); });
+    res.on("error", done);
+    res.on("end", () => {
+      const text = Buffer.concat(got).toString("utf8"), sig = String(res.headers["x-ad-sig"] || "");
+      if (res.statusCode !== 200 || sig.length !== 64) done();
+      const want = Buffer.from(hmac(nonce + "\\n" + text)), have = Buffer.from(sig);
+      if (want.length !== have.length || !crypto.timingSafeEqual(want, have)) done();
+      let o; try { o = JSON.parse(text); } catch { done(); }
+      if (!o || typeof o !== "object" || Array.isArray(o)) done();
+      process.stdout.write(text + "\\n", done);
+    });
+  });
+  req.on("error", done);
+  req.end(body);
+});
+`;
+}
+// a path that goes between double quotes on a Windows command line or in a .cmd file: no quote, no line break
+function winPathOk(p) {
+  const s = String(p || "");
+  if (!s || /["\r\n\0]/.test(s)) throw new Error(`unusable path for a Windows hook: ${JSON.stringify(s)}`);
+  return s;
+}
+// the .cmd launcher next to the Node script: starts it with node, or with this app's own binary in Node mode (the
+// Windows package keeps the RunAsNode fuse for this). Inside a .cmd file % starts a variable, so it is doubled.
+// Exit code is always 0 — a hook's exit code 2 would mean "block" to Claude Code.
+export function winHookCmd({ runner, script }) {
+  const q = (p) => winPathOk(p).replace(/%/g, "%%");
+  return `@echo off\r\nrem AgentDesk hook launcher (written by AgentDesk, rewritten on start)\r\nset "ELECTRON_RUN_AS_NODE=1"\r\n"${q(runner)}" "${q(script)}"\r\nexit /b 0\r\n`;
+}
+// the command registered in Claude Code's settings on Windows. It must run the same from cmd.exe and from Git Bash:
+// with a system node.exe, node and the script with forward slashes ("C:/…/node.exe" "C:/…/perm-hook.cjs");
+// otherwise cmd.exe runs the launcher (cmd /d /c "C:\…\perm-hook.cmd": /d skips AutoRun). A % in that path would be
+// expanded by cmd.exe on the command line and cannot be escaped there, so it is refused.
+export function winHookCommand({ systemNode, script, launcher }) {
+  const fwd = (p) => winPathOk(p).replace(/\\/g, "/");
+  if (systemNode) return `"${fwd(systemNode)}" "${fwd(script)}"`;
+  const l = winPathOk(launcher);
+  if (l.includes("%")) throw new Error(`unusable path for a Windows hook: ${JSON.stringify(l)}`);
+  return `cmd /d /c "${l}"`;
+}
+// which binary runs the Node hook on Windows: a system node.exe when there is one; else the installed app binary
+// (NSIS install path, stable across updates); the portable build runs from a temp copy that disappears → null
+export function winHookRunner({ execPath, portable, systemNode }) {
+  if (systemNode) return systemNode;
+  if (portable || !execPath) return null;
+  return execPath;
+}
+
 function tokenOk(want, got) {
   const a = Buffer.from(String(want || "")), b = Buffer.from(String(got || ""));
   return a.length > 0 && a.length === b.length && timingSafeEqual(a, b);
@@ -124,6 +222,7 @@ const rm = f => { try { unlinkSync(f); } catch {} };
 export function createPermServer(opts = {}) {
   const pending = new Map();   // id → { entry, res, timer, toolName, inputKey }
   let seq = 0;
+  const lastHookAt = { perm: null, guard: null };   // when a hook last got through auth (ms) — the widget can tell a silent hook
   let timeoutSec = Number(opts.timeoutSec) || PERM_TIMEOUT_DEFAULT;
   const maxPending = opts.maxPending || PERM_MAX_PENDING;
   const isKnown = opts.isKnownSession || (() => false);
@@ -131,7 +230,8 @@ export function createPermServer(opts = {}) {
   const onResolved = opts.onResolved || (() => {});
   const json = (res, status, obj) => {
     const body = JSON.stringify(obj);
-    res.writeHead(status, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body), "Cache-Control": "no-store", "X-AD-Sig": signBody(opts.token || "", body) });
+    const nonce = res.adNonce || "";   // a Node hook's request: the signature covers its nonce too
+    res.writeHead(status, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body), "Cache-Control": "no-store", "X-AD-Sig": signBody(opts.token || "", nonce ? `${nonce}\n${body}` : body) });
     res.end(body);
   };
 
@@ -150,22 +250,34 @@ export function createPermServer(opts = {}) {
       // only the local hook: a browser page always sends Origin, and curl --unix-socket http://localhost sends this Host
       if (req.headers.origin) return json(res, 403, { error: "forbidden" });
       if (String(req.headers.host || "") !== "localhost") return json(res, 403, { error: "forbidden" });
-      if (!tokenOk(opts.token, req.headers["x-ad-perm-token"])) return json(res, 401, { error: "unauthorized" });
+      // bash hook: the token itself; Node hook: a nonce and an HMAC over the body, checked once the body is read
+      const macAuth = req.headers["x-ad-perm-auth"];
+      if (macAuth !== undefined) {
+        const nonce = String(req.headers["x-ad-nonce"] || "");
+        if (!/^[0-9a-f]{32}$/.test(nonce) || !/^[0-9a-f]{64}$/.test(String(macAuth))) return json(res, 401, { error: "unauthorized" });
+        res.adNonce = nonce;
+      } else if (!tokenOk(opts.token, req.headers["x-ad-perm-token"])) return json(res, 401, { error: "unauthorized" });
+      const bodyHash = macAuth !== undefined ? createHash("sha256") : null;
       // too big: answer and close the connection without reading the rest
       const tooLarge = () => { res.shouldKeepAlive = false; json(res, 413, { error: "too large" }); };
       const isGuard = path === GUARD_PATH;
       // the guardrail never refuses a big body (that would let a 2 MB Write through unchecked): the first 2 MB are read,
       // the rest is drained, and the fields it needs are taken from what was read
-      if (!isGuard && Number(req.headers["content-length"] || 0) > PERM_MAX_BODY) return tooLarge();
+      // the Node hook (MAC auth) sends only the fields the guard reads, so it never needs the cut-and-drain path either
+      const capped = !isGuard || bodyHash;
+      if (capped && Number(req.headers["content-length"] || 0) > PERM_MAX_BODY) return tooLarge();
       const chunks = []; let size = 0, truncated = false;
       for await (const c of req) {
+        if (bodyHash) bodyHash.update(c);
         if (truncated) continue;
         if (size + c.length > PERM_MAX_BODY) {
-          if (!isGuard) return tooLarge();
+          if (capped) return tooLarge();
           chunks.push(c.subarray(0, PERM_MAX_BODY - size)); size = PERM_MAX_BODY; truncated = true; continue;
         }
         size += c.length; chunks.push(c);
       }
+      if (bodyHash && !tokenOk(signBody(opts.token || "", `${res.adNonce}\n${bodyHash.digest("hex")}`), String(macAuth))) return json(res, 401, { error: "unauthorized" });
+      lastHookAt[isGuard ? "guard" : "perm"] = Date.now();
       const raw = Buffer.concat(chunks).toString("utf-8");
       let body;
       try { body = JSON.parse(raw); } catch { if (!truncated) return json(res, 400, { error: "bad json" }); body = guardFieldsFromPartial(raw); }
@@ -224,6 +336,7 @@ export function createPermServer(opts = {}) {
       return finish(id, P.decisionOutput(behavior, message), behavior);
     },
     list() { return P.sortQueue([...pending.values()].map(p => p.entry)); },
+    lastHookAt() { return { ...lastHookAt }; },
     // Claude Code keeps the hook running after the user answered in the terminal, so the logged hook events tell us
     // a request is stale: the same tool call ran / failed / was denied, or the turn ended. Answered with {} (no
     // decision) — this path can never produce allow or deny.
@@ -249,27 +362,33 @@ export function createPermServer(opts = {}) {
   };
 }
 
-// The app's endpoint: <dir> (0700) holds the socket (0600) and a fresh random token (0600) for this run.
-// A socket or token left by a crashed run is removed first; when listening fails no token is left behind.
-// close() removes both files before closing, so hooks stop connecting at once.
+// The app's endpoint: <dir> (0700) holds the socket (0600; on Windows a named pipe instead, see above), a fresh random
+// token (0600) for this run and the address file. Windows ignores these mode bits: there the files are kept from other
+// users by the ACL of the user profile (%USERPROFILE%\.roca\perm) they live in. A socket, token or address left by a crashed run is removed first;
+// when listening fails no token is left behind. close() removes the files before closing, so hooks stop connecting.
+// Only one app instance may own <dir>: main.mjs takes the single-instance lock before it ever opens this.
 export async function openPermEndpoint(opts = {}) {
-  const dir = opts.dir;
+  const dir = opts.dir, platform = opts.platform || process.platform;
   ensurePrivateDir(dir);
-  const sock = join(dir, PERM_SOCK), tokFile = join(dir, PERM_TOKEN);
-  rm(sock); rm(tokFile);
+  const sock = permAddress(dir, platform), tokFile = join(dir, PERM_TOKEN), addrFile = join(dir, PERM_ADDR);
+  const isPipe = platform === "win32";
+  if (!isPipe) rm(sock);
+  rm(tokFile); rm(addrFile);
   const token = randomBytes(32).toString("hex");
   const srv = createPermServer({ ...opts, token });
+  const rmAll = () => { rm(tokFile); rm(addrFile); if (!isPipe) rm(sock); };
   try {
     await srv.listen(sock);
-    try { chmodSync(sock, 0o600); } catch {}
+    if (!isPipe) { try { chmodSync(sock, 0o600); } catch {} }
     writePrivate(tokFile, token);
+    writePrivate(addrFile, sock);
   } catch (e) {
-    rm(tokFile); rm(sock);
+    rmAll();
     try { await srv.close(); } catch {}
     throw e;
   }
   const closeServer = srv.close;
-  srv.close = () => { rm(tokFile); rm(sock); return closeServer(); };
+  srv.close = () => { rmAll(); return closeServer(); };
   srv.socketPath = sock;
   return srv;
 }

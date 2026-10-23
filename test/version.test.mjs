@@ -67,6 +67,44 @@ test('pickAsset: no matching asset', () => {
   assert.equal(V.pickAsset([{}, { name: 5 }], 'darwin', 'x64'), null);
 });
 
+test('pickAsset: Linux deb install gets the deb of its architecture, AppImage otherwise', () => {
+  const withArmDeb = [...ASSETS, { name: 'agentdesk_0.2.1_arm64.deb' }];
+  const pf = (list, a, f) => (V.pickAsset(list, 'linux', a, f) || {}).name || null;
+  assert.equal(pf(withArmDeb, 'x64', 'deb'), 'agentdesk_0.2.1_amd64.deb');
+  assert.equal(pf(withArmDeb, 'arm64', 'deb'), 'agentdesk_0.2.1_arm64.deb');
+  assert.equal(pf(withArmDeb, 'x64', 'appimage'), 'AgentDesk-0.2.1.AppImage');
+  assert.equal(pf(withArmDeb, 'arm64', undefined), 'AgentDesk-0.2.1-arm64.AppImage');
+  // no deb for this architecture in the release → the AppImage, never the other architecture's deb
+  assert.equal(pf(ASSETS, 'arm64', 'deb'), 'AgentDesk-0.2.1-arm64.AppImage');
+  assert.equal(pf([{ name: 'agentdesk_0.2.1_amd64.deb' }], 'arm64', 'deb'), null);
+  // the format never changes what macOS / Windows get
+  assert.equal((V.pickAsset(ASSETS, 'darwin', 'arm64', 'deb') || {}).name, 'AgentDesk-0.2.1-arm64.dmg');
+  assert.equal((V.pickAsset(ASSETS, 'win32', 'x64', 'deb') || {}).name, 'AgentDesk.Setup.0.2.1.exe');
+  assert.equal(V.downloadPlan(release('v0.2.2', withArmDeb), '0.2.1', 'linux', 'arm64', 'deb').asset.name, 'agentdesk_0.2.1_arm64.deb');
+});
+
+test('linuxFormat: APPIMAGE env → appimage, packaged without it → deb, dev run → appimage', () => {
+  assert.equal(V.linuxFormat({ APPIMAGE: '/home/u/AgentDesk.AppImage' }, true), 'appimage');
+  assert.equal(V.linuxFormat({}, true), 'deb');
+  assert.equal(V.linuxFormat({ APPIMAGE: '' }, true), 'deb');
+  assert.equal(V.linuxFormat({}, false), 'appimage');
+  assert.equal(V.linuxFormat(null, true), 'deb');
+});
+
+test('markDownloadedPlan: macOS / Windows downloads are always marked, signed build or not', () => {
+  assert.equal(V.markDownloadedPlan('darwin'), 'quarantine');
+  assert.equal(V.markDownloadedPlan('darwin', 'mac'), 'quarantine');
+  assert.equal(V.markDownloadedPlan('win32'), 'zone');
+  assert.equal(V.markDownloadedPlan('win32', 'win'), 'zone');
+  assert.equal(V.markDownloadedPlan('linux'), null);
+});
+
+test('installerSigned: only the flag for this OS counts', () => {
+  assert.equal(V.installerSigned('darwin', 'mac'), true);
+  assert.equal(V.installerSigned('win32', 'win'), true);
+  for (const [p, f] of [['darwin', 'win'], ['darwin', undefined], ['darwin', 'true'], ['win32', 'mac'], ['win32', null], ['linux', 'mac']]) assert.equal(V.installerSigned(p, f), false, `${p} ${f}`);
+});
+
 test('download URL allowlist and file name sanitizing', () => {
   assert.equal(V.isAllowedDownloadUrl('https://github.com/choiminu/AgentDesk/releases/download/v0.2.1/a.dmg'), true);
   assert.equal(V.isAllowedDownloadUrl('https://objects.githubusercontent.com/x'), true);

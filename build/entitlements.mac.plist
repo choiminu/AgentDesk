@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Hardened runtime entitlements for the Developer ID build (app and helpers). AgentDesk is not sandboxed, so
+         network client/server and file access need no entitlement; only what the hardened runtime would block is here. -->
+    <!-- V8 (main, renderer and the app binary in Node mode for helper scripts) generates code at run time -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- osascript: switching to / typing into the iTerm2 or Terminal window of a session (NSAppleEventsUsageDescription) -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+  </dict>
+</plist>
