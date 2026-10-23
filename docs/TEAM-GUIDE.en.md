@@ -41,7 +41,7 @@ Everything marked **"with key signatures (v2)"** in this guide describes the beh
 
 On the same network, each PC running AgentDesk announces `name · port · instance ID` by UDP broadcast (port **7332**) every 5 seconds (no token).
 The beacon is sent only after you create or join a team (while sharing). Names must be at most 40 characters of letters, digits, Hangul, `_ . -` and spaces; IDs must be UUIDs; any other beacon is dropped.
-It shows at the top of the Team tab as **Found: alice @ 192.0.2.10 — Add** and never connects by itself. **Add** only puts the PC into `peers` in `team.json` and **sends nothing to the other side** (no greeting, no token).
+It shows at the top of the Team tab as **Found: alice @ 192.0.2.x — Add** and never connects by itself. **Add** only puts the PC into `peers` in `team.json` and **sends nothing to the other side** (no greeting, no token).
 The beacon's instance ID is saved too. If the first poll is answered by another instance, the entry shows "identity mismatch — polling stopped" and is not asked again (delete it in Settings and add it again). After that, a signed poll checks that both are in the same team. Sessions show only between PCs that **joined with the same invite code (same token)**; another team shows `token mismatch`. To appear in someone else's list, they have to add you or you have to join with their invite code.
 To turn off discovery only, put `"discovery": false` in `team.json`.
 
@@ -228,7 +228,7 @@ You can configure it by hand instead of using invite codes. Changes apply within
   "discovery": true,
   "homeSubnets": ["192.0.2"],
   "peers": [
-    { "name": "bob", "host": "192.0.2.20:7331" }
+    { "name": "bob", "host": "<peer-ip>:7331" }
   ]
 }
 ```
