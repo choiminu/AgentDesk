@@ -1,20 +1,62 @@
+<div align="center">
+
 # AgentDesk
 
-A pixel-art office for your AI coding agents. AgentDesk is a desktop widget for macOS, Linux and Windows that watches your Claude Code, Codex CLI and Gemini CLI sessions in real time (in any terminal, or inside [Orca](https://github.com/stablyai/orca)) and shows what each agent is doing: as a dashboard, and as characters at their desks.
+**A pixel-art office for your AI coding agents.**
 
-*Formerly "Orca Widget". Orca is optional; any supported agent CLI is enough.*
+See every Claude Code, Codex CLI and Gemini CLI session at a glance, answer their questions from a thin dock bar, and share the office with your team. macOS · Linux · Windows.
 
-**Supported agents:** Claude Code, Codex CLI, Gemini CLI. All three report session state through their own hook systems. Some features (widget approval, guardrail, delegation, usage bar) work with Claude Code only. See [Support by agent](#support-by-agent) for details.
-
-[한국어 README](README.ko.md) · [Team sharing guide](docs/TEAM-GUIDE.en.md) · [Jira setup](docs/JIRA-SETUP.md#english) · [Releases and code signing](docs/RELEASE.md) (Korean)
-
+[![Latest release](https://img.shields.io/github/v/release/choiminu/AgentDesk?label=download&color=orange)](https://github.com/choiminu/AgentDesk/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/choiminu/AgentDesk/total?color=blue)](https://github.com/choiminu/AgentDesk/releases)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
-![Electron](https://img.shields.io/badge/electron-36-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-<img width="635" alt="Dashboard" src="https://github.com/user-attachments/assets/6ec55127-14d7-495d-ad5d-9379c010775a" />
+[Download](https://github.com/choiminu/AgentDesk/releases/latest) · [Quick start](#quick-start) · [Dock mode](#dock-mode) · [Team sharing](#team-sharing) · [한국어 README](README.ko.md)
 
-<img width="1772" alt="Pixel office" src="https://github.com/user-attachments/assets/5e9c3146-bf3b-4b1f-b525-7f08f5502929" />
+<sub>[Team sharing guide](docs/TEAM-GUIDE.en.md) · [Jira setup](docs/JIRA-SETUP.md#english) · [Releases and code signing](docs/RELEASE.md) (Korean) · [Contributing](CONTRIBUTING.md)</sub>
+
+<img src="docs/screenshots/office.png" alt="The pixel office: one character per agent session, working at desks or resting on the lounge sofa" width="860" />
+
+</div>
+
+## Why AgentDesk
+
+You run three, five, ten coding agents in parallel. Terminal tabs do not tell you which one is waiting for you, which one is stuck, and which one just finished. AgentDesk does:
+
+- **Know who needs you.** Every session is a card and a character. The one that is waiting for an answer gets a `?` badge, a notification, and a bubble you can answer with one click.
+- **Stay in your editor.** The dock bar sits on the edge of the screen. Point at a tile to see that agent's terminal, click to jump to it, press ⌘1–⌘9 to switch.
+- **Work as a team.** Share the office over the local network: see teammates' agents, get warned when two of you edit the same file, delegate a session, leave a note.
+- **Keep secrets in.** Anything that leaves the machine (Jira comments, Slack replies, team data) is masked first. Approvals and guardrails run locally, with no LLM call in between.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/dashboard.png" alt="Dashboard: every session with its state, tool, context usage and the last answer" /></td>
+<td width="50%"><img src="docs/screenshots/team.png" alt="Team tab: teammates' sessions, delegated sessions and safety status" /></td>
+</tr>
+<tr>
+<td align="center"><sub><b>Dashboard</b> — state, current tool, context window, last answer</sub></td>
+<td align="center"><sub><b>Team</b> — teammates' sessions, delegation, safety status</sub></td>
+</tr>
+</table>
+
+<img src="docs/screenshots/dock.png" alt="Dock mode: a thin bar of session tiles with a choice bubble over the session that is asking a question" />
+
+<p align="center"><sub><b>Dock mode</b> — a thin bar on the edge of the screen; a session that asks a question gets a bubble you answer in place</sub></p>
+
+## Install in a minute
+
+1. Download the installer for your machine from the [latest release](https://github.com/choiminu/AgentDesk/releases/latest): macOS DMG (Apple Silicon or Intel), Linux AppImage or .deb, Windows installer or portable .exe.
+2. Start one of your agents (Claude Code, Codex CLI or Gemini CLI) in any terminal. It shows up in AgentDesk within a few seconds.
+3. Press ⌘⇧D (Ctrl+Shift+D) for dock mode.
+
+Or run from source:
+
+```bash
+git clone https://github.com/choiminu/AgentDesk.git
+cd AgentDesk && npm install && npm start
+```
+
+*Formerly "Orca Widget". [Orca](https://github.com/stablyai/orca) is optional; any supported agent CLI is enough. Some features (widget approval, guardrail, delegation, usage bar) work with Claude Code only — see [Support by agent](#support-by-agent).*
 
 ## Features
 

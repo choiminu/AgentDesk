@@ -36,6 +36,7 @@ npm start
 npm run dev          # run with NODE_ENV=development
 npm test             # all unit tests (test/*.test.mjs)
 npm run dist         # macOS DMGs; dist:linux / dist:win for the other platforms
+npm run shots        # README screenshots from demo data (docs/screenshots/*.png); close the app first
 ```
 
 ### Before you commit
