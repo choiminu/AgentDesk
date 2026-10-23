@@ -867,12 +867,11 @@ test('renderer: the bubble clips its content; the question shrinks, then the opt
   assert.match(between(html, 'function dockBoundsSync(natural)', '\n}\n'), /AgentDeskDock\.popExtra\(kind, dockAskH\)/);
 });
 
-// ── dock batch 2: sizes, teammate groups, a spot per display; summary line, timer ring, auto-hide ──
+// ── dock batch 2: sizes, teammate groups, a spot per display; timer ring, auto-hide ──
 test('stripHeight / dockModel size: sm = 40 px only, md as before, lg = 64 px (40 px to fit)', () => {
   assert.deepEqual([D.stripHeight('sm'), D.stripHeight('md'), D.stripHeight('lg')], [60, 72, 84]);
-  assert.equal(D.stripHeight('md', true), 72 + D.TICKER_H);
   assert.equal(D.stripHeight('junk'), 72);
-  assert.ok(D.STRIP_MAX >= D.stripHeight('lg', true) && D.STRIP_MIN <= D.stripHeight('sm'), 'every size fits dockBounds\' clamp');
+  assert.ok(D.STRIP_MAX >= D.stripHeight('lg') && D.STRIP_MIN <= D.stripHeight('sm'), 'every size fits dockBounds\' clamp');
   const two = [sess('a', 'running'), sess('b', 'done')];
   assert.equal(dockModel({ sessions: two, size: 'sm' }).size, 40);
   assert.equal(dockModel({ sessions: two }).size, 56);
@@ -947,17 +946,6 @@ test('main: the bar\'s display comes from dockPickDisplay; moves and reflows rep
   assert.match(moved, /\/\^\\d\{1,20\}\$\/\.test\(String\(p\.displayId \|\| ''\)\)/, 'only digit ids become keys');
   assert.match(moved, /pos\[id\] = \{ cx: Math\.round\(cx\), y: Math\.round\(y\), at: Date\.now\(\) \}/);
   assert.match(html, /const es = AgentDeskDock\.posEntries\(c\.pos\);/, 'the old single spot migrates');
-});
-
-test('renderer: summary line — masked, 60 characters, escaped, redrawn only on change; scrolls only with motion allowed', () => {
-  const f = between(html, 'function dockTickerDraw(mine)', '\n}\n');
-  assert.match(f, /AgentDeskDock\.clip\(AgentDeskMask\.mask\(String\(v\)\.slice\(0, 240\)\), 60\)/);
-  assert.match(f, /nowSummaries\.get\(s\.id\)/, 'the dashboard card\'s summary');
-  assert.match(f, /`<b>\$\{esc\(n\)\}<\/b>: \$\{esc\(v\)\}`/);
-  assert.match(f, /if \(sig === dockTickerSig\) return;/);
-  assert.match(f, /const move = dockCfg\.anim && !dockReduced\.matches;/);
-  assert.match(html, /\.dock-ticker\.run:hover \.tk-in \{ animation-play-state: paused; \}/);
-  assert.match(between(html, 'function dockSizeApply()', '\n}\n'), /DOCK_H = AgentDeskDock\.stripHeight\(dockCfg\.size, dockCfg\.ticker\);/);
 });
 
 test('renderer: timer ring follows the timer page, opens it, flashes when it ends', () => {
@@ -1040,12 +1028,6 @@ test('renderer: hidden edge colour and a new approval un-hides; the summary line
   assert.match(draw, /const edge = AgentDeskDock\.dockEdge\(full\.mine\)/);
   assert.match(draw, /if \(\[\.\.\.asks\]\.some\(k => !dockAskKeys\.has\(k\)\)\) \{ dockHideSet\(false\); if \(dockPop && dockPop\.kind === 'menu'\) dockPopClose\(\); \}/, 'a new approval: back, and a tile menu makes way for its bubble');
   assert.match(html, /#page-dock\.dock-hidden\.edge-ask \.dock-strip \{ box-shadow: inset 0 4px 0 var\(--yellow\); \}/);
-  const tk = between(html, 'function dockTickerDraw(mine)', '\n}\n');
-  assert.doesNotMatch(tk, /el\.clientWidth/, 'no layout read on every draw');
-  assert.match(tk, /dockTickerMasked\.get\(v\)/);
-  assert.match(tk, /if \(dockTickerMasked\.size >= 64\)/);
-  assert.match(html, /\.dock-ticker\.run \{ -webkit-app-region: no-drag; \}/);
-  assert.doesNotMatch(html, /\.dock-ticker \{[^}]*no-drag/, 'still: part of the drag area');
 });
 
 // ── dock batch 3: drag to reorder and pin, "+" new session, drop to send ──

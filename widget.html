@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-7BDK1SBa3zGQZJbqaaNYjOlsLl192G9Hemjr8Lw72Q4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-A4b2mC9HSifDsa767+d3LYW3wVMWGxlqD5mfE7v8IjQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1682,16 +1682,6 @@
   #page-dock.dock-narrow .dock-right { gap: 2px; }
   #page-dock.dock-narrow .dock-btn { height: 28px; min-width: 24px; padding: 0 4px; }
   /* the summary line along the bar's top edge: what each of my sessions is doing; it scrolls when it does not fit */
-  #page-dock .dock-strip.has-ticker { padding-top: 14px; }
-  .dock-ticker { position: absolute; left: 12px; right: 12px; top: 1px; height: 14px; overflow: hidden; font: 500 10px/14px var(--sans); color: var(--text3); white-space: nowrap; }   /* still: part of the drag area */
-  .dock-ticker.run { -webkit-app-region: no-drag; }   /* scrolling: it takes the hover that pauses it */
-  .dock-ticker[hidden] { display: none; }
-  .dock-ticker b { color: var(--text2); font-weight: 600; }
-  .dock-ticker .tk-in { display: block; overflow: hidden; text-overflow: ellipsis; }
-  .dock-ticker.run .tk-in { display: inline-block; overflow: visible; animation: dockTicker var(--tk-dur, 30s) linear infinite; }
-  .dock-ticker.run .tk-in > span { padding-right: 3em; }
-  .dock-ticker.run:hover .tk-in { animation-play-state: paused; }
-  @keyframes dockTicker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
   /* "마우스가 멀어지면 숨기기": the bar slides toward the screen edge until 8 px show (the window keeps its size) */
   #page-dock.dock-hidden .dock-strip { transform: translateY(calc(var(--dock-h, 72px) - 8px)); }
   #page-dock.dock-hidden.dock-down .dock-strip { transform: translateY(calc(8px - var(--dock-h, 72px))); }
@@ -1908,7 +1898,6 @@
     <div class="dock-tip dock-pop" id="dock-pop" role="dialog" hidden></div>
     <div class="dock-asks" id="dock-asks" hidden></div>
     <div class="dock-strip" id="dock-strip">
-      <div class="dock-ticker" id="dock-ticker" hidden></div>
       <div class="dock-tiles s56" id="dock-tiles" role="toolbar"></div>
       <div class="dock-sep" aria-hidden="true"></div>
       <div class="dock-msg" id="dock-msg" role="status" aria-live="polite" hidden></div>
@@ -2243,7 +2232,6 @@ Object.assign(I18N, {
   '📌 고정됨 — 우클릭으로 해제': '📌 Pinned — right-click to unpin', '마스킹을 할 수 없어 보내지 않았습니다': 'Not sent: masking is not available', '보낼 내용이 없습니다': 'Nothing to send', '내용이 너무 깁니다': 'Too long to send',
   '/ · ! · # 로 시작하는 내용은 명령으로 읽힐 수 있어 보내지 않습니다': 'Not sent: text starting with / ! # would be read as a command', '도크: 타이머': 'Timer', '도크: 눌러서 팀 탭에서 봅니다': 'click to see them on the Team tab',
   '도크 크기': 'Dock size', '작게': 'Small', '보통': 'Medium', '크게': 'Large', '작게: 이름 없는 작은 타일과 낮은 띠. 크게: 큰 타일과 큰 글자.': 'Small: small tiles without names and a lower bar. Large: bigger tiles and text.',
-  '한 줄 요약 띠': 'Summary ticker', '띠 위쪽에 내 세션마다 지금 하는 일 요약을 한 줄로 보여 줍니다. 길면 천천히 흐르고, 마우스를 올리면 멈춥니다.': 'A line along the top of the bar with what each of your sessions is doing. It scrolls slowly when long and stops while pointed at.',
   '마우스가 멀어지면 숨기기': 'Hide when the pointer leaves', '마우스가 띠를 떠나고 2초 뒤 띠가 화면 가장자리로 밀려 8px만 보입니다. 마우스를 가져가거나 말풍선·알림이 뜨면 바로 돌아옵니다.': 'Two seconds after the pointer leaves, the bar slides to the screen edge until 8 px show. It comes back when the pointer returns or a bubble or message appears.', '권한 요청은 버튼으로 답하세요': 'Answer a permission request with its buttons', '이 선택지는 도크에서 누를 수 없습니다': 'The dock never presses this option', '잠시 후 다시 누르세요': 'Wait a moment, then press it again',
   '여기서는 허용할 수 없습니다 — 패널에서 내용을 확인하세요': 'Cannot be allowed here — check the request in the panel', '도크: 패널에서 보기': 'View in panel', '전송이 거부되었습니다': 'Send refused', '세션이 입력 대기 상태가 아닙니다': 'The session is not waiting for input', '전송 실패': 'Send failed',
 });
@@ -3080,9 +3068,9 @@ inboxRender();
 //    right-hand buttons: hovering a tile opens its terminal window (the remote terminal view's markup, fed by this PC's
 //    terminal) with the input line and [허용][거부]; clicking it goes to the real terminal. Panel sizes: core/dock.js POP. ──
 const DOCK_INBOX_H = 360;
-let DOCK_H = 72;   // the bar's height: AgentDeskDock.stripHeight(size, ticker) (dockSizeApply)
-// localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, ticker, size, autoHide }
-let dockCfg = { start: false, opacity: 0.85, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, ticker: true, size: 'md', autoHide: false, order: [], addRepo: '' };   // order: my session ids in the user's drag order
+let DOCK_H = 72;   // the bar's height: AgentDeskDock.stripHeight(size) (dockSizeApply)
+// localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, size, autoHide }
+let dockCfg = { start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, order: [], addRepo: '' };   // order: my session ids in the user's drag order
 try {
   const c = JSON.parse(localStorage.getItem('roca-dock') || '{}') || {};
   dockCfg.start = c.start === true;
@@ -3091,8 +3079,8 @@ try {
   dockCfg.ask = ['on', 'options', 'off'].includes(c.ask) ? c.ask : 'on';   // choice bubbles: on / options only / off
   dockCfg.done = c.done !== false;             // completion bubbles (running → waiting / done)
   dockCfg.dnd = c.dnd === true;                // do not disturb: no bubbles, no pills, no desktop alerts — tile colours and ! stay
-  if (Number.isFinite(c.opacity) && c.opacity >= 0.3 && c.opacity <= 1) dockCfg.opacity = c.opacity;
-  dockCfg.ticker = c.ticker !== false;          // the summary line along the top edge
+  // the fade is off by default (opacity 1); a value saved before 0.2.10 (when 0.85 was the default) is reset once — opacityV 2 marks a value the user chose
+  if (c.opacityV === 2 && Number.isFinite(c.opacity) && c.opacity >= 0.3 && c.opacity <= 1) dockCfg.opacity = c.opacity;
   dockCfg.size = ['sm', 'md', 'lg'].includes(c.size) ? c.size : 'md';
   dockCfg.autoHide = c.autoHide === true;      // slide away when the pointer leaves
   dockCfg.order = Array.isArray(c.order) ? c.order.filter(v => typeof v === 'string' && v && v.length <= 200).slice(0, 50) : [];
@@ -3101,7 +3089,7 @@ try {
   const es = AgentDeskDock.posEntries(c.pos);
   if (es.length) dockCfg.pos = Object.fromEntries(es.map(e => [e.id, { cx: Math.round(e.cx), y: Math.round(e.y), at: e.at }]));
 } catch {}
-function dockSave() { try { localStorage.setItem('roca-dock', JSON.stringify(dockCfg)); } catch {} }
+function dockSave() { try { localStorage.setItem('roca-dock', JSON.stringify({ ...dockCfg, opacityV: 2 })); } catch {} }
 let dockOn = false, dockPrev = null, dockSel = '', dockTimer = 0, dockSig = '', dockReqSig = '', dockNatural = 0;
 let dockModelNow = null, dockTipKey = '', dockTipT = 0, dockFadeT = 0, dockPermEl = null, dockLabelLang = '';
 let dockAgeT = 0;   // once a minute while docked: the tiles' minutes in their state
@@ -3158,52 +3146,15 @@ function dockSeed(x) {
   const s = dockLocal(x); if (!s) return 0;
   return (x.state === 'ask' && Number(s.askSince)) || statusSince.get(s.id) || 0;
 }
-// size and summary line → the bar's height (also sent to main as the request's height), the tiles' size class
+// size → the bar's height (also sent to main as the request's height), the tiles' size class
 function dockSizeApply() {
-  DOCK_H = AgentDeskDock.stripHeight(dockCfg.size, dockCfg.ticker);
+  DOCK_H = AgentDeskDock.stripHeight(dockCfg.size);
   const pd = $('page-dock');
   pd.style.setProperty('--dock-h', `${DOCK_H}px`);
   for (const k of ['sm', 'md', 'lg']) pd.classList.toggle(`dock-sz-${k}`, dockCfg.size === k);
-  $('dock-strip').classList.toggle('has-ticker', !!dockCfg.ticker);
-  $('dock-ticker').hidden = !dockCfg.ticker;
-  dockSig = ''; dockTickerSig = ''; dockTickerW = 0;
+  dockSig = '';
 }
-// ── summary line: "이름: 지금 하는 일 · …" for my sessions (the dashboard card's summary, masked, 60 characters);
-//    scrolls (CSS) when wider than the bar and motion is allowed, else one line with an ellipsis; paused on hover;
-//    the DOM changes only when the text, the motion setting or the width does ──
-let dockTickerSig = '', dockTickerW = 0;   // dockTickerW: the line's width, read on resize / main's bounds answer only
 let dockAskKeys = new Set();   // my tiles that needed me at the last draw (a new one un-hides the bar)
-const dockTickerMasked = new Map();   // summary → its masked, cut text (at most 64)
-function dockTickerMeasure() { dockTickerW = $('dock-ticker').clientWidth; }
-function dockTickerDraw(mine) {
-  const el = $('dock-ticker');
-  if (!dockCfg.ticker) { el.hidden = true; return; }
-  el.hidden = false;
-  const items = [];
-  for (const s of mine) {
-    const v = nowSummaries.get(s.id); if (!v) continue;
-    let mv = dockTickerMasked.get(v);
-    if (mv == null) {
-      if (dockTickerMasked.size >= 64) dockTickerMasked.delete(dockTickerMasked.keys().next().value);
-      mv = AgentDeskDock.clip(AgentDeskMask.mask(String(v).slice(0, 240)), 60); dockTickerMasked.set(v, mv);
-    }
-    items.push([AgentDeskDock.clip(s.name, 24), mv]);
-  }
-  const move = dockCfg.anim && !dockReduced.matches;
-  if (!dockTickerW) dockTickerMeasure();   // shown for the first time
-  const sig = JSON.stringify([items, move, dockTickerW]);
-  if (sig === dockTickerSig) return;
-  dockTickerSig = sig;
-  const html = items.map(([n, v]) => `<b>${esc(n)}</b>: ${esc(v)}`).join(' · ');
-  el.title = items.map(([n, v]) => `${n}: ${v}`).join(' · ');
-  el.classList.remove('run');
-  el.innerHTML = `<span class="tk-in"><span>${html}</span></span>`;
-  const inner = el.firstChild, w = inner.scrollWidth;
-  if (!move || w <= dockTickerW + 1) return;
-  inner.innerHTML = `<span>${html}</span><span aria-hidden="true">${html}</span>`;
-  inner.style.setProperty('--tk-dur', `${Math.max(8, Math.round(inner.scrollWidth / 2 / 30))}s`);   // about 30 px a second
-  el.classList.add('run');
-}
 // ── timer: while the timer page counts down, a ring of what is left and mm:ss on the right; a click opens the page;
 //    when it ends the bar flashes once (no flash with less motion) ──
 const DOCK_RING_C = 56.55;   // 2πr, r = 9
@@ -3275,7 +3226,7 @@ function dockDraw() {
   for (const c of changes) if (c.key.startsWith('me:') && c.from === 'run' && c.ms >= DOCK_DONE_MIN_RUN_MS && (c.to === 'input' || c.to === 'done')) dockDoneFire(c.key);
   dockDoneSync();
   dockTermSync(); dockPermSync(); dockHoverCheck();
-  dockRightDraw(); dockTimerDraw(); dockTickerDraw(mine);
+  dockRightDraw(); dockTimerDraw();
   // a hidden bar's 8 px edge in the most urgent state's colour; a session that newly needs me brings it back
   const edge = AgentDeskDock.dockEdge(full.mine), pd = $('page-dock');
   for (const k of ['ask', 'err', 'run']) pd.classList.toggle(`edge-${k}`, edge === k);
@@ -3429,7 +3380,6 @@ function dockBoundsSync(natural) {
 const DOCK_NARROW = 420;
 function dockWinSet(b) {
   const prev = dockWin; dockWin = b;
-  if (dockCfg.ticker && (!prev || prev.stripWidth !== b.stripWidth)) { dockTickerW = 0; dockTickerSig = ''; }   // measured again at the next draw
   $('page-dock').classList.toggle('dock-narrow', (b.stripWidth || b.width) <= DOCK_NARROW);
   const strip = $('dock-strip'), wide = b.stripWidth > 0 && b.stripWidth < b.width;
   strip.style.width = wide ? `${b.stripWidth}px` : ''; strip.style.marginLeft = wide ? `${b.stripX}px` : ''; strip.style.alignSelf = wide ? 'flex-start' : '';
@@ -4610,7 +4560,7 @@ document.documentElement.addEventListener('mouseleave', () => {
   }, DOCK_HIDE_MS);
 });
 document.documentElement.addEventListener('mouseenter', dockWake);
-window.addEventListener('resize', () => { if (dockOn) { if (dockCfg.ticker) dockTickerMeasure(); dockRender(); } });
+window.addEventListener('resize', () => { if (dockOn) dockRender(); });
 // the user dragged the bar: remember the spot (main reports only moves it did not make itself)
 window.orca.onDockMoved(p => {
   if (!dockOn || !p) return;
@@ -9563,7 +9513,6 @@ function settingsRender() {
     ${row(t('도크 모드'), t('화면 아래 가장자리에 붙는 가로 띠로 세션 상태를 봅니다. 헤더의 ▭ 버튼이나 ⌘⇧D (Windows·Linux: Ctrl+Shift+D)로 전환하고, 띠의 ▣ 버튼으로 패널에 돌아옵니다.'), `<button class="set-btn" data-set="dock-enter">${esc(t('도크로 전환'))}</button>`)}
     ${row(t('시작 시 도크 모드'), t('위젯을 켤 때 도크 모드로 시작합니다.'), sw('dock-start', dockCfg.start))}
     ${row(t('도크 크기'), t('작게: 이름 없는 작은 타일과 낮은 띠. 크게: 큰 타일과 큰 글자.'), seg('dock-size', dockCfg.size, [['sm', t('작게')], ['md', t('보통')], ['lg', t('크게')]]))}
-    ${row(t('한 줄 요약 띠'), t('띠 위쪽에 내 세션마다 지금 하는 일 요약을 한 줄로 보여 줍니다. 길면 천천히 흐르고, 마우스를 올리면 멈춥니다.'), sw('dock-ticker', dockCfg.ticker))}
     ${row(t('마우스가 멀어지면 숨기기'), t('마우스가 띠를 떠나고 2초 뒤 띠가 화면 가장자리로 밀려 8px만 보입니다. 마우스를 가져가거나 말풍선·알림이 뜨면 바로 돌아옵니다.'), sw('dock-autohide', dockCfg.autoHide))}
     ${row(t('선택 말풍선 표시'), t('세션이 선택을 기다릴 때 타일 위에 질문과 선택지를 띄웁니다. "선택지만"은 질문 본문을 숨깁니다.'), seg('dock-ask', dockCfg.ask, [['on', t('켬')], ['options', t('선택지만')], ['off', t('끔')]]), '', true)}
     ${row(t('완료 말풍선'), t('내 세션이 작업을 마치면(작업 중 → 입력 대기·완료) 그 타일 위에 마지막 응답의 첫 줄을 8초 동안 띄웁니다. 누르면 터미널로 갑니다.'), sw('dock-done', dockCfg.done))}
@@ -9646,7 +9595,6 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'dock-enter') dockEnter();
   else if (name === 'dock-start') { dockCfg.start = !dockCfg.start; dockSave(); settingsRender(); }
   else if (name === 'dock-size' && ['sm', 'md', 'lg'].includes(v)) { dockCfg.size = v; dockSave(); if (dockOn) { dockSizeApply(); dockDraw(); } settingsRender(); }
-  else if (name === 'dock-ticker') { dockCfg.ticker = !dockCfg.ticker; dockSave(); if (dockOn) { dockSizeApply(); dockDraw(); } settingsRender(); }
   else if (name === 'dock-autohide') { dockCfg.autoHide = !dockCfg.autoHide; dockSave(); if (!dockCfg.autoHide) dockHideSet(false); settingsRender(); }
   else if (name === 'dock-ask' && ['on', 'options', 'off'].includes(v)) { dockCfg.ask = v; dockSave(); if (dockOn) dockAskSync(); settingsRender(); }
   else if (name === 'dock-done') { dockCfg.done = !dockCfg.done; dockSave(); if (dockOn) dockDoneSync(); settingsRender(); }
