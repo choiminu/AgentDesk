@@ -29,12 +29,18 @@ function runHook(script, input, env = {}) {
 function writeHook(dir, kind, timeoutSec = 10) {
   const f = join(dir, `${kind}-hook.cjs`); writeFileSync(f, S.nodeHookScript({ kind, dir, timeoutSec })); return f;
 }
+// resolves once the response is read AND the socket is closed: a body the server refuses early (413) is still being
+// written when the answer arrives, and that write ends with EPIPE on Linux — after the response, so it is not an error
 function rawPost(sock, body, headers) {
   return new Promise((resolve, reject) => {
+    let out = null, closed = false;
+    const finish = () => { if (out && closed) resolve(out); };
     const req = request({ socketPath: sock, path: S.GUARD_PATH, method: 'POST', headers: { Host: 'localhost', 'Content-Type': 'application/json', ...headers } }, res => {
-      let b = ''; res.on('data', c => { b += c; }); res.on('end', () => resolve({ status: res.statusCode, body: b, sig: res.headers['x-ad-sig'] }));
+      let b = ''; res.on('data', c => { b += c; }); res.on('end', () => { out = { status: res.statusCode, body: b, sig: res.headers['x-ad-sig'] }; finish(); });
     });
-    req.on('error', reject); req.end(body);
+    req.on('error', e => { if (!out) reject(e); });
+    req.on('close', () => { closed = true; finish(); });
+    req.end(body);
   });
 }
 
