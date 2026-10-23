@@ -435,19 +435,19 @@ test('widget dock: hover opens the terminal window, a click goes to the terminal
 test('bubbleLayout: centred on their tiles, pushed apart, kept inside, the oldest dropped first', () => {
   const L = D.bubbleLayout;
   const one = L([{ key: 'a', anchor: 500, since: 1 }], { winWidth: 1000 });
-  assert.deepEqual(one, { placed: [{ key: 'a', x: 380, width: 240, tail: 120 }], dropped: [] });
+  assert.deepEqual(one, { placed: [{ key: 'a', x: 340, width: 320, tail: 160 }], dropped: [] });
   // two tiles 50 px apart: side by side, no overlap, tails still on their tiles
   const two = L([{ key: 'a', anchor: 300, since: 1 }, { key: 'b', anchor: 350, since: 2 }], { winWidth: 1000 });
   const [a, b] = two.placed;
   assert.ok(a.x + a.width + 6 <= b.x, 'no overlap'); assert.equal(two.dropped.length, 0);
-  assert.equal(a.x + a.tail, 300); assert.ok(b.tail >= 14 && b.tail <= 226);
+  assert.equal(a.x + a.tail, 300); assert.ok(b.tail >= 14 && b.tail <= 306);
   // edges: clamped inside the window (6 px margin)
   const edge = L([{ key: 'a', anchor: 5, since: 1 }, { key: 'b', anchor: 995, since: 2 }], { winWidth: 1000 });
   assert.equal(edge.placed[0].x, 6); assert.equal(edge.placed[1].x + edge.placed[1].width, 994);
   // three in 500 px: only two fit, the oldest goes
-  const many = L([{ key: 'new', anchor: 100, since: 30 }, { key: 'old', anchor: 120, since: 10 }, { key: 'mid', anchor: 140, since: 20 }], { winWidth: 500 });
+  const many = L([{ key: 'new', anchor: 100, since: 30 }, { key: 'old', anchor: 120, since: 10 }, { key: 'mid', anchor: 140, since: 20 }], { winWidth: 660 });
   assert.deepEqual(many.dropped, ['old']); assert.deepEqual(many.placed.map(x => x.key), ['new', 'mid']);
-  for (const p of many.placed) assert.ok(p.x >= 6 && p.x + p.width <= 494);
+  for (const p of many.placed) assert.ok(p.x >= 6 && p.x + p.width <= 654);
   // a wider (hovered) bubble among normal ones
   const mixed = L([{ key: 'a', anchor: 200, since: 1, width: 340 }, { key: 'b', anchor: 220, since: 2 }], { winWidth: 900 });
   assert.equal(mixed.placed[0].width, 340); assert.ok(mixed.placed[0].x + 340 + 6 <= mixed.placed[1].x);
@@ -457,7 +457,7 @@ test('bubbleLayout: centred on their tiles, pushed apart, kept inside, the oldes
   assert.deepEqual(L([{ key: 'a', anchor: 10 }], { winWidth: 100 }).placed.map(p => p.width), [88]);
   assert.equal(L([{ key: 'a', anchor: 5 }], { winWidth: 12 }).dropped.length, 1, 'no room at all');
   const pair = L([{ key: 'a', anchor: 50, since: 1, width: 340 }, { key: 'b', anchor: 60, since: 2 }], { winWidth: 300 });
-  assert.deepEqual([pair.dropped, pair.placed.map(p => [p.key, p.width])], [['a'], [['b', 240]]], 'several: the oldest still goes');
+  assert.deepEqual([pair.dropped, pair.placed.map(p => [p.key, p.width])], [['a'], [['b', 288]]], 'several: the oldest still goes (the default 320 clamped to the 300 px window)');
   assert.equal(D.popExtra('bubbles'), D.POP.bubbleH + D.POP.tail + 2 * D.POP.gap);
   assert.ok(D.popExtra('bubblesBig') > D.popExtra('bubbles'));
 });
@@ -842,12 +842,12 @@ test('renderer: do not disturb stops bubbles, pills and desktop alerts while doc
 test('bubbleHeight: grows with the options, within its floor and cap (big: a taller question)', () => {
   const { bubbleHeight: H, POP } = D;
   assert.equal(H(2, false), POP.bubbleH, 'two options: the old default');
-  assert.equal(H(4, false), 24 + 54 + 4 * 46 + 18 + 16);
-  assert.equal(H(6, false), 24 + 54 + 6 * 46 + 18 + 16);
+  assert.equal(H(4, false), 30 + 66 + 4 * 54 + 20 + 18);
+  assert.equal(H(6, false), 30 + 66 + 6 * 54 + 20 + 18);
   assert.ok(H(6, false) > H(4, false) && H(4, false) > H(2, false));
   assert.equal(H(20, false), POP.bubbleMaxH, 'capped: the options scroll past it');
   assert.equal(H(2, true), POP.bubbleBigH);
-  assert.equal(H(6, true), Math.min(POP.bubbleBigMaxH, 24 + 108 + 6 * 46 + 18 + 16));
+  assert.equal(H(6, true), Math.min(POP.bubbleBigMaxH, 30 + 132 + 6 * 54 + 20 + 18));
   assert.equal(H(20, true), POP.bubbleBigMaxH);
   assert.equal(H(-3, false), POP.bubbleH); assert.equal(H('x', true), POP.bubbleBigH);
   assert.equal(D.popExtra('bubbles', H(6, false)), H(6, false) + POP.tail + 2 * POP.gap, 'the room asked of main follows the tallest bubble');

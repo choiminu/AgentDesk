@@ -450,8 +450,8 @@ function dockBounds(input) {
 }
 
 // ── panels in the room above / below the bar ──
-const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 120, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 240, bubbleBigW: 340, bubbleH: 240, bubbleBigH: 340, bubbleMaxH: 420, bubbleBigMaxH: 520, doneW: 220, addW: 280, tail: 6 };
-const BUBBLE_ROWS = { head: 24, q: 54, qBig: 108, opt: 46, msg: 18, pad: 16 };
+const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 120, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 320, bubbleBigW: 440, bubbleH: 300, bubbleBigH: 420, bubbleMaxH: 560, bubbleBigMaxH: 680, doneW: 220, addW: 280, tail: 6 };
+const BUBBLE_ROWS = { head: 30, q: 66, qBig: 132, opt: 54, msg: 20, pad: 18 };   // larger type (13 px): the bubble is read from across the room
 function popWidth(kind, workWidth) {
   const ww = Math.max(0, Math.floor(num(workWidth))), room = Math.max(0, ww - 2 * POP.margin);
   if (kind === 'term') return Math.min(POP.termW, Math.floor(ww * POP.termFrac), room);

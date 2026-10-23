@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-7yo4AJ3CLckTSGtnYsXahNpo2ySY5dzX+mWh/BzJ0sQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-7BDK1SBa3zGQZJbqaaNYjOlsLl192G9Hemjr8Lw72Q4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1739,22 +1739,25 @@
   /* choice bubbles: one per waiting session, over its tile */
   .dock-asks { position: fixed; inset: 0; z-index: 165; pointer-events: none; }
   .dock-asks[hidden], .dock-bubble[hidden] { display: none; }
-  .dock-bubble { --bb-edge: color-mix(in srgb, var(--yellow) 50%, var(--border)); position: absolute; pointer-events: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--bb-edge); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.28); font-size: var(--fs-xs); color: var(--text2); user-select: text; animation: dockPop 160ms ease-out; overflow: hidden; overflow: clip; overflow-clip-margin: 8px; }   /* nothing spills out of the box (clip + margin: the 6 px tail still shows) */
+  .dock-bubble { --bb-edge: color-mix(in srgb, var(--yellow) 50%, var(--border)); position: absolute; pointer-events: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--bb-edge); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.28); font-size: var(--fs-sm); color: var(--text2); user-select: text; animation: dockPop 160ms ease-out; overflow: hidden; overflow: clip; overflow-clip-margin: 8px; }   /* nothing spills out of the box (clip + margin: the 6 px tail still shows) */
   @keyframes dockPop { from { opacity: 0; transform: translateY(4px) scale(0.98); } }
-  .dock-bubble .bb-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; flex-shrink: 0; }
-  .dock-bubble .bb-head b { min-width: 0; color: var(--text); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dock-bubble .bb-head { display: flex; align-items: center; gap: 6px; min-width: 0; flex-shrink: 0; }
+  .dock-bubble .bb-head b { min-width: 0; color: var(--text); font-size: var(--fs-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dock-bubble .bb-close { margin-left: auto; flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; border: none; background: none; color: var(--text3); font: 600 var(--fs-md)/22px var(--sans); cursor: pointer; }
+  .dock-bubble .bb-close:hover { background: var(--surface-hover); color: var(--text); }
   .dock-bubble .bb-st { flex-shrink: 0; font-weight: 600; color: var(--yellow-text); }
-  .dock-bubble .bb-q { margin: 0; flex: 0 1 auto; min-height: 2.9em; max-height: 9em; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-xs)/1.45 var(--mono); color: var(--text); }
+  .dock-bubble .bb-q { margin: 0; flex: 0 1 auto; min-height: 2.9em; max-height: 9em; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-md)/1.5 var(--mono); color: var(--text); }
   .dock-bubble .bb-opts { display: flex; flex-direction: column; flex-wrap: nowrap; flex: 0 1 auto; min-height: 0; overflow-y: auto; gap: 4px; }   /* short of room: the question shrinks first (to 2 rows), then the options scroll */
   .dock-bubble .bb-opts button { flex-shrink: 0; }
-  .dock-bubble .bb-opts button { display: flex; gap: 6px; align-items: baseline; width: 100%; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
+  .dock-bubble .bb-opts button { display: flex; gap: 8px; align-items: baseline; width: 100%; padding: 6px 10px; font-size: var(--fs-md); border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease; }
   .dock-bubble .bb-opts button:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-dim); }
   .dock-bubble .bb-opts button.cur { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
   .dock-bubble .bb-opts button:disabled { opacity: 0.5; cursor: default; }
   .dock-bubble .bb-opts .n { flex-shrink: 0; font-family: var(--mono); color: var(--text3); }
   .dock-bubble .bb-opts .l { min-width: 0; }
-  .dock-bubble .bb-opts small { display: block; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dock-bubble .bb-msg { flex-shrink: 0; color: var(--text3); }
+  .dock-bubble .bb-opts small { display: block; font-size: var(--fs-sm); color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dock-bubble .bb-msg { flex-shrink: 0; font-size: var(--fs-sm); color: var(--text3); }
+  .dock-bubble .bb-more { font-size: var(--fs-sm); }
   .dock-bubble .bb-msg.ok { color: var(--green-text); } .dock-bubble .bb-msg.err { color: var(--red-text); } .dock-bubble .bb-msg.warn { color: var(--yellow-text); }
   .dock-bubble .bb-more { align-self: flex-start; flex-shrink: 0; padding: 0; border: none; background: none; color: var(--accent-text); font: inherit; cursor: pointer; text-decoration: underline; }
   .dock-bubble .dock-perm-in { flex-direction: column; align-items: stretch; }
@@ -3804,7 +3807,10 @@ let dockAskT = 0, dockAskBand = null, dockAskWant = 0, dockAskH = 0, dockAskGrow
 const DOCK_ASK_MUTE_MS = 5000;
 const dockAskSentSig = new Map();   // tile key → { sig, at }: the prompt last answered from a bubble
 // the prompt just answered, still on the screen a moment later: not shown again (and not armed again) for 5 s
-const dockAskMuted = a => { const r = a.kind === 'choice' && !a.sent && dockAskSentSig.get(a.key); return !!(r && r.sig === a.sig && Date.now() - r.at < DOCK_ASK_MUTE_MS); };
+const dockAskClosed = new Map();   // tile key → the prompt (sig / permission id) the user closed with ✕: hidden until it changes
+const dockAskClosedId = a => (a.kind === 'perm' ? `perm:${a.perm ? a.perm.id : ''}` : String(a.sig || ''));
+const dockAskMuted = a => { if (dockAskClosed.get(a.key) === dockAskClosedId(a)) return true; const r = a.kind === 'choice' && !a.sent && dockAskSentSig.get(a.key); return !!(r && r.sig === a.sig && Date.now() - r.at < DOCK_ASK_MUTE_MS); };
+function dockAskClose(a) { dockAskClosed.set(a.key, dockAskClosedId(a)); if (a.el) a.el.hidden = true; a.placed = false; dockAskPlace(); dockBoundsSync(); }
 const dockAskVisible = () => dockOn && !inboxQOpen && !dockTermBg() && !dockPop && [...dockAsk.values()].some(a => a.placed);
 const dockDoneVisible = () => dockOn && !inboxQOpen && !dockTermBg() && !dockPop && [...dockDone.values()].some(d => d.placed);
 const dockAskOn = key => { const a = dockAsk.get(key); return !!(a && a.placed && dockAskVisible()); };
@@ -3906,7 +3912,7 @@ function dockAskFill(a) {
   const el = a.el;
   const label = a.kind === 'perm' ? dockT('도크: 승인 필요') : t('선택 필요');   // a permission request / a choice on the screen
   el.setAttribute('aria-label', `${a.name || ''} · ${label}`);
-  const head = `<div class="bb-head"><b>${esc(a.name || '')}</b><span class="bb-st">${esc(label)}</span></div>`;
+  const head = `<div class="bb-head"><b>${esc(a.name || '')}</b><span class="bb-st">${esc(label)}</span><button class="bb-close" data-close="1" title="${esc(t('닫기'))}" aria-label="${esc(t('닫기'))}">✕</button></div>`;
   if (a.sent) { el.innerHTML = head + `<div class="bb-msg ok">${esc(dockT('도크: 보냄'))}: ${esc(a.sent)}</div>`; return; }
   if (a.kind === 'perm') { el.innerHTML = head; if (a.perm) el.appendChild(dockPermLine(a.perm)); return; }
   const p = a.parsed, max = a.big ? DOCK_ASK_BIG_LINES : DOCK_ASK_LINES;
@@ -3951,6 +3957,7 @@ function dockAskWire(a) {
   const el = a.el;
   el.addEventListener('click', e => {
     e.stopPropagation();
+    if (e.target.closest('[data-close]')) { dockAskClose(a); return; }   // ✕: hidden until the prompt changes (the tile's ! stays)
     if (e.target.closest('[data-more]')) {   // the whole prompt: the tile's terminal window (it stays: opened by a click)
       const x = dockTileOf(a.key); if (!x) return;
       dockSel = a.key; dockDraw(); dockTermFor(x); dockHoverOpened = false;
@@ -4421,6 +4428,7 @@ function dockLeave(page) {
   dockTipKey = dockTipLast = ''; $('dock-tip').hidden = true;
   clearTimeout(dockHoverT); clearTimeout(dockLeaveT); dockHoverT = dockLeaveT = 0; dockTermClose(true);
   for (const k of [...dockAsk.keys()]) dockAskDrop(k);
+  dockAskClosed.clear();
   for (const k of [...dockDone.keys()]) dockDoneDrop(k);
   dockClock.clear(); dockUsageOn = false; $('dock-utip').hidden = true;
   dockPop = null; $('dock-pop').hidden = true; $('dock-pop').innerHTML = ''; clearTimeout(dockDragLongT); dockDrag = null; dockAddWant = null;
