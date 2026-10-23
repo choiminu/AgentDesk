@@ -13,7 +13,8 @@
     "dist:win": "electron-builder --win --publish never",
     "dist:all": "electron-builder -mwl --publish never",
     "test": "node --test test/*.test.mjs",
-    "icon": "node scripts/make-icon.mjs"
+    "icon": "node scripts/make-icon.mjs",
+    "shots": "node scripts/shots.mjs"
   },
   "devDependencies": {
     "@electron/fuses": "^1.8.0",

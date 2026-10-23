@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-A4b2mC9HSifDsa767+d3LYW3wVMWGxlqD5mfE7v8IjQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tQyHlS3uRPDvChUv5HHzdiDfiDRr5CLRYraYr0ix/XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -753,6 +753,9 @@
     align-items: center;
     justify-content: center;
     height: 100%;
+  }
+  .empty.inline { height: auto; flex: none; }   /* one line inside a list (an empty group): the groups below stay in view
+  .empty {
     color: var(--text3);
     font-size: var(--fs-md);
     opacity: 0.7;
@@ -1947,6 +1950,32 @@
 <script>
 // dev: ROCA_START_PAGE=…,set:<localStorage key>=<url-encoded value> presets a setting before anything reads it
 for (const part of location.hash.replace('#', '').split(',')) { const m = part.match(/^set:([a-z0-9-]+)=(.*)$/i); if (m) { try { localStorage.setItem(m[1], decodeURIComponent(m[2])); } catch {} } }
+// ── demo mode (ROCA_START_PAGE=…,demo): generic fake sessions, a fake team and usage instead of this PC's data — for the
+//    README screenshots (scripts/shots.mjs); nothing real is read or shown ──
+const DEMO_MODE = location.hash.replace('#', '').split(',').includes('demo');
+function demoSessions() {
+  const now = Date.now(), base = (id, name, branch, repo, status, more) => ({ id, name, branch, repo, status, agent: 'claude', viaHooks: true, connected: true, subagents: [], recentTools: [], ...more });
+  return [
+    base('d1', 'auth-refactor', 'feat/auth', 'acme/api', 'running', { tool: 'Edit', toolInput: 'src/auth/session.ts', ctxPct: 62, time: now - 40e3, lastMsg: 'Replacing the cookie session with a signed token; 3 of 7 call sites done.', recentTools: ['Read', 'Edit', 'Edit', 'Bash'], subagents: [{ name: 'explorer', elapsed: '42s' }] }),
+    base('d2', 'ci-fix', 'fix/ci', 'acme/api', 'waiting', { needsInput: true, askSince: now - 3 * 60e3, ctxPct: 48, time: now - 3 * 60e3, lastMsg: 'The e2e suite fails on the shared runner. Which runner should I pin?', recentTools: ['Bash', 'Read'] }),
+    base('d3', 'readme-writer', 'docs/readme', 'acme/web', 'running', { agent: 'codex', viaHooks: false, tool: 'Write', toolInput: 'README.md', ctxPct: 23, time: now - 12e3, lastMsg: 'Drafting the quick start section.', recentTools: ['Read', 'Write'] }),
+    base('d4', 'billing-tests', 'test/billing', 'acme/api', 'waiting', { ctxPct: 71, time: now - 9 * 60e3, lastMsg: 'Added 14 tests for proration; all green. Anything else for billing?', recentTools: ['Bash'] }),
+    base('d5', 'deploy-check', 'ops/deploy', 'acme/infra', 'error', { agent: 'gemini', viaHooks: false, time: now - 25 * 60e3, lastMsg: 'kubectl: connection refused' }),
+    base('d6', 'ui-polish', 'feat/ui', 'acme/web', 'done', { time: now - 50 * 60e3, lastMsg: 'Done: aligned the card grid and fixed the hover state.' }),
+  ];
+}
+const DEMO_RATE = { claude: { session: { usedPercent: 31, resetDescription: 'reset 17:10' }, weekly: { usedPercent: 40, resetDescription: 'reset Wed 09:00' } } };
+function demoTeam() {
+  const now = Date.now();
+  return { configured: true, hasToken: true, name: 'me', shared: true, listening: true, port: 7331, ip: '<my-ip>', paused: false, localNetwork: 'ok',
+    delegations: [{ peer: 'alice', sessionId: 'a2', name: 'cache-layer' }], pending: [], discovered: [],
+    safety: { guard: true, perm: true, rulesHash: 'a1b2c3d4e5f6', blockedToday: 2 },
+    peers: {
+      alice: { name: 'alice', host: '<peer-ip>:7331', ok: true, at: now - 2e3, lastOk: now - 2e3, rtt: 3, fails: 0, delegatedToMe: [], safety: { guard: true, perm: true, rulesHash: 'a1b2c3d4e5f6', blockedToday: 0 },
+        sessions: [{ id: 'a1', name: 'search-index', branch: 'feat/search', repo: 'acme/api', status: 'running', time: now - 30e3, ctxPct: 40 }, { id: 'a2', name: 'cache-layer', branch: 'feat/cache', repo: 'acme/api', status: 'waiting', needsInput: true, askSince: now - 60e3, time: now - 60e3 }] },
+      bob: { name: 'bob', host: '<peer-ip>:7331', ok: true, at: now - 1e3, lastOk: now - 1e3, rtt: 5, fails: 0, delegatedToMe: [{ sessionId: 'b1', name: 'migration', repo: 'acme/api', branch: 'chore/migrate' }], safety: { guard: false, perm: true, rulesHash: '', blockedToday: 0 },
+        sessions: [{ id: 'b1', name: 'migration', branch: 'chore/migrate', repo: 'acme/api', status: 'running', time: now - 5e3, ctxPct: 55 }] } } };
+}
 // ── Shared utilities ──
 const POLL = 5000;
 const $ = id => document.getElementById(id);
@@ -2630,6 +2659,14 @@ function clearWaitingToast(sessionId) {
 }
 
 async function fetchData() {
+  if (DEMO_MODE) {   // the demo data in place of Orca / hooks: the same rendering path, nothing read from this PC
+    sessions = demoSessions(); handles.clear();
+    try {   // the first poll runs before some of the page's state below is declared: that draw is skipped, the next one lands
+      for (const s of sessions) if (s.lastMsg) nowSummaries.set(s.id, s.lastMsg);
+      applyStatusTransitions(); updateCounters(); renderRateLimits(DEMO_RATE); renderDashboard(); inboxRender();
+    } catch {}
+    return;
+  }
   $('footer').classList.add('loading');
   try {
     await hooksReady;
@@ -3767,6 +3804,7 @@ const dockAskOn = key => { const a = dockAsk.get(key); return !!(a && a.placed &
 // which sessions wait for a choice now: new bubbles, changed requests, finished ones gone; screens read every DOCK_ASK_MS
 function dockAskSync() {
   if (!dockOn || !dockModelNow) return;
+  if (DEMO_MODE) { dockAskDemo(); return; }
   if (dockCfg.ask === 'off' || dockCfg.dnd) {   // the setting, or do not disturb: no bubbles (they come back when it goes off)
     for (const k of [...dockAsk.keys()]) dockAskDrop(k);
     if (dockAskT) { clearInterval(dockAskT); dockAskT = 0; }
@@ -3792,6 +3830,18 @@ function dockAskSync() {
   dockAskRender();
   if (dockAsk.size && !dockAskT) dockAskT = setInterval(() => { if (dockOn && !document.hidden) dockAskSync(); }, DOCK_ASK_MS);
   if (!dockAsk.size && dockAskT) { clearInterval(dockAskT); dockAskT = 0; }
+}
+// demo mode: one choice bubble over the waiting demo session (what the dock shows while an agent asks something)
+function dockAskDemo() {
+  const key = 'me:d2';
+  if (!dockModelNow.mine.some(x => x.key === key && x.state === 'ask')) { if (dockAsk.has(key)) { dockAskDrop(key); dockAskPlace(); } return; }
+  if (!dockAsk.has(key)) {
+    const q = 'The e2e suite fails on the shared runner. Which runner should I pin?';
+    dockAsk.set(key, { key, sid: 'd2', kind: 'choice', name: 'ci-fix', sig: 'demo', handle: 'demo', since: Date.now(), readAt: Date.now(), sent: '', sentAt: 0, err: '', big: false, el: null, dirty: true,
+      parsed: { question: q, options: [{ n: 1, label: 'ubuntu-22.04 (Recommended)', desc: 'matches the lockfile and the Playwright image' }, { n: 2, label: 'ubuntu-24.04', desc: 'newer image, needs the browser deps bumped' }, { n: 3, label: 'Type something.' }] },
+      context: q, texts: [q], userGuard: { blocked: false } });
+  }
+  dockAskRender();
 }
 function dockAskDrop(k) { const a = dockAsk.get(k); if (a && a.el) a.el.remove(); dockAsk.delete(k); }
 // a screen → { parsed (officeParseChoice), context (shown), box (whole prompt box, for the guardrail), perm
@@ -4981,6 +5031,7 @@ function updateCounters() {
 // fast path: re-read terminal screens only and patch statuses in place
 let screenTickBusy = false;
 async function screenTick() {
+  if (DEMO_MODE) return;   // the demo sessions keep their state (nothing to read on this PC)
   if (screenTickBusy || !sessions.length) return;
   screenTickBusy = true;
   try {
@@ -6271,10 +6322,10 @@ const OFFICE_DEMO = location.hash.split(',')[0] === '#office-demo' ? [
   { id: 'demo-5', name: 'deploy', branch: 'ops/deploy', status: 'error', tool: '' },
   { id: 'demo-6', name: 'docs', branch: 'docs/readme', status: 'done', tool: '' },
   { id: 'demo-7', name: 'idle-bot', branch: 'main', status: 'done', tool: '' },
-  { id: 'demo-9', name: '[SIMPLE]-PM', branch: 'feat/x', status: 'done', tool: '' },
+  { id: 'demo-9', name: 'pm-bot', branch: 'feat/x', status: 'done', tool: '' },
   { id: 'demo-10', name: 'session-reporter', branch: 'main', status: 'done', tool: '' },
-  { id: 'demo-11', name: '매입', branch: 'main', status: 'done', tool: '' },
-  { id: 'demo-1::explorer', parentId: 'demo-1', isSub: true, name: '↳ explorer', branch: 'auth-refactor', status: 'running', tool: 'Agent', toolInput: '코드베이스 탐색', subElapsed: '42s', subTokens: '12.3k' },
+  { id: 'demo-11', name: 'data-import', branch: 'main', status: 'done', tool: '' },
+  { id: 'demo-1::explorer', parentId: 'demo-1', isSub: true, name: '↳ explorer', branch: 'auth-refactor', status: 'running', tool: 'Agent', toolInput: 'exploring the codebase', subElapsed: '42s', subTokens: '12.3k' },
   { id: 'demo-12', name: 'api-gateway', branch: 'feat/gateway', status: 'running', tool: 'Edit', toolInput: '/repo/src/gateway.ts', ctxPct: 41 },
   { id: 'demo-13', name: 'billing-fix', branch: 'fix/billing', status: 'running', tool: 'Write', toolInput: '/repo/src/billing.ts', ctxPct: 55 },
   { id: 'demo-14', name: 'ui-polish', branch: 'feat/ui', status: 'running', tool: 'Edit', toolInput: '/repo/src/App.tsx', ctxPct: 23 },
@@ -8938,7 +8989,7 @@ function peerBoardHtml(peers) {
   const peerByName = new Map(peers.map(p => [p.name, p]));
   return `<div class="group-header"><span>${esc(t('오늘 팀'))}</span><span class="gh-count">${rows.length}</span><span class="gh-line"></span>${rows.length ? `<button class="set-btn" data-team="board-copy">${esc(t('복사'))}</button>` : ''}</div>
     ${rows.length ? `<table class="peer-board"><thead><tr><th>${esc(t('팀원'))}</th><th>${esc(t('세션'))}</th><th>${esc(t('티켓'))}</th><th>${esc(t('한 일'))}</th><th>${esc(t('시각'))}</th><th>${esc(t('안전 상태'))}</th></tr></thead><tbody>${rows.map(r => `<tr${r.mine ? ' class="mine"' : ''}><td>${esc(r.owner)}</td><td>${esc(r.session)}</td><td>${esc(r.ticket)}</td><td>${esc(r.done || t('진행 중'))}</td><td>${hm(r.at)}</td><td>${esc(r.mine ? safetyCell(teamStatus.safety) : safetyCell((peerByName.get(r.owner) || {}).safety, (peerByName.get(r.owner) || {}).ok === true))}</td></tr>`).join('')}</tbody></table>`
-      : `<div class="empty" style="padding:6px 12px"><span class="empty-text">${esc(t('오늘 보고나 배치된 티켓이 아직 없습니다'))}</span></div>`}`;
+      : `<div class="empty inline" style="padding:6px 12px"><span class="empty-text">${esc(t('오늘 보고나 배치된 티켓이 아직 없습니다'))}</span></div>`}`;
 }
 function peerNotesHtml() {
   const open = peerNotes.filter(n => n.state === 'new');
@@ -9022,7 +9073,7 @@ function teamRender(force) {
     const state = p.ok ? `${esc(t('연결됨'))} · ${timeAgo(p.at)}${q}` : `<span class="off">${esc(t('연결 안 됨'))}${perr ? ` · ${esc(perr)}` : ''}${p.lastOk ? ` · ${esc(t('마지막'))} ${timeAgo(p.lastOk)}` : ''}${q}</span>`;
     const renamed = p.remoteName && p.remoteName !== p.name ? ` <span class="gh-peer-state" title="instance ${esc(String(p.instanceId || '').slice(0, 8))}">(${esc(p.remoteName)})</span>` : '';
     html += `<div class="group-header"><span>@${esc(p.name)}</span>${renamed}<span class="gh-count">${items.length}</span>${peerSafetyChips(p)}<span class="gh-line"></span><span class="gh-peer-state${p.ok ? '' : ' off'}">${state}</span></div>`;
-    if (!items.length) html += `<div class="empty" style="padding:6px 12px"><span class="empty-text">${esc(t(p.ok ? '세션 없음' : '세션 정보를 받지 못했습니다'))}</span></div>`;
+    if (!items.length) html += `<div class="empty inline" style="padding:6px 12px"><span class="empty-text">${esc(t(p.ok ? '세션 없음' : '세션 정보를 받지 못했습니다'))}</span></div>`;
     for (const s of items) html += teamPeerCard(s, p.name);
   }
   setList(html);
@@ -9427,7 +9478,8 @@ function teamSigLocal() {
 // poll === true only from the 3 s interval; an explicit call (after an action, opening the tab) always refreshes everything
 async function teamPageTick(poll) {
   poll = poll === true;
-  try { teamStatus = await window.orca.teamStatus(); } catch { return; }
+  if (DEMO_MODE) teamStatus = demoTeam();
+  else { try { teamStatus = await window.orca.teamStatus(); } catch { return; } }
   const sig = teamStatusSig(teamStatus, teamSigLocal()), changed = sig !== teamTickSig;
   teamTickSig = sig;
   // a change seen while hidden leaves the tick dirty, so the next visible tick does the skipped work
@@ -9706,6 +9758,7 @@ function briefRender() {
     ${briefOpen ? `<ul>${(b.lines || []).map(l => `<li>${esc(l)}</li>`).join('')}</ul><div class="b-meta">${esc(t('노트'))} ${b.notes || 0} · ${b.stats ? `${esc(t('어제 세션'))} ${b.stats.sessions} · ${esc(t('선택 요청'))} ${b.stats.asks}` : ''}${b.jira && !b.jira.error ? ` · Jira ${b.jira.count}` : ''} · ${new Date(b.generatedAt).toLocaleTimeString(LANG === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</div>` : ''}`;
 }
 async function briefLoad() {
+  if (DEMO_MODE) return;   // no briefing card in the demo
   try { const r = await window.orca.briefRead(); briefing = r.brief; briefCfg = r.cfg || briefCfg; briefJira = !!r.jira; } catch {}
   briefRender(); if (document.querySelector('#page-settings.active')) settingsRender();
 }

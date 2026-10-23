@@ -1,16 +1,62 @@
+<div align="center">
+
 # AgentDesk
 
-AI 코딩 에이전트를 위한 픽셀 아트 사무실입니다. AgentDesk는 macOS·Linux·Windows에서 동작하는 데스크톱 위젯으로, Claude Code·Codex CLI·Gemini CLI 세션을 실시간으로 지켜보고(일반 터미널이든 [Orca](https://github.com/stablyai/orca) 안이든) 각 에이전트가 무엇을 하는지 대시보드와 책상에 앉은 캐릭터로 보여 줍니다.
+**AI 코딩 에이전트를 위한 픽셀 아트 사무실**
 
-*이전 이름은 "Orca Widget"입니다. Orca는 선택 사항이며, 지원하는 에이전트 CLI 하나만 있으면 동작합니다.*
+Claude Code·Codex CLI·Gemini CLI 세션을 한눈에 보고, 얇은 도크 띠에서 에이전트의 질문에 바로 답하고, 팀과 사무실을 공유합니다. macOS · Linux · Windows.
 
-**지원 에이전트:** Claude Code, Codex CLI, Gemini CLI. 세 CLI 모두 자체 훅 체계로 세션 상태를 받습니다. 다만 위젯 승인·가드레일·위임·한도 막대 같은 기능은 Claude Code에서만 동작합니다. 자세한 내용은 [에이전트별 지원 범위](#에이전트별-지원-범위)를 보세요.
+[![Latest release](https://img.shields.io/github/v/release/choiminu/AgentDesk?label=download&color=orange)](https://github.com/choiminu/AgentDesk/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/choiminu/AgentDesk/total?color=blue)](https://github.com/choiminu/AgentDesk/releases)
+![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-[English README](README.md) · [팀 공유 가이드](docs/TEAM-GUIDE.md) · [Jira 연결 설정](docs/JIRA-SETUP.md) · [릴리스와 코드 서명](docs/RELEASE.md)
+[내려받기](https://github.com/choiminu/AgentDesk/releases/latest) · [빠른 시작](#빠른-시작) · [도크 모드](#도크-모드) · [팀 공유](#팀-공유) · [English README](README.md)
 
-<img width="635" alt="대시보드" src="https://github.com/user-attachments/assets/6ec55127-14d7-495d-ad5d-9379c010775a" />
+<sub>[팀 공유 가이드](docs/TEAM-GUIDE.md) · [Jira 연결 설정](docs/JIRA-SETUP.md) · [릴리스와 코드 서명](docs/RELEASE.md) · [기여](CONTRIBUTING.md)</sub>
 
-<img width="1772" alt="픽셀 오피스" src="https://github.com/user-attachments/assets/5e9c3146-bf3b-4b1f-b525-7f08f5502929" />
+<img src="docs/screenshots/office.png" alt="픽셀 사무실: 세션마다 캐릭터 하나가 책상에서 일하거나 휴게실에서 쉽니다" width="860" />
+
+</div>
+
+## 왜 AgentDesk인가
+
+코딩 에이전트를 서너 개, 열 개씩 동시에 돌리면 터미널 탭만으로는 누가 내 답을 기다리는지, 누가 멈췄는지, 누가 방금 끝났는지 알 수 없습니다. AgentDesk는 그것을 보여 줍니다.
+
+- **누가 나를 기다리는지 압니다.** 세션마다 카드와 캐릭터가 있습니다. 답을 기다리는 세션에는 `?` 배지와 알림이 붙고, 말풍선에서 한 번의 클릭으로 답할 수 있습니다.
+- **에디터를 떠나지 않습니다.** 도크 띠가 화면 가장자리에 붙습니다. 타일에 마우스를 올리면 그 에이전트의 터미널이 보이고, 클릭하면 전환되며, ⌘1~⌘9로 바로 옮겨 갑니다.
+- **팀으로 일합니다.** 사무실을 같은 망의 팀원과 공유합니다. 팀원의 에이전트가 보이고, 같은 파일을 동시에 고치면 경고가 뜨고, 세션을 위임하거나 메모를 남길 수 있습니다.
+- **비밀은 밖으로 나가지 않습니다.** 기기를 떠나는 모든 텍스트(Jira 댓글, Slack 회신, 팀 공유 데이터)는 먼저 마스킹됩니다. 승인과 가드레일은 LLM 호출 없이 로컬에서 동작합니다.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/dashboard.png" alt="대시보드: 세션마다 상태·도구·컨텍스트 사용량·마지막 응답" /></td>
+<td width="50%"><img src="docs/screenshots/team.png" alt="팀 탭: 팀원 세션, 위임된 세션, 안전 상태" /></td>
+</tr>
+<tr>
+<td align="center"><sub><b>대시보드</b> — 상태, 현재 도구, 컨텍스트 창, 마지막 응답</sub></td>
+<td align="center"><sub><b>팀</b> — 팀원 세션, 위임, 안전 상태</sub></td>
+</tr>
+</table>
+
+<img src="docs/screenshots/dock.png" alt="도크 모드: 세션 타일이 늘어선 얇은 띠와, 질문하는 세션 위에 뜬 선택 말풍선" />
+
+<p align="center"><sub><b>도크 모드</b> — 화면 가장자리의 얇은 띠. 질문하는 세션 위에 말풍선이 떠서 그 자리에서 답합니다</sub></p>
+
+## 1분 설치
+
+1. [최신 릴리스](https://github.com/choiminu/AgentDesk/releases/latest)에서 내 기기용 설치 파일을 받습니다: macOS DMG(Apple Silicon·Intel), Linux AppImage·.deb, Windows 설치 파일·포터블 .exe.
+2. 아무 터미널에서 에이전트(Claude Code·Codex CLI·Gemini CLI)를 하나 띄웁니다. 몇 초 안에 AgentDesk에 나타납니다.
+3. ⌘⇧D(Ctrl+Shift+D)를 누르면 도크 모드입니다.
+
+소스에서 실행하려면:
+
+```bash
+git clone https://github.com/choiminu/AgentDesk.git
+cd AgentDesk && npm install && npm start
+```
+
+*이전 이름은 "Orca Widget"입니다. [Orca](https://github.com/stablyai/orca)는 선택 사항이며, 지원하는 에이전트 CLI 하나만 있으면 동작합니다. 위젯 승인·가드레일·위임·한도 막대는 Claude Code에서만 동작합니다 — [에이전트별 지원 범위](#에이전트별-지원-범위)를 보세요.*
 
 ## 기능
 
