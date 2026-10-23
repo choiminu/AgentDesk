@@ -39,9 +39,9 @@ Claude Code·Codex CLI·Gemini CLI 세션을 한눈에 보고, 얇은 도크 띠
 </tr>
 </table>
 
-<img src="docs/screenshots/dock.png" alt="도크 모드: 세션 타일이 늘어선 얇은 띠와, 질문하는 세션 위에 뜬 선택 말풍선" />
+<img src="docs/screenshots/dock.gif" alt="도크 모드: 질문이 도착하고, 마우스를 올리면 말풍선이 커지고, 한 번의 클릭으로 답합니다" />
 
-<p align="center"><sub><b>도크 모드</b> — 화면 가장자리의 얇은 띠. 질문하는 세션 위에 말풍선이 떠서 그 자리에서 답합니다</sub></p>
+<p align="center"><sub><b>도크 모드</b> — 화면 가장자리의 얇은 띠. 질문하는 세션 위에 말풍선이 떠서 그 자리에서 답합니다 (<a href="docs/screenshots/dock.png">정지 화면</a>)</sub></p>
 
 ## 1분 설치
 

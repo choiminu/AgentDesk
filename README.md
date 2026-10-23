@@ -39,9 +39,9 @@ You run three, five, ten coding agents in parallel. Terminal tabs do not tell yo
 </tr>
 </table>
 
-<img src="docs/screenshots/dock.png" alt="Dock mode: a thin bar of session tiles with a choice bubble over the session that is asking a question" />
+<img src="docs/screenshots/dock.gif" alt="Dock mode: a question arrives, the bubble grows under the pointer, one click answers it" />
 
-<p align="center"><sub><b>Dock mode</b> — a thin bar on the edge of the screen; a session that asks a question gets a bubble you answer in place</sub></p>
+<p align="center"><sub><b>Dock mode</b> — a thin bar on the edge of the screen; a session that asks a question gets a bubble you answer in place (<a href="docs/screenshots/dock.png">still image</a>)</sub></p>
 
 ## Install in a minute
 

@@ -6,6 +6,7 @@
 //
 //   node scripts/shots.mjs            # all pages
 //   node scripts/shots.mjs dock       # one page: dashboard | office | dock | team
+//   node scripts/shots.mjs gif        # docs/screenshots/dock.gif: a question arrives → the bubble grows → one click answers
 //
 // The running app must be closed first (single instance). Needs node >= 22 (global WebSocket, fetch).
 import { spawn } from "node:child_process";
@@ -13,6 +14,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodePng, encodePng } from "./make-icon.mjs";
+import { encodeGif, downscale } from "./gif.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "docs", "screenshots");
@@ -49,11 +51,11 @@ async function cdp() {
   throw new Error("no devtools page");
 }
 // the window image over a dark gradient, with a margin
-function composite(png, margin = 28) {
+function composite(png, margin = 28, flat = false) {   // flat: one colour (a GIF's 256 colours band on a gradient)
   const { w, h, px } = decodePng(png);
   const W = w + 2 * margin, H = h + 2 * margin, out = Buffer.alloc(W * H * 4);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const t = (x / W + y / H) / 2, i = (y * W + x) * 4;
+    const t = flat ? 0.5 : (x / W + y / H) / 2, i = (y * W + x) * 4;
     out[i] = Math.round(24 + 10 * (1 - t)); out[i + 1] = Math.round(27 + 10 * (1 - t)); out[i + 2] = Math.round(36 + 14 * (1 - t)); out[i + 3] = 255;
   }
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -99,7 +101,45 @@ async function pageB() {
   c.close();
 }
 
-const wantA = !only || ["dashboard", "team", "dock"].includes(only), wantB = !only || only === "office";
+
+// the dock story as frames: the bar, a question arrives (bubble), the pointer grows it, one option is chosen, sent
+async function pageGif() {
+  const c = await cdp();
+  await sleep(1500);
+  await c.evalJs(`if (dockOn) dockLeave(); dockCfg.start = false; true`);
+  await c.evalJs(`fetchData(); teamPageTick(); true`);
+  await sleep(600);
+  await c.evalJs(`sessions.find(s => s.id === 'd2').needsInput = false; dockCfg.hoverTerm = true; dockEnter(); true`);
+  await sleep(1500);
+  const frames = [], delays = [];
+  const grab = async (ms, n = 1) => { const png = await c.shot(); for (let i = 0; i < n; i++) { frames.push(png); delays.push(ms); } };
+  await grab(1400);                                                        // the bar, everyone working
+  await c.evalJs(`sessions.find(s => s.id === 'd2').needsInput = true; sessions.find(s => s.id === 'd2').askSince = Date.now(); dockDraw(); true`);
+  await sleep(900); await grab(1600);                                      // ci-fix asks: the bubble
+  await c.evalJs(`{ const a = dockAsk.get('me:d2'); if (a) { a.big = true; a.dirty = true; dockAskRender(); dockAskPlace(); dockBoundsSync(); } } true`);
+  await sleep(900); await grab(1600);                                      // pointer on the tile: the bubble grows
+  await c.evalJs(`{ const a = dockAsk.get('me:d2'); if (a && a.el) { const b = a.el.querySelector('[data-opt="1"]'); if (b) b.classList.add('cur'); } } true`);
+  await sleep(300); await grab(700);                                       // option 1 highlighted
+  await c.evalJs(`{ const a = dockAsk.get('me:d2'); if (a) { a.sent = '1. ubuntu-22.04 (Recommended)'; a.sentAt = Date.now(); a.dirty = true; dockAskRender(); dockAskPlace(); dockBoundsSync(); } } true`);
+  await sleep(500); await grab(1500);                                      // sent
+  await c.evalJs(`dockAskDrop('me:d2'); sessions.find(s => s.id === 'd2').needsInput = false; sessions.find(s => s.id === 'd2').status = 'running'; sessions.find(s => s.id === 'd2').tool = 'Bash'; dockDraw(); dockAskPlace(); dockBoundsSync(); true`);
+  await sleep(900); await grab(1800);                                      // back to work
+  c.close();
+  // the window grows for the bubble: pad every frame to the largest size (bottom-aligned, the bar stays put)
+  const decoded = frames.map(f => decodePng(f));
+  const W = Math.max(...decoded.map(d => d.w)), H = Math.max(...decoded.map(d => d.h));
+  const padded = decoded.map(d => {
+    const px = Buffer.alloc(W * H * 4); const dy = H - d.h;
+    for (let y = 0; y < d.h; y++) d.px.copy(px, ((y + dy) * W) * 4, y * d.w * 4, (y + 1) * d.w * 4);
+    return { w: W, h: H, px };
+  });
+  const bg = padded.map(f => { const b = decodePng(composite(encodePng(f.w, f.h, f.px), 20, true)); return downscale({ w: b.w, h: b.h, px: b.px }, 2); });
+  writeFileSync(join(OUT, "dock.gif"), encodeGif(bg, { delays }));
+  console.log(`[shot] dock.gif (${bg[0].w}x${bg[0].h}, ${frames.length} frames)`);
+}
+
+const wantA = !only || ["dashboard", "team", "dock"].includes(only), wantB = !only || only === "office", wantGif = !only || only === "gif";
 if (wantA) { const p = launch("dashboard,en,skip-onboarding,demo"); try { await pageA(p); } finally { p.kill(); await sleep(800); } }
 if (wantB) { const p = launch("office-demo,en,skip-onboarding,demo"); try { await pageB(); } finally { p.kill(); await sleep(800); } }
+if (wantGif) { const p = launch("dashboard,en,skip-onboarding,demo"); try { await pageGif(); } finally { p.kill(); await sleep(800); } }
 console.log("[shot] done");
