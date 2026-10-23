@@ -5,6 +5,15 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Signing is optional: with the secrets below the macOS build is Developer ID signed + notarized and the Windows build
+# Authenticode signed; without them (forks, before the certificates exist) the build is ad-hoc / unsigned as before.
+# A signed build gets package.json agentdeskSigned = 'mac' | 'win'; its in-app updater then says in the confirm dialog
+# that the installer is notarized / signed (downloads stay marked "from the internet" either way). See docs/RELEASE.md.
+#   macOS:   CSC_LINK (base64 .p12), CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+#   Windows: WIN_CSC_LINK (base64 .pfx), WIN_CSC_KEY_PASSWORD
+# A tag build fails when only some of one platform's secrets are set; the repository variable REQUIRE_SIGNING=true makes
+# an unsigned macOS / Windows build fail too. The afterPack hook (scripts/after-pack.cjs) sets the Electron fuses before
+# any signature is made.
 jobs:
   build:
     strategy:
@@ -23,6 +32,7 @@ jobs:
             script: dist:win
             artifacts: dist/*.exe
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60   # notarization waits on Apple
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,9 +40,78 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run ${{ matrix.script }}
+      # decides once whether this runner signs; only "mac" / "win" / "none" reaches the log
+      - name: Signing mode
+        id: sign
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          REQUIRE_SIGNING: ${{ vars.REQUIRE_SIGNING }}
+        run: |
+          mode=none
+          count() { n=0; for v in "$@"; do [ -n "$v" ] && n=$((n + 1)); done; echo $n; }
+          if [ "$RUNNER_OS" = macOS ]; then
+            have=$(count "$CSC_LINK" "$CSC_KEY_PASSWORD" "$APPLE_ID" "$APPLE_APP_SPECIFIC_PASSWORD" "$APPLE_TEAM_ID"); need=5
+          elif [ "$RUNNER_OS" = Windows ]; then
+            have=$(count "$WIN_CSC_LINK" "$WIN_CSC_KEY_PASSWORD"); need=2
+          else
+            have=0; need=0
+          fi
+          if [ "$need" -gt 0 ] && [ "$have" -eq "$need" ]; then
+            if [ "$RUNNER_OS" = macOS ]; then mode=mac; else mode=win; fi
+          fi
+          # a tag build with only some of the secrets is a misconfiguration, not a reason to ship unsigned
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$have" -gt 0 ] && [ "$have" -lt "$need" ]; then
+            echo "::error::partial signing secrets on $RUNNER_OS ($have of $need set) — set all of them or none (docs/RELEASE.md)"; exit 1
+          fi
+          # repository variable REQUIRE_SIGNING=true: macOS / Windows must sign (Linux never does)
+          if [ "$REQUIRE_SIGNING" = true ] && [ "$need" -gt 0 ] && [ "$mode" = none ]; then
+            echo "::error::REQUIRE_SIGNING is true but the $RUNNER_OS signing secrets are missing"; exit 1
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "signing mode: $mode"
+      # macOS: electron-builder signs with CSC_LINK (hardened runtime, build/entitlements.mac.plist) and notarizes +
+      # staples with APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID. Windows: signtool with WIN_CSC_LINK.
+      - name: Build (signed)
+        if: steps.sign.outputs.mode != 'none'
+        run: npm run ${{ matrix.script }} -- -c.extraMetadata.agentdeskSigned=${{ steps.sign.outputs.mode }}
+        env:
+          CSC_LINK: ${{ steps.sign.outputs.mode == 'mac' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ steps.sign.outputs.mode == 'mac' && secrets.CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ steps.sign.outputs.mode == 'mac' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ steps.sign.outputs.mode == 'mac' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ steps.sign.outputs.mode == 'mac' && secrets.APPLE_TEAM_ID || '' }}
+          WIN_CSC_LINK: ${{ steps.sign.outputs.mode == 'win' && secrets.WIN_CSC_LINK || '' }}
+          WIN_CSC_KEY_PASSWORD: ${{ steps.sign.outputs.mode == 'win' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
+      - name: Build (ad-hoc / unsigned)
+        if: steps.sign.outputs.mode == 'none'
+        run: npm run ${{ matrix.script }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify signature and notarization (macOS)
+        if: steps.sign.outputs.mode == 'mac'
+        shell: bash
+        run: |
+          for app in dist/mac*/AgentDesk.app; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+            spctl -a -vv -t exec "$app"
+            xcrun stapler validate "$app"
+          done
+      - name: Verify signature (Windows)
+        if: steps.sign.outputs.mode == 'win'
+        shell: pwsh
+        run: |
+          Get-ChildItem dist/*.exe | ForEach-Object {
+            $s = Get-AuthenticodeSignature $_.FullName
+            Write-Host "$($_.Name): $($s.Status)"
+            if ($s.Status -ne 'Valid') { exit 1 }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: agentdesk-${{ matrix.os }}

@@ -1202,3 +1202,21 @@ test('dropSafeText: text Claude Code would read as a command is refused', () => 
   assert.equal(D.dropSafeText('https://example.com/a').ok, true);
   assert.equal(D.popExtra('drop'), D.popExtra('add'));
 });
+
+test('widget: the global perm-open shortcut re-arms the approval panel it opens (no long-armed [허용] under the pointer)', () => {
+  const m = /else if \(action === 'perm-open'\) \{([\s\S]*?)\n  \}/.exec(html);
+  assert.ok(m, 'perm-open handler found');
+  const body = m[1];
+  assert.match(body, /inboxGo\(\{ kind: 'perm', target: \{ permId: r\.id \} \}\)/);
+  assert.ok(body.indexOf('permArm(el)') > body.indexOf('inboxGo('), 'permArm runs after the panel is opened');
+  assert.match(body, /permEls\.get\(r\.id\)/);
+  assert.match(body, /requestAnimationFrame\(rearm\)/, 're-armed again after the page has rendered');
+});
+
+test('widget: the hook connection line is shown only when main reports lastHookAt, and warns when never connected', () => {
+  assert.match(html, /permLastHookAt = 'lastHookAt' in r \? hookLastOf\(r\.lastHookAt\) : undefined;/);
+  const hookLastOf = new Function(between(html, 'const hookLastOf = ', '\n') + '\nreturn hookLastOf;')();
+  assert.equal(hookLastOf({ perm: null, guard: null }), null); assert.equal(hookLastOf({ perm: 5, guard: 9 }), 9); assert.equal(hookLastOf({ perm: 7, guard: null }), 7); assert.equal(hookLastOf(null), null); assert.equal(hookLastOf(3), 3);
+  assert.match(html, /\(permHookOn \|\| guardHookOn\) && permLastHookAt !== undefined \? row\(t\('훅 연결 상태'\)/);
+  assert.match(html, /const hookLastWarn = \(\) => \(permHookOn \|\| guardHookOn\) && permLastHookAt === null && sessions\.length > 0;/);
+});

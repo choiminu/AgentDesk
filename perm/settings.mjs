@@ -62,7 +62,7 @@ function uninstallHookAt({ settingsFile, event, re }) {
   writeJsonAtomic(settingsFile, s);
 }
 
-const PERM_HOOK_RE = /[\\/]\.roca[\\/]perm-hook\.sh/;
+const PERM_HOOK_RE = /[\\/]\.roca[\\/]perm-hook\.(sh|cmd|cjs)\b/;   // Windows: perm-hook.cjs (run by node.exe) or perm-hook.cmd (launcher)
 export const isOurPermHook = (entry) => hookIsOurs(entry, PERM_HOOK_RE);
 export function permHookPresent(settingsFile) { return hookPresentAt(settingsFile, "PermissionRequest", PERM_HOOK_RE); }
 // next to the async logging hook on the same event; the hook timeout is above curl's so curl always ends first
@@ -74,7 +74,7 @@ export function uninstallPermHookAt({ settingsFile }) { uninstallHookAt({ settin
 // the guardrail hook (~/.roca/guard-hook.sh): synchronous PreToolUse on the tools that change things
 export const GUARD_MATCHER = "Bash|Edit|Write|MultiEdit|NotebookEdit";
 export const GUARD_HOOK_TIMEOUT = 3;   // seconds; curl gives up before this, and a timed-out PreToolUse hook does not block
-const GUARD_HOOK_RE = /[\\/]\.roca[\\/]guard-hook\.sh/;
+const GUARD_HOOK_RE = /[\\/]\.roca[\\/]guard-hook\.(sh|cmd|cjs)\b/;
 export const isOurGuardHook = (entry) => hookIsOurs(entry, GUARD_HOOK_RE);
 export function guardHookPresent(settingsFile) { return hookPresentAt(settingsFile, "PreToolUse", GUARD_HOOK_RE); }
 export function installGuardHookAt({ settingsFile, command, backupDir }) {

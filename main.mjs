@@ -1,5 +1,5 @@
-import { app, BrowserWindow, clipboard, ipcMain, screen, Tray, Menu, nativeImage, Notification, shell, dialog } from "electron";
-import { execFile } from "node:child_process";
+import { app, BrowserWindow, clipboard, ipcMain, screen, Tray, Menu, nativeImage, Notification, shell, dialog, globalShortcut, utilityProcess } from "electron";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname, basename, delimiter as PATH_DELIM } from "node:path";
@@ -17,10 +17,11 @@ import "./core/team.js";       // globalThis.AgentDeskTeam: safetySummary for th
 import "./core/timeline.js";   // globalThis.AgentDeskTimeline: the card's [타임라인] tab (details masked here)
 import "./core/version.js";    // globalThis.AgentDeskVersion: release version comparison and installer choice for updates
 import "./core/dock.js";      // globalThis.AgentDeskDock: dock mode window bounds (bottom-centre bar)
+import "./core/desktop.js";   // globalThis.AgentDeskDesktop: global shortcuts, start-at-login entry
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { randomUUID, createHash } from "node:crypto";
-import { openPermEndpoint, ensurePrivateDir, permHookScript as permHookSh, guardHookScript, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK } from "./perm/server.mjs";
-import { readJsonStrict, writeJsonAtomic, backupPrivate, permHookPresent, installPermHookAt, uninstallPermHookAt, guardHookPresent, installGuardHookAt, uninstallGuardHookAt } from "./perm/settings.mjs";
+import { openPermEndpoint, ensurePrivateDir, writePrivate, permHookScript as permHookSh, guardHookScript, nodeHookScript, winHookCmd, winHookCommand, winHookRunner, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK, PERM_ADDR } from "./perm/server.mjs";
+import { readJsonStrict, writeJsonAtomic, backupPrivate, isOurPermHook, isOurGuardHook, permHookPresent, installPermHookAt, uninstallPermHookAt, guardHookPresent, installGuardHookAt, uninstallGuardHookAt } from "./perm/settings.mjs";
 import { createGuardHandler, createGuardLog, writeGuardConfig, defaultGuardConfig, GUARD_MODES } from "./guard/guard.mjs";
 import * as jiraOAuth from "./jira-oauth.mjs";
 import { diffStat, diffFile, insideRepo, setGitPath } from "./diff/git.mjs";   // also loads core/diff.js (globalThis.AgentDeskDiff)
@@ -29,6 +30,24 @@ const exec = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // platform switches: terminal control (AppleScript) and Orca are macOS-only; tmux works on macOS/Linux; hooks work everywhere
 const IS_MAC = process.platform === "darwin", IS_WIN = process.platform === "win32", IS_LINUX = process.platform === "linux";
+// one AgentDesk per user profile: a second launch only brings the first one's window forward and exits. Without the
+// lock the second copy removed the first one's approval socket and token (openPermEndpoint on start, stopPermServer on
+// quit). app.exit skips before-quit; the ready / before-quit handlers below also return early for this copy.
+const SINGLE_INSTANCE = app.requestSingleInstanceLock();
+if (!SINGLE_INSTANCE) app.exit(0);
+app.on("second-instance", () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show(); mainWindow.focus();
+});
+// Windows toasts are attributed by this id (the NSIS shortcut carries the same appId; the portable exe has none)
+if (IS_WIN) app.setAppUserModelId("com.agentdesk.app");
+// the app icon (scripts/make-icon.mjs): window and tray on Windows / Linux; macOS takes the bundle's .icns
+const APP_ICON = join(__dirname, "assets", "icon.png");
+// CI injects package.json agentdeskSigned ('mac' | 'win') into a Developer ID signed + notarized / Authenticode signed
+// build (see .github/workflows/build.yml, docs/RELEASE.md); a local or ad-hoc build has none. Only the update
+// confirm dialog reads it (one line saying the installer is notarized / signed); downloads are marked either way.
+const BUILD_SIGNED = (() => { try { const v = JSON.parse(readFileSync(join(__dirname, "package.json"), "utf-8")).agentdeskSigned; return typeof v === "string" ? v : null; } catch { return null; } })();
 // `command -v` (POSIX) / `where` (Windows) with the widget's extended PATH
 async function whichCmd(name) {
   try {
@@ -93,7 +112,7 @@ function createWindow() {
     hasShadow: true,
     resizable: true,
     skipTaskbar: false,
-    ...(IS_MAC ? { vibrancy: "under-window", visualEffectState: "active" } : { backgroundColor: "#0e1014" }),
+    ...(IS_MAC ? { vibrancy: "under-window", visualEffectState: "active" } : { backgroundColor: "#0e1014", icon: APP_ICON }),
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -144,7 +163,10 @@ function createTray() {
   const icon = nativeImage.createFromDataURL(
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAIRlWElmTU0AKgAAAAgABQESAAMAAAABAAEAAAEaAAUAAAABAAAASgEbAAUAAAABAAAAUgEoAAMAAAABAAIAAIdpAAQAAAABAAAAWgAAAAAAAABIAAAAAQAAAEgAAAABAAOgAQADAAAAAQABAACgAgAEAAAAAQAAACCgAwAEAAAAAQAAACAAAAAAX7wP4AAAAAlwSFlzAAALEwAACxMBAJqcGAAAAmRJREFUWAntl79Lw0AUx19SbautWkVBBychgoMgOIiIi6CL4OLk5Ojs4OAfIDg4OLi5uTqIi4rgIIII/gMiCIqKPzBqrf35vXhXcklzSVoHB1+4y917373vu7t3uURR/j9hBfwWsBXwfN9V0HFc8sQXQvocJz4Jek6i4MSXQO+J7kkXnAXvBAFH4QbCaHTsgL4BIyDlXCQs2AGxIAb4BXIgwxYDK6Ac+BQlP0YJZcR/Jfo+xQUwPb7TUApFRwEhZR6KTHXifcUsggm4IxCOQJ0Y9cFJfB0FOwC66AHqoPJsBJUUtIQf97vALiUzjK5AN0X7J8H8kOxRHDmxMsR1yXI0xG9A5eCpXAMPM07RB/3f7d7F88j5TPZZZKt2rIdJzpfstfsnUj4eAF+PwHNqr/jYJNYA+eBO87swFl5ERF+6TZR2vXA3jt3wFOD6U1KJnagG/TjvQNy2aKOHG/+kS7IMkFk4r8f2IqJpnAAAAAElFTkSuQmCC"
   );
-  tray = new Tray(icon.resize({ width: 18, height: 18 }));
+  // macOS keeps the small built-in image above; Windows / Linux show the app icon (when it loads)
+  let trayImg = icon.resize({ width: 18, height: 18 });
+  if (!IS_MAC) { const appImg = nativeImage.createFromPath(APP_ICON); if (!appImg.isEmpty()) trayImg = appImg.resize({ width: IS_WIN ? 16 : 22, height: IS_WIN ? 16 : 22 }); }
+  tray = new Tray(trayImg);
 
   const contextMenu = Menu.buildFromTemplate([
     { label: "AgentDesk 열기", click: () => mainWindow.show() },
@@ -160,7 +182,7 @@ function createTray() {
   });
 }
 
-app.on("before-quit", () => { app.isQuitting = true; stopPermServer(); if (slackChild) { try { slackChild.kill(); } catch {} } if (teamServer) { try { teamServer.close(); } catch {} } if (teamDiscovery) { try { teamDiscovery.stop(); } catch {} } });   // no orphan bridge that would post every reply twice
+app.on("before-quit", () => { if (!SINGLE_INSTANCE) return; app.isQuitting = true; stopPermServer(); if (slackChild) { try { slackChild.kill(); } catch {} } if (teamServer) { try { teamServer.close(); } catch {} } if (teamDiscovery) { try { teamDiscovery.stop(); } catch {} } });   // no orphan bridge that would post every reply twice
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { app.isQuitting = true; app.quit(); });
 
 // Finder-launched apps only see /usr/bin:/bin:/usr/sbin:/sbin, so look in the usual symlink
@@ -750,7 +772,8 @@ function parseGeminiTranscript(lines) {
     if (msg.type === "user" && !out.title && text && !/^\s*<session_context>/.test(text)) out.title = firstLine(text);
     if (msg.type === "gemini") { if (text) out.lastMsg = text.slice(0, 300); if (msg.tokens) lastTokens = msg.tokens; if (msg.model) out.model = msg.model; }
   }
-  if (lastTokens && lastTokens.total) { const window = /pro/i.test(out.model || "") ? 1000000 : 1000000; out.ctxPct = Math.min(100, Math.round((lastTokens.input || lastTokens.total) / window * 100)); }
+  // Gemini Pro and Flash models both have a 1M-token context window
+  if (lastTokens && lastTokens.total) { const window = 1000000; out.ctxPct = Math.min(100, Math.round((lastTokens.input || lastTokens.total) / window * 100)); }
   return out;
 }
 // Codex CLI: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl — {type:'response_item', payload:{type:'message', role, content:[{type:'input_text'|'output_text', text}]}}
@@ -1175,7 +1198,10 @@ function startEventsWatch() {
 // (~/.roca/perm/perm-token, 0600 in a 0700 directory, removed on quit). Without the socket or token, when nobody
 // answers in time, or when anything fails, the hook prints nothing and Claude Code keeps its terminal prompt.
 // Nothing is ever allowed without a button press, and no permission rule is ever saved.
-const PERM_HOOK_SCRIPT = join(ROCA_DIR, "perm-hook.sh");
+// Windows: the server is a named pipe and the hook a Node script (perm-hook.cjs) behind a .cmd launcher — see
+// perm/server.mjs. The settings entry points at the launcher, so it is the file that marks the hook as ours.
+const PERM_HOOK_SCRIPT = join(ROCA_DIR, IS_WIN ? "perm-hook.cmd" : "perm-hook.sh");
+const PERM_HOOK_NODE = join(ROCA_DIR, "perm-hook.cjs");
 const PERM_DIR = join(ROCA_DIR, "perm");
 const PERM_CFG_FILE = join(ROCA_DIR, "perm.json");
 const PERM_TIMEOUTS = [60, 90, 180, 300];
@@ -1207,7 +1233,7 @@ let permServer = null, permStarting = null;
 const toRenderer = (ch, data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(ch, data); };
 // the socket server is shared with the guardrail (POST /v1/guard): it runs while either hook is installed
 function startPermServer() {
-  if (permServer || permStarting || IS_WIN) return permStarting;
+  if (permServer || permStarting || !SINGLE_INSTANCE) return permStarting;
   seedKnownSessions();
   permStarting = openPermEndpoint({
     dir: PERM_DIR, timeoutSec: permTimeout(),
@@ -1224,22 +1250,64 @@ function startPermServer() {
 }
 function stopPermServer() {
   if (permServer) { const s = permServer; permServer = null; s.close().catch(() => {}); }
-  else { for (const f of [join(PERM_DIR, PERM_TOKEN), join(PERM_DIR, PERM_SOCK)]) { try { unlinkSync(f); } catch {} } }
+  else { for (const f of [join(PERM_DIR, PERM_TOKEN), join(PERM_DIR, PERM_ADDR), ...(IS_WIN ? [] : [join(PERM_DIR, PERM_SOCK)])]) { try { unlinkSync(f); } catch {} } }
+}
+// Windows: the binary that runs the Node hooks — a system node.exe, else the installed app in Node mode; the portable
+// exe runs from a temporary copy, so without node.exe the hooks are unavailable there (null)
+let winSystemNode;
+function winRunner() {
+  if (!IS_WIN) return null;
+  if (winSystemNode === undefined) { try { winSystemNode = execFileSync("where", ["node"], { timeout: 4000, encoding: "utf-8", windowsHide: true }).split(/\r?\n/)[0].trim() || null; } catch { winSystemNode = null; } }
+  return winHookRunner({ execPath: process.execPath, portable: !!process.env.PORTABLE_EXECUTABLE_FILE, systemNode: winSystemNode });
+}
+const safetyHooksAvailable = () => !IS_WIN || !!winRunner();
+// the files behind one safety hook ("perm" | "guard"): the bash script, or on Windows the Node script and its launcher
+function safetyHookFiles(kind) {
+  const t = permTimeout();
+  if (!IS_WIN) return kind === "perm" ? [[PERM_HOOK_SCRIPT, permHookSh(t)]] : [[GUARD_HOOK_SCRIPT, guardHookScript()]];
+  const runner = winRunner();
+  if (!runner) throw new Error("the portable build cannot run this hook: install Node.js or use the installer build");
+  const [launcher, js] = kind === "perm" ? [PERM_HOOK_SCRIPT, PERM_HOOK_NODE] : [GUARD_HOOK_SCRIPT, GUARD_HOOK_NODE];
+  return [[js, nodeHookScript({ kind, dir: PERM_DIR, timeoutSec: t })], [launcher, winHookCmd({ runner, script: js })]];
+}
+// onlyChanged: the start-up refresh after an update rewrites a file only when its text differs
+function writeSafetyHook(kind, onlyChanged) {
+  for (const [f, text] of safetyHookFiles(kind)) {
+    if (onlyChanged) { try { if (readFileSync(f, "utf-8") === text) continue; } catch {} }
+    writeFileSync(f, text, { mode: 0o700 }); try { chmodSync(f, 0o700); } catch {}
+  }
+}
+// the command in Claude Code's settings: the bash script's path; on Windows node.exe + the Node script when there is a
+// system node, else cmd.exe + the launcher (perm/server.mjs winHookCommand) — the same from cmd.exe and Git Bash
+function safetyHookCommand(kind) {
+  if (!IS_WIN) return kind === "perm" ? PERM_HOOK_SCRIPT : GUARD_HOOK_SCRIPT;
+  winRunner();   // fills winSystemNode
+  return kind === "perm" ? winHookCommand({ systemNode: winSystemNode, script: PERM_HOOK_NODE, launcher: PERM_HOOK_SCRIPT })
+                         : winHookCommand({ systemNode: winSystemNode, script: GUARD_HOOK_NODE, launcher: GUARD_HOOK_SCRIPT });
+}
+// Windows start-up: node.exe may have been installed or removed since the hook was set up — re-register our entry
+// (no backup, other hooks kept) when its command is not the one this run would write
+function syncSafetyHookCommand(kind) {
+  if (!IS_WIN) return;
+  const want = safetyHookCommand(kind), [event, isOurs] = kind === "perm" ? ["PermissionRequest", isOurPermHook] : ["PreToolUse", isOurGuardHook];
+  const ours = ((readJsonStrict(CLAUDE_SETTINGS).hooks || {})[event] || []).find(isOurs);
+  if (ours && ours.hooks.some(h => h && h.command === want)) return;
+  if (kind === "perm") installPermHookAt({ settingsFile: CLAUDE_SETTINGS, command: want, timeoutSec: permTimeout() });
+  else installGuardHookAt({ settingsFile: CLAUDE_SETTINGS, command: want });
 }
 function installPermHook() {
-  if (IS_WIN) return { ok: false, error: "macOS / Linux only" };
   if (!agentPresent("claude")) return { ok: false, error: "Claude Code (~/.claude) not found" };
   const t = permTimeout();
   readJsonStrict(CLAUDE_SETTINGS);   // a broken settings.json stops here, before anything is written
   ensurePrivateDir(ROCA_DIR);
-  writeFileSync(PERM_HOOK_SCRIPT, permHookSh(t), { mode: 0o700 }); chmodSync(PERM_HOOK_SCRIPT, 0o700);
-  installPermHookAt({ settingsFile: CLAUDE_SETTINGS, command: PERM_HOOK_SCRIPT, timeoutSec: t, backupDir: ROCA_DIR });
+  writeSafetyHook("perm");
+  installPermHookAt({ settingsFile: CLAUDE_SETTINGS, command: safetyHookCommand("perm"), timeoutSec: t, backupDir: ROCA_DIR });
   startPermServer();
   return { ok: true, timeoutSec: t };
 }
 function uninstallPermHook() {
   uninstallPermHookAt({ settingsFile: CLAUDE_SETTINGS });   // throws on a broken settings.json: nothing is touched
-  try { unlinkSync(PERM_HOOK_SCRIPT); } catch {}
+  for (const f of [PERM_HOOK_SCRIPT, PERM_HOOK_NODE]) { try { unlinkSync(f); } catch {} }
   if (!guardHookInstalled()) stopPermServer();
   return { ok: true };
 }
@@ -1264,7 +1332,8 @@ ipcMain.handle("roca:perm-config", (_e, timeoutSec) => {
 // ~/.roca/guard-hook.sh posts each Bash / Edit / Write / MultiEdit / NotebookEdit call to POST /v1/guard on the same
 // socket and token; guard/guard.mjs matches it against ~/.roca/guard.json and answers {} / ask / deny at once.
 // Widget not running, no token, any error → the hook prints nothing and the call goes on as usual (fail-open).
-const GUARD_HOOK_SCRIPT = join(ROCA_DIR, "guard-hook.sh");
+const GUARD_HOOK_SCRIPT = join(ROCA_DIR, IS_WIN ? "guard-hook.cmd" : "guard-hook.sh");
+const GUARD_HOOK_NODE = join(ROCA_DIR, "guard-hook.cjs");
 const GUARD_FILE = join(ROCA_DIR, "guard.json");
 const guardLog = createGuardLog(join(ROCA_DIR, "guard-log.jsonl"));
 const guardHandler = createGuardHandler({
@@ -1275,19 +1344,18 @@ const guardHandler = createGuardHandler({
 });
 function guardHookInstalled() { return guardHookPresent(CLAUDE_SETTINGS) && existsSync(GUARD_HOOK_SCRIPT); }
 function installGuardHook() {
-  if (IS_WIN) return { ok: false, error: "macOS / Linux only" };
   if (!agentPresent("claude")) return { ok: false, error: "Claude Code (~/.claude) not found" };
   readJsonStrict(CLAUDE_SETTINGS);   // a broken settings.json stops here, before anything is written
   ensurePrivateDir(ROCA_DIR);
   guardHandler.config();             // creates ~/.roca/guard.json (0600) with the default rules when missing
-  writeFileSync(GUARD_HOOK_SCRIPT, guardHookScript(), { mode: 0o700 }); chmodSync(GUARD_HOOK_SCRIPT, 0o700);
-  installGuardHookAt({ settingsFile: CLAUDE_SETTINGS, command: GUARD_HOOK_SCRIPT, backupDir: ROCA_DIR });
+  writeSafetyHook("guard");
+  installGuardHookAt({ settingsFile: CLAUDE_SETTINGS, command: safetyHookCommand("guard"), backupDir: ROCA_DIR });
   startPermServer();
   return { ok: true };
 }
 function uninstallGuardHook() {
   uninstallGuardHookAt({ settingsFile: CLAUDE_SETTINGS });   // throws on a broken settings.json: nothing is touched
-  try { unlinkSync(GUARD_HOOK_SCRIPT); } catch {}
+  for (const f of [GUARD_HOOK_SCRIPT, GUARD_HOOK_NODE]) { try { unlinkSync(f); } catch {} }
   if (!permHookInstalled()) stopPermServer();
   return { ok: true };
 }
@@ -1303,7 +1371,7 @@ function teamSafety() {
   let guardCfg = null; try { guardCfg = guardHandler.config(); } catch {}
   return globalThis.AgentDeskTeam.safetySummary({ guardCfg, guardHookInstalled: safetyHooksCache.guard, permHookInstalled: safetyHooksCache.perm, guardLogEntries: guardLogCache.entries, now: t });
 }
-const guardView = () => ({ ...guardHandler.config(), file: GUARD_FILE, hook: guardHookInstalled(), available: !IS_WIN, defaults: defaultGuardConfig().rules });
+const guardView = () => ({ ...guardHandler.config(), file: GUARD_FILE, hook: guardHookInstalled(), available: safetyHooksAvailable(), defaults: defaultGuardConfig().rules });
 ipcMain.handle("roca:guard-install", () => { try { return installGuardHook(); } catch (e) { return { ok: false, error: e.message }; } finally { safetyHooksCache.at = 0; } });
 ipcMain.handle("roca:guard-uninstall", () => { try { return uninstallGuardHook(); } catch (e) { return { ok: false, error: e.message }; } finally { safetyHooksCache.at = 0; } });
 ipcMain.handle("roca:guard-config", () => guardView());
@@ -1331,7 +1399,9 @@ ipcMain.handle("roca:guard-log", (_e, n) => guardLog.read(Math.min(Number(n) || 
 const UPDATE_API = "https://api.github.com/repos/choiminu/AgentDesk/releases/latest";
 const UPDATE_CACHE = join(app.getPath("userData"), "update-check.json");
 const UPDATE_MAX_BYTES = 200 * 1024 * 1024, UPDATE_DL_TIMEOUT = 8 * 60 * 1000, UPDATE_DL_MAX = 10;
-const { isNewer, pickAsset, isAllowedDownloadUrl, isAllowedRedirectUrl, safeAssetFileName, releaseInfo, downloadPlan } = globalThis.AgentDeskVersion;
+const { isNewer, pickAsset, isAllowedDownloadUrl, isAllowedRedirectUrl, safeAssetFileName, releaseInfo, downloadPlan, linuxFormat, markDownloadedPlan, installerSigned } = globalThis.AgentDeskVersion;
+// Linux: a deb install updates with the deb, an AppImage with the AppImage (APPIMAGE is set by the AppImage runtime)
+const INSTALL_FORMAT = IS_LINUX ? linuxFormat(process.env, app.isPackaged) : undefined;
 const fetchLatestRelease = async () => {
   const res = await fetch(UPDATE_API, { headers: { "User-Agent": `AgentDesk/${app.getVersion()}`, Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(8000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1339,7 +1409,7 @@ const fetchLatestRelease = async () => {
 };
 const saveUpdateCache = info => { try { writeFileSync(UPDATE_CACHE, JSON.stringify(info)); } catch {} };
 // the renderer learns whether this machine has an installer in the release (assetName) without ever seeing a URL
-const updateView = (info, current) => ({ ...info, current, newer: isNewer(info.latest, current), assetName: Array.isArray(info.assets) ? (pickAsset(info.assets, process.platform, process.arch) || {}).name || null : undefined });
+const updateView = (info, current) => ({ ...info, current, newer: isNewer(info.latest, current), assetName: Array.isArray(info.assets) ? (pickAsset(info.assets, process.platform, process.arch, INSTALL_FORMAT) || {}).name || null : undefined });
 ipcMain.handle("roca:update-check", async (_e, force) => {
   const current = app.getVersion();
   let cache = null; try { cache = JSON.parse(readFileSync(UPDATE_CACHE, "utf-8")); } catch {}
@@ -1359,11 +1429,13 @@ async function sha256OfFile(path) {
   for await (const chunk of createReadStream(path)) h.update(chunk);
   return h.digest("hex");
 }
-// the OS treats the file like a browser download: Gatekeeper (quarantine xattr) / SmartScreen (Mark of the Web)
+// the OS treats the file like a browser download: Gatekeeper (quarantine xattr) / SmartScreen (Mark of the Web),
+// in a signed build too — the OS checks the installer itself on top of the sha256 check
 async function markDownloaded(path) {
+  const how = markDownloadedPlan(process.platform);
   try {
-    if (process.platform === "darwin") await exec("/usr/bin/xattr", ["-w", "com.apple.quarantine", `0083;${Math.floor(Date.now() / 1000).toString(16)};AgentDesk;`, path], { timeout: 5000 });
-    else if (process.platform === "win32") writeFileSync(`${path}:Zone.Identifier`, "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://github.com/\r\n");
+    if (how === "quarantine") await exec("/usr/bin/xattr", ["-w", "com.apple.quarantine", `0083;${Math.floor(Date.now() / 1000).toString(16)};AgentDesk;`, path], { timeout: 5000 });
+    else if (how === "zone") writeFileSync(`${path}:Zone.Identifier`, "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://github.com/\r\n");
   } catch {}
 }
 async function downloadUpdateAsset(asset, sha256, onProgress) {
@@ -1435,7 +1507,7 @@ ipcMain.handle("roca:update-download", async () => {
     const j = await fetchLatestRelease();
     const info = releaseInfo(j, Date.now()); releaseUrl = info.url;
     saveUpdateCache(info);
-    const plan = downloadPlan(j, app.getVersion(), process.platform, process.arch);
+    const plan = downloadPlan(j, app.getVersion(), process.platform, process.arch, INSTALL_FORMAT);
     if (plan.upToDate) return { ok: false, upToDate: true, latest: plan.latest };
     if (plan.noAsset) { await shell.openExternal(releaseUrl); return { ok: false, noAsset: true, url: releaseUrl }; }
     const { path, verified, reused } = await downloadUpdateAsset(plan.asset, plan.sha256, p => toRenderer("roca:update-progress", p));
@@ -1443,7 +1515,7 @@ ipcMain.handle("roca:update-download", async () => {
     let size = 0; try { size = statSync(path).size; } catch {}
     const opts = { type: "question", buttons: ["열기", "폴더에서 보기", "취소"], defaultId: 1, cancelId: 2, noLink: true,
       message: `AgentDesk ${plan.latest} 설치 파일을 내려받았습니다`,
-      detail: `${basename(path)} (${(size / 1048576).toFixed(1)} MB)${verified ? "\nSHA-256 확인됨" : "\n릴리스에 SHA-256 값이 없어 무결성을 확인하지 못했습니다"}` };
+      detail: `${basename(path)} (${(size / 1048576).toFixed(1)} MB)${verified ? "\nSHA-256 확인됨" : "\n릴리스에 SHA-256 값이 없어 무결성을 확인하지 못했습니다"}${installerSigned(process.platform, BUILD_SIGNED) ? (IS_MAC ? "\n공증된 설치 파일입니다" : "\n서명된 설치 파일입니다") : ""}` };
     const { response } = mainWindow && !mainWindow.isDestroyed() ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts);
     let action = "cancel", openError;
     if (response === 0) { action = "open"; openError = await shell.openPath(path) || undefined; }
@@ -1511,14 +1583,50 @@ const BRIEF_CFG = join(app.getPath("userData"), "brief-config.json");
 let briefCfg = { enabled: true, time: "08:30" }; try { Object.assign(briefCfg, JSON.parse(readFileSync(BRIEF_CFG, "utf-8"))); } catch {}
 let briefRunning = false;
 function readBrief() { try { return JSON.parse(readFileSync(BRIEF_FILE, "utf-8")); } catch { return null; } }
+// Jira for the briefing: ~/.agentdesk/jira.json (API token, read by brief.mjs itself) when it exists; otherwise the
+// Jira page's OAuth login. Its tokens are encrypted with safeStorage, which only this process can open, so the issues
+// are fetched here and handed over in a 0600 file (AGENTDESK_BRIEF_JIRA) that brief.mjs reads once and deletes.
+const BRIEF_JIRA_JSON = join(homedir(), ".agentdesk", "jira.json"), BRIEF_JIRA_HANDOFF = join(homedir(), ".agentdesk", "brief-jira.json");
+const BRIEF_JQL = "assignee = currentUser() AND statusCategory != Done AND (duedate <= endOfDay() OR priority in (Highest, High)) ORDER BY duedate ASC";
+const oauthConnected = () => { try { return jiraOAuth.connected(); } catch { return false; } };
+async function briefJiraHandoff() {
+  if (existsSync(BRIEF_JIRA_JSON) || !oauthConnected()) return null;
+  let out;
+  try {
+    const r = await jiraOAuth.search(BRIEF_JQL, 15);
+    out = { issues: ((r && r.result && r.result.issues) || []).map(i => ({ key: i.key, summary: i.fields?.summary || "", status: i.fields?.status?.name || "", due: i.fields?.duedate || null, priority: i.fields?.priority?.name || "" })) };
+  } catch (e) { out = { error: String(e && e.message || e).slice(0, 200) }; }
+  try { mkdirSync(dirname(BRIEF_JIRA_HANDOFF), { recursive: true }); writePrivate(BRIEF_JIRA_HANDOFF, JSON.stringify(out)); return BRIEF_JIRA_HANDOFF; } catch { return null; }
+}
+// Helper scripts (recall/: briefing, Slack front desk, session notes) run outside the app bundle: with a system node when
+// there is one, else in an Electron utility process. Never this binary in Node mode — the RunAsNode fuse is off in the
+// macOS / Linux packages (scripts/adhoc-sign.cjs). Returns { stdout, stderr, kill(), onExit(cb(code)), onError(cb) }.
+function runHelper(script, args, { env, cwd, stdout = false, stderr = false } = {}) {
+  const e = { ...(env || process.env), PATH: EXEC_PATH };
+  delete e.ELECTRON_RUN_AS_NODE;
+  const stdio = ["ignore", stdout ? "pipe" : "ignore", stderr ? "pipe" : "ignore"];
+  const sys = nodeRunner(process.execPath);
+  if (sys.system) {
+    const c = spawn(sys.cmd, [script, ...args], { cwd, env: e, stdio });
+    return { stdout: c.stdout, stderr: c.stderr, kill: () => { try { c.kill(); } catch {} }, onExit: cb => c.on("exit", code => cb(code)), onError: cb => c.on("error", cb) };
+  }
+  const c = utilityProcess.fork(script, args, { cwd, env: e, stdio, serviceName: "AgentDesk helper" });
+  return { stdout: c.stdout, stderr: c.stderr, kill: () => { try { c.kill(); } catch {} }, onExit: cb => c.on("exit", code => cb(code)), onError: cb => c.on("error", (type) => cb(new Error(`helper ${type || "error"}`))) };
+}
 function runBrief() {
   if (briefRunning || !RECALL_CLI) return false;
-  const node = nodeRunner(process.execPath).cmd;   // no Node.js on this PC → the app binary in Node mode (ELECTRON_RUN_AS_NODE below)
   briefRunning = true;
-  const child = spawn(node, [join(dirname(RECALL_CLI), "brief.mjs")], { detached: true, stdio: "ignore", env: { ...process.env, PATH: EXEC_PATH, ELECTRON_RUN_AS_NODE: "1" } });
-  child.on("exit", () => { briefRunning = false; if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:brief-updated", readBrief()); });
-  child.on("error", () => { briefRunning = false; });
-  child.unref();
+  briefJiraHandoff().then(handoff => {
+    const env = { ...process.env };
+    delete env.AGENTDESK_BRIEF_JIRA;   // only ever the handoff this run wrote
+    if (handoff) env.AGENTDESK_BRIEF_JIRA = handoff;
+    const dropHandoff = () => { if (handoff) { try { unlinkSync(handoff); } catch {} } };   // brief.mjs deletes it after reading
+    let child;
+    try { child = runHelper(join(dirname(RECALL_CLI), "brief.mjs"), [], { env }); }
+    catch { briefRunning = false; dropHandoff(); return; }
+    child.onExit(() => { briefRunning = false; dropHandoff(); if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:brief-updated", readBrief()); });
+    child.onError(() => { briefRunning = false; dropHandoff(); });
+  }).catch(() => { briefRunning = false; });
   return true;
 }
 function briefTick() {
@@ -1529,7 +1637,7 @@ function briefTick() {
   if (due && (!cur || cur.date !== today)) runBrief();
 }
 setInterval(briefTick, 5 * 60 * 1000); setTimeout(briefTick, 20000);
-ipcMain.handle("roca:brief-read", () => ({ brief: readBrief(), cfg: briefCfg, running: briefRunning, jira: existsSync(join(homedir(), ".agentdesk", "jira.json")) }));
+ipcMain.handle("roca:brief-read", () => ({ brief: readBrief(), cfg: briefCfg, running: briefRunning, jira: existsSync(BRIEF_JIRA_JSON) || oauthConnected() }));
 ipcMain.handle("roca:brief-config", (_e, cfg) => { briefCfg = { ...briefCfg, ...(cfg || {}) }; try { writeFileSync(BRIEF_CFG, JSON.stringify(briefCfg)); } catch {} return briefCfg; });
 ipcMain.handle("roca:brief-now", () => ({ started: runBrief() }));
 
@@ -1540,11 +1648,13 @@ let slackChild = null, slackRestartAt = 0, slackStatus = { configured: false, ru
 function startSlackBridge() {
   slackStatus.configured = existsSync(SLACK_CFG);
   if (!slackStatus.configured || slackChild || !RECALL_CLI || Date.now() < slackRestartAt) return;
-  const node = nodeRunner(process.execPath).cmd;   // no Node.js on this PC → the app binary in Node mode (ELECTRON_RUN_AS_NODE below)
-  const child = spawn(node, [join(dirname(RECALL_CLI), "slack-bridge.mjs")], { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, PATH: EXEC_PATH, ELECTRON_RUN_AS_NODE: "1" } });
+  let child;
+  try { child = runHelper(join(dirname(RECALL_CLI), "slack-bridge.mjs"), [], { stderr: true }); }
+  catch (e) { slackStatus.lastError = e.message; slackRestartAt = Date.now() + 60000; return; }
   slackChild = child; slackStatus.running = true; slackStatus.lastError = "";
-  let err = ""; child.stderr.on("data", d => { err = (err + d.toString()).slice(-400); });
-  child.on("exit", (code) => { slackChild = null; slackStatus.running = false; if (code) slackStatus.lastError = err.trim().split("\n").pop() || `exit ${code}`; slackRestartAt = Date.now() + 60000; });
+  let err = ""; if (child.stderr) child.stderr.on("data", d => { err = (err + d.toString()).slice(-400); });
+  const ended = (code) => { if (slackChild !== child) return; slackChild = null; slackStatus.running = false; if (code) slackStatus.lastError = err.trim().split("\n").pop() || `exit ${code}`; slackRestartAt = Date.now() + 60000; };
+  child.onExit(ended); child.onError(() => ended(1));
 }
 setInterval(startSlackBridge, 30000); setTimeout(startSlackBridge, 8000);
 const inboxSeen = new Set();
@@ -2058,8 +2168,13 @@ ipcMain.handle("roca:team-remote-screen", async (_e, msg) => {
 });
 ipcMain.handle("roca:recall-notes", async (_e, cwd, limit) => {
   if (!RECALL_CLI || !cwd || !existsSync(cwd)) return [];
-  const node = nodeRunner(process.execPath).cmd;   // no Node.js on this PC → the app binary in Node mode (ELECTRON_RUN_AS_NODE below)
-  const run = async (extra) => { const { stdout } = await exec(node, [RECALL_CLI, "list", "--json", "--limit", String(limit || 3), ...extra], { cwd, timeout: 5000, env: { ...process.env, PATH: EXEC_PATH, ELECTRON_RUN_AS_NODE: "1" } }); const arr = JSON.parse(stdout.trim().split("\n").pop() || "[]"); return Array.isArray(arr) ? arr : []; };
+  const run = (extra) => new Promise((resolve, reject) => {
+    const c = runHelper(RECALL_CLI, ["list", "--json", "--limit", String(limit || 3), ...extra], { cwd, stdout: true });
+    let out = ""; c.stdout.on("data", d => { out += d; if (out.length > 1048576) c.kill(); });
+    const timer = setTimeout(() => { c.kill(); reject(new Error("timeout")); }, 5000);
+    c.onError(e => { clearTimeout(timer); reject(e); });
+    c.onExit(code => { clearTimeout(timer); if (code) return reject(new Error(`exit ${code}`)); try { const arr = JSON.parse(out.trim().split("\n").pop() || "[]"); resolve(Array.isArray(arr) ? arr : []); } catch (e) { reject(e); } });
+  });
   try {
     // notes from this very checkout first; other worktrees of the same repo only when it has none
     const own = await run(["--worktree", cwd.split("/").filter(Boolean).pop()]);
@@ -2181,7 +2296,10 @@ ipcMain.handle("orca:version", async () => {
   try { const { stdout } = await exec(orcaBin, ["--version"], { timeout: 8000, env: { ...process.env, PATH: EXEC_PATH } }); return stdout.trim(); }
   catch { return null; }
 });
-ipcMain.handle("orca:hooks-status", () => ({ installed: hooksInstalled(), agents: hooksAgents(), script: HOOK_SCRIPT, events: EVENTS_FILE, permHook: permHookInstalled(), permTimeout: permTimeout(), permAvailable: !IS_WIN, guardHook: guardHookInstalled(), guardAvailable: !IS_WIN }));
+ipcMain.handle("orca:hooks-status", () => ({ installed: hooksInstalled(), agents: hooksAgents(), script: HOOK_SCRIPT, events: EVENTS_FILE, permHook: permHookInstalled(), permTimeout: permTimeout(), permAvailable: safetyHooksAvailable(), guardHook: guardHookInstalled(), guardAvailable: safetyHooksAvailable(),
+  // when the approval / guardrail server last got a request from a hook that passed auth: ms epoch (Date.now()) or null;
+  // lastHookAtBy splits it per hook ({ perm, guard })
+  ...(() => { const by = permServer ? permServer.lastHookAt() : { perm: null, guard: null }; const n = Math.max(by.perm || 0, by.guard || 0); return { lastHookAt: n || null, lastHookAtBy: by }; })() }));
 ipcMain.handle("orca:hooks-install", (_e, agents) => { try { return installHooks(agents); } catch (e) { return { ok: false, error: e.message }; } });
 ipcMain.handle("orca:hooks-uninstall", (_e, agents) => { try { return uninstallHooks(agents); } catch (e) { return { ok: false, error: e.message }; } });
 const TEAMS_FILE = join(ROCA_DIR, "teams.json");
@@ -2253,7 +2371,62 @@ ipcMain.handle("orca:hooks-recent", () => {
   } catch { return []; }
 });
 
+// ── Start at login (Settings toggle) ──
+// macOS / Windows: the OS login item; Linux: ~/.config/autostart/agentdesk.desktop (XDG autostart) pointing at the
+// AppImage (APPIMAGE) or the installed binary. A dev run or the Windows portable exe only reports (supported: false).
+const AUTOSTART_DESKTOP = join(homedir(), ".config", "autostart", "agentdesk.desktop");
+// a dev run would register Electron itself; the Windows portable exe runs from a temporary copy that is gone next login
+const autostartSupported = () => app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE;
+function autostartEnabled() {
+  if (IS_LINUX) return existsSync(AUTOSTART_DESKTOP);
+  try { return !!app.getLoginItemSettings().openAtLogin; } catch { return false; }
+}
+ipcMain.handle("roca:autostart", (_e, on) => {
+  try {
+    if (typeof on === "boolean") {
+      if (!autostartSupported()) return { ok: false, error: "not supported by this build", enabled: autostartEnabled(), supported: false };
+      if (IS_LINUX) {
+        if (on) { mkdirSync(dirname(AUTOSTART_DESKTOP), { recursive: true }); writeFileSync(AUTOSTART_DESKTOP, globalThis.AgentDeskDesktop.linuxAutostartDesktop(process.env.APPIMAGE || process.execPath)); }
+        else { try { unlinkSync(AUTOSTART_DESKTOP); } catch {} }
+      } else app.setLoginItemSettings({ openAtLogin: on });
+    }
+    return { ok: true, enabled: autostartEnabled(), supported: autostartSupported() };
+  } catch (e) { return { ok: false, error: e.message, enabled: autostartEnabled(), supported: autostartSupported() }; }
+});
+// ── Global shortcuts (Settings toggle, off until the user turns it on) ──
+// ⌘/Ctrl+Shift+D: dock mode on / off; ⌘/Ctrl+Shift+A: open the most urgent approval request. main only shows the
+// window and sends roca:shortcut { action }; the renderer runs the same code its in-window keys run. A key another app
+// already holds is skipped quietly (registered[action] = false).
+const SHORTCUTS_CFG = join(app.getPath("userData"), "shortcuts.json");
+let shortcutsCfg = (() => { try { return globalThis.AgentDeskDesktop.normalizeShortcutCfg(JSON.parse(readFileSync(SHORTCUTS_CFG, "utf-8"))); } catch { return globalThis.AgentDeskDesktop.normalizeShortcutCfg(null); } })();
+let shortcutsRegistered = {};
+function onGlobalShortcut(action) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!mainWindow.isVisible()) mainWindow.show();
+  if (action === "perm-open") mainWindow.focus();
+  toRenderer("roca:shortcut", { action });
+}
+function applyShortcuts() {
+  try { globalShortcut.unregisterAll(); } catch {}
+  shortcutsRegistered = {};
+  if (!shortcutsCfg.enabled) return;
+  for (const [action, accel] of Object.entries(globalThis.AgentDeskDesktop.SHORTCUTS)) {
+    try { shortcutsRegistered[action] = globalShortcut.register(accel, () => onGlobalShortcut(action)); } catch { shortcutsRegistered[action] = false; }
+  }
+}
+const shortcutsView = () => ({ ok: true, enabled: shortcutsCfg.enabled, keys: { ...globalThis.AgentDeskDesktop.SHORTCUTS }, registered: { ...shortcutsRegistered } });
+ipcMain.handle("roca:shortcuts", (_e, cfg) => {
+  if (cfg && typeof cfg === "object" && typeof cfg.enabled === "boolean") {
+    shortcutsCfg = { enabled: cfg.enabled };
+    try { writeFileSync(SHORTCUTS_CFG, JSON.stringify(shortcutsCfg)); } catch (e) { return { ...shortcutsView(), ok: false, error: e.message }; }
+    applyShortcuts();
+  }
+  return shortcutsView();
+});
+app.on("will-quit", () => { try { globalShortcut.unregisterAll(); } catch {} });
+
 app.on("ready", () => {
+  if (!SINGLE_INSTANCE) return;   // the second copy exits (app.exit above) without touching anything
   // ~/.roca holds the event log (tool inputs), settings backups and the approval token: this user only
   if (existsSync(ROCA_DIR)) { ensurePrivateDir(ROCA_DIR); for (const f of [EVENTS_FILE, ...readdirSync(ROCA_DIR).filter(n => /settings\.backup-\d+\.json$/.test(n)).map(n => join(ROCA_DIR, n))]) { try { chmodSync(f, 0o600); } catch {} } }
   createWindow();
@@ -2267,10 +2440,11 @@ app.on("ready", () => {
   } catch (e) { console.log("[hooks] extend failed", e.message); }
   startEventsWatch();
   // widget permission approval is on: keep its hook script current and open the decision server
-  try { if (permHookInstalled()) { const sh = permHookSh(permTimeout()); if (readFileSync(PERM_HOOK_SCRIPT, "utf-8") !== sh) { writeFileSync(PERM_HOOK_SCRIPT, sh); chmodSync(PERM_HOOK_SCRIPT, 0o700); } startPermServer(); } } catch (e) { console.log("[perm] start failed", e.message); }
+  try { if (permHookInstalled()) { writeSafetyHook("perm", true); syncSafetyHookCommand("perm"); startPermServer(); } } catch (e) { console.log("[perm] start failed", e.message); }
   // guardrail is on: same — keep its hook script current and open the (shared) socket server
-  try { if (guardHookInstalled()) { const sh = guardHookScript(); if (readFileSync(GUARD_HOOK_SCRIPT, "utf-8") !== sh) { writeFileSync(GUARD_HOOK_SCRIPT, sh); chmodSync(GUARD_HOOK_SCRIPT, 0o700); } startPermServer(); } } catch (e) { console.log("[guard] start failed", e.message); }
+  try { if (guardHookInstalled()) { writeSafetyHook("guard", true); syncSafetyHookCommand("guard"); startPermServer(); } } catch (e) { console.log("[guard] start failed", e.message); }
   createTray();
+  applyShortcuts();
 });
 
 app.on("activate", () => {

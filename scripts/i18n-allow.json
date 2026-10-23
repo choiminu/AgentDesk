@@ -1,0 +1,12 @@
+{
+  "about": "Korean text that scripts/i18n-check.mjs lets stay in English mode. Keep it short: translate instead whenever the text reaches a user. strings: exact runs removed before the check; patterns: regexes for whole pieces.",
+  "strings": {
+    "language name shown in its own language (the language picker)": ["한국어"],
+    "OFFICE_DEMO screenshot fixtures (ROCA demo mode only, never shown to users)": [
+      "매입", "코드베이스 탐색", "캐시 전략 결정", "## 목표", "[갱신 v2]", "범위 축소: Redis만 평가", "Redis 캐시 어댑터 초안 구현", "단위 테스트 통과",
+      "⏺ 인라인 답변 테스트입니다. 다음 작업으로 무엇을 진행할까요?", "1. 대기 세션 재알림", "선택 필요 상태가 오래되면 단계별로 다시 알림",
+      "2. 일일 리포트", "세션별 작업 시간·완료 수를 하루 단위로 정리", "3. 레이아웃 2단계", "서버실·집중 부스·복도 표지"
+    ]
+  },
+  "patterns": {}
+}

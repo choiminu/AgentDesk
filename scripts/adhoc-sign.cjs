@@ -1,4 +1,4 @@
-// electron-builder afterPack hook (macOS only): ad-hoc sign the whole bundle so Gatekeeper treats it as an
+// Called from scripts/after-pack.cjs after the fuses are set (macOS only): ad-hoc sign the whole bundle so Gatekeeper treats it as an
 // unidentified-developer app ("Open Anyway" works) instead of a damaged one. Without a Developer ID this is the
 // best free option; a real identity in CSC_LINK/CSC_NAME makes electron-builder sign instead and this becomes a no-op.
 const { execFileSync } = require("node:child_process");

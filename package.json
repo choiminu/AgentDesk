@@ -12,10 +12,11 @@
     "dist:linux": "electron-builder --linux --publish never",
     "dist:win": "electron-builder --win --publish never",
     "dist:all": "electron-builder -mwl --publish never",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "icon": "node scripts/make-icon.mjs"
   },
-  "dependencies": {},
   "devDependencies": {
+    "@electron/fuses": "^1.8.0",
     "electron": "^36.0.0",
     "electron-builder": "^26.0.0"
   },
@@ -33,13 +34,16 @@
           ]
         }
       ],
-      "icon": null,
+      "icon": "assets/icon.png",
       "extendInfo": {
-        "NSLocalNetworkUsageDescription": "팀 공유를 켜면 사무실 네트워크에 있는 팀원 PC에 접속해 팀원의 에이전트 세션 상태를 가져옵니다. 이 권한이 없으면 팀원 세션이 보이지 않습니다."
+        "NSLocalNetworkUsageDescription": "팀 공유를 켜면 사무실 네트워크에 있는 팀원 PC에 접속해 팀원의 에이전트 세션 상태를 가져옵니다. 이 권한이 없으면 팀원 세션이 보이지 않습니다.",
+        "NSAppleEventsUsageDescription": "AgentDesk switches to and types into the terminal (iTerm2 / Terminal) that runs an agent session when you ask it to."
       },
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "gatekeeperAssess": false,
-      "identity": null
+      "type": "distribution"
     },
     "dmg": {
       "title": "AgentDesk",
@@ -91,13 +95,14 @@
         {
           "target": "deb",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ],
       "category": "Development",
       "maintainer": "choiminu",
-      "icon": null
+      "icon": "assets/icon.png"
     },
     "win": {
       "target": [
@@ -114,14 +119,14 @@
           ]
         }
       ],
-      "icon": null
+      "icon": "assets/icon.png"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true
     },
-    "afterPack": "scripts/adhoc-sign.cjs"
+    "afterPack": "scripts/after-pack.cjs"
   },
   "repository": {
     "type": "git",

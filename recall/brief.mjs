@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Morning briefing: read yesterday's session notes (open questions, dead ends), hook activity and — when
-// ~/.agentdesk/jira.json exists — Jira issues due today, then ask Claude (Haiku) for a short briefing the
+// ~/.agentdesk/jira.json exists (or the app passed issues from its Jira OAuth login) — Jira issues due today, then ask Claude (Haiku) for a short briefing the
 // office writes on its whiteboard. Output: ~/.agentdesk/briefing.json
 import { notes, close, mask, log, HOME_DIR } from "./lib.mjs";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -30,7 +30,16 @@ function hookStats(sinceMs) {
   const byRepo = {}; for (const s of sessions.values()) { const k = (s.cwd || "").split("/").filter(Boolean).pop() || "?"; byRepo[k] = (byRepo[k] || 0) + 1; }
   return { sessions: sessions.size, prompts: [...sessions.values()].reduce((a, s) => a + s.prompts, 0), tools: [...sessions.values()].reduce((a, s) => a + s.tools, 0), asks, byRepo };
 }
+// issues the AgentDesk app fetched with the Jira page's OAuth login (its tokens are only readable inside the app):
+// a 0600 file named by AGENTDESK_BRIEF_JIRA, read once and deleted
+function jiraFromApp() {
+  const f = process.env.AGENTDESK_BRIEF_JIRA; if (!f) return null;
+  try { const j = JSON.parse(readFileSync(f, "utf-8")); return Array.isArray(j.issues) ? { issues: j.issues } : { error: String(j.error || "Jira OAuth failed") }; }
+  catch { return null; }
+  finally { try { unlinkSync(f); } catch {} }
+}
 async function jiraDue() {
+  const fromApp = jiraFromApp(); if (fromApp) return fromApp;
   if (!existsSync(JIRA_CFG)) return null;
   let cfg; try { cfg = JSON.parse(readFileSync(JIRA_CFG, "utf-8")); } catch { return { error: "jira.json is not valid JSON" }; }
   if (!cfg.baseUrl || !cfg.email || !cfg.token) return { error: "jira.json needs baseUrl, email, token" };
