@@ -50,7 +50,7 @@
 //   Fit: 56 px tiles when everything fits, else 40 px, else 40 px with a "+N" pile; teammates at most MAX_PEERS (+N).
 //   Folding keeps the most urgent tiles (and the selected one) and keeps their original order.
 //
-//   stripHeight(size, ticker) → the bar's height for a size (STRIP_HEIGHTS) plus TICKER_H when the summary line shows
+//   stripHeight(size) → the bar's height for a size (STRIP_HEIGHTS)
 //   dockPickDisplay({ displays: [{ id, workArea }], barId, hereId, primaryId, remembered }) → { id, workArea, rem }
 //     which display the bar goes on and the remembered spot there. remembered: { [displayId]: { cx, y, at } } (an old
 //     single { cx, y } counts for the display it lies on). barId (the display the bar is on now, once placed) keeps
@@ -136,10 +136,10 @@ const RANK = { ask: 0, err: 1, input: 2, run: 3, done: 4 };
 const TILE = { big: 56, small: 40, gap: 4, sep: 9 };   // big: the character with its name beneath; small: the character only
 // tile sizes per dock size (the "도크 크기" setting): sm has no named tiles, lg starts at 64 px
 const TILE_SIZES = { sm: { big: 40, small: 40 }, md: { big: TILE.big, small: TILE.small }, lg: { big: 64, small: 40 } };
-const STRIP_HEIGHTS = { sm: 60, md: 72, lg: 84 }, TICKER_H = 14;
+const STRIP_HEIGHTS = { sm: 60, md: 72, lg: 84 };
 const MAX_PEERS = 8, PEER_GROUP_AT = 6;
-const STRIP_MIN = 56, STRIP_MAX = STRIP_HEIGHTS.lg + TICKER_H + 2, STRIP_DEFAULT = 72;
-const stripHeight = (size, ticker) => (STRIP_HEIGHTS[size] || STRIP_HEIGHTS.md) + (ticker ? TICKER_H : 0);
+const STRIP_MIN = 56, STRIP_MAX = STRIP_HEIGHTS.lg + 2, STRIP_DEFAULT = 72;
+const stripHeight = size => STRIP_HEIGHTS[size] || STRIP_HEIGHTS.md;
 const MIN_WIDTH = 320, MAX_FRAC = 0.9, MARGIN = 6;
 const NAME_MAX = 40;
 // C0 / DEL / C1 controls, bidi marks, embeddings, overrides and isolates, BOM (as core/inbox.js)
@@ -710,7 +710,7 @@ function permAllowable(sm) {
   return !!v.trim() && !/[\r\n]/.test(v) && [...v].length <= PERM_LINE_MAX;
 }
 
-const AgentDeskDock = { dropSafeText, dragStep, DRAG_PX, orderSessions, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, TICKER_H, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
+const AgentDeskDock = { dropSafeText, dragStep, DRAG_PX, orderSessions, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
   POP, SCREEN, popWidth, popExtra, bubbleHeight, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame,
   numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows };
 root.AgentDeskDock = AgentDeskDock;

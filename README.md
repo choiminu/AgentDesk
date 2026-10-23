@@ -50,13 +50,12 @@ The ▭ button in the header or ⌘⇧D (Windows and Linux: Ctrl+Shift+D) turns 
 - **Done bubble**: when one of your sessions finishes, the first line of its last answer (masked, 80 characters) shows for 8 seconds.
 - **Scope of [Allow]**: the dock offers [Allow] only for a Bash command or a short request that fits on one line. File edits and truncated requests go through [View in panel].
 - **Clicks and shortcuts**: a click switches to the session's real terminal; a double-click goes to its card in the panel. ⌘1 to ⌘9 (Windows and Linux: Ctrl+1 to 9) switch to the terminal of your n-th tile from the left. These keys work while the widget window has focus. With ⚙ Settings → Other → **Global shortcuts** on (off by default, because the keys may clash with other apps), ⌘⇧D toggles the dock and ⌘⇧A (Windows and Linux: Ctrl+Shift+A) opens the most urgent approval request from any app.
-- **Summary ticker**: a line along the top of the bar with what each of your sessions is doing now. It scrolls slowly when long and stops while you point at it.
 - **Do not disturb (🔕)**: stops bubbles, toasts and desktop notifications; only tile colours and ! badges remain.
 - **Order and pinning**: drag one of your tiles between two others to save the order; that session is pinned. Right-click or long-press a tile for "Unpin".
 - **New session (＋)**: the ＋ tile at the end of your tiles creates a Claude worktree session from an Orca repository and a name.
 - **Drag and drop**: drop text, a URL or a file from another app onto one of your tiles that is waiting for input; after a masked preview, [Send] types it into that session. Files are sent as paths only, and text starting with `/`, `!` or `#` is not sent.
 - **Position**: the bar position is remembered per monitor. With "Hide when the pointer is away", the bar slides to the edge 2 s after the pointer leaves and only 8 px stay visible.
-- **Settings**: ⚙ Settings → Appearance has start in dock mode, dock size (small, normal, large), summary ticker, auto-hide, done bubbles, dock animation, open the terminal window on hover, and the fade level.
+- **Settings**: ⚙ Settings → Appearance has start in dock mode, dock size (small, normal, large), auto-hide, done bubbles, dock animation, open the terminal window on hover, and the fade level (off by default).
 
 ## Support by agent
 
