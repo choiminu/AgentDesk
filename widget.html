@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-Xryzex6TEwqErvlPkhSy0+MmzP0RrgQ5T6w9w6nw2B0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-i9d7gheb0ncFT9Ke1D0MuY9ZzR4ARWIeXfvn++jvFBg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2243,6 +2243,27 @@ Object.assign(I18N, {
   '팀원 세션이 이 티켓을 작업 중입니다': 'A teammate\'s session is working on this ticket', '팀원이 작업 중인 티켓': 'A teammate is on this ticket', '그래도 배치': 'Dispatch anyway',
 });
 Object.assign(I18N, {
+  // new session from a folder (dock "+" without Orca), usage without Orca (status line relay)
+  '폴더': 'Folder',
+  '폴더 선택…': 'Choose folder…',
+  '에이전트': 'Agent',
+  '터미널에서 열기': 'Open in terminal',
+  '폴더를 선택하세요': 'Choose a folder',
+  '터미널 열기 실패': 'Could not open a terminal',
+  '사용량 표시 설치 실패': 'Could not set up usage display',
+  '사용량 표시를 켰습니다. Claude Code 세션이 다음 응답을 받으면 한도 막대가 보입니다': 'Usage display is on. The limit bars appear after a Claude Code session gets its next response',
+  '사용량 표시를 껐습니다. 원래 status line 설정으로 되돌렸습니다': 'Usage display is off. Your original status line setting is back',
+  'Orca 없이 사용량(5시간·주간 한도)을 표시할까요?': 'Show plan usage (5-hour and weekly limits) without Orca?',
+  '켜면 ~/.claude/settings.json의 statusLine을 AgentDesk 중계 스크립트로 바꿉니다. 원래 status line은 그대로 실행되어 보이고, 설정은 ~/.roca/에 백업합니다. 끄면 원래 설정으로 되돌립니다. Pro·Max 구독에서 세션이 응답을 받은 뒤부터 보입니다.': 'Turning it on points statusLine in ~/.claude/settings.json at an AgentDesk relay script. Your original status line still runs and shows, and the settings file is backed up to ~/.roca/. Turning it off restores the original. Values appear on Pro / Max plans once a session gets a response.',
+  'Orca 없이 사용량 표시': 'Usage without Orca',
+  '켜져 있습니다. Claude Code status line 입력의 5시간·주간 한도 사용률을 ~/.roca/usage.json으로 받아 한도 막대에 씁니다(Orca 값이 있으면 Orca 우선). 원래 status line은 그대로 실행됩니다. 끄면 원래 설정으로 되돌립니다.': 'On. The 5-hour and weekly limit usage in Claude Code\'s status line input reaches the limit bars through ~/.roca/usage.json (Orca values win when present). Your original status line still runs. Turning it off restores the original setting.',
+  '꺼짐 — status line 설정이 그 뒤 바뀌어 중계가 동작하지 않습니다. 켜면 지금 설정을 보관하고 다시 중계합니다.': 'Off — the status line setting was changed since, so the relay no longer runs. Turning it on keeps the current setting and relays again.',
+  '~/.claude/settings.json을 읽을 수 없습니다.': '~/.claude/settings.json cannot be read.',
+  'Node.js가 필요합니다 (macOS·Linux: /opt/homebrew/bin, /usr/local/bin 또는 PATH의 node. Windows 휴대용 빌드: Node.js를 설치하거나 설치형 빌드를 쓰세요).': 'Needs Node.js (macOS / Linux: node in /opt/homebrew/bin, /usr/local/bin or PATH. Windows portable build: install Node.js or use the installer build).',
+  '꺼져 있습니다. 켜면 ~/.claude/settings.json의 statusLine을 AgentDesk 중계 스크립트로 바꿔 Orca 없이도 한도 막대를 표시합니다(원래 status line은 그대로 실행, ~/.roca/에 백업). Pro·Max 구독에서만 값이 있습니다.': 'Off. Turning it on points statusLine in ~/.claude/settings.json at an AgentDesk relay script so the limit bars show without Orca (your original status line still runs; backup in ~/.roca/). Values exist on Pro / Max plans only.',
+  '~/.claude/settings.json의 statusLine을 AgentDesk 중계 스크립트로 바꿉니다. 원래 status line 명령은 중계 스크립트가 같은 입력으로 실행해 그대로 보여 주고, 설정 파일은 ~/.roca/에 백업합니다. 중계 스크립트는 한도 사용률(rate_limits)과 세션 id만 ~/.roca/usage.json에 씁니다. 끄면 원래 설정으로 되돌립니다. 진행할까요?': 'This points statusLine in ~/.claude/settings.json at an AgentDesk relay script. The relay runs your original status line command with the same input and shows its output unchanged; the settings file is backed up to ~/.roca/. The relay writes only the limit usage (rate_limits) and the session id to ~/.roca/usage.json. Turning it off restores the original. Continue?',
+});
+Object.assign(I18N, {
   // dock mode — '도크: ' keys keep short words (세션, 완료, 거부 …) out of the phrase dictionary; Korean shows them without it
   '도크 모드 (⌘⇧D / Ctrl+Shift+D)': 'Dock mode (⌘⇧D / Ctrl+Shift+D)', '도크 모드': 'Dock mode', '도크로 전환': 'Switch to dock',
   '화면 아래 가장자리에 붙는 가로 띠로 세션 상태를 봅니다. 헤더의 ▭ 버튼이나 ⌘⇧D (Windows·Linux: Ctrl+Shift+D)로 전환하고, 띠의 ▣ 버튼으로 패널에 돌아옵니다.': 'Watch your sessions in a thin bar on the bottom edge of the screen. Switch with the ▭ button in the header or ⌘⇧D (Windows / Linux: Ctrl+Shift+D); the bar\'s ▣ button brings the panel back.',
@@ -2699,7 +2720,12 @@ async function fetchData() {
     if (viaOrca && dataMode === 'auto') orcaProbe = orcaAvailable;   // auto mode: fall back to hooks once Orca fails
     const wts = ps?.result?.worktrees || [];
     const ts = terms?.result?.terminals || [];
-    const rateLimits = rl?.result?.rateLimits || {};
+    let rateLimits = rl?.result?.rateLimits || {};
+    // no plan limits from Orca: the status line relay's reading (~/.roca/usage.json), when the user turned it on
+    if (!rateLimits.claude && slState === 'on') {
+      const u = AgentDeskUsage.fromStatusline(await window.orca.statuslineUsage().catch(() => null), Date.now());
+      if (u) rateLimits = u;
+    }
 
     handles.clear();
     const tMap = new Map();
@@ -2721,7 +2747,7 @@ async function fetchData() {
     for (const p of procOnly) if (screenReadable(p.handle)) handles.set(p.id, p.handle);
     showOrcaError(!orcaAvailable ? (hooksEnabled || !viaOrca ? null : ps.error) : (orcaVersionWarning || null));
     showModeBanner(orcaAvailable, hookOnly.length, ttys.filter(x => x.drivable !== false).length, procOnly.length);
-    $('tokenBars').style.display = orcaAvailable ? '' : 'none';
+    $('tokenBars').style.display = orcaAvailable || rateLimits.claude ? '' : 'none';
 
     await refreshScreenStatuses();
 
@@ -2841,6 +2867,7 @@ async function refreshHooksStatus() {
     btn.classList.toggle('on', hooksEnabled);
     btn.textContent = hooksEnabled ? '정확 감지 켜짐' : '정확 감지 꺼짐';
   } catch {}
+  await refreshStatuslineStatus();
 }
 // the one install path (settings switch, onboarding, consent banner): main backs up and merges the agents' settings
 // files; then recent events replay so sessions with hook history show at once. false (toast shown) when it failed.
@@ -3278,7 +3305,9 @@ function dockDraw() {
   const full = AgentDeskDock.dockModel({ sessions: mine, peers, inbox, selectedId: dockSel, size: dockCfg.size });
   if (dockSel && !full.selected) dockSel = '';
   if (dockAddWant) {   // the session "+" just made: select its tile when it shows up
-    const hit = Date.now() - dockAddWant.at > 180000 ? null : full.mine.find(x => !x.bundle && ((dockAddWant.handle && handles.get(x.id) === dockAddWant.handle) || x.name === dockAddWant.name));
+    const w = dockAddWant, cwdOf = id => String((sessions.find(s => s.id === id) || {}).cwd || '').replace(/(.)[\\/]+$/, '$1');
+    const hit = Date.now() - w.at > 180000 ? null : full.mine.find(x => !x.bundle && (w.cwd ? !w.before.has(x.id) && cwdOf(x.id) === w.cwd
+      : ((w.handle && handles.get(x.id) === w.handle) || x.name === w.name)));
     if (hit) dockSel = hit.key;
     if (hit || Date.now() - dockAddWant.at > 180000) dockAddWant = null;
   }
@@ -4208,7 +4237,7 @@ function dockDoneSync() {
 // ── panels the user opens in the room above the bar (#dock-pop): the "+" form and a tile's menu. One at a time;
 //    Esc, a click outside it or leaving the dock closes it; bubbles and hover windows wait while it is open ──
 let dockPop = null;   // { kind: 'add' | 'menu', key, repos }
-let dockAddWant = null;   // { name, handle, at }: the session "+" made, selected when its tile shows up
+let dockAddWant = null;   // { name, handle, at } (Orca) or { cwd, before: ids then, at } (folder): the session "+" made, selected when its tile shows up
 function dockPopOpen(kind, key, html) {
   dockTermClose(true); dockTipHide(); dockUsageHide();
   dockPop = { kind, key };
@@ -4233,6 +4262,7 @@ let dockAddBusy = false;   // a worktree being made: the panel only says so unti
 async function dockAddOpen() {
   if (dockPop && dockPop.kind === 'add') { dockPopClose(); return; }
   if (dockAddBusy) { dockPopOpen('add', 'add:me', `<div class="tp-head"><b>${esc(dockT('도크: 새 세션'))}</b></div><div class="dp-msg" id="dock-add-msg">${esc(t('워크트리 생성 중… (최대 3분)'))}</div>`); return; }
+  if (!orcaAvailable) { dockAddFolderOpen(); return; }   // no Orca CLI answering: a session from a folder instead
   let repos = [];
   try { const r = await window.orca.repos(); repos = (r?.result?.repos || []).filter(x => x && x.id).map(x => ({ value: `id:${x.id}`, label: String(x.displayName || x.path || x.id) })); } catch {}
   if (!repos.length) {
@@ -4275,6 +4305,74 @@ async function dockAddCreate() {
   dockCfg.addRepo = repo; dockSave();
   if (dockPop && dockPop.kind === 'add') dockPopClose();   // the form, or the "생성 중" notice opened meanwhile
   dockHint(`＋ ${dockT('도크: 새 세션')}: ${name}`, '', true);
+  fetchData();
+}
+// "+" without Orca (the last poll got no answer from the Orca CLI: not installed or not running): open the agent CLI
+// in a new terminal window in a folder (main.mjs roca:open-session — the agent from a fixed list, the folder checked
+// there). Folders: the ones opened here last (roca-new-session-dirs, newest first, 8 at most), then my sessions' cwd
+// (hook and detected cards); "폴더 선택…" adds one from the system dialog
+const NEW_DIRS_KEY = 'roca-new-session-dirs';
+function newSessionDirs() {
+  let saved = [];
+  try { const a = JSON.parse(localStorage.getItem(NEW_DIRS_KEY) || '[]'); if (Array.isArray(a)) saved = a.filter(x => typeof x === 'string' && x); } catch {}
+  const out = [], seen = new Set();
+  const add = d => { const v = String(d || '').replace(/(.)[\\/]+$/, '$1'); if (v && !seen.has(v)) { seen.add(v); out.push(v); } };
+  saved.forEach(add);
+  [...sessions].sort((a, b) => (b.time || 0) - (a.time || 0)).forEach(x => add(x.cwd));
+  return out;
+}
+function newSessionDirSave(dir) {
+  let a = [];
+  try { a = JSON.parse(localStorage.getItem(NEW_DIRS_KEY) || '[]'); if (!Array.isArray(a)) a = []; } catch {}
+  a = [dir, ...a.filter(x => x !== dir)].slice(0, 8);
+  try { localStorage.setItem(NEW_DIRS_KEY, JSON.stringify(a)); } catch {}
+}
+// claude always; codex / gemini when this PC has them (hook settings detection, or the onboarding check)
+function newSessionAgents() {
+  return ['claude', ...['codex', 'gemini'].filter(a => (hooksAgents[a] && hooksAgents[a] !== 'absent') || !!(onboardEnv && onboardEnv.agents && onboardEnv.agents[a]))];
+}
+const AGENT_LABEL = { claude: 'Claude Code', codex: 'Codex CLI', gemini: 'Gemini CLI' };
+let dockAddPicked = '';   // the folder "폴더 선택…" returned, listed first until a session opens there
+function dockAddFolderOpen() {
+  if (!dockOn) return;
+  const picked = dockAddPicked, dirs = newSessionDirs(), agents = newSessionAgents();
+  if (picked) { const i = dirs.indexOf(picked); if (i >= 0) dirs.splice(i, 1); dirs.unshift(picked); }
+  const opt = d => `<option value="${esc(d)}" title="${esc(d)}">${esc(d.split(/[\\/]/).filter(Boolean).pop() || d)}</option>`;
+  const el = dockPopOpen('add', 'add:me', `<div class="tp-head"><b>${esc(dockT('도크: 새 세션'))}</b></div>
+    <label>${esc(t('폴더'))}<select id="dock-add-dir">${dirs.map(opt).join('')}</select></label>
+    <div class="dp-row"><button id="dock-add-pick">${esc(t('폴더 선택…'))}</button></div>
+    <label>${esc(t('에이전트'))}<select id="dock-add-agent">${agents.map(a => `<option value="${a}">${esc(AGENT_LABEL[a])}</option>`).join('')}</select></label>
+    <div class="dp-row"><button class="primary" id="dock-add-go">${esc(t('터미널에서 열기'))}</button><span class="dp-msg" id="dock-add-msg">${dirs.length ? '' : esc(t('폴더를 선택하세요'))}</span></div>`);
+  dockPop.dirs = dirs;
+  if (picked) el.querySelector('#dock-add-dir').value = picked;
+  el.querySelector('#dock-add-pick').onclick = async () => {
+    const d = await window.orca.pickFolder(el.querySelector('#dock-add-dir').value || undefined).catch(() => null);
+    if (!d) return;
+    // the form is drawn again with the folder first (it may have closed while the system dialog had focus)
+    dockAddPicked = d;
+    if (dockPop && dockPop.kind === 'add') dockPopClose();
+    dockAddFolderOpen();
+  };
+  el.querySelector('#dock-add-go').onclick = () => dockAddFolderGo();
+}
+async function dockAddFolderGo() {
+  const p = dockPop; if (!p || p.kind !== 'add' || !p.dirs) return;
+  const el = $('dock-pop'), msg = el.querySelector('#dock-add-msg'), go = el.querySelector('#dock-add-go');
+  const dir = el.querySelector('#dock-add-dir').value, agent = el.querySelector('#dock-add-agent').value;
+  if (!dir || !p.dirs.includes(dir)) { msg.textContent = t('폴더를 선택하세요'); return; }   // only a listed / picked folder
+  go.disabled = true;
+  const before = new Set(sessions.map(x => x.id));
+  const r = await window.orca.openSession(dir, agent).catch(err => ({ ok: false, error: err.message }));
+  if (!r || !r.ok) {
+    const why = `⚠ ${t('터미널 열기 실패')}: ${r && r.error ? r.error : ''}`;
+    if (dockPop === p) { go.disabled = false; msg.textContent = why; }
+    dockHint(why, 'err', true);
+    return;
+  }
+  newSessionDirSave(dir); dockAddPicked = '';
+  dockAddWant = { cwd: dir, before, at: Date.now() };   // its hook / detected card has this cwd: selected when it shows up
+  if (dockPop === p) dockPopClose();
+  dockHint(`＋ ${dockT('도크: 새 세션')}: ${dir.split(/[\\/]/).filter(Boolean).pop() || dir} (${r.app})`, '', true);
   fetchData();
 }
 // a tile's menu (right click / long press): "고정 해제" takes it out of the drag order and unpins it; "도크에서 숨기기"
@@ -5023,9 +5121,47 @@ async function hooksConsentAnswer(v, btn) {
   else hooksConsentLater = true;
   fetchData();
 }
+// "usage without Orca" (the Claude Code status line relay, main.mjs installStatusline): slState 'on' | 'off' |
+// 'replaced' (the user set another statusLine after we installed it: off, and not offered again) | 'error'.
+// Offered once on the dashboard to a user without Orca whose hooks are on — so never together with the hooks consent
+// above, which only shows while hooks are off. Stored answers as roca-hooks-consent; nothing is written before [켜기].
+let slState = 'off', slAvailable = true, slConsentLater = false;
+async function refreshStatuslineStatus() {
+  try { const r = await window.orca.statuslineStatus(); slState = r.state || 'off'; slAvailable = r.available !== false; } catch {}
+}
+function slConsent() { try { return localStorage.getItem('roca-statusline-consent') || ''; } catch { return ''; } }
+function setSlConsent(v) { try { localStorage.setItem('roca-statusline-consent', v); } catch {} }
+function statuslineConsentDue(orcaOk) {
+  if (orcaOk || !hooksEnabled || hooksAgents.claude !== 'on' || !slAvailable || slState !== 'off') return false;
+  if (slConsentLater || slConsent() === 'done' || slConsent() === 'never') return false;
+  return $('onboard').hidden;
+}
+// the one install path (settings switch, consent banner); false (toast shown) when it failed
+async function enableStatusline() {
+  const r = await window.orca.statuslineInstall().catch(e => ({ ok: false, error: e.message }));
+  if (!r || r.ok === false) { showInAppToast(`${t('사용량 표시 설치 실패')}: ${r ? r.error : ''}`, 'error'); return false; }
+  setSlConsent('done');
+  await refreshStatuslineStatus();
+  showInAppToast(t('사용량 표시를 켰습니다. Claude Code 세션이 다음 응답을 받으면 한도 막대가 보입니다'));
+  return true;
+}
+async function disableStatusline() {
+  const r = await window.orca.statuslineUninstall().catch(e => ({ ok: false, error: e.message }));
+  if (!r || r.ok === false) { showInAppToast(`${t('작업 실패')}: ${r ? r.error : ''}`, 'error'); return false; }
+  await refreshStatuslineStatus();
+  showInAppToast(t('사용량 표시를 껐습니다. 원래 status line 설정으로 되돌렸습니다'));
+  return true;
+}
+async function statuslineConsentAnswer(v, btn) {
+  if (v === 'on') { btn.disabled = true; if (!await enableStatusline()) { btn.disabled = false; return; } }
+  else if (v === 'never') setSlConsent('never');
+  else slConsentLater = true;
+  fetchData();
+}
 function showModeBanner(orcaOk, hookOnlyCount, paneCount, detectedCount) {
   let el = $('mode-banner');
   const consent = hooksConsentDue();
+  const slAsk = !consent && statuslineConsentDue(orcaOk);
   if (orcaOk && !consent) { if (el) el.remove(); return; }
   if (!el) {
     el = document.createElement('div'); el.id = 'mode-banner'; el.className = 'mode-banner';
@@ -5035,11 +5171,14 @@ function showModeBanner(orcaOk, hookOnlyCount, paneCount, detectedCount) {
   let html;
   if (consent) html = `<b>${esc(t('정확 감지(훅)를 켤까요?'))}</b><span>${detected}${esc(t('켜면 설치된 에이전트 CLI의 설정 파일(~/.claude/settings.json 등)에 위젯 훅을 추가해 세션 상태를 이벤트로 정확히 받습니다. 기존 훅은 그대로 두고 ~/.roca/에 백업합니다.'))}</span>`
     + `<div class="mode-banner-btns"><button data-consent="on">${esc(t('켜기'))}</button><button class="ghost" data-consent="later">${esc(t('나중에'))}</button><button class="ghost" data-consent="never">${esc(t('다시 묻지 않기'))}</button></div>`;
+  else if (slAsk) html = `<b>${esc(t('Orca 없이 사용량(5시간·주간 한도)을 표시할까요?'))}</b><span>${esc(t('켜면 ~/.claude/settings.json의 statusLine을 AgentDesk 중계 스크립트로 바꿉니다. 원래 status line은 그대로 실행되어 보이고, 설정은 ~/.roca/에 백업합니다. 끄면 원래 설정으로 되돌립니다. Pro·Max 구독에서 세션이 응답을 받은 뒤부터 보입니다.'))}</span>`
+    + `<div class="mode-banner-btns"><button data-slconsent="on">${esc(t('켜기'))}</button><button class="ghost" data-slconsent="later">${esc(t('나중에'))}</button><button class="ghost" data-slconsent="never">${esc(t('다시 묻지 않기'))}</button></div>`;
   else if (hooksEnabled) html = `<b>${esc(t('Orca 없이 훅 모드로 동작 중'))}</b><span>${esc(t('Claude Code 세션'))} ${hookOnlyCount} · ${detected}${esc(t('연결 가능한 터미널'))} ${paneCount}</span>`;
   else html = `<b>${esc(t('Claude Code 훅이 꺼져 있습니다'))}</b><span>${detected}${esc(t('훅을 켜면 정확한 상태로 표시됩니다. tmux 안에서 실행 중인 세션은 채팅과 지시도 가능합니다.'))}</span><button id="mode-enable-hooks">${esc(t('정확 감지 켜기'))}</button>`;
   if (el._html === html) return;   // rebuilt only on change: a pressed button keeps its state across polls
   el._html = html; el.innerHTML = html;
   el.querySelectorAll('[data-consent]').forEach(b => { b.onclick = () => hooksConsentAnswer(b.dataset.consent, b); });
+  el.querySelectorAll('[data-slconsent]').forEach(b => { b.onclick = () => statuslineConsentAnswer(b.dataset.slconsent, b); });
   const btn = el.querySelector('#mode-enable-hooks');
   if (btn) btn.onclick = () => $('hooks-toggle').click();
 }
@@ -9742,6 +9881,12 @@ function settingsRender() {
     ${row(t('도크 흐리게'), t('마우스가 띠를 떠나고 1.5초 뒤 이 불투명도로 흐려집니다. 띠에 마우스를 올리면 다시 선명해집니다.'), seg('dock-opacity', String(dockCfg.opacity), [['1', '100%'], ['0.85', '85%'], ['0.7', '70%'], ['0.5', '50%']]))}
     <h2>${esc(t('감지와 알림'))}</h2>
     ${row(t('정확 감지 (에이전트 훅)'), (() => { const s = hooksAgentsSummary(); return (hooksEnabled ? t('켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 세션도 표시됩니다.') : t('꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.')) + (s.on.length ? ` · ${t('켜짐')}: ${s.on.join(', ')}` : '') + (s.off.length ? ` · ${t('꺼짐')}: ${s.off.join(', ')}` : ''); })(), sw('hooks', hooksEnabled))}
+    ${row(t('Orca 없이 사용량 표시'), slState === 'on' ? t('켜져 있습니다. Claude Code status line 입력의 5시간·주간 한도 사용률을 ~/.roca/usage.json으로 받아 한도 막대에 씁니다(Orca 값이 있으면 Orca 우선). 원래 status line은 그대로 실행됩니다. 끄면 원래 설정으로 되돌립니다.')
+      : slState === 'replaced' ? t('꺼짐 — status line 설정이 그 뒤 바뀌어 중계가 동작하지 않습니다. 켜면 지금 설정을 보관하고 다시 중계합니다.')
+      : slState === 'error' ? t('~/.claude/settings.json을 읽을 수 없습니다.')
+      : !slAvailable ? t('Node.js가 필요합니다 (macOS·Linux: /opt/homebrew/bin, /usr/local/bin 또는 PATH의 node. Windows 휴대용 빌드: Node.js를 설치하거나 설치형 빌드를 쓰세요).')
+      : t('꺼져 있습니다. 켜면 ~/.claude/settings.json의 statusLine을 AgentDesk 중계 스크립트로 바꿔 Orca 없이도 한도 막대를 표시합니다(원래 status line은 그대로 실행, ~/.roca/에 백업). Pro·Max 구독에서만 값이 있습니다.'),
+      `<button class="switch ${slState === 'on' ? 'on' : ''}" data-set="statusline" ${slState === 'on' || (slAvailable && slState !== 'error') ? '' : 'disabled'}></button>`, '', true)}
     ${permAvailable ? row(t('위젯에서 권한 승인'), t('Claude Code가 도구 권한을 물을 때 세션 카드에 [허용] [거부] [터미널로] 버튼을 띄웁니다. 터미널 질문도 함께 뜹니다. 먼저 답한 쪽이 적용됩니다. 버튼을 누르기 전에는 아무것도 허용되지 않고, 위젯이 꺼져 있거나 대기 시간이 지나면 터미널 질문만 남습니다. 정확 감지(Claude Code)가 켜져 있어야 하며, 새로 시작하는 세션부터 적용됩니다.'), sw('perm-hook', permHookOn), '', true) : ''}
     ${permAvailable && permHookOn ? row(t('승인 대기 시간'), t('이 시간이 지나면 위젯 패널이 닫히고 터미널 질문만 남습니다. 터미널 질문도 함께 뜹니다. 먼저 답한 쪽이 적용됩니다.'), seg('perm-timeout', String(permTimeoutSec), [['60', '60s'], ['90', '90s'], ['180', '180s'], ['300', '300s']])) : ''}
     ${(permHookOn || guardHookOn) && permLastHookAt !== undefined ? row(t('훅 연결 상태'), hookLastText(), '', 'set-hook-last') : ''}
@@ -9825,6 +9970,14 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'dock-hover-term') { dockCfg.hoverTerm = !dockCfg.hoverTerm; dockSave(); settingsRender(); }
   else if (name === 'dock-opacity' && v) { const o = Number(v); if (o >= 0.3 && o <= 1) { dockCfg.opacity = o; dockSave(); } settingsRender(); }
   else if (name === 'hooks') { $('hooks-toggle').click(); setTimeout(settingsRender, 600); }
+  else if (name === 'statusline') {
+    if (slState === 'on') await disableStatusline();
+    else {
+      if (!confirm(t('~/.claude/settings.json의 statusLine을 AgentDesk 중계 스크립트로 바꿉니다. 원래 status line 명령은 중계 스크립트가 같은 입력으로 실행해 그대로 보여 주고, 설정 파일은 ~/.roca/에 백업합니다. 중계 스크립트는 한도 사용률(rate_limits)과 세션 id만 ~/.roca/usage.json에 씁니다. 끄면 원래 설정으로 되돌립니다. 진행할까요?'))) return;
+      await enableStatusline();
+    }
+    settingsRender(); fetchData();
+  }
   else if (name === 'sound') { $('office-sound').click(); settingsRender(); }
   else if (name === 'perm-hook') {
     if (!permHookOn) {

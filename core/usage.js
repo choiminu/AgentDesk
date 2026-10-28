@@ -5,6 +5,10 @@
 //   thresholdCrossed(prevPct, curPct, levels, fired, opts) → { crossed: [level…], fired: [level…] }
 //   ticketCosts(sessions, dispatchMap)    → { KEY: { cost, sessions: [id…], since, unknown } }
 //   formatEta(ms, lang)                   → "약 1시간 40분 뒤" | "20분 뒤" | "리셋 전 도달 안 함"
+//   fromStatusline(rec, now)              → { claude: { session, weekly, updatedAt } } | null — ~/.roca/usage.json
+//                                           (written by the status line relay, statusline/relay.cjs) in the shape of
+//                                           Orca's rateLimits; null once any window reset since it was written,
+//                                           a window written longer ago than it lasts is dropped
 (function (root) {
 'use strict';
 const WINDOW_MS = 30 * 60 * 1000;   // the burn rate is read from the last 30 minutes only
@@ -89,6 +93,28 @@ function ticketCosts(sessions, dispatchMap) {
   return out;
 }
 
+// Claude Code's status line input: rate_limits.five_hour / seven_day = { used_percentage 0-100, resets_at epoch s }
+const SL_WINDOWS = [['five_hour', 'session', 300], ['seven_day', 'weekly', 7 * 24 * 60]];
+function fromStatusline(rec, now) {
+  now = Number(now) || Date.now();
+  if (!rec || typeof rec !== 'object' || !rec.rate_limits || typeof rec.rate_limits !== 'object') return null;
+  const at = Number(rec.writtenAt);
+  if (!Number.isFinite(at) || at <= 0 || at > now + 60000) return null;
+  const claude = {};
+  for (const [k, name, minutes] of SL_WINDOWS) {
+    const w = rec.rate_limits[k];
+    if (!w || typeof w !== 'object' || w.used_percentage == null) continue;
+    const pct = Number(w.used_percentage), resetsAt = Number(w.resets_at) * 1000;
+    if (!Number.isFinite(pct) || !Number.isFinite(resetsAt)) continue;
+    if (resetsAt <= now) return null;   // a window reset since the file was written: the whole reading is stale
+    if (now - at > minutes * 60000) continue;   // written longer ago than the window lasts
+    claude[name] = { usedPercent: Math.max(0, Math.min(100, Math.round(pct))), windowMinutes: minutes, resetsAt, resetDescription: '' };
+  }
+  if (!claude.session && !claude.weekly) return null;
+  claude.updatedAt = at;
+  return { claude };
+}
+
 function formatEta(ms, lang) {
   const en = lang === 'en';
   if (ms == null || !Number.isFinite(Number(ms))) return en ? 'not reached before reset' : '리셋 전 도달 안 함';
@@ -101,7 +127,7 @@ function formatEta(ms, lang) {
   return en ? `in about ${h}h${m ? ` ${m}m` : ''}` : `약 ${h}시간${m ? ` ${m}분` : ''} 뒤`;
 }
 
-const AgentDeskUsage = { WINDOW_MS, forecast, thresholdCrossed, ticketCosts, formatEta };
+const AgentDeskUsage = { WINDOW_MS, forecast, thresholdCrossed, ticketCosts, formatEta, fromStatusline };
 root.AgentDeskUsage = AgentDeskUsage;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskUsage;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

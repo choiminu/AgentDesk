@@ -94,7 +94,7 @@ The ▭ button in the header or ⌘⇧D (Windows and Linux: Ctrl+Shift+D) turns 
 - **Clicks and shortcuts**: a click switches to the session's real terminal; a double-click goes to its card in the panel. ⌘1 to ⌘9 (Windows and Linux: Ctrl+1 to 9) switch to the terminal of your n-th tile from the left. These keys work while the widget window has focus. With ⚙ Settings → Other → **Global shortcuts** on (off by default, because the keys may clash with other apps), ⌘⇧D toggles the dock and ⌘⇧A (Windows and Linux: Ctrl+Shift+A) opens the most urgent approval request from any app.
 - **Do not disturb (🔕)**: stops bubbles, toasts and desktop notifications; only tile colours and ! badges remain.
 - **Order and pinning**: drag one of your tiles between two others to save the order; that session is pinned. Right-click or long-press a tile for "Unpin".
-- **New session (＋)**: the ＋ tile at the end of your tiles creates a Claude worktree session from an Orca repository and a name.
+- **New session (＋)**: the ＋ tile at the end of your tiles creates a Claude worktree session from an Orca repository and a name. Without Orca, it opens Claude Code (or Codex CLI / Gemini CLI when installed) in a new terminal window in a folder you pick: a recent folder, one of your sessions' folders, or **Choose folder…**; the new session's tile is selected when it shows up.
 - **Drag and drop**: drop text, a URL or a file from another app onto one of your tiles that is waiting for input; after a masked preview, [Send] types it into that session. Files are sent as paths only, and text starting with `/`, `!` or `#` is not sent.
 - **Position**: the bar position is remembered per monitor. With "Hide when the pointer is away", the bar slides to the edge 2 s after the pointer leaves and only 8 px stay visible.
 - **Settings**: ⚙ Settings → Appearance has start in dock mode, dock size (small, normal, large), auto-hide, done bubbles, dock animation, open the terminal window on hover, and the fade level (off by default).
@@ -111,7 +111,7 @@ Sessions of all three CLIs appear on the dashboard and in the office, but featur
 | Guardrail | Yes (hook; Windows through a named pipe, not yet verified on real hardware) | No | No |
 | Choice bubbles (dock) | Yes | No (based on Claude Code TUI text) | No (based on Claude Code TUI text) |
 | Delegate to a teammate | Yes | No | No |
-| Usage bar and forecast | Yes (with Orca) | No | No |
+| Usage bar and forecast | Yes (with Orca, or the status line relay on Pro / Max) | No | No |
 | Cost per ticket | Yes | No | No |
 | Transcript metadata (title, last answer, context) | Yes | Yes | Partial: the context window is taken as 1M regardless of model |
 | One-line "doing now" summary | Yes | Partial: needs the `claude` CLI for the summary | Partial: needs the `claude` CLI for the summary |
@@ -329,7 +329,8 @@ Expand a session card and open the **Timeline** tab to see the session's hook ev
 
 ## Usage forecast and cost per ticket
 
-- **Usage forecast** (Claude Code, needs Orca): under the usage bar (session and weekly usage and reset times from Orca `account list`, `rateLimits.claude`), the widget shows "At this pace the 5-hour limit is reached in about 1 h 40 min (reset 14:30)" or "Not reached before reset". The pace is a linear regression over the last 30 minutes of samples; with few or noisy samples it adds "(uncertain)". Only the last 30 samples are kept in `localStorage` (`roca-usage-samples`).
+- **Usage without Orca** (Claude Code, Pro / Max): Settings → Detection & alerts → **Usage without Orca**, or a one-time banner for users without Orca whose Exact detection is on (shown after the Exact detection banner, never with it). It points `statusLine` in `~/.claude/settings.json` at a relay script (`~/.roca/statusline-relay.sh`, run by Node.js; on Windows `statusline-relay.cmd`). The relay runs your original status line command with the same input and prints its output unchanged, and writes only `rate_limits` (5-hour and weekly percent, reset time) and the session id to `~/.roca/usage.json`. Your original `statusLine` (with `padding`, `refreshInterval` and so on) is kept in `~/.roca/statusline-orig.json` and settings are backed up to `~/.roca/`; turning it off puts the original back. If you change `statusLine` yourself afterwards, AgentDesk leaves it alone and shows the relay as off. Claude Code sends these values only after a session's first response; a reading whose window has reset is not shown. Orca's values win when both exist.
+- **Usage forecast** (Claude Code, needs Orca or the status line relay): under the usage bar (session and weekly usage and reset times from Orca `account list`, `rateLimits.claude`, or the relay), the widget shows "At this pace the 5-hour limit is reached in about 1 h 40 min (reset 14:30)" or "Not reached before reset". The pace is a linear regression over the last 30 minutes of samples; with few or noisy samples it adds "(uncertain)". Only the last 30 samples are kept in `localStorage` (`roca-usage-samples`).
 - **Usage warnings**: when usage crosses 80% and 95% (Settings → Detection & alerts → usage warning thresholds), a toast and a desktop notification fire once per level, and again after the window resets. The bar turns yellow and red at the same values.
 - **Cost per ticket** (Claude Code): for each ticket dispatched from Jira, the cost recorded in Claude Code session files of its working folder (`cost-state` in `~/.claude/projects/*.jsonl`) is summed from the dispatch time on. Cards and the drawer show "Cost $X.XX (N sessions)", the board shows today's dispatched total, and the dashboard shows the top three tickets.
 - **Note**: this cost is an **estimate** from token counts times list prices. On Pro, Max, Team and Enterprise subscriptions it is not what you are billed, and for API billing the Claude Console usage page is authoritative. A ticket dispatched to an existing session includes that session's cost from before the dispatch.
@@ -381,6 +382,7 @@ core/           Logic shared by the renderer and the tests (status judgement, do
 team/           Team sharing: signed HTTP server and client, discovery, delegation, identity keys
 perm/           Widget approval server and hook installation
 guard/          Guardrail rules and verdicts
+statusline/     Status line relay (usage without Orca) and its settings.json install / restore
 diff/           Change view (git diff) readers
 recall/         Session notes, Slack bridge, morning briefing (not included in the installers)
 test/           node --test unit tests

@@ -2,7 +2,7 @@ import { app, BrowserWindow, clipboard, ipcMain, screen, Tray, Menu, nativeImage
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { dirname, join, extname, basename, delimiter as PATH_DELIM } from "node:path";
+import { dirname, join, extname, basename, isAbsolute, delimiter as PATH_DELIM } from "node:path";
 import { readdirSync, readFileSync, writeFileSync, statSync, lstatSync, createReadStream, mkdirSync, existsSync, openSync, readSync, writeSync, closeSync, renameSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync, mkdtempSync, rmSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
@@ -18,7 +18,8 @@ import "./core/timeline.js";   // globalThis.AgentDeskTimeline: the card's [타�
 import "./core/version.js";    // globalThis.AgentDeskVersion: release version comparison and installer choice for updates
 import "./core/dock.js";      // globalThis.AgentDeskDock: dock mode window bounds (bottom-centre bar)
 import "./core/desktop.js";   // globalThis.AgentDeskDesktop: global shortcuts, start-at-login entry
-import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
+import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, NODE_CANDIDATES, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
+import { relayState, installRelayAt, uninstallRelayAt } from "./statusline/install.mjs";
 import { randomUUID, createHash } from "node:crypto";
 import { openPermEndpoint, ensurePrivateDir, writePrivate, permHookScript as permHookSh, guardHookScript, nodeHookScript, winHookCmd, winHookCommand, winHookRunner, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK, PERM_ADDR } from "./perm/server.mjs";
 import { readJsonStrict, writeJsonAtomic, backupPrivate, isOurPermHook, isOurGuardHook, permHookPresent, installPermHookAt, uninstallPermHookAt, guardHookPresent, installGuardHookAt, uninstallGuardHookAt } from "./perm/settings.mjs";
@@ -573,17 +574,36 @@ const RESUME_CMD = { claude: id => `claude --resume ${id}`, gemini: id => `gemin
 ipcMain.handle("roca:resume-session", async (_e, cwd, sessionId, agent) => {
   if (!/^[0-9a-zA-Z_-]{8,}$/.test(String(sessionId || ""))) return { ok: false, error: "invalid session id" };
   const mk = RESUME_CMD[agent] || RESUME_CMD.claude;
-  const dir = cwd || homedir();
+  return openTerminalAt(cwd || homedir(), mk(sessionId));
+});
+// a new agent session from a folder (the dock "+" without Orca): the agent only from this list, run without arguments
+const NEW_SESSION_CMD = { claude: "claude", codex: "codex", gemini: "gemini" };
+ipcMain.handle("roca:open-session", async (_e, cwd, agent) => {
+  const cmd = Object.prototype.hasOwnProperty.call(NEW_SESSION_CMD, agent) ? NEW_SESSION_CMD[agent] : null;
+  if (!cmd) return { ok: false, error: "invalid agent" };
+  const dir = typeof cwd === "string" ? cwd : "";
+  if (!dir || dir.length > 1000 || !isAbsolute(dir) || /[\0\r\n]/.test(dir)) return { ok: false, error: "invalid folder" };
+  try { if (!statSync(dir).isDirectory()) return { ok: false, error: "not a folder" }; } catch { return { ok: false, error: "folder not found" }; }
+  return openTerminalAt(dir, cmd);
+});
+ipcMain.handle("roca:pick-folder", async (_e, defaultPath) => {
+  const opts = { properties: ["openDirectory"] };
+  if (typeof defaultPath === "string" && isAbsolute(defaultPath) && existsSync(defaultPath)) opts.defaultPath = defaultPath;
+  try { const r = await dialog.showOpenDialog(opts); return r.canceled || !r.filePaths.length ? null : r.filePaths[0]; } catch { return null; }
+});
+// open a new terminal window in `dir` that runs `command` (a fixed agent command line, never renderer text):
+// Windows Terminal or cmd; on Linux the first terminal emulator found; on macOS iTerm2 when it runs, else Terminal
+async function openTerminalAt(dir, command) {
   if (IS_WIN) {
     // Windows Terminal when present, else a plain console window
-    const inner = `cd /d "${dir}" && ${mk(sessionId)}`;
+    const inner = `cd /d "${dir}" && ${command}`;
     try {
-      if (await whichCmd("wt.exe")) spawn("wt.exe", ["-d", dir, "cmd", "/k", mk(sessionId)], { detached: true, stdio: "ignore", windowsHide: false }).unref();
+      if (await whichCmd("wt.exe")) spawn("wt.exe", ["-d", dir, "cmd", "/k", command], { detached: true, stdio: "ignore", windowsHide: false }).unref();
       else spawn("cmd.exe", ["/c", "start", "", "cmd", "/k", inner], { detached: true, stdio: "ignore", windowsHide: false }).unref();
       return { ok: true, app: "Windows Terminal" };
     } catch (e) { return { ok: false, error: e.message }; }
   }
-  const cmd = `cd ${shq(dir)} && ${mk(sessionId)}`;
+  const cmd = `cd ${shq(dir)} && ${command}`;
   if (IS_LINUX) {
     // first terminal emulator that exists; the shell stays open after the agent exits
     const sh = `${cmd}; exec bash`;
@@ -617,7 +637,7 @@ end tell`);
 end tell`);
     return { ok: true, app: "Terminal" };
   } catch (e) { return { ok: false, error: e.message }; }
-});
+}
 
 const isTerm = h => typeof h === "string" && h.startsWith("term:");
 const targetOf = h => termTargets.get(Number(h.slice(5)));
@@ -1425,6 +1445,75 @@ ipcMain.handle("roca:guard-test", (_e, tool, text, mode) => {
   catch (e) { return { ok: false, error: e.message }; }
 });
 ipcMain.handle("roca:guard-log", (_e, n) => guardLog.read(Math.min(Number(n) || 500, 2000)));
+
+// ── "Usage without Orca": Claude Code's status line input carries rate_limits (5-hour / 7-day %, resets_at) for
+// Pro / Max plans. With the user's consent (settings switch or the one-time banner) settings.json "statusLine" runs
+// statusline/relay.cjs (copied to ~/.roca/statusline-relay.cjs), which runs the original status line command with the
+// same stdin and writes only rate_limits + session_id to ~/.roca/usage.json. Turning it off restores the original.
+// Runner: macOS / Linux need a system node (the app binary cannot run as Node there: RunAsNode fuse off); the sh
+// launcher falls back to the original command when that node is gone. Windows: winRunner() as the safety hooks.
+const SL_RELAY_JS = join(ROCA_DIR, "statusline-relay.cjs");
+const SL_RELAY_LAUNCHER = join(ROCA_DIR, IS_WIN ? "statusline-relay.cmd" : "statusline-relay.sh");
+const SL_ORIG = join(ROCA_DIR, "statusline-orig.json");
+const SL_USAGE = join(ROCA_DIR, "usage.json");
+let slNode;   // undefined = not looked up yet; null = none
+async function slPosixNode() {
+  if (slNode !== undefined) return slNode;
+  slNode = NODE_CANDIDATES.find(p => existsSync(p)) || await whichCmd("node") || null;
+  if (slNode && !isAbsolute(slNode)) slNode = null;
+  return slNode;
+}
+const slReadOrigCommand = () => { try { const o = JSON.parse(readFileSync(SL_ORIG, "utf-8")); return o && o.had && o.statusLine && typeof o.statusLine.command === "string" ? o.statusLine.command : ""; } catch { return ""; } };
+// [path, text] of the relay files and the settings command; null when no runner is available
+async function slRelayFiles() {
+  const js = readFileSync(join(__dirname, "statusline", "relay.cjs"), "utf-8");
+  if (IS_WIN) {
+    const runner = winRunner(); if (!runner) return null;
+    const cmd = winHookCmd({ runner, script: SL_RELAY_JS }).replace("exit /b 0", "exit /b %ERRORLEVEL%");   // the original command's exit code
+    return { files: [[SL_RELAY_JS, js], [SL_RELAY_LAUNCHER, cmd]], command: winHookCommand({ systemNode: winSystemNode, script: SL_RELAY_JS, launcher: SL_RELAY_LAUNCHER }) };
+  }
+  const node = await slPosixNode(); if (!node) return null;
+  const orig = slReadOrigCommand();
+  const sh = `#!/bin/sh
+# AgentDesk status line relay launcher (written by AgentDesk). Without the node found at install time it runs the
+# original status line command unchanged.
+[ -x ${shq(node)} ] && exec ${shq(node)} "$HOME/.roca/statusline-relay.cjs"
+${orig ? `exec /bin/sh -c ${shq(orig)}` : "exit 0"}
+`;
+  return { files: [[SL_RELAY_JS, js], [SL_RELAY_LAUNCHER, sh]], command: SL_RELAY_LAUNCHER };
+}
+function slWriteFiles(files, onlyChanged) {
+  for (const [f, text] of files) {
+    if (onlyChanged) { try { if (readFileSync(f, "utf-8") === text) continue; } catch {} }
+    writeFileSync(f, text, { mode: 0o700 }); try { chmodSync(f, 0o700); } catch {}
+  }
+}
+function statuslineStatus() {
+  return { state: relayState({ settingsFile: CLAUDE_SETTINGS, origFile: SL_ORIG }), available: IS_WIN ? !!winRunner() : slNode !== null };
+}
+async function installStatusline() {
+  if (!agentPresent("claude")) return { ok: false, error: "Claude Code (~/.claude) not found" };
+  readJsonStrict(CLAUDE_SETTINGS);   // a broken settings.json stops here, before anything is written
+  ensurePrivateDir(ROCA_DIR);
+  const r = await slRelayFiles();
+  if (!r) return { ok: false, error: IS_WIN ? "the portable build cannot run the relay: install Node.js or use the installer build" : "Node.js not found (/opt/homebrew/bin, /usr/local/bin, PATH)" };
+  slWriteFiles(r.files.slice(0, 1));
+  installRelayAt({ settingsFile: CLAUDE_SETTINGS, origFile: SL_ORIG, command: r.command, backupDir: ROCA_DIR });
+  slWriteFiles((await slRelayFiles()).files);   // the launcher's fallback reads the original command just kept
+  return { ok: true };
+}
+function uninstallStatusline() {
+  const r = uninstallRelayAt({ settingsFile: CLAUDE_SETTINGS, origFile: SL_ORIG });   // throws on a broken settings.json
+  for (const f of [SL_RELAY_JS, SL_RELAY_LAUNCHER, SL_USAGE]) { try { unlinkSync(f); } catch {} }
+  return { ok: true, restored: r.restored };
+}
+ipcMain.handle("roca:statusline-status", async () => { try { if (!IS_WIN) await slPosixNode(); return statuslineStatus(); } catch (e) { return { state: "error", available: false, error: e.message }; } });
+ipcMain.handle("roca:statusline-install", async () => { try { return await installStatusline(); } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle("roca:statusline-uninstall", () => { try { return uninstallStatusline(); } catch (e) { return { ok: false, error: e.message }; } });
+// the relay's last reading (rate_limits only); the renderer converts it (core/usage.js fromStatusline)
+ipcMain.handle("roca:statusline-usage", () => {
+  try { const o = JSON.parse(readFileSync(SL_USAGE, "utf-8")); return o && typeof o === "object" ? { writtenAt: o.writtenAt, rate_limits: o.rate_limits } : null; } catch { return null; }
+});
 // new-version check against GitHub Releases, at most once a day (cached in userData); the renderer shows a badge
 const UPDATE_API = "https://api.github.com/repos/choiminu/AgentDesk/releases/latest";
 const UPDATE_CACHE = join(app.getPath("userData"), "update-check.json");
@@ -2473,6 +2562,8 @@ app.on("ready", () => {
   try { if (permHookInstalled()) { writeSafetyHook("perm", true); syncSafetyHookCommand("perm"); startPermServer(); } } catch (e) { console.log("[perm] start failed", e.message); }
   // guardrail is on: same — keep its hook script current and open the (shared) socket server
   try { if (guardHookInstalled()) { writeSafetyHook("guard", true); syncSafetyHookCommand("guard"); startPermServer(); } } catch (e) { console.log("[guard] start failed", e.message); }
+  // the status line relay after an update: its files only (settings.json is not touched here)
+  try { if (statuslineStatus().state === "on") slRelayFiles().then(r => { if (r) slWriteFiles(r.files, true); }).catch(() => {}); } catch {}
   createTray();
   applyShortcuts();
 });
