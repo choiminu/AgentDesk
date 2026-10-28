@@ -46,7 +46,7 @@ You run three, five, ten coding agents in parallel. Terminal tabs do not tell yo
 ## Install in a minute
 
 1. Download the installer for your machine from the [latest release](https://github.com/choiminu/AgentDesk/releases/latest): macOS DMG (Apple Silicon or Intel), Linux AppImage or .deb, Windows installer or portable .exe.
-2. Start one of your agents (Claude Code, Codex CLI or Gemini CLI) in any terminal. It shows up in AgentDesk within a few seconds.
+2. Start one of your agents (Claude Code, Codex CLI or Gemini CLI) in any terminal. It shows up in AgentDesk within a few seconds, also when it was already running: without hooks as "Detected without hooks" (macOS and Linux), with Exact detection on in its exact state from its next activity.
 3. Press ⌘⇧D (Ctrl+Shift+D) for dock mode.
 
 Or run from source:
@@ -155,7 +155,7 @@ The installers are not signed with a paid certificate, so each OS asks once on f
 
 ### Onboarding
 
-On first launch a six-step onboarding opens: introduction, environment check, dock and core controls, team sharing, integrations, and updates and settings. Every step has **Skip**. The environment check looks for agent CLIs, the widget hooks, the Orca CLI and terminal control permission, and turns on **Exact detection** in one click. Exact detection registers hooks in your agent CLIs (see [How it works](#how-it-works)) so states arrive as events instead of being inferred.
+On first launch a six-step onboarding opens: introduction, environment check, dock and core controls, team sharing, integrations, and updates and settings. Every step has **Skip**. The environment check looks for agent CLIs, the widget hooks, the Orca CLI and terminal control permission, and turns on **Exact detection** in one click. If you close the onboarding with Exact detection still off, the dashboard asks once (**Turn on**, **Later** for this run, **Don't ask again**); nothing is written to your settings files without that click. Exact detection registers hooks in your agent CLIs (see [How it works](#how-it-works)) so states arrive as events instead of being inferred.
 
 To see the onboarding again, use **⚙ Settings → Other → Show onboarding again**. The same section has **Start at login** (installed app only) and **Global shortcuts**.
 
@@ -237,7 +237,7 @@ The widget polls `orca worktree ps` and `orca terminal list` every 5 seconds for
 | **Orca session** | `orca worktree ps` + terminal list; hook events enrich them | Orca terminals |
 | **Terminal session** (an agent started in iTerm2, Terminal.app or tmux) | Hook events (`~/.roca/events.jsonl`) + transcript metadata (title from `/rename` or the AI title, last message, context usage, git branch) | tmux panes (`send-keys` / `capture-pane`), or iTerm2 / Terminal.app tabs found through the agent process (AppleScript, macOS); ended sessions reopen on click |
 
-The two kinds are told apart by the `TERM_PROGRAM` the hook script records (`Orca` vs `iTerm.app`, `tmux`, `Apple_Terminal`), so both appear in one list. Without Orca installed, hooks are the only source; the dashboard then shows a banner, with a one-click button when Exact detection is off.
+The two kinds are told apart by the `TERM_PROGRAM` the hook script records (`Orca` vs `iTerm.app`, `tmux`, `Apple_Terminal`), so both appear in one list. Agent processes on a terminal that no hook event has covered yet appear as read-only **Detected without hooks** cards (macOS and Linux; not Windows yet). Their state comes from the terminal screen when it can be read (tmux, or iTerm2 / Terminal.app once macOS automation is allowed) and is otherwise shown as done (idle); they raise no done / waiting alerts and are not shared with teammates. When the first hook event of that session arrives, the card turns into the hook card and keeps its name, pin and dock place. Without Orca installed, the dashboard shows a banner, with a one-click button when Exact detection is off.
 </details>
 
 <details>
@@ -273,7 +273,7 @@ Turn on ⚙ Settings → Detection & alerts → **Approve permissions in the wid
 <details>
 <summary>Exact detection via hooks</summary>
 
-Turning on Exact detection adds widget hooks to every agent CLI installed on this computer: `~/.claude/settings.json` (Claude Code), `~/.gemini/settings.json` (Gemini CLI) and `~/.codex/hooks.json` (Codex CLI). Existing hooks are kept and the previous files are backed up under `~/.roca/`. A CLI installed later is picked up on the next widget start. The hook script `~/.roca/hook.sh` (PowerShell `hook.ps1` on Windows) appends each event as one JSON line to `~/.roca/events.jsonl` and exits immediately; the widget tails that file. Claude Code reloads hook settings live, so running sessions are covered too. Turning it off removes only the widget's entries.
+Turning on Exact detection adds widget hooks to every agent CLI installed on this computer: `~/.claude/settings.json` (Claude Code), `~/.gemini/settings.json` (Gemini CLI) and `~/.codex/hooks.json` (Codex CLI). Existing hooks are kept and the previous files are backed up under `~/.roca/`. A CLI installed later is picked up on the next widget start. The hook script `~/.roca/hook.sh` (PowerShell `hook.ps1` on Windows) appends each event as one JSON line to `~/.roca/events.jsonl` and exits immediately; the widget tails that file. Claude Code reloads hook settings live, so running sessions are covered too, from their next activity (a prompt or tool call). Turning it off removes only the widget's entries.
 
 | Hook event (Claude Code / Codex CLI; Gemini CLI name in parentheses) | Widget state |
 |---|---|
