@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-FdCeNw2mKsl4NX6tdv0IXIg61KSFvyQ65c+wGytS4hw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-QbAgx79ZoDrdaC9zB0xWC/1qQ5TdDuzWdjrv2110yZg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2670,7 +2670,11 @@ async function fetchData() {
   $('footer').classList.add('loading');
   try {
     await hooksReady;
-    const viaOrca = useOrca();
+    // fell back to hooks (Orca quit / not running): ask Orca again every ORCA_RETRY_MS, so a restarted Orca is picked
+    // up without restarting the widget (worktree ps only reads: it does not launch Orca — that is `orca open`)
+    const retry = orcaProbe === false && Date.now() >= orcaRetryAt;
+    if (retry) orcaRetryAt = Date.now() + ORCA_RETRY_MS;
+    const viaOrca = useOrca() || retry;
     const [ps, terms, rl, panes, ttys] = await Promise.all([
       viaOrca ? api.ps() : Promise.resolve({ ok: false, skipped: true }),
       viaOrca ? api.terminals() : Promise.resolve({ ok: false, skipped: true }),
@@ -4840,6 +4844,11 @@ let orcaAvailable = true;
 const dataMode = 'auto';
 let orcaProbe = null;   // null = not probed yet, true/false after version check
 function useOrca() { return orcaProbe !== false; }
+// while Orca is unreachable (orcaProbe false) fetchData asks it again at most this often; the widget gaining focus asks
+// at the next poll (coming back to the widget after starting Orca)
+const ORCA_RETRY_MS = 10000;
+let orcaRetryAt = 0;
+window.addEventListener('focus', () => { if (orcaProbe === false) orcaRetryAt = 0; });
 const HOOK_ONLY_RECENT_MS = 24 * 60 * 60 * 1000;   // ended terminal sessions stay visible as Done for a day, like Orca ones
 function hookOnlySessions(wts, panes, ttys) {
   if (!hooksEnabled) return [];
