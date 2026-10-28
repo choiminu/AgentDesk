@@ -696,6 +696,31 @@ function screenLines(lines, opts) {
   return out.reverse();
 }
 
+// idle sessions leave the bar (the 💤 tile holds them; it opens them at the end of the row):
+//   dockIdleSplit(list, { now, idleMs, pinned, keep, hidden }) → { shown: [s], idle: [s], unhide: [id] }
+//   list: my sessions [{ id, status, needsInput, hasPerm, time }] (time: last activity, ms), in the bar's order — both
+//   groups keep it. Needing me (ask) or an error: always shown (and a hidden one comes back: unhide). hidden ({ id:
+//   hiddenAt }, "도크에서 숨기기"): idle until it does something after it was hidden (time > hiddenAt: unhide). pinned
+//   (Set of ids) and keep (the selected id): shown. idleMs > 0: waiting / done with no activity for idleMs → idle; a
+//   session without a time stays shown (nothing says it is old); running never goes.
+function dockIdleSplit(list, o) {
+  const { now, idleMs, pinned, keep, hidden } = o && typeof o === 'object' ? o : {};
+  const t0 = num(now), limit = num(idleMs), pin = pinned instanceof Set ? pinned : new Set();
+  const hid = hidden && typeof hidden === 'object' ? hidden : {};
+  const shown = [], idle = [], unhide = [];
+  for (const s of Array.isArray(list) ? list : []) {
+    if (!s || typeof s !== 'object') continue;
+    const id = rawId(s.id), st = stateOf(s), time = num(s.time);
+    const at = Object.prototype.hasOwnProperty.call(hid, id) ? num(hid[id]) : -1;
+    if (st === 'ask' || st === 'err') { if (at >= 0) unhide.push(id); shown.push(s); continue; }
+    if (at >= 0) { if (time > at) { unhide.push(id); shown.push(s); } else idle.push(s); continue; }
+    if (pin.has(id) || (keep && id === rawId(keep))) { shown.push(s); continue; }
+    if (limit > 0 && (st === 'input' || st === 'done') && time > 0 && t0 - time >= limit) { idle.push(s); continue; }
+    shown.push(s);
+  }
+  return { shown, idle, unhide };
+}
+
 // the dock gives way to Orca: while Orca is the app in front, the question is already on the screen there, so a
 // choice bubble stays folded (the tile keeps its ! and colour) unless its tile is pointed at (big)
 //   isOrcaApp(bundleId) → true for Orca's macOS bundle id (com.stablyai.orca, and ids under it)
@@ -723,7 +748,7 @@ function permAllowable(sm) {
 
 const AgentDeskDock = { dropSafeText, dragStep, DRAG_PX, orderSessions, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
   POP, SCREEN, popWidth, popExtra, bubbleHeight, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame,
-  numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows, isOrcaApp, askYield };
+  numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows, isOrcaApp, askYield, dockIdleSplit };
 root.AgentDeskDock = AgentDeskDock;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskDock;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

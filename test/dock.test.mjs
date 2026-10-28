@@ -1238,3 +1238,35 @@ test('renderer: after falling back to hooks, Orca is asked again (a restarted Or
   assert.match(html, /const ORCA_RETRY_MS = 10000;/);
   assert.match(html, /window\.addEventListener\('focus', \(\) => \{ if \(orcaProbe === false\) orcaRetryAt = 0; \}\);/);
 });
+
+test('dockIdleSplit: idle sessions go to the 💤 tile; needing me, errors, pinned, the selected one and running stay', () => {
+  const H = 3600000, now = 100 * H;
+  const S = (id, status, ago, extra) => ({ id, status, time: ago == null ? 0 : now - ago, ...extra });
+  const list = [S('run', 'running', 5 * H), S('wait', 'waiting', 2 * H), S('fresh', 'waiting', 10 * 60000), S('done', 'done', 3 * H),
+    S('ask', 'waiting', 9 * H, { needsInput: true }), S('perm', 'waiting', 9 * H, { hasPerm: true }), S('err', 'error', 9 * H), S('pin', 'waiting', 9 * H), S('sel', 'done', 9 * H), S('notime', 'waiting', null)];
+  const r = D.dockIdleSplit(list, { now, idleMs: H, pinned: new Set(['pin']), keep: 'sel', hidden: {} });
+  assert.deepEqual(r.shown.map(s => s.id), ['run', 'fresh', 'ask', 'perm', 'err', 'pin', 'sel', 'notime'], 'order kept');
+  assert.deepEqual(r.idle.map(s => s.id), ['wait', 'done']);
+  assert.deepEqual(r.unhide, []);
+  const off = D.dockIdleSplit(list, { now, idleMs: 0, pinned: new Set(), hidden: {} });
+  assert.equal(off.idle.length, 0, 'idleMs 0: nothing goes by time');
+});
+
+test('dockIdleSplit: "도크에서 숨기기" holds until new activity or a question, and wins over pinned', () => {
+  const now = 1000000;
+  const r = D.dockIdleSplit([
+    { id: 'a', status: 'waiting', time: 500 },                     // hidden at 600, nothing since → idle
+    { id: 'b', status: 'running', time: 900 },                     // worked after being hidden → back
+    { id: 'c', status: 'waiting', time: 500, needsInput: true },   // asks → back
+    { id: 'd', status: 'waiting', time: now },                     // pinned but hidden → idle
+  ], { now, idleMs: 0, pinned: new Set(['d']), hidden: { a: 600, b: 600, c: 600, d: now } });
+  assert.deepEqual(r.idle.map(s => s.id), ['a', 'd']);
+  assert.deepEqual(r.shown.map(s => s.id), ['b', 'c']);
+  assert.deepEqual(r.unhide.sort(), ['b', 'c']);
+});
+
+test('dockIdleSplit: junk input', () => {
+  for (const v of [undefined, null, 'x', {}]) assert.deepEqual(D.dockIdleSplit(v, v), { shown: [], idle: [], unhide: [] });
+  const r = D.dockIdleSplit([null, 5, { id: 'x', status: 'waiting', time: 1 }], { now: 'n', idleMs: 'x', hidden: [] });
+  assert.deepEqual(r.shown.map(s => s.id), ['x']);
+});

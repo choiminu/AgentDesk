@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-QbAgx79ZoDrdaC9zB0xWC/1qQ5TdDuzWdjrv2110yZg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-XOZdQTUGQsm+EpnI+9x0s6aV2l0I1K9EEzbsedHyYS4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1619,6 +1619,9 @@
   /* "+": a new session (a narrow tile at the end of my group, whatever the tile size) */
   #dock-tiles .dock-tile.add { width: 28px; padding: 0; justify-content: center; border-style: dashed; color: var(--text3); font: 600 16px/1 var(--sans); }
   #dock-tiles .dock-tile.add:hover { color: var(--text); }
+  #dock-tiles .dock-tile.idle { width: 44px; padding: 0; justify-content: center; gap: 1px; border-style: dashed; color: var(--text3); font: 600 11px/1 var(--sans); opacity: 0.8; }
+  #dock-tiles .dock-tile.idle:hover, #dock-tiles .dock-tile.idle.on { color: var(--text); opacity: 1; }
+  #dock-tiles .dock-tile.idle.on { border-style: solid; }
   /* dragging a tile of mine to a new place: the tile being moved fades, a bar marks where it lands */
   .dock-tiles.dragging { -webkit-app-region: no-drag; }   /* the gaps between tiles stop moving the window mid-drag */
   .dock-tiles.dragging .dock-tile { cursor: grabbing; }
@@ -2243,7 +2246,7 @@ Object.assign(I18N, {
   '호버 시 터미널 창 열기': 'Open the terminal window on hover',
   '도크 애니메이션': 'Dock animation', '작업 중인 캐릭터의 움직임, 활동 바, 대기·승인 표시의 깜박임을 켭니다. 꺼도 상태 색은 그대로입니다.': 'Working characters move, the activity bars breathe and waiting / approval marks blink. Off: the state colours stay.',
   '말풍선에서 답하세요': 'Answer in its bubble', '팀원 세션의 터미널로는 갈 수 없습니다': "A teammate's session has no terminal here",
-  '팀원 세션의 터미널로는 갈 수 없습니다 — Enter로 원격 창을 엽니다': "A teammate's session has no terminal here — Enter opens its remote window", '선택 말풍선 표시': 'Choice bubbles', 'Orca 사용 중엔 말풍선 접기': 'Fold bubbles while Orca is in front', 'Orca가 앞에 있으면 질문이 이미 터미널에 보이므로 선택 말풍선을 띄우지 않고 타일의 !만 표시합니다. 타일에 마우스를 올리거나 다른 앱으로 넘어가면 말풍선이 펼쳐집니다. macOS 전용입니다.': 'While Orca is the app in front the question is already on its terminal, so the choice bubble stays folded and the tile only shows its !. Pointing at the tile or switching to another app opens it. macOS only.', '선택지만': 'Options only', '켬': 'On', '끔': 'Off',
+  '팀원 세션의 터미널로는 갈 수 없습니다 — Enter로 원격 창을 엽니다': "A teammate's session has no terminal here — Enter opens its remote window", '선택 말풍선 표시': 'Choice bubbles', '도크: 쉬는 세션': 'Idle sessions', '도크: 도크에서 숨기기': 'Hide from the dock', '도크: 도크에 다시 표시': 'Show in the dock again', '쉬는 세션 모으기': 'Collect idle sessions', '30분': '30 min', '4시간': '4 hours', '입력 대기·완료 상태로 이 시간 동안 활동이 없는 세션은 띠 오른쪽의 💤 타일로 모읍니다. 질문·승인 대기, 오류, 고정한 세션은 항상 띠에 남습니다. 💤를 누르면 펼쳐지고, 타일 메뉴(길게 누르기)의 "도크에서 숨기기"로 직접 보낼 수도 있습니다.': 'Sessions waiting or done with no activity for this long move into the 💤 tile at the right of the bar. Sessions asking a question or approval, with an error, or pinned always stay. Click 💤 to open them; "Hide from the dock" in a tile\'s menu (long press) sends one there by hand.', 'Orca 사용 중엔 말풍선 접기': 'Fold bubbles while Orca is in front', 'Orca가 앞에 있으면 질문이 이미 터미널에 보이므로 선택 말풍선을 띄우지 않고 타일의 !만 표시합니다. 타일에 마우스를 올리거나 다른 앱으로 넘어가면 말풍선이 펼쳐집니다. macOS 전용입니다.': 'While Orca is the app in front the question is already on its terminal, so the choice bubble stays folded and the tile only shows its !. Pointing at the tile or switching to another app opens it. macOS only.', '선택지만': 'Options only', '켬': 'On', '끔': 'Off',
   '세션이 선택을 기다릴 때 타일 위에 질문과 선택지를 띄웁니다. "선택지만"은 질문 본문을 숨깁니다.': 'When a session waits for a choice, its question and options appear over its tile. "Options only" hides the question text.',
   '검사할 내용이 너무 깁니다': 'Too long to check', '가드레일 확인 실패': 'Guardrail check failed', '가드레일 검사 시간·길이 초과': 'Guardrail check ran out of time or length', '가드레일 확인 중…': 'Checking with the guardrail…', '여기서는 허용할 수 없습니다 — 전체 보기에서 확인하세요': 'Cannot be allowed here — check it in the full view',
   '프롬프트가 바뀌었습니다 — 다시 확인하세요': 'The prompt changed — check it again', '선택지를 찾지 못했습니다 — 터미널 창에서 확인하세요': 'No choices found — check the terminal window', '터미널에서 확인하세요': 'check it in the terminal',
@@ -3110,8 +3113,8 @@ inboxRender();
 //    terminal) with the input line and [허용][거부]; clicking it goes to the real terminal. Panel sizes: core/dock.js POP. ──
 const DOCK_INBOX_H = 360;
 let DOCK_H = 72;   // the bar's height: AgentDeskDock.stripHeight(size) (dockSizeApply)
-// localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, size, autoHide, yieldOrca }
-let dockCfg = { start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, yieldOrca: true, order: [], addRepo: '' };   // order: my session ids in the user's drag order
+// localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, size, autoHide, yieldOrca, idleMin, hidden }
+let dockCfg = { start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, yieldOrca: true, idleMin: 60, hidden: {}, order: [], addRepo: '' };   // order: my session ids in the user's drag order
 try {
   const c = JSON.parse(localStorage.getItem('roca-dock') || '{}') || {};
   dockCfg.start = c.start === true;
@@ -3125,6 +3128,10 @@ try {
   dockCfg.size = ['sm', 'md', 'lg'].includes(c.size) ? c.size : 'md';
   dockCfg.autoHide = c.autoHide === true;      // slide away when the pointer leaves
   dockCfg.yieldOrca = c.yieldOrca !== false;   // choice bubbles stay folded while Orca is the app in front (macOS)
+  dockCfg.idleMin = [0, 30, 60, 240].includes(c.idleMin) ? c.idleMin : 60;   // waiting / done this long → the 💤 tile (0: off)
+  // "도크에서 숨기기": session id → when it was hidden (AgentDeskDock.dockIdleSplit); at most 200, string ids only
+  dockCfg.hidden = {};
+  if (c.hidden && typeof c.hidden === 'object' && !Array.isArray(c.hidden)) for (const [k, v] of Object.entries(c.hidden).slice(0, 200)) if (k && k.length <= 500 && Number.isFinite(v) && v > 0) dockCfg.hidden[k] = v;
   dockCfg.order = Array.isArray(c.order) ? c.order.filter(v => typeof v === 'string' && v && v.length <= 200).slice(0, 50) : [];
   dockCfg.addRepo = typeof c.addRepo === 'string' && c.addRepo.length <= 500 ? c.addRepo : '';
   // a spot per display (an old single { cx, y } becomes 'legacy': main uses it on the display it lies on)
@@ -3157,12 +3164,21 @@ function dockPermMap() {
 }
 // my sessions, pinned first and then by latest activity (newest on the left): hidden ones left out, finished ones only
 // when pinned or active in the last 24 h
+// idle sessions (AgentDeskDock.dockIdleSplit): out of the row into the 💤 tile; dockIdleOpen puts them back at its end
+let dockIdleOpen = false, dockIdleN = 0;
 function dockSessions() {
   const now = Date.now(), perm = dockPermMap();
   const shown = sessions.filter(s => !hiddenSessions.has(s.id) && (s.status !== 'done' || pinnedSessions.has(s.id) || (s.time && now - s.time < DONE_RECENT_MS)));
   // the user's drag order first, then pinned, then the latest activity leftmost (AgentDeskDock.orderSessions)
-  return AgentDeskDock.orderSessions(shown, dockCfg.order, pinnedSessions)
-    .map(s => ({ id: s.id, name: s.name, status: s.status, needsInput: s.needsInput, hasPerm: perm.has(s.id), subs: s.subagents || [], handle: !!handles.get(s.id) }));
+  const ordered = AgentDeskDock.orderSessions(shown, dockCfg.order, pinnedSessions).map(s => ({ ...s, hasPerm: perm.has(s.id) }));
+  const keep = dockSel.startsWith('me:') ? dockSel.slice(3) : '';
+  const split = AgentDeskDock.dockIdleSplit(ordered, { now, idleMs: dockCfg.idleMin * 60000, pinned: pinnedSessions, keep, hidden: dockCfg.hidden });
+  if (split.unhide.length) { for (const id of split.unhide) delete dockCfg.hidden[id]; dockSave(); }   // busy again / needs me: back
+  for (const id of Object.keys(dockCfg.hidden)) if (!sessions.some(s => s.id === id)) delete dockCfg.hidden[id];   // gone for good
+  dockIdleN = split.idle.length;
+  if (!dockIdleN) dockIdleOpen = false;
+  return [...split.shown, ...(dockIdleOpen ? split.idle : [])]
+    .map(s => ({ id: s.id, name: s.name, status: s.status, needsInput: s.needsInput, hasPerm: s.hasPerm, subs: s.subagents || [], handle: !!handles.get(s.id) }));
 }
 // teammates' sessions, only while team sharing works (as the review queue's team kinds)
 function dockPeers() {
@@ -3181,7 +3197,7 @@ const dockLocal = x => (x && !x.bundle && !x.peer ? sessions.find(s => s.id === 
 // everything in the bar but the tiles: padding, border, the separator, gaps, the right-hand buttons
 function dockFixedWidth() {
   const cs = getComputedStyle($('dock-strip')), gap = parseFloat(cs.columnGap) || 6;
-  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + 2 + 1 + 2 * gap + 4 + $('dock-right').offsetWidth + DOCK_ADD_W;
+  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + 2 + 1 + 2 * gap + 4 + $('dock-right').offsetWidth + DOCK_ADD_W + (dockIdleN ? DOCK_IDLE_W : 0);
 }
 // a tile's state start when the bar first sees it: the dashboard's status change time (askSince for a choice)
 function dockSeed(x) {
@@ -3220,6 +3236,7 @@ function dockTimerEnd() {
   setTimeout(() => st.classList.remove('flash'), 1300);
 }
 const DOCK_ADD_W = 28 + 4;   // the "+" tile and its gap
+const DOCK_IDLE_W = 44 + 4;   // the 💤 tile and its gap (only while some session is idle)
 function dockLabels() {
   if (dockLabelLang === LANG) return;
   dockLabelLang = LANG;
@@ -3257,9 +3274,9 @@ function dockDraw() {
   }
   for (const { key, n } of AgentDeskDock.numberedTiles(m.mine)) { const x = m.mine.find(y => y.key === key); if (x) x.num = n; }
   // a new selection alone only moves the highlight: the clicked tile stays the same node (its double-click still lands)
-  const sig = JSON.stringify([LANG, m.size, [...m.mine, ...m.peers].map(({ age, ageWarn, ...x }) => ({ ...x, selected: false }))]);   // minutes: dockTileDeco
+  const sig = JSON.stringify([LANG, m.size, dockIdleN, dockIdleOpen, [...m.mine, ...m.peers].map(({ age, ageWarn, ...x }) => ({ ...x, selected: false }))]);   // minutes: dockTileDeco
   if (sig !== dockSig && !(dockDrag && dockDrag.on)) { dockSig = sig; dockTilesDraw(m); }   // dragging: redrawn when it ends
-  else for (const b of $('dock-tiles').querySelectorAll('.dock-tile:not(.more):not(.add)')) { const on = b.dataset.key === dockSel; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  else for (const b of $('dock-tiles').querySelectorAll('.dock-tile:not(.more):not(.add):not(.idle)')) { const on = b.dataset.key === dockSel; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   dockTileDeco();
   $('page-dock').classList.toggle('dock-still', !dockCfg.anim);
   dockAnimKick();
@@ -3301,7 +3318,9 @@ function dockTilesDraw(m) {
   el.className = `dock-tiles s${m.size}`;
   const add = `<button class="dock-tile add" data-key="add:me" aria-label="${esc(dockT('도크: 새 세션'))}" title="${esc(dockT('도크: 새 세션'))}" tabindex="-1">＋</button>`;
   const none = !m.mine.length && !m.peers.length ? `<span class="dock-empty">${esc(dockT('도크: 세션 없음 · 터미널에서 에이전트를 시작하세요'))}</span>` : '';
-  el.innerHTML = m.mine.map(dockTileHtml).join('') + add + none + (m.peers.length ? '<span class="dock-gsep" aria-hidden="true"></span>' : '') + m.peers.map(dockTileHtml).join('');
+  const idleLab = `${dockT('도크: 쉬는 세션')} ${dockIdleN}`;
+  const idle = dockIdleN ? `<button class="dock-tile idle${dockIdleOpen ? ' on' : ''}" data-key="idle:me" aria-label="${esc(idleLab)}" aria-pressed="${dockIdleOpen ? 'true' : 'false'}" title="${esc(idleLab)}" tabindex="-1">💤<span>${dockIdleN > 99 ? '99+' : dockIdleN}</span></button>` : '';
+  el.innerHTML = m.mine.map(dockTileHtml).join('') + add + idle + none + (m.peers.length ? '<span class="dock-gsep" aria-hidden="true"></span>' : '') + m.peers.map(dockTileHtml).join('');
   // one tab stop for the whole row (← → move inside it): the focused tile, else the selected one, else the first
   const tiles = [...el.querySelectorAll('.dock-tile')];
   const cur = tiles.find(b => b.dataset.key === fKey) || tiles.find(b => b.dataset.key === dockSel) || tiles[0];
@@ -4232,15 +4251,23 @@ async function dockAddCreate() {
   dockHint(`＋ ${dockT('도크: 새 세션')}: ${name}`, '', true);
   fetchData();
 }
-// a tile's menu (right click / long press): "고정 해제" takes it out of the drag order and unpins it
+// a tile's menu (right click / long press): "고정 해제" takes it out of the drag order and unpins it; "도크에서 숨기기"
+// sends it to the 💤 tile until it does something again or needs me (the dashboard still lists it)
 function dockMenuOpen(key) {
   const x = dockTileOf(key), s = dockLocal(x); if (!s) return;
-  const fixed = pinnedSessions.has(s.id) || dockCfg.order.includes(s.id);
+  const fixed = pinnedSessions.has(s.id) || dockCfg.order.includes(s.id), hid = Object.prototype.hasOwnProperty.call(dockCfg.hidden, s.id);
   const el = dockPopOpen('menu', key, `<div class="tp-head"><b>${esc(s.name)}</b></div>` + (fixed
     ? `<div class="dp-row"><button data-menu="unpin">📌 ${esc(dockT('도크: 고정 해제'))}</button></div>`
-    : `<div class="tp-meta">${esc(t('고정되지 않은 세션입니다 — 끌어서 옮기면 고정됩니다'))}</div>`));
+    : `<div class="tp-meta">${esc(t('고정되지 않은 세션입니다 — 끌어서 옮기면 고정됩니다'))}</div>`)
+    + `<div class="dp-row"><button data-menu="${hid ? 'unhide' : 'hide'}">${hid ? '👁' : '💤'} ${esc(dockT(hid ? '도크: 도크에 다시 표시' : '도크: 도크에서 숨기기'))}</button></div>`);
   const b = el.querySelector('[data-menu="unpin"]');
   if (b) b.onclick = () => { dockUnpin(s.id); dockPopClose(); dockTileFocus(key); };
+  const h = el.querySelector('[data-menu="hide"], [data-menu="unhide"]');
+  if (h) h.onclick = () => {
+    if (hid) delete dockCfg.hidden[s.id];
+    else { dockCfg.hidden[s.id] = Math.max(Date.now(), Number(s.time) || 0); if (dockSel === key) dockSel = ''; }
+    dockSave(); dockPopClose(); dockDraw();
+  };
 }
 function dockPinSave() { try { localStorage.setItem('roca-pinned', JSON.stringify([...pinnedSessions])); } catch {} }
 function dockUnpin(id) {
@@ -4506,6 +4533,7 @@ $('dock-tiles').addEventListener('click', e => {
   if (dockClickEat) { dockClickEat = false; return; }   // the end of a drag / a long press, not a click
   const b = e.target.closest('.dock-tile');
   if (b && b.dataset.key === 'add:me') { dockAddOpen(); return; }
+  if (b && b.dataset.key === 'idle:me') { dockIdleOpen = !dockIdleOpen; dockDraw(); return; }   // 💤: the idle sessions open / fold
   const x = b && dockTileOf(b.dataset.key); if (!x) return;
   if (x.bundle) { dockLeave(x.key === 'more:me' ? 'dashboard' : 'team'); return; }   // the "+N" pile / a teammate's group: the full list
   if (e.detail > 1) return;   // the second click of a double-click (the dblclick opens the panel card)
@@ -4535,6 +4563,7 @@ $('dock-tiles').addEventListener('keydown', e => {
   if (e.key !== 'Enter' && e.key !== ' ') return;
   e.preventDefault(); e.stopPropagation();
   if (tiles[i].dataset.key === 'add:me') { dockAddOpen(); return; }
+  if (tiles[i].dataset.key === 'idle:me') { dockIdleOpen = !dockIdleOpen; dockDraw(); dockTileFocus('idle:me'); return; }
   const x = dockTileOf(tiles[i].dataset.key); if (!x) return;
   if (x.bundle) { dockLeave(x.key === 'more:me' ? 'dashboard' : 'team'); return; }
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -9606,6 +9635,7 @@ function settingsRender() {
     ${row(t('도크 크기'), t('작게: 이름 없는 작은 타일과 낮은 띠. 크게: 큰 타일과 큰 글자.'), seg('dock-size', dockCfg.size, [['sm', t('작게')], ['md', t('보통')], ['lg', t('크게')]]))}
     ${row(t('마우스가 멀어지면 숨기기'), t('마우스가 띠를 떠나고 2초 뒤 띠가 화면 가장자리로 밀려 8px만 보입니다. 마우스를 가져가거나 말풍선·알림이 뜨면 바로 돌아옵니다.'), sw('dock-autohide', dockCfg.autoHide))}
     ${row(t('선택 말풍선 표시'), t('세션이 선택을 기다릴 때 타일 위에 질문과 선택지를 띄웁니다. "선택지만"은 질문 본문을 숨깁니다.'), seg('dock-ask', dockCfg.ask, [['on', t('켬')], ['options', t('선택지만')], ['off', t('끔')]]), '', true)}
+    ${row(t('쉬는 세션 모으기'), t('입력 대기·완료 상태로 이 시간 동안 활동이 없는 세션은 띠 오른쪽의 💤 타일로 모읍니다. 질문·승인 대기, 오류, 고정한 세션은 항상 띠에 남습니다. 💤를 누르면 펼쳐지고, 타일 메뉴(길게 누르기)의 "도크에서 숨기기"로 직접 보낼 수도 있습니다.'), seg('dock-idle', String(dockCfg.idleMin), [['30', t('30분')], ['60', t('1시간')], ['240', t('4시간')], ['0', t('끔')]]))}
     ${row(t('Orca 사용 중엔 말풍선 접기'), t('Orca가 앞에 있으면 질문이 이미 터미널에 보이므로 선택 말풍선을 띄우지 않고 타일의 !만 표시합니다. 타일에 마우스를 올리거나 다른 앱으로 넘어가면 말풍선이 펼쳐집니다. macOS 전용입니다.'), sw('dock-yield-orca', dockCfg.yieldOrca))}
     ${row(t('완료 말풍선'), t('내 세션이 작업을 마치면(작업 중 → 입력 대기·완료) 그 타일 위에 마지막 응답의 첫 줄을 8초 동안 띄웁니다. 누르면 터미널로 갑니다.'), sw('dock-done', dockCfg.done))}
     ${row(t('도크 애니메이션'), t('작업 중인 캐릭터의 움직임, 활동 바, 대기·승인 표시의 깜박임을 켭니다. 꺼도 상태 색은 그대로입니다.'), sw('dock-anim', dockCfg.anim))}
@@ -9687,6 +9717,7 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'dock-enter') dockEnter();
   else if (name === 'dock-start') { dockCfg.start = !dockCfg.start; dockSave(); settingsRender(); }
   else if (name === 'dock-size' && ['sm', 'md', 'lg'].includes(v)) { dockCfg.size = v; dockSave(); if (dockOn) { dockSizeApply(); dockDraw(); } settingsRender(); }
+  else if (name === 'dock-idle' && ['0', '30', '60', '240'].includes(v)) { dockCfg.idleMin = Number(v); dockSave(); if (dockOn) dockDraw(); settingsRender(); }
   else if (name === 'dock-yield-orca') { dockCfg.yieldOrca = !dockCfg.yieldOrca; dockSave(); dockFront.id = ''; dockFront.at = 0; if (dockOn) { dockAskSync(); dockFrontCheck(true); } settingsRender(); }
   else if (name === 'dock-autohide') { dockCfg.autoHide = !dockCfg.autoHide; dockSave(); if (!dockCfg.autoHide) dockHideSet(false); settingsRender(); }
   else if (name === 'dock-ask' && ['on', 'options', 'off'].includes(v)) { dockCfg.ask = v; dockSave(); if (dockOn) dockAskSync(); settingsRender(); }
