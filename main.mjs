@@ -1041,6 +1041,20 @@ ipcMain.on("orca:set-opacity", (_e, val) => {
   mainWindow.setOpacity(val);
 });
 
+// the app in front (its macOS bundle id, '' elsewhere / on failure): the dock folds its choice bubbles while Orca is in
+// front (core/dock.js askYield). lsappinfo needs no Automation permission (System Events through osascript would).
+ipcMain.handle("orca:front-app", async () => {
+  if (!IS_MAC) return "";
+  try {
+    const { stdout: asn } = await exec("/usr/bin/lsappinfo", ["front"], { timeout: 1500 });
+    const id = asn.trim();
+    if (!/^ASN:[0-9a-fx:-]+$/i.test(id)) return "";
+    const { stdout } = await exec("/usr/bin/lsappinfo", ["info", "-only", "bundleid", id], { timeout: 1500 });
+    const m = /"CFBundleIdentifier"="([^"]{1,200})"/.exec(stdout);
+    return m ? m[1] : "";
+  } catch { return ""; }
+});
+
 // ── Claude Code hooks → ~/.roca/events.jsonl → renderer (exact working/waiting/needs-input) ──
 const ROCA_DIR = join(homedir(), ".roca");
 const HOOK_SCRIPT = join(ROCA_DIR, IS_WIN ? "hook.ps1" : "hook.sh");
