@@ -478,44 +478,60 @@ async function tmuxPaneForPid(pid, paneByPid) {
   }
   return null;
 }
+// pid → what lsof / ps eww said about it (cwd, terminal app, tmux): a process keeps these, so each poll asks only new pids
+const procInfoCache = new Map();   // `${pid}:${startedAt}` → { cwd, program, itermId, inTmux, recall }
+async function procInfo(pid) {
+  let cwd = "", program = "", itermId = "", inTmux = false, recall = false;
+  if (IS_LINUX) {
+    try { cwd = readlinkSync(`/proc/${pid}/cwd`); } catch {}
+    try {
+      const env = readFileSync(`/proc/${pid}/environ`, "utf-8").split("\0");
+      program = (env.find(l => l.startsWith("TERM_PROGRAM=")) || "").slice(13);
+      inTmux = env.some(l => l.startsWith("TMUX="));
+      recall = env.some(l => l.startsWith("AGENTDESK_RECALL="));
+    } catch {}
+  } else {
+    try { const r = await exec("/usr/sbin/lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"], { timeout: 4000 }); cwd = (r.stdout.split("\n").find(l => l.startsWith("n")) || "").slice(1); } catch {}
+    try {
+      const r = await exec("/bin/ps", ["eww", "-o", "command=", "-p", String(pid)], { timeout: 4000 });
+      program = (r.stdout.match(/\bTERM_PROGRAM=(\S+)/) || [])[1] || "";
+      itermId = ((r.stdout.match(/\bITERM_SESSION_ID=(\S+)/) || [])[1] || "").split(":").pop();
+      inTmux = /\bTMUX=/.test(r.stdout);
+      recall = /\bAGENTDESK_RECALL=/.test(r.stdout);
+    } catch {}
+  }
+  return { cwd, program, itermId, inTmux, recall };
+}
+// every agent CLI process on a tty. drivable = the widget can switch to / type into it (tmux pane anywhere, iTerm2 /
+// Terminal.app on macOS); the rest come back with handle null so the widget can still show them read-only
 async function ttyTargets() {
-  if (IS_WIN) return [];   // no terminal control on Windows yet: sessions come from hooks, read-only
+  if (IS_WIN) return [];   // no process discovery on Windows yet (no cwd of another process): sessions come from hooks
   try {
     const { stdout } = await exec("ps", ["-axo", "pid=,tty=,lstart=,command="]);
     const rows = stdout.split("\n").map(l => l.trim()).filter(l => /^\d+\s+(ttys\d+|pts\/\d+)\s+.+?\s(\S*\/)?(claude|gemini|codex|opencode)(\s|$)/.test(l));
     const panes = await tmuxPanes();
     const paneByPid = new Map(panes.map(p => [p.pid, p]));
-    const out = [];
+    const out = [], seen = new Set();
     for (const row of rows) {
       const m = row.match(/^(\d+)\s+(ttys\d+|pts\/\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(.*)$/); if (!m) continue;
       const pid = Number(m[1]), tty = `/dev/${m[2]}`, startedAt = Date.parse(m[3]) || 0, cmd = m[4];
       const agent = (cmd.match(/(?:^|\s)(?:\S*\/)?(claude|gemini|codex|opencode)(?:\s|$)/) || [])[1] || "claude";
       const sessionId = (cmd.match(/(?:--resume|\bresume)\s+([0-9a-zA-Z_-]{8,})/) || [])[1] || null;
-      let cwd = "", program = "", itermId = "", inTmux = false;
-      if (IS_LINUX) {
-        try { cwd = readlinkSync(`/proc/${pid}/cwd`); } catch {}
-        try {
-          const env = readFileSync(`/proc/${pid}/environ`, "utf-8").split("\0");
-          program = (env.find(l => l.startsWith("TERM_PROGRAM=")) || "").slice(13);
-          inTmux = env.some(l => l.startsWith("TMUX="));
-        } catch {}
-      } else {
-        try { const r = await exec("/usr/sbin/lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"], { timeout: 4000 }); cwd = (r.stdout.split("\n").find(l => l.startsWith("n")) || "").slice(1); } catch {}
-        try {
-          const r = await exec("/bin/ps", ["eww", "-o", "command=", "-p", String(pid)], { timeout: 4000 });
-          program = (r.stdout.match(/\bTERM_PROGRAM=(\S+)/) || [])[1] || "";
-          itermId = ((r.stdout.match(/\bITERM_SESSION_ID=(\S+)/) || [])[1] || "").split(":").pop();
-          inTmux = /\bTMUX=/.test(r.stdout);
-        } catch {}
-      }
+      const key = `${pid}:${startedAt}`;
+      seen.add(key);
+      let info = procInfoCache.get(key);
+      if (!info) { info = await procInfo(pid); if (info.cwd) procInfoCache.set(key, info); }
+      const { cwd, program, itermId, inTmux, recall } = info;
       if (/^Orca$/i.test(program)) continue;                                   // Orca terminals are handled by Orca itself
-      if (!IS_MAC && !inTmux) continue;                                        // outside macOS only tmux panes can be driven
-      let handle = `term:${pid}`, kind = itermId ? "iterm" : "terminal";
+      let handle = null, kind = "none";
       if (inTmux) { const pane = await tmuxPaneForPid(pid, paneByPid); if (pane) { handle = pane.handle; kind = "tmux"; } }
-      const target = { handle, kind, pid, tty, cwd, sessionId, agent, program, itermId, startedAt, cmd };
-      termTargets.set(pid, target);
+      if (!handle && IS_MAC) { handle = `term:${pid}`; kind = itermId ? "iterm" : "terminal"; }   // outside macOS only tmux panes can be driven
+      const drivable = !!handle;
+      const target = { handle, kind, drivable, pid, tty, cwd, sessionId, agent, program, itermId, startedAt, cmd, recall };
+      if (drivable) termTargets.set(pid, target);
       out.push(target);
     }
+    for (const k of procInfoCache.keys()) if (!seen.has(k)) procInfoCache.delete(k);
     return out;
   } catch { return []; }
 }

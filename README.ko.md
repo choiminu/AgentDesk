@@ -46,7 +46,7 @@ Claude Code·Codex CLI·Gemini CLI 세션을 한눈에 보고, 얇은 도크 띠
 ## 1분 설치
 
 1. [최신 릴리스](https://github.com/choiminu/AgentDesk/releases/latest)에서 내 기기용 설치 파일을 받습니다: macOS DMG(Apple Silicon·Intel), Linux AppImage·.deb, Windows 설치 파일·포터블 .exe.
-2. 아무 터미널에서 에이전트(Claude Code·Codex CLI·Gemini CLI)를 하나 띄웁니다. 몇 초 안에 AgentDesk에 나타납니다.
+2. 아무 터미널에서 에이전트(Claude Code·Codex CLI·Gemini CLI)를 하나 띄웁니다. 몇 초 안에 AgentDesk에 나타납니다. 이미 실행 중이던 세션도 훅이 없으면 "훅 없이 감지됨"(macOS·Linux)으로, 정확 감지를 켜면 다음 활동부터 정확한 상태로 보입니다.
 3. ⌘⇧D(Ctrl+Shift+D)를 누르면 도크 모드입니다.
 
 소스에서 실행하려면:
@@ -155,7 +155,7 @@ npm start
 
 ### 온보딩
 
-처음 실행하면 6단계 온보딩이 나옵니다. 단계는 소개, 환경 점검, 도크와 핵심 조작, 팀 공유, 연동, 업데이트와 설정이며, 각 단계에서 **건너뛰기**를 누를 수 있습니다. 환경 점검 단계는 에이전트 CLI, 위젯 훅, Orca CLI, 터미널 제어 권한을 확인하고 **정확 감지**를 버튼 하나로 켜게 합니다. 정확 감지는 에이전트 CLI에 훅을 등록해([동작 원리](#동작-원리) 참고) 상태를 추정이 아닌 이벤트로 받게 합니다.
+처음 실행하면 6단계 온보딩이 나옵니다. 단계는 소개, 환경 점검, 도크와 핵심 조작, 팀 공유, 연동, 업데이트와 설정이며, 각 단계에서 **건너뛰기**를 누를 수 있습니다. 환경 점검 단계는 에이전트 CLI, 위젯 훅, Orca CLI, 터미널 제어 권한을 확인하고 **정확 감지**를 버튼 하나로 켜게 합니다. 정확 감지가 꺼진 채로 온보딩을 닫으면 대시보드가 한 번 묻습니다(**켜기**, 이번 실행에서만 숨기는 **나중에**, **다시 묻지 않기**). 이 버튼을 누르기 전에는 설정 파일을 바꾸지 않습니다. 정확 감지는 에이전트 CLI에 훅을 등록해([동작 원리](#동작-원리) 참고) 상태를 추정이 아닌 이벤트로 받게 합니다.
 
 온보딩은 **⚙ 설정 → 기타 → 온보딩 다시 보기**에서 다시 열 수 있습니다. 같은 절에는 **로그인 시 시작**(설치한 앱만)과 **전역 단축키**도 있습니다.
 
@@ -237,7 +237,7 @@ OAuth로 연결하면 다음을 쓸 수 있습니다.
 | **Orca 세션** | `orca worktree ps` + 터미널 목록, 훅 이벤트로 보강 | Orca 터미널 |
 | **터미널 세션**(iTerm2·Terminal.app·tmux에서 실행한 에이전트) | 훅 이벤트(`~/.roca/events.jsonl`) + 트랜스크립트 메타(`/rename` 또는 AI 제목·마지막 메시지·컨텍스트·브랜치) | tmux 패널(`send-keys` / `capture-pane`), 또는 에이전트 프로세스로 찾은 iTerm2 / Terminal.app 탭(AppleScript, macOS). 종료된 세션은 클릭하면 다시 열립니다 |
 
-두 종류는 훅 스크립트가 기록하는 `TERM_PROGRAM` 값(`Orca` / `iTerm.app` / `tmux` / `Apple_Terminal`)으로 구분되어 한 목록에 함께 나옵니다. Orca가 없으면 훅만이 세션 출처가 되며, 이때 대시보드에 배너가 표시되고 정확 감지가 꺼져 있으면 버튼으로 바로 켤 수 있습니다.
+두 종류는 훅 스크립트가 기록하는 `TERM_PROGRAM` 값(`Orca` / `iTerm.app` / `tmux` / `Apple_Terminal`)으로 구분되어 한 목록에 함께 나옵니다. 아직 훅 이벤트가 없는 터미널의 에이전트 프로세스는 읽기 전용 **훅 없이 감지됨** 카드로 보입니다(macOS·Linux, Windows는 아직 아님). 상태는 터미널 화면을 읽을 수 있을 때(tmux, 또는 macOS 자동화 권한을 허용한 iTerm2 / Terminal.app) 화면으로 판정하고, 그렇지 않으면 완료(유휴)로 표시합니다. 완료·대기 알림을 내지 않고 팀원에게 공유하지 않습니다. 그 세션의 첫 훅 이벤트가 오면 훅 카드로 바뀌고 이름·고정·도크 위치는 그대로 유지됩니다. Orca가 없으면 대시보드에 배너가 표시되고 정확 감지가 꺼져 있으면 버튼으로 바로 켤 수 있습니다.
 </details>
 
 <details>
@@ -273,7 +273,7 @@ OAuth로 연결하면 다음을 쓸 수 있습니다.
 <details>
 <summary>훅 기반 정확 감지</summary>
 
-정확 감지를 켜면 이 컴퓨터에 설치된 모든 에이전트 CLI에 위젯 훅이 추가됩니다: `~/.claude/settings.json`(Claude Code), `~/.gemini/settings.json`(Gemini CLI), `~/.codex/hooks.json`(Codex CLI). 기존 훅은 보존되고 이전 파일은 `~/.roca/`에 백업됩니다. 나중에 설치한 CLI는 다음 위젯 시작 때 자동으로 포함됩니다. 훅 스크립트 `~/.roca/hook.sh`(Windows는 PowerShell `hook.ps1`)는 이벤트를 `~/.roca/events.jsonl`에 한 줄씩 덧붙이고 즉시 종료하며, 위젯이 이 파일을 감시합니다. Claude Code는 훅 설정을 즉시 다시 읽으므로 실행 중인 세션에도 적용됩니다. 끄면 위젯 항목만 제거됩니다.
+정확 감지를 켜면 이 컴퓨터에 설치된 모든 에이전트 CLI에 위젯 훅이 추가됩니다: `~/.claude/settings.json`(Claude Code), `~/.gemini/settings.json`(Gemini CLI), `~/.codex/hooks.json`(Codex CLI). 기존 훅은 보존되고 이전 파일은 `~/.roca/`에 백업됩니다. 나중에 설치한 CLI는 다음 위젯 시작 때 자동으로 포함됩니다. 훅 스크립트 `~/.roca/hook.sh`(Windows는 PowerShell `hook.ps1`)는 이벤트를 `~/.roca/events.jsonl`에 한 줄씩 덧붙이고 즉시 종료하며, 위젯이 이 파일을 감시합니다. Claude Code는 훅 설정을 즉시 다시 읽으므로 실행 중인 세션에도 다음 활동(프롬프트·도구 호출)부터 적용됩니다. 끄면 위젯 항목만 제거됩니다.
 
 | 훅 이벤트 (Claude Code / Codex CLI, 괄호 안은 Gemini CLI 이름) | 위젯 상태 |
 |---|---|
