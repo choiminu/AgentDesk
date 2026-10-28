@@ -81,6 +81,7 @@
       "team/**/*",
       "perm/**/*",
       "guard/**/*",
+      "statusline/**/*",
       "package.json",
       "assets/**/*"
     ],
