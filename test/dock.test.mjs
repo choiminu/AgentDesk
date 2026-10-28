@@ -1229,3 +1229,12 @@ test('widget dock: choice bubbles fold while Orca is in front (askYield), the ti
   assert.match(check, /if \(!dockYieldOn\(\) && \[\.\.\.dockAsk\.values\(\)\]\.some\(a => a\.placed\)\) dockHideSet\(false\);/);
   assert.match(html, /dockCfg\.yieldOrca = c\.yieldOrca !== false;/, 'on by default');
 });
+
+test('renderer: after falling back to hooks, Orca is asked again (a restarted Orca needs no widget restart)', () => {
+  const fetch = between(html, 'async function fetchData() {', '\n}\n');
+  assert.match(fetch, /const retry = orcaProbe === false && Date\.now\(\) >= orcaRetryAt;/);
+  assert.match(fetch, /const viaOrca = useOrca\(\) \|\| retry;/);
+  assert.match(fetch, /if \(viaOrca && dataMode === 'auto'\) orcaProbe = orcaAvailable;/, 'a good answer switches back to Orca');
+  assert.match(html, /const ORCA_RETRY_MS = 10000;/);
+  assert.match(html, /window\.addEventListener\('focus', \(\) => \{ if \(orcaProbe === false\) orcaRetryAt = 0; \}\);/);
+});
