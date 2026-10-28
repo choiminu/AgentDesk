@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tQyHlS3uRPDvChUv5HHzdiDfiDRr5CLRYraYr0ix/XY='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-FdCeNw2mKsl4NX6tdv0IXIg61KSFvyQ65c+wGytS4hw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2243,7 +2243,7 @@ Object.assign(I18N, {
   '호버 시 터미널 창 열기': 'Open the terminal window on hover',
   '도크 애니메이션': 'Dock animation', '작업 중인 캐릭터의 움직임, 활동 바, 대기·승인 표시의 깜박임을 켭니다. 꺼도 상태 색은 그대로입니다.': 'Working characters move, the activity bars breathe and waiting / approval marks blink. Off: the state colours stay.',
   '말풍선에서 답하세요': 'Answer in its bubble', '팀원 세션의 터미널로는 갈 수 없습니다': "A teammate's session has no terminal here",
-  '팀원 세션의 터미널로는 갈 수 없습니다 — Enter로 원격 창을 엽니다': "A teammate's session has no terminal here — Enter opens its remote window", '선택 말풍선 표시': 'Choice bubbles', '선택지만': 'Options only', '켬': 'On', '끔': 'Off',
+  '팀원 세션의 터미널로는 갈 수 없습니다 — Enter로 원격 창을 엽니다': "A teammate's session has no terminal here — Enter opens its remote window", '선택 말풍선 표시': 'Choice bubbles', 'Orca 사용 중엔 말풍선 접기': 'Fold bubbles while Orca is in front', 'Orca가 앞에 있으면 질문이 이미 터미널에 보이므로 선택 말풍선을 띄우지 않고 타일의 !만 표시합니다. 타일에 마우스를 올리거나 다른 앱으로 넘어가면 말풍선이 펼쳐집니다. macOS 전용입니다.': 'While Orca is the app in front the question is already on its terminal, so the choice bubble stays folded and the tile only shows its !. Pointing at the tile or switching to another app opens it. macOS only.', '선택지만': 'Options only', '켬': 'On', '끔': 'Off',
   '세션이 선택을 기다릴 때 타일 위에 질문과 선택지를 띄웁니다. "선택지만"은 질문 본문을 숨깁니다.': 'When a session waits for a choice, its question and options appear over its tile. "Options only" hides the question text.',
   '검사할 내용이 너무 깁니다': 'Too long to check', '가드레일 확인 실패': 'Guardrail check failed', '가드레일 검사 시간·길이 초과': 'Guardrail check ran out of time or length', '가드레일 확인 중…': 'Checking with the guardrail…', '여기서는 허용할 수 없습니다 — 전체 보기에서 확인하세요': 'Cannot be allowed here — check it in the full view',
   '프롬프트가 바뀌었습니다 — 다시 확인하세요': 'The prompt changed — check it again', '선택지를 찾지 못했습니다 — 터미널 창에서 확인하세요': 'No choices found — check the terminal window', '터미널에서 확인하세요': 'check it in the terminal',
@@ -3106,8 +3106,8 @@ inboxRender();
 //    terminal) with the input line and [허용][거부]; clicking it goes to the real terminal. Panel sizes: core/dock.js POP. ──
 const DOCK_INBOX_H = 360;
 let DOCK_H = 72;   // the bar's height: AgentDeskDock.stripHeight(size) (dockSizeApply)
-// localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, size, autoHide }
-let dockCfg = { start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, order: [], addRepo: '' };   // order: my session ids in the user's drag order
+// localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, size, autoHide, yieldOrca }
+let dockCfg = { start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, yieldOrca: true, order: [], addRepo: '' };   // order: my session ids in the user's drag order
 try {
   const c = JSON.parse(localStorage.getItem('roca-dock') || '{}') || {};
   dockCfg.start = c.start === true;
@@ -3120,6 +3120,7 @@ try {
   if (c.opacityV === 2 && Number.isFinite(c.opacity) && c.opacity >= 0.3 && c.opacity <= 1) dockCfg.opacity = c.opacity;
   dockCfg.size = ['sm', 'md', 'lg'].includes(c.size) ? c.size : 'md';
   dockCfg.autoHide = c.autoHide === true;      // slide away when the pointer leaves
+  dockCfg.yieldOrca = c.yieldOrca !== false;   // choice bubbles stay folded while Orca is the app in front (macOS)
   dockCfg.order = Array.isArray(c.order) ? c.order.filter(v => typeof v === 'string' && v && v.length <= 200).slice(0, 50) : [];
   dockCfg.addRepo = typeof c.addRepo === 'string' && c.addRepo.length <= 500 ? c.addRepo : '';
   // a spot per display (an old single { cx, y } becomes 'legacy': main uses it on the display it lies on)
@@ -3268,7 +3269,9 @@ function dockDraw() {
   const edge = AgentDeskDock.dockEdge(full.mine), pd = $('page-dock');
   for (const k of ['ask', 'err', 'run']) pd.classList.toggle(`edge-${k}`, edge === k);
   const asks = new Set(full.mine.filter(x => x.state === 'ask').map(x => x.key));
-  if ([...asks].some(k => !dockAskKeys.has(k))) { dockHideSet(false); if (dockPop && dockPop.kind === 'menu') dockPopClose(); }   // its bubble must show
+  if ([...asks].some(k => !dockAskKeys.has(k))) {   // its bubble must show — unless Orca is in front (it waits folded there)
+    dockFrontCheck(true).then(() => { if (!dockOn || dockYieldOn()) return; dockHideSet(false); if (dockPop && dockPop.kind === 'menu') dockPopClose(); });
+  }
   dockAskKeys = asks;
   if (dockTipKey) { if (dockTileOf(dockTipKey)) dockTipShow(dockTipKey); else dockTipHide(); }
 }
@@ -3626,7 +3629,7 @@ function dockHover(key) {
   if (!x || open === key) return;
   if (open && dockTyping()) return;   // typing in one window: another tile does not take it away
   const tileSel = `.dock-tile[data-key="${CSS.escape(key)}"]`;
-  if (dockAskOn(key)) { dockAskGrowAt(key, tileSel); return; }   // a waiting choice: its bubble grows (no terminal window under it)
+  if (dockAskOn(key) || dockAskYielded(key)) { dockAskGrowAt(key, tileSel); return; }   // a waiting choice: its bubble grows (folded for Orca: it opens)
   if (!dockCfg.hoverTerm || !dockTermable(x)) {   // the card (an open window goes)
     dockHoverT = setTimeout(async () => {
       dockHoverT = 0;
@@ -3801,6 +3804,30 @@ function dockAskClose(a) { dockAskClosed.set(a.key, dockAskClosedId(a)); if (a.e
 const dockAskVisible = () => dockOn && !inboxQOpen && !dockTermBg() && !dockPop && [...dockAsk.values()].some(a => a.placed);
 const dockDoneVisible = () => dockOn && !inboxQOpen && !dockTermBg() && !dockPop && [...dockDone.values()].some(d => d.placed);
 const dockAskOn = key => { const a = dockAsk.get(key); return !!(a && a.placed && dockAskVisible()); };
+// Orca in front (dockCfg.yieldOrca, macOS): the question is already on the screen there, so the choice bubbles stay
+// folded (AgentDeskDock.askYield — the tile keeps its !; pointing at the tile opens its bubble) and a hidden bar stays
+// hidden. The app in front is asked of main (lsappinfo) at most every DOCK_FRONT_MS while a session waits for a choice
+// (dockAskSync's timer); leaving Orca brings the bubbles back on the next check.
+const DOCK_FRONT_MS = 1000;
+const dockFront = { id: '', at: 0, busy: null };
+const dockYieldOn = () => !!dockCfg.yieldOrca && AgentDeskDock.isOrcaApp(dockFront.id);
+function dockFrontCheck(force) {
+  if (!dockOn || !dockCfg.yieldOrca || !window.orca.frontApp) { dockFront.id = ''; return Promise.resolve(); }
+  if (dockFront.busy) return dockFront.busy;
+  if (!force && Date.now() - dockFront.at < DOCK_FRONT_MS) return Promise.resolve();
+  dockFront.busy = (async () => {
+    let id = '';
+    try { id = String((await window.orca.frontApp()) || ''); } catch {}
+    const was = dockYieldOn();
+    dockFront.id = id; dockFront.at = Date.now(); dockFront.busy = null;
+    if (!dockOn || dockYieldOn() === was) return;
+    dockAskPlace(); dockBoundsSync();
+    if (!dockYieldOn() && [...dockAsk.values()].some(a => a.placed)) dockHideSet(false);   // left Orca: the bubbles are back
+  })();
+  return dockFront.busy;
+}
+// a bubble folded for Orca that pointing at its tile would open (dockHover)
+const dockAskYielded = key => { const a = dockAsk.get(key); return !!(a && a.yielded && a.el && dockOn && !inboxQOpen && !dockTermBg() && !dockPop); };
 // which sessions wait for a choice now: new bubbles, changed requests, finished ones gone; screens read every DOCK_ASK_MS
 function dockAskSync() {
   if (!dockOn || !dockModelNow) return;
@@ -3810,6 +3837,7 @@ function dockAskSync() {
     if (dockAskT) { clearInterval(dockAskT); dockAskT = 0; }
     dockAskPlace(); dockBoundsSync(); return;
   }
+  if (dockAsk.size || dockModelNow.mine.some(x => x.state === 'ask')) dockFrontCheck();
   const now = Date.now(), perms = dockPermMap(), seen = new Set();
   for (const x of dockModelNow.mine) {
     if (x.bundle || x.state !== 'ask') continue;
@@ -4024,6 +4052,7 @@ function dockAskPlace() {
     a.placed = false;
     if (!a.el) continue;
     if (dockAskMuted(a)) { a.el.hidden = true; a.muted = true; continue; }   // just answered: not again for a moment
+    if (AgentDeskDock.askYield({ on: !!dockCfg.yieldOrca, front: dockFront.id, big: a.big })) { a.el.hidden = true; a.yielded = true; continue; }   // Orca in front: folded
     const tile = $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(a.key)}"]`);
     if (!tile) { a.el.hidden = true; continue; }
     const r = tile.getBoundingClientRect();
@@ -4056,6 +4085,7 @@ function dockAskPlace() {
     const a = dockAsk.get(g.key), el = a.el, want = dockAskHeight(a);
     a.placed = show; el.hidden = false;
     if (a.muted) { a.muted = false; dockAskArm(a); }   // back after the mute: armed again
+    if (a.yielded) { a.yielded = false; dockAskArm(a); }   // unfolded: armed again (a click meant for Orca must not land)
     if (a.x != null && a.x !== g.x) dockAskArm(a);   // pushed sideways: a click aimed at the old place must not land
     a.x = g.x;
     el.style.left = `${g.x}px`; el.style.width = `${g.width}px`; el.style.setProperty('--tail', `${g.tail}px`);
@@ -9567,6 +9597,7 @@ function settingsRender() {
     ${row(t('도크 크기'), t('작게: 이름 없는 작은 타일과 낮은 띠. 크게: 큰 타일과 큰 글자.'), seg('dock-size', dockCfg.size, [['sm', t('작게')], ['md', t('보통')], ['lg', t('크게')]]))}
     ${row(t('마우스가 멀어지면 숨기기'), t('마우스가 띠를 떠나고 2초 뒤 띠가 화면 가장자리로 밀려 8px만 보입니다. 마우스를 가져가거나 말풍선·알림이 뜨면 바로 돌아옵니다.'), sw('dock-autohide', dockCfg.autoHide))}
     ${row(t('선택 말풍선 표시'), t('세션이 선택을 기다릴 때 타일 위에 질문과 선택지를 띄웁니다. "선택지만"은 질문 본문을 숨깁니다.'), seg('dock-ask', dockCfg.ask, [['on', t('켬')], ['options', t('선택지만')], ['off', t('끔')]]), '', true)}
+    ${row(t('Orca 사용 중엔 말풍선 접기'), t('Orca가 앞에 있으면 질문이 이미 터미널에 보이므로 선택 말풍선을 띄우지 않고 타일의 !만 표시합니다. 타일에 마우스를 올리거나 다른 앱으로 넘어가면 말풍선이 펼쳐집니다. macOS 전용입니다.'), sw('dock-yield-orca', dockCfg.yieldOrca))}
     ${row(t('완료 말풍선'), t('내 세션이 작업을 마치면(작업 중 → 입력 대기·완료) 그 타일 위에 마지막 응답의 첫 줄을 8초 동안 띄웁니다. 누르면 터미널로 갑니다.'), sw('dock-done', dockCfg.done))}
     ${row(t('도크 애니메이션'), t('작업 중인 캐릭터의 움직임, 활동 바, 대기·승인 표시의 깜박임을 켭니다. 꺼도 상태 색은 그대로입니다.'), sw('dock-anim', dockCfg.anim))}
     ${row(t('호버 시 터미널 창 열기'), t('도크 타일에 마우스를 올리면 그 세션의 터미널 창(화면·입력 줄·[허용][거부])을 바로 띄웁니다. 끄면 이름·상태·지금 하는 일만 작은 카드로 보여 줍니다.'), sw('dock-hover-term', dockCfg.hoverTerm))}
@@ -9647,6 +9678,7 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'dock-enter') dockEnter();
   else if (name === 'dock-start') { dockCfg.start = !dockCfg.start; dockSave(); settingsRender(); }
   else if (name === 'dock-size' && ['sm', 'md', 'lg'].includes(v)) { dockCfg.size = v; dockSave(); if (dockOn) { dockSizeApply(); dockDraw(); } settingsRender(); }
+  else if (name === 'dock-yield-orca') { dockCfg.yieldOrca = !dockCfg.yieldOrca; dockSave(); dockFront.id = ''; dockFront.at = 0; if (dockOn) { dockAskSync(); dockFrontCheck(true); } settingsRender(); }
   else if (name === 'dock-autohide') { dockCfg.autoHide = !dockCfg.autoHide; dockSave(); if (!dockCfg.autoHide) dockHideSet(false); settingsRender(); }
   else if (name === 'dock-ask' && ['on', 'options', 'off'].includes(v)) { dockCfg.ask = v; dockSave(); if (dockOn) dockAskSync(); settingsRender(); }
   else if (name === 'dock-done') { dockCfg.done = !dockCfg.done; dockSave(); if (dockOn) dockDoneSync(); settingsRender(); }

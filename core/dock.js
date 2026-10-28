@@ -696,6 +696,17 @@ function screenLines(lines, opts) {
   return out.reverse();
 }
 
+// the dock gives way to Orca: while Orca is the app in front, the question is already on the screen there, so a
+// choice bubble stays folded (the tile keeps its ! and colour) unless its tile is pointed at (big)
+//   isOrcaApp(bundleId) → true for Orca's macOS bundle id (com.stablyai.orca, and ids under it)
+//   askYield({ on, front, big }) → true when a choice bubble should stay folded: the setting on, Orca in front, not big
+const ORCA_BUNDLE_RE = /^com\.stablyai\.orca(?:\.[\w.-]+)?$/;
+const isOrcaApp = id => typeof id === 'string' && ORCA_BUNDLE_RE.test(id);
+function askYield(o) {
+  const { on, front, big } = o && typeof o === 'object' ? o : {};
+  return on === true && isOrcaApp(front) && big !== true;
+}
+
 // [허용] in the bar: only what one short line shows in full — a one-line Bash command or a one-line other request,
 // at most PERM_LINE_MAX characters, not cut by the hook. File edits (Edit / Write / MultiEdit / NotebookEdit — the panel
 // shows their diff), anything cut, empty or multi-line → answered in the panel ([거부] works for every request).
@@ -712,7 +723,7 @@ function permAllowable(sm) {
 
 const AgentDeskDock = { dropSafeText, dragStep, DRAG_PX, orderSessions, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
   POP, SCREEN, popWidth, popExtra, bubbleHeight, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame,
-  numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows };
+  numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows, isOrcaApp, askYield };
 root.AgentDeskDock = AgentDeskDock;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskDock;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

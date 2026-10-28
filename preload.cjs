@@ -120,4 +120,5 @@ contextBridge.exposeInMainWorld("orca", {
   clipboardWrite: (text) => ipcRenderer.invoke("orca:clipboard-write", text),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   setOpacity: (val) => ipcRenderer.send("orca:set-opacity", val),
+  frontApp: () => ipcRenderer.invoke("orca:front-app"),
 });

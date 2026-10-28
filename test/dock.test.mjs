@@ -519,7 +519,7 @@ test('widget dock: choice bubbles reuse the popover parser, the shared answer pa
   assert.match(answer, /if \(err && err\.changed\) \{ a\.err = err\.message; a\.armedSig = ''; a\.readAt = 0; \}/, 'read again, armed again');
   assert.match(between(html, 'async function officeAnswer(', '\n}\n'), /if \(e\.changed && officeAsk === a\) \{ a\.lastSig = ''; officeAskRefresh\(\); \}/);
   assert.match(between(html, 'function dockAskPlace()', '\n}\n'), /AgentDeskDock\.bubbleLayout\(items/);
-  assert.match(between(html, 'function dockHover(key)', '\nfunction dockHoverLeave'), /if \(dockAskOn\(key\)\) \{ dockAskGrowAt\(key, tileSel\); return; \}/, 'a bubble\'s tile grows it instead of opening the window');
+  assert.match(between(html, 'function dockHover(key)', '\nfunction dockHoverLeave'), /if \(dockAskOn\(key\) \|\| dockAskYielded\(key\)\) \{ dockAskGrowAt\(key, tileSel\); return; \}/, 'a bubble\'s tile grows it instead of opening the window');
   assert.match(between(html, 'async function dockAskGrowAt(', '\n}\n'), /const gen = \+\+dockAskGrowGen;\n\s*if \(await dockPointerOn\(sel\) === false \|\| gen !== dockAskGrowGen\) return;/, 'grown only where the pointer really is, by the latest hover');
   assert.match(between(html, 'function dockPopKind()', '\n}\n'), /if \(dockTermBg\(\)\) return 'term';\n(?:\s*if \(dockPop\) return dockPop\.kind;[^\n]*\n)?\s*if \(dockAskVisible\(\)\)/, 'the window wins over the bubbles');
 });
@@ -1026,7 +1026,7 @@ test('main / renderer: the hit plan is used on both sides; Linux shapes the hidd
 test('renderer: hidden edge colour and a new approval un-hides; the summary line reads its width only on resize', () => {
   const draw = between(html, 'function dockDraw() {', '\n}\n');
   assert.match(draw, /const edge = AgentDeskDock\.dockEdge\(full\.mine\)/);
-  assert.match(draw, /if \(\[\.\.\.asks\]\.some\(k => !dockAskKeys\.has\(k\)\)\) \{ dockHideSet\(false\); if \(dockPop && dockPop\.kind === 'menu'\) dockPopClose\(\); \}/, 'a new approval: back, and a tile menu makes way for its bubble');
+  assert.match(draw, /if \(\[\.\.\.asks\]\.some\(k => !dockAskKeys\.has\(k\)\)\) \{[^\n]*\n\s*dockFrontCheck\(true\)\.then\(\(\) => \{ if \(!dockOn \|\| dockYieldOn\(\)\) return; dockHideSet\(false\); if \(dockPop && dockPop\.kind === 'menu'\) dockPopClose\(\); \}\);/, 'a new approval: back, and a tile menu makes way for its bubble — unless Orca is in front');
   assert.match(html, /#page-dock\.dock-hidden\.edge-ask \.dock-strip \{ box-shadow: inset 0 4px 0 var\(--yellow\); \}/);
 });
 
@@ -1201,4 +1201,31 @@ test('widget: the hook connection line is shown only when main reports lastHookA
   assert.equal(hookLastOf({ perm: null, guard: null }), null); assert.equal(hookLastOf({ perm: 5, guard: 9 }), 9); assert.equal(hookLastOf({ perm: 7, guard: null }), 7); assert.equal(hookLastOf(null), null); assert.equal(hookLastOf(3), 3);
   assert.match(html, /\(permHookOn \|\| guardHookOn\) && permLastHookAt !== undefined \? row\(t\('훅 연결 상태'\)/);
   assert.match(html, /const hookLastWarn = \(\) => \(permHookOn \|\| guardHookOn\) && permLastHookAt === null && sessions\.length > 0;/);
+});
+
+test('isOrcaApp / askYield: choice bubbles fold only while Orca is in front', () => {
+  const { isOrcaApp, askYield } = D;
+  assert.equal(isOrcaApp('com.stablyai.orca'), true);
+  assert.equal(isOrcaApp('com.stablyai.orca.helper'), true);
+  for (const v of ['com.stablyai.orcax', 'com.googlecode.iterm2', 'com.github.Electron', '', null, undefined, 5, ' com.stablyai.orca']) assert.equal(isOrcaApp(v), false, String(v));
+  assert.equal(askYield({ on: true, front: 'com.stablyai.orca', big: false }), true);
+  assert.equal(askYield({ on: true, front: 'com.stablyai.orca' }), true, 'big missing = not pointed at');
+  assert.equal(askYield({ on: true, front: 'com.stablyai.orca', big: true }), false, 'pointing at the tile opens it');
+  assert.equal(askYield({ on: false, front: 'com.stablyai.orca' }), false, 'setting off');
+  assert.equal(askYield({ on: 'yes', front: 'com.stablyai.orca' }), false, 'only true turns it on');
+  assert.equal(askYield({ on: true, front: 'com.apple.Terminal' }), false, 'another app in front');
+  assert.equal(askYield({ on: true, front: '' }), false, 'unknown (not macOS / lsappinfo failed): bubbles show');
+  for (const v of [undefined, null, 'x', 3]) assert.equal(askYield(v), false);
+});
+
+test('widget dock: choice bubbles fold while Orca is in front (askYield), the tile opens them, leaving Orca brings them back', () => {
+  const place = between(html, 'function dockAskPlace() {', '\n}\n');
+  assert.match(place, /AgentDeskDock\.askYield\(\{ on: !!dockCfg\.yieldOrca, front: dockFront\.id, big: a\.big \}\)\) \{ a\.el\.hidden = true; a\.yielded = true; continue; \}/);
+  assert.match(place, /if \(a\.yielded\) \{ a\.yielded = false; dockAskArm\(a\); \}/, 'an unfolded bubble is armed again');
+  const sync = between(html, 'function dockAskSync() {', '\n}\n');
+  assert.match(sync, /dockFrontCheck\(\);/, 'the app in front is checked while a session waits for a choice');
+  const check = between(html, 'function dockFrontCheck(force) {', '\n}\n');
+  assert.match(check, /dockAskPlace\(\); dockBoundsSync\(\);/);
+  assert.match(check, /if \(!dockYieldOn\(\) && \[\.\.\.dockAsk\.values\(\)\]\.some\(a => a\.placed\)\) dockHideSet\(false\);/);
+  assert.match(html, /dockCfg\.yieldOrca = c\.yieldOrca !== false;/, 'on by default');
 });
