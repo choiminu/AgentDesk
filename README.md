@@ -214,6 +214,7 @@ The Jira tab has two ways to connect.
 
 - **Atlassian OAuth 2.0 (3LO)**: create your own OAuth app in the Atlassian developer console, paste its Client ID and Secret into **Connection** in the Jira tab, and sign in. The callback URL is `http://localhost:47391/callback`. Tokens are stored only in a file encrypted with the OS keychain (Electron safeStorage). Step by step: [Jira setup](docs/JIRA-SETUP.md#english).
 - **Orca fallback**: when you are not signed in with OAuth, ticket lists, details and comments go through Orca's own Jira connection (`orca jira …`). The Kanban board needs OAuth.
+- **Quest view**: the board's **Quests** button shows tickets as quests in four groups (New · In progress · Awaiting report · Done) with a difficulty from the priority. **Assign** opens a picker of your idle sessions (busy ones are disabled) or a new worktree, then the usual dispatch dialog. **Auto** asks a headless front-desk call (masked input) to propose a session or repo; it never dispatches by itself, only your **Assign** click does.
 
 With OAuth you get:
 
