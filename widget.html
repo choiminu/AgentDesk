@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-szQWc9aCO9nnaMtRUDXBjB7Yrr2wsANP/hspbGuLA/o='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-M5o5uYE5Xc2oJuBBqTCKtvp69HN3a4eOpvo+uBSqXY4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2409,7 +2409,7 @@ Object.assign(I18N, {
   '도크: 세션': 'Sessions', '도크: 팀원 세션': 'Teammate sessions', '도크: 대기열': 'queue', '도크: 서브에이전트': 'subagents', '도크: 위임받음': 'delegated to you',
   '도크: 작업 중': 'running', '도크: 입력 대기': 'waiting for input', '도크: 승인 필요': 'needs approval', '도크: 오류': 'error', '도크: 완료': 'done',
   '도크: 보냄': 'Sent', '도크: 허용': 'Allow', '도크: 이번만 허용': 'Allow once', '도크: 거부': 'Deny',
-  '도크: 설정': 'Settings', '도크: 패널로 펼치기 (⌘⇧D)': 'Expand to the panel (⌘⇧D)', '도크: 검토 대기열': 'Review queue', '도크: 스킬북': 'Skillbook', '도크: 퀘스트': 'Quests',
+  '도크: 설정': 'Settings', '도크: 패널로 펼치기 (⌘⇧D)': 'Expand to the panel (⌘⇧D)', '도크: 검토 대기열': 'Review queue', '도크: 스킬북': 'Skillbook', '도크: 퀘스트': 'Quests', 'Jira 페이지에서 연결하세요': 'Connect on the Jira page', 'Jira 페이지 열기': 'Open the Jira page',
   '도크: 한도': 'Plan limits', '도크: 더 보기 — 눌러서 패널에서 봅니다': 'more — click to see them in the panel',
   '호버 시 터미널 창 열기': 'Open the terminal window on hover',
   '도크 애니메이션': 'Dock animation', '작업 중인 캐릭터의 움직임, 활동 바, 대기·승인 표시의 깜박임을 켭니다. 꺼도 상태 색은 그대로입니다.': 'Working characters move, the activity bars breathe and waiting / approval marks blink. Off: the state colours stay.',
@@ -3318,7 +3318,7 @@ function inboxToggle(open) {
   const el = $('inbox-panel'), b = $('inbox-btn');
   b.setAttribute('aria-expanded', inboxQOpen ? 'true' : 'false');
   if (dockOn) $('dock-inbox').setAttribute('aria-expanded', inboxQOpen ? 'true' : 'false');
-  if (!inboxQOpen) { el.hidden = true; el.innerHTML = ''; inboxQSig = ''; clearTimeout(inboxQArmT); if (dockOn) { dockAskPlace(); dockBoundsSync(); } return; }
+  if (!inboxQOpen) { if (dockOn) closeTeamModal(); el.hidden = true; el.innerHTML = ''; inboxQSig = ''; clearTimeout(inboxQArmT); if (dockOn) { dockAskPlace(); dockBoundsSync(); } return; }
   // dock mode: the list opens above the bar (the window grows upward while it is open)
   if (dockOn) dockWake();
   if (dockOn && sbDockOpen) sbDockToggle(false);
@@ -6801,6 +6801,7 @@ function openItemsMenu(x, y, title, items) {
 document.addEventListener('mousedown', e => { if (ctxMenuEl && !ctxMenuEl.contains(e.target)) closeCtxMenu(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    if (dockOn && $('team-modal')) { closeTeamModal(); return; }   // a modal opened from a dock panel goes first: the window must not shrink under it
     if (inboxQOpen) { inboxToggle(false); return; }
     if (sbDockOpen) { sbDockToggle(false); $('dock-sb').focus(); return; }
     if (questDockOpen) { questDockToggle(false); $('dock-q').focus(); return; }
@@ -7668,7 +7669,7 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
     if (Math.floor(now / 400) % 2) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'bang');
     officeDrawSince(ctx, seat.chairX + 15, headY - 14, ch.statusSince, '#ff9a95');
   }
-  if (!sess.isSub && questMarked(sess.id)) questDrawMarker(ctx, seat.chairX - 17, headY + 2, now, ch.alpha);
+  if (!sess.isSub && questMarked(sess.id, sess.connected && sess.ended !== true)) questDrawMarker(ctx, seat.chairX + 12, headY + 2, now, ch.alpha);
   officeDrawName(ctx, sess, seat.chairX, seat.chairY + 10);
   if (!sess.isSub && peerConflictBySid.has(sess.id)) officeDrawPeerWarn(ctx, seat.chairX - 14, headY - 2, peerConflictBySid.get(sess.id)[0].level, now);
   } else if (seat.flip) drawDesk();
@@ -9245,7 +9246,8 @@ function teamModal(html) {
   document.body.appendChild(bg);
   return bg.firstElementChild;
 }
-function closeTeamModal() { const el = $('team-modal'); if (el) el.remove(); }
+let teamModalClosedAt = 0;   // the click that follows a backdrop mousedown must not also close a dock panel
+function closeTeamModal() { const el = $('team-modal'); if (el) { el.remove(); teamModalClosedAt = Date.now(); } }
 
 async function teamAsk(handle, prompt, timeoutMs = 240000) {
   const single = prompt.replace(/\r?\n+/g, ' ').trim();
@@ -10431,6 +10433,7 @@ function sbDockToggle(open) {
   if (want === sbDockOpen) return;
   const el = $('sb-dock');
   if (!want || !dockOn) {
+    if (dockOn) closeTeamModal();
     sbDockOpen = false; el.hidden = true; $('dock-sb').setAttribute('aria-expanded', 'false');
     el.querySelector('.sb-bar').innerHTML = ''; el.querySelector('.sb-book').innerHTML = ''; sbState.ask = null;
     if (currentPage !== 'skillbook') clearTimeout(sbPollTimer);
@@ -11379,6 +11382,7 @@ function questWire(root) {
     else if (act === 'auto') questAuto(key);
     else if (act === 'cancel') questCancel(key);
     else if (act === 'pick') questPick(key, b.dataset.sid);
+    else if (act === 'jira') dockLeave('jira');
     else if (act === 'wt') jiraWorktreeModal(key);
     else if (act === 'other') { quest.proposals.delete(key); quest.picker = key; questRefresh(); }
     else if (act === 'accept') questAccept(key);   // the only path from a proposal to a dispatch, and it still goes through the normal modal
@@ -11394,6 +11398,7 @@ function questRender(root) {
   quest.roots.add(root); questWire(root);
   // explicit states first: loading, not connected, error, empty
   if (jiraBusy) { root.innerHTML = questEmptyHtml(t('불러오는 중…')); return; }
+  if (jiraConn && !jiraConn.connected && root.id === 'q-dock-body') { root.innerHTML = `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text" data-verbatim>${esc(t('Jira 페이지에서 연결하세요'))}</span><button class="set-btn" data-q="jira">${esc(t('Jira 페이지 열기'))}</button></div>`; return; }
   if (jiraConn && !jiraConn.connected) { root.innerHTML = questEmptyHtml(jiraConn.error || t('Jira가 연결되지 않았습니다. 위 "연결 설정"에 Atlassian OAuth 앱의 Client ID·Secret을 넣고 로그인하세요 (앱 만드는 방법: 저장소의 docs/JIRA-SETUP.md). Orca를 쓰면 Orca 설정 → Jira 연결도 쓸 수 있습니다.')); return; }
   const err = (jiraBoardMode && jb.err) || jiraErr;
   if (err) { root.innerHTML = questEmptyHtml(err); return; }
@@ -11417,6 +11422,7 @@ function questDockToggle(open) {
   if (want === questDockOpen) return;
   const el = $('q-dock'), body = $('q-dock-body');
   if (!want || !dockOn) {
+    if (dockOn) closeTeamModal();   // never shrink the window under an open modal
     questDockOpen = false; el.hidden = true; $('dock-q').setAttribute('aria-expanded', 'false');
     quest.roots.delete(body); body.innerHTML = ''; quest.picker = '';
     if (dockOn) { dockAskPlace(); dockBoundsSync(); }
@@ -11435,10 +11441,11 @@ $('q-dock').addEventListener('keydown', e => {
   if (e.key === 'Escape') { questDockToggle(false); $('dock-q').focus(); }
 });
 // a click outside closes it (a modal opened from a card is outside the panel too: it stays)
-document.addEventListener('click', e => { if (questDockOpen && !e.composedPath().some(n => n.id === 'q-dock' || n.id === 'dock-q' || (n.classList && n.classList.contains('team-modal-bg')))) questDockToggle(false); });
+document.addEventListener('click', e => { if (questDockOpen && Date.now() - teamModalClosedAt > 300 && !e.composedPath().some(n => n.id === 'q-dock' || n.id === 'dock-q' || (n.classList && n.classList.contains('team-modal-bg')))) questDockToggle(false); });
 // office marker: a small sword over a seat whose session holds an assigned quest with no report yet (AgentDeskQuest.markerFor)
 let questMarkFile = null, questMarkIds = new Set();
-function questMarked(sid) {
+function questMarked(sid, live) {
+  if (!live) return false;   // an ended / disconnected session has no marker
   if (questMarkFile !== quest.file) {
     questMarkFile = quest.file; questMarkIds = new Set();
     for (const e of Object.values((quest.file && quest.file.quests) || {})) if (e && e.sessionId && AgentDeskQuest.markerFor(quest.file, e.sessionId, true)) questMarkIds.add(e.sessionId);

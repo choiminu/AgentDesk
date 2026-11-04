@@ -269,10 +269,34 @@ test('quest marker: AgentDeskQuest.markerFor conditions', () => {
 });
 
 test('quest marker: drawn in the seated seat path, memoized per quest file', () => {
-  match(html, /if \(!sess\.isSub && questMarked\(sess\.id\)\) questDrawMarker\(ctx, seat\.chairX - 17, headY \+ 2, now, ch\.alpha\);/);
+  match(html, /if \(!sess\.isSub && questMarked\(sess\.id, sess\.connected && sess\.ended !== true\)\) questDrawMarker\(ctx, seat\.chairX \+ 12, headY \+ 2, now, ch\.alpha\);/);
   const a2 = html.indexOf('let questMarkFile'), b2 = html.indexOf('function questDrawMarker(');
   const sb = { quest: { file: { quests: { A: { kind: 'session', sessionId: 's1', at: 1 }, B: { kind: 'session', sessionId: 's2', at: 1, reportAt: 2 } } } }, AgentDeskQuest: globalThis.AgentDeskQuest, Set, Object };
   vm.createContext(sb); vm.runInContext(html.slice(a2, b2) + ';globalThis.m = questMarked;', sb);
-  assert.equal(sb.m('s1'), true); assert.equal(sb.m('s2'), false); assert.equal(sb.m('s9'), false);
-  sb.quest.file = { quests: {} }; assert.equal(sb.m('s1'), false, 'cache follows the new state file');
+  assert.equal(sb.m('s1', true), true); assert.equal(sb.m('s2', true), false); assert.equal(sb.m('s9', true), false);
+  assert.equal(sb.m('s1', false), false, 'ended / disconnected session: no marker');
+  sb.quest.file = { quests: {} }; assert.equal(sb.m('s1', true), false, 'cache follows the new state file');
+});
+
+test('quest dock fix round 1: Esc closes the modal first, panel closes never shrink under a modal, backdrop click guard', () => {
+  const esc = html.slice(html.indexOf("document.addEventListener('keydown', e => {\n  if (e.key === 'Escape') {"));
+  assert.ok(esc.indexOf("$('team-modal')") < esc.indexOf('if (inboxQOpen)'), 'team-modal before dock sheets');
+  match(html, /if \(dockOn\) closeTeamModal\(\);   \/\/ never shrink/);
+  match(html, /if \(!inboxQOpen\) \{ if \(dockOn\) closeTeamModal\(\);/);
+  match(html, /if \(dockOn\) closeTeamModal\(\);\n    sbDockOpen = false;/);
+  match(html, /teamModalClosedAt = Date\.now\(\)/);
+  match(html, /questDockOpen && Date\.now\(\) - teamModalClosedAt > 300/);
+});
+
+test('quest dock fix round 1: disconnected dock variant points at the Jira page with a button', () => {
+  const { sb, q: Q } = boot();
+  sb.dockLeave = page => { sb.left = page; };
+  const root = { id: 'q-dock-body', isConnected: true, innerHTML: '', addEventListener() {} };
+  sb.jiraConn = { connected: false, error: 'x' };
+  Q.questRender(root);
+  assert.match(root.innerHTML, /Jira 페이지에서 연결하세요/);
+  assert.match(root.innerHTML, /data-q="jira"/);
+  assert.doesNotMatch(root.innerHTML, /연결 설정/);
+  match(html, /else if \(act === 'jira'\) dockLeave\('jira'\);/);
+  match(html, /'Jira 페이지에서 연결하세요': 'Connect on the Jira page'/);
 });
