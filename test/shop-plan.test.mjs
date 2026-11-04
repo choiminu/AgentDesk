@@ -26,7 +26,7 @@ test('remote http is preferred over npm', () => {
     remotes: [{ type: 'sse', url: 'https://sse.example.test/s' }, { type: 'streamable-http', url: 'https://mcp.example.test/mcp' }],
   }), { installed: EMPTY(), have: HAVE })
   assert.equal(p.kind, 'mcp-cli')
-  assert.deepEqual(p.steps[0].args, ['mcp', 'add', '-s', 'user', '--transport', 'http', 'demo-srv', 'https://mcp.example.test/mcp'])
+  assert.deepEqual(p.steps[0].args, ['mcp', 'add', '-s', 'user', '--transport', 'http', '--', 'demo-srv', 'https://mcp.example.test/mcp'])
   const s = planInstall(mcp({ remotes: [{ type: 'sse', url: 'https://sse.example.test/s' }] }), { installed: EMPTY(), have: HAVE })
   assert.ok(s.steps[0].args.includes('sse'))
 })
@@ -114,4 +114,66 @@ test('hasUpdate semver only', () => {
   assert.equal(hasUpdate('v1.0.0', '1.0.1'), true)
   assert.equal(hasUpdate('1.0.0-beta', '1.0.0'), true)
   assert.equal(hasUpdate(undefined, '1.0.0'), false)
+})
+
+test('hasUpdate compares prerelease identifiers per semver', () => {
+  assert.equal(hasUpdate('1.0.0-beta.2', '1.0.0-beta.10'), true)
+  assert.equal(hasUpdate('1.0.0-beta.10', '1.0.0-beta.2'), false)
+  assert.equal(hasUpdate('1.0.0-alpha', '1.0.0'), true)
+  assert.equal(hasUpdate('1.0.0', '1.0.0-alpha'), false)
+  assert.equal(hasUpdate('1.0.0-alpha', '1.0.0-alpha.1'), true)
+  assert.equal(hasUpdate('1.0.0-1', '1.0.0-alpha'), true)
+  assert.equal(hasUpdate('1.0.0-alpha', '1.0.0-1'), false)
+})
+
+test('hostile values are rejected before any argv is built', () => {
+  const bad = (rec) => planInstall(mcp(rec), { installed: EMPTY(), have: HAVE })
+  const a = bad({ packages: [{ registryType: 'npm', identifier: '--registry=https://evil', version: '1.0.0', transport: { type: 'stdio' } }] })
+  assert.equal(a.kind, 'manual'); assert.equal(a.steps, undefined)
+  assert.ok(!JSON.stringify(a).includes('evil'))
+  const b = bad({ packages: [{ registryType: 'npm', identifier: 'ok-pkg', version: '--x', transport: { type: 'stdio' } }] })
+  assert.equal(b.kind, 'manual')
+  const c = bad({ remotes: [{ type: 'streamable-http', url: '-x' }, { type: 'sse', url: 'http://evil.example.test/s' }] })
+  assert.equal(c.kind, 'manual')
+  assert.equal(bad({ remotes: [{ type: 'sse', url: 'http://localhost:3000/s' }] }).kind, 'mcp-cli')
+  // invalid candidate falls through to the next valid one
+  const d = bad({ remotes: [{ type: 'streamable-http', url: '-x' }],
+    packages: [{ registryType: 'pypi', identifier: 'good-py', version: '1.0.0', transport: { type: 'stdio' } }] })
+  assert.deepEqual(d.steps[0].args.slice(-2), ['uvx', 'good-py==1.0.0'])
+  const e = bad({ packages: [{ registryType: 'oci', identifier: '--privileged', version: '1', transport: { type: 'stdio' } }] })
+  assert.equal(e.kind, 'manual'); assert.ok(!e.show.join(' ').includes('docker'))
+  assert.equal(planInstall({ kind: 'plugin', name: '--force', marketplace: 'm' }, { installed: EMPTY(), have: HAVE }).kind, 'manual')
+  assert.equal(planInstall({ kind: 'plugin', name: 'p', marketplace: 'm', repo: '--upload-pack=x' }, { installed: EMPTY(), have: HAVE }).kind, 'manual')
+})
+
+test('runtime arguments precede the package, package arguments follow', () => {
+  const rec = { packages: [{ registryType: 'npm', identifier: 'demo-pkg', version: '1.0.0', transport: { type: 'stdio' },
+    runtimeArguments: [{ type: 'named', name: '--node-option', value: 'x' }],
+    packageArguments: [{ type: 'positional', value: 'serve' }] }] }
+  assert.deepEqual(planInstall(mcp(rec), { installed: EMPTY(), have: HAVE }).entry.args, ['-y', '--node-option', 'x', 'demo-pkg@1.0.0', 'serve'])
+  const oci = planInstall(mcp({ packages: [{ registryType: 'oci', identifier: 'ghcr.io/ex/demo', version: '1', transport: { type: 'stdio' },
+    runtimeArguments: [{ type: 'named', name: '-e', value: 'A=b' }], packageArguments: [{ type: 'positional', value: 'serve' }] }] }), { installed: EMPTY(), have: HAVE })
+  assert.equal(oci.show[0], 'docker run -i --rm -e A=b ghcr.io/ex/demo:1 serve')
+})
+
+test('secret arguments become placeholders and needs names', () => {
+  const rec = { packages: [{ registryType: 'npm', identifier: 'demo-pkg', version: '1.0.0', transport: { type: 'stdio' },
+    packageArguments: [
+      { type: 'named', name: '--api-key', value: 'LEAK-ONE', isSecret: true },
+      { type: 'named', name: '--url', value: 'https://h/{token}', variables: { token: { isSecret: true, default: 'LEAK-TWO' } } },
+    ] }] }
+  const p = planInstall(mcp(rec), { installed: EMPTY(), have: HAVE })
+  assert.equal(p.kind, 'mcp-write')
+  assert.deepEqual(p.needs, ['API_KEY', 'TOKEN'])
+  assert.deepEqual(p.entry.args, ['-y', 'demo-pkg@1.0.0', '--api-key', '${API_KEY}', '--url', 'https://h/${TOKEN}'])
+  assert.ok(!JSON.stringify(p).includes('LEAK'))
+})
+
+test('npx missing but uvx present falls through to pypi', () => {
+  const rec = { packages: [
+    { registryType: 'npm', identifier: 'demo-pkg', version: '1.0.0', transport: { type: 'stdio' } },
+    { registryType: 'pypi', identifier: 'demo-py', version: '0.4.1', transport: { type: 'stdio' } }] }
+  const p = planInstall(mcp(rec), { installed: EMPTY(), have: { npx: false, uvx: true } })
+  assert.equal(p.kind, 'mcp-cli')
+  assert.deepEqual(p.steps[0].args.slice(-2), ['uvx', 'demo-py==0.4.1'])
 })
