@@ -142,7 +142,7 @@ test('skillbook ui (dock): one panel at a time; Esc, the button and leaving the 
   assert.match(cut(html, 'function inboxToggle(', '\n}\n'), /if \(dockOn && sbDockOpen\) sbDockToggle\(false\);/);
   assert.match(cut(html, 'function dockPopOpen(', '\n}\n'), /sbDockToggle\(false\)/);
   assert.match(cut(html, 'function dockLeave(', '\n}\n'), /if \(sbDockOpen\) sbDockToggle\(false\);/);
-  assert.match(html, /if \(e\.key === 'Escape'\) \{\n\s*if \(inboxQOpen\) \{ inboxToggle\(false\); return; \}\n\s*if \(sbDockOpen\) \{ sbDockToggle\(false\); \$\('dock-sb'\)\.focus\(\); return; \}/);
+  assert.match(html, /if \(e\.key === 'Escape'\) \{\n(?:\s*if \(dockOn && \$\('team-modal'\)\)[^\n]*\n)?\s*if \(inboxQOpen\) \{ inboxToggle\(false\); return; \}\n\s*if \(sbDockOpen\) \{ sbDockToggle\(false\); \$\('dock-sb'\)\.focus\(\); return; \}/);
   // a click outside (composedPath: a click inside re-renders the book, so the target may be gone from the DOM)
   assert.match(html, /if \(sbDockOpen && !e\.composedPath\(\)\.some\(n => n\.id === 'sb-dock' \|\| n\.id === 'dock-sb'\)\) sbDockToggle\(false\);/);
   // hover cards, the terminal window, bubbles and the limit card yield to it as to the review queue
