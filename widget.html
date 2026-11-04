@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-E43C273pGgfBxvUcU4OPoTl27pAtlL02AMeFAU9jYWw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-k3ev9JmrrQ4vKCHxt3HyyAaBr12jq5XZQirl21t9CBI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2131,7 +2131,7 @@ function trunc(s, n) { return !s ? '' : s.length > n ? s.slice(0, n) + '…' : s
 let LANG = 'en';
 try { LANG = localStorage.getItem('roca-lang') || 'en'; } catch {}
 const I18N = {
-  '퀘스트': 'Quests', '미리 고른 대상을 찾을 수 없습니다. 직접 고르세요': 'The preselected target is gone. Please pick one yourself', 'Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다': 'View Jira tickets as quests and hand them to an agent', '맡기기': 'Assign', '새 워크트리에서 시작': 'Start in a new worktree',
+  '퀘스트': 'Quests', '선택하세요': 'Choose one', '미리 고른 대상을 찾을 수 없습니다. 직접 고르세요': 'The preselected target is gone. Please pick one yourself', 'Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다': 'View Jira tickets as quests and hand them to an agent', '맡기기': 'Assign', '새 워크트리에서 시작': 'Start in a new worktree',
   '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', '직접 고르세요': 'Please pick one yourself', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
   '설정': 'Settings', '표시': 'Appearance', '언어': 'Language', 'UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.': 'UI language. Also applies to office text and team prompts.',
   '테마': 'Theme', '시스템 설정을 따르거나 라이트/다크로 고정합니다.': 'Follow the system or force light / dark.', '시스템': 'System', '라이트': 'Light', '다크': 'Dark',
@@ -10931,6 +10931,7 @@ function jiraGuideWire(m, ta) {
 function jiraPreselectMiss(m, selSel, goSel, msgSel) {
   const go = m.querySelector(goSel), msg = m.querySelector(msgSel), sel = m.querySelector(selSel);
   go.disabled = true; msg.textContent = `⚠ ${t('미리 고른 대상을 찾을 수 없습니다. 직접 고르세요')}`;
+  const ph = document.createElement('option'); ph.value = ''; ph.disabled = true; ph.selected = true; ph.textContent = t('선택하세요'); sel.insertBefore(ph, sel.firstChild); sel.value = '';   // any real pick then fires change (works for a single option too)
   sel.addEventListener('change', () => { go.disabled = false; msg.textContent = ''; }, { once: true });
 }
 async function jiraWorktreeModal(key, preselect) {   // preselect (optional): the repo label a quest proposal named
