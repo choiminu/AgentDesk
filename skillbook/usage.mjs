@@ -11,18 +11,23 @@ const pad = n => String(n).padStart(2, '0');
 const dayKey = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 
-function bump(keys, u, now) {
-  const e = keys[u.key] || (keys[u.key] = { total: 0, byDay: {}, lastAt: 0, lastRepo: '', byAgent: {} });
+const nullo = () => Object.create(null); // user-influenced names ("__proto__", "constructor") must stay plain data
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const num = v => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+const minDayOf = now => dayKey(now - KEEP_DAYS * 86400e3);
+
+function bump(keys, u, minDay) {
+  let e = keys[u.key];
+  if (!e) { e = keys[u.key] = { total: 0, byDay: nullo(), lastAt: 0, lastRepo: '', byAgent: nullo() }; }
   e.total++;
   const d = dayKey(u.at);
-  if (d >= dayKey(now - KEEP_DAYS * 86400e3)) e.byDay[d] = (e.byDay[d] || 0) + 1;
+  if (d >= minDay) e.byDay[d] = (e.byDay[d] || 0) + 1;
   if (u.at >= e.lastAt) { e.lastAt = u.at; e.lastRepo = u.repo || ''; }
-  const a = u.agent || 'claude';
+  const a = String(u.agent || 'claude');
   e.byAgent[a] = (e.byAgent[a] || 0) + 1;
 }
-function prune(keys, now) {
-  const min = dayKey(now - KEEP_DAYS * 86400e3);
-  for (const e of Object.values(keys)) for (const d of Object.keys(e.byDay)) if (d < min) delete e.byDay[d];
+function prune(keys, minDay) {
+  for (const e of Object.values(keys)) for (const d of Object.keys(e.byDay)) if (d < minDay) delete e.byDay[d];
 }
 function merge(keys, add) {
   for (const [k, s] of Object.entries(add)) {
@@ -34,31 +39,45 @@ function merge(keys, add) {
     if (s.lastAt >= e.lastAt) { e.lastAt = s.lastAt; e.lastRepo = s.lastRepo; }
   }
 }
+// repair one loaded entry; null when nothing usable is left
+function sanitize(e) {
+  if (!isObj(e)) return null;
+  const out = { total: num(e.total), byDay: nullo(), lastAt: num(e.lastAt), lastRepo: typeof e.lastRepo === 'string' ? e.lastRepo : '', byAgent: nullo() };
+  if (isObj(e.byDay)) for (const [d, n] of Object.entries(e.byDay)) if (DAY_RE.test(d) && num(n) > 0) out.byDay[d] = num(n);
+  if (isObj(e.byAgent)) for (const [a, n] of Object.entries(e.byAgent)) if (num(n) > 0) out.byAgent[a] = num(n);
+  return out.total > 0 ? out : null;
+}
 
 export function createUsageStore({ file, now = Date.now }) {
-  let st = { v: 1, cutoff: null, backfilled: false, keys: {} };
+  let st = { v: 1, cutoff: null, backfilled: false, keys: nullo() };
   const store = {
     load() {
-      st = { v: 1, cutoff: null, backfilled: false, keys: {} };
+      st = { v: 1, cutoff: null, backfilled: false, keys: nullo() };
       if (!existsSync(file)) return;
       try {
         const o = JSON.parse(readFileSync(file, 'utf8'));
         if (!isObj(o) || !isObj(o.keys)) return;
-        st = { v: 1, cutoff: Number.isFinite(o.cutoff) ? o.cutoff : null, backfilled: o.backfilled === true, keys: o.keys };
+        const keys = nullo();
+        for (const [k, e] of Object.entries(o.keys)) { const c = sanitize(e); if (c) keys[k] = c; }
+        st = { v: 1, cutoff: Number.isFinite(o.cutoff) ? o.cutoff : null, backfilled: o.backfilled === true, keys };
       } catch { /* unreadable store: start empty */ }
     },
-    add(u) { if (u && u.key) bump(st.keys, u, now()); },
+    add(u) { if (u && u.key) bump(st.keys, u, minDayOf(now())); },
     addRecord(rec) {
-      for (const u of usageFromRecord(rec)) if (st.cutoff == null || u.at > st.cutoff) store.add(u);
+      const us = usageFromRecord(rec);
+      if (!us.length) return;
+      const minDay = minDayOf(now());
+      for (const u of us) if (st.cutoff == null || u.at > st.cutoff) bump(st.keys, u, minDay);
     },
-    save() { prune(st.keys, now()); writeJsonAtomic(file, st); },
-    get(key) { return Object.prototype.hasOwnProperty.call(st.keys, key) ? st.keys[key] : null; },
+    save() { prune(st.keys, minDayOf(now())); writeJsonAtomic(file, st); },
+    get(key) { return st.keys[key] || null; },
     cutoff: () => st.cutoff,
     backfillDone: () => st.backfilled === true,
     // internals for backfill()
-    _begin(cutoff) { st.keys = {}; st.cutoff = cutoff; st.backfilled = false; store.save(); },
-    _finish(fresh) { merge(st.keys, fresh); st.backfilled = true; store.save(); },
+    _begin(cutoff) { st.keys = nullo(); st.cutoff = cutoff; st.backfilled = false; store.save(); },
+    _finish(fresh, complete) { merge(st.keys, fresh); st.backfilled = complete; store.save(); },
     _now: now,
+    _inflight: null,
   };
   return store;
 }
@@ -74,23 +93,31 @@ function jsonlFiles(root) {
   return out;
 }
 
-export async function backfill(store, { roots, cutoff, onProgress }) {
+export function backfill(store, opts) {
+  if (store._inflight) return store._inflight; // overlapping call: share the running one
+  const p = runBackfill(store, opts).finally(() => { store._inflight = null; });
+  store._inflight = p;
+  return p;
+}
+
+async function runBackfill(store, { roots, cutoff, onProgress }) {
   store._begin(cutoff); // fresh keys + fixed cutoff; backfilled stays false until the end
-  const fresh = {};
+  const fresh = nullo();
+  const minDay = minDayOf(store._now());
   const files = roots.flatMap(jsonlFiles);
-  let uses = 0, done = 0;
+  let uses = 0, done = 0, skipped = 0;
   for (const f of files) {
     try {
       const rl = createInterface({ input: createReadStream(f, { encoding: 'utf8' }), crlfDelay: Infinity });
       for await (const line of rl) {
         if (!line) continue;
-        for (const u of usageFromTranscriptLine(line)) if (u.at <= cutoff) { bump(fresh, u, store._now()); uses++; }
+        for (const u of usageFromTranscriptLine(line)) if (u.at <= cutoff) { bump(fresh, u, minDay); uses++; }
       }
-    } catch { /* unreadable transcript: skip */ }
+    } catch (e) { if (!e || e.code !== 'ENOENT') skipped++; } // vanished file is fine; anything else leaves the backfill unfinished
     done++;
     if (onProgress) { try { onProgress({ files: done, total: files.length, uses }); } catch {} }
     await new Promise(r => setImmediate(r)); // let the main thread breathe between files
   }
-  store._finish(fresh);
-  return { files: files.length, uses };
+  store._finish(fresh, skipped === 0);
+  return { files: files.length, uses, skipped };
 }
