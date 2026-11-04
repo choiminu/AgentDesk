@@ -300,6 +300,33 @@ async function claude(run, args) {
 }
 
 // ---------- entry points ----------
+// Shop install: one new user-scope entry in ~/.claude.json mcpServers (the only place typed env / header values go).
+// Re-reads the file, refuses a missing / empty file (Claude Code's own state file is never created here) and an
+// existing name, backs the file up, adds the entry last and writes atomically. Fixed detail codes only.
+const ENTRY_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$/;
+const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+export function addMcpEntry({ home, name, entry } = {}) {
+  if (typeof home !== 'string' || !home || typeof name !== 'string' || !ENTRY_NAME.test(name) || BAD_KEYS.has(name) || !isObj(entry)) return fail('failed', 'bad request');
+  try {
+    const loc = checkLoc(home, { where: 'claude-user', file: join(home, '.claude.json') });
+    if (!loc) return fail('failed', 'bad request');
+    let raw = '';
+    try { raw = readFileSync(loc.file, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    if (!raw.trim()) return fail('failed', 'missing');
+    const obj = readJsonStrict(loc.file);
+    const at = jsonBox(obj, loc, true);
+    if (!at) return fail('failed', 'unparsed');
+    if (has(at.box, name)) return fail('failed', 'exists');
+    at.parent.mcpServers = { ...at.box, [name]: entry };
+    backup(home, loc.file);
+    writeJsonAtomic(loc.file, obj);
+    return { ok: true };
+  } catch (e) {
+    const d = errDetail(e);
+    return fail('failed', DETAILS.has(d) ? d : 'io');
+  }
+}
+
 export async function actOn(req = {}) {
   const r = await act(req);
   if (r && r.ok === false && r.detail !== undefined && !DETAILS.has(r.detail)) return { ...r, detail: 'io' };
