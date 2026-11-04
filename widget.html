@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-k3ev9JmrrQ4vKCHxt3HyyAaBr12jq5XZQirl21t9CBI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-szQWc9aCO9nnaMtRUDXBjB7Yrr2wsANP/hspbGuLA/o='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1122,6 +1122,12 @@
   .sb-dock .sb-tab { font-size: 10px; margin-bottom: 4px; }
   .sb-dock .sb-big { width: 40px; height: 40px; font-size: 18px; margin: 4px auto; }
   .sb-dock .sb-kv { font-size: 10px; line-height: 1.6; }
+  /* dock mode of the quest board (#q-dock): the same questRender output, groups stacked vertically in the narrow panel */
+  .q-dock { display: flex; flex-direction: column; overflow: hidden; }
+  .q-dock[hidden] { display: none; }
+  .q-dock .q-dock-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+  .q-dock .qb-col { flex: 0 0 auto; min-width: 0; }
+  .q-dock .qb-colb { overflow: visible; }
   .sb-chk { flex-shrink: 0; width: 12px; height: 12px; display: inline-grid; place-items: center; border: 1px solid #b89c68; background: #f3e6c8; font-size: 9px; }
 
   /* ── Pomodoro page ── */
@@ -1902,6 +1908,10 @@
     <div class="sb-bar"></div>
     <div class="sb-book"></div>
   </div>
+  <!-- dock mode: the quest board (🗡, questRender into #q-dock-body) above the bar -->
+  <div class="inbox-panel q-dock" id="q-dock" role="dialog" aria-label="퀘스트" hidden>
+    <div class="q-dock-body" id="q-dock-body"></div>
+  </div>
 
   <!-- Page navigation -->
   <div class="page-nav">
@@ -2034,6 +2044,7 @@
       <div class="dock-right" id="dock-right">
         <button class="dock-btn" id="dock-inbox" aria-haspopup="true" aria-expanded="false">📥<span id="dock-inbox-n">0</span></button>
         <button class="dock-btn" id="dock-sb" aria-haspopup="true" aria-expanded="false">📖</button>
+        <button class="dock-btn" id="dock-q" aria-haspopup="true" aria-expanded="false">🗡</button>
         <div class="dock-usage" id="dock-usage" role="img" hidden></div>
         <button class="dock-btn dock-timer" id="dock-timer" hidden><svg viewBox="0 0 22 22" aria-hidden="true"><circle class="tr-bg" cx="11" cy="11" r="9" fill="none" stroke-width="3"/><circle class="tr-fg" id="dock-timer-fg" cx="11" cy="11" r="9" fill="none" stroke-width="3" stroke-dasharray="56.55" stroke-dashoffset="0"/></svg><span class="tr-t" id="dock-timer-t"></span></button>
         <button class="dock-btn" id="dock-dnd" aria-pressed="false">🔕</button>
@@ -2398,7 +2409,7 @@ Object.assign(I18N, {
   '도크: 세션': 'Sessions', '도크: 팀원 세션': 'Teammate sessions', '도크: 대기열': 'queue', '도크: 서브에이전트': 'subagents', '도크: 위임받음': 'delegated to you',
   '도크: 작업 중': 'running', '도크: 입력 대기': 'waiting for input', '도크: 승인 필요': 'needs approval', '도크: 오류': 'error', '도크: 완료': 'done',
   '도크: 보냄': 'Sent', '도크: 허용': 'Allow', '도크: 이번만 허용': 'Allow once', '도크: 거부': 'Deny',
-  '도크: 설정': 'Settings', '도크: 패널로 펼치기 (⌘⇧D)': 'Expand to the panel (⌘⇧D)', '도크: 검토 대기열': 'Review queue', '도크: 스킬북': 'Skillbook',
+  '도크: 설정': 'Settings', '도크: 패널로 펼치기 (⌘⇧D)': 'Expand to the panel (⌘⇧D)', '도크: 검토 대기열': 'Review queue', '도크: 스킬북': 'Skillbook', '도크: 퀘스트': 'Quests',
   '도크: 한도': 'Plan limits', '도크: 더 보기 — 눌러서 패널에서 봅니다': 'more — click to see them in the panel',
   '호버 시 터미널 창 열기': 'Open the terminal window on hover',
   '도크 애니메이션': 'Dock animation', '작업 중인 캐릭터의 움직임, 활동 바, 대기·승인 표시의 깜박임을 켭니다. 꺼도 상태 색은 그대로입니다.': 'Working characters move, the activity bars breathe and waiting / approval marks blink. Off: the state colours stay.',
@@ -3311,6 +3322,7 @@ function inboxToggle(open) {
   // dock mode: the list opens above the bar (the window grows upward while it is open)
   if (dockOn) dockWake();
   if (dockOn && sbDockOpen) sbDockToggle(false);
+  if (dockOn && questDockOpen) questDockToggle(false);
   if (dockOn) { dockTipHide(); dockTermClose(true); dockPopPlace(); dockBoundsSync(); }
   else { el.style.bottom = ''; el.style.top = `${Math.round(document.querySelector('.header').getBoundingClientRect().bottom) + 2}px`; }
   el.hidden = false; inboxDraw();
@@ -3381,12 +3393,14 @@ inboxRender();
 //    right-hand buttons: hovering a tile opens its terminal window (the remote terminal view's markup, fed by this PC's
 //    terminal) with the input line and [허용][거부]; clicking it goes to the real terminal. Panel sizes: core/dock.js POP. ──
 const DOCK_INBOX_H = 360;
+const DOCK_Q_H = 420, DOCK_Q_W = 400;   // the quest panel (🗡): the groups stacked in a narrow panel
+let questDockOpen = false;   // the quest panel above the bar is open (questDockToggle, in the QUEST BOARD section)
 const DOCK_SB_H = 420, DOCK_SB_W = 640;   // the skillbook panel (📖): the same book as the page, in compact type; the window grows sideways to fit its two pages
 let sbDockOpen = false;   // the skillbook panel above the bar is open (sbDockToggle)
 // the room's full-width panels: the review queue (📥) and the skillbook (📖) — one at a time; while one is open the hover
 // cards, the terminal window, the bubbles and the limit card wait
-const dockFullPop = k => k === 'inbox' || k === 'skillbook';
-const dockSheetOpen = () => inboxQOpen || sbDockOpen;
+const dockFullPop = k => k === 'inbox' || k === 'skillbook' || k === 'quest';
+const dockSheetOpen = () => inboxQOpen || sbDockOpen || questDockOpen;
 let DOCK_H = 72;   // the bar's height: AgentDeskDock.stripHeight(size) (dockSizeApply)
 // localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, size, autoHide, yieldOrca, idleMin, hidden }
 let dockCfg = { start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, yieldOrca: true, idleMin: 60, hidden: {}, order: [], addRepo: '' };   // order: my session ids in the user's drag order
@@ -3516,7 +3530,7 @@ function dockLabels() {
   if (dockLabelLang === LANG) return;
   dockLabelLang = LANG;
   $('dock-tiles').setAttribute('aria-label', dockT('도크: 세션'));
-  for (const [id, k] of [['dock-sb', '도크: 스킬북'], ['dock-settings', '도크: 설정'], ['dock-expand', '도크: 패널로 펼치기 (⌘⇧D)']]) { $(id).title = dockT(k); $(id).setAttribute('aria-label', dockT(k)); }
+  for (const [id, k] of [['dock-sb', '도크: 스킬북'], ['dock-q', '도크: 퀘스트'], ['dock-settings', '도크: 설정'], ['dock-expand', '도크: 패널로 펼치기 (⌘⇧D)']]) { $(id).title = dockT(k); $(id).setAttribute('aria-label', dockT(k)); }
   dockSig = '';
 }
 function dockDraw() {
@@ -3712,7 +3726,7 @@ function dockBoundsSync(natural) {
   if (natural != null) dockNatural = Math.round(natural);
   if (!dockOn) return;
   const kind = dockPopKind();
-  const extra = kind === 'inbox' ? DOCK_INBOX_H : kind === 'skillbook' ? DOCK_SB_H : AgentDeskDock.popExtra(kind, dockAskH);   // bubbles: room for the tallest one
+  const extra = kind === 'inbox' ? DOCK_INBOX_H : kind === 'skillbook' ? DOCK_SB_H : kind === 'quest' ? DOCK_Q_H : AgentDeskDock.popExtra(kind, dockAskH);   // bubbles: room for the tallest one
   // the part of the room the panel / queue covers (x and width in the window): Windows / Linux cut the window to the
   // bar plus this, so the rest of the room is neither drawn nor clickable. popWidth: the window grows sideways for it.
   const bubbles = kind === 'bubbles' || kind === 'bubblesBig' || kind === 'bubblesDone';
@@ -3723,7 +3737,7 @@ function dockBoundsSync(natural) {
     const c = dockPopGeom(k); if (!c) continue;
     const x0 = Math.min(pop.x, c.x); pop = { x: x0, width: Math.max(pop.x + pop.width, c.x + c.width) - x0 };
   }
-  const req = { on: true, contentWidth: dockNatural, height: DOCK_H, extra, popWidth: kind === 'skillbook' ? DOCK_SB_W : bubbles ? dockAskWant : g ? g.want : 0, pop, remembered: dockCfg.pos,
+  const req = { on: true, contentWidth: dockNatural, height: DOCK_H, extra, popWidth: kind === 'skillbook' ? DOCK_SB_W : kind === 'quest' ? DOCK_Q_W : bubbles ? dockAskWant : g ? g.want : 0, pop, remembered: dockCfg.pos,
     hidden: AgentDeskDock.dockHitPlan({ hidden: dockHidden, popKind: kind, extra }).sendWithBounds };   // auto-hidden: main keeps the click-through
   const sig = JSON.stringify(req);
   if (sig === dockReqSig) return;
@@ -3746,6 +3760,7 @@ function dockWinSet(b) {
 function dockPopKind() {
   if (inboxQOpen) return 'inbox';
   if (sbDockOpen) return 'skillbook';
+  if (questDockOpen) return 'quest';
   if (dockTermBg()) return 'term';
   if (dockPop) return dockPop.kind;   // a panel the user opened: the new-session form, a tile's menu
   if (dockAskVisible()) return [...dockAsk.values()].some(a => a.placed && a.big) ? 'bubblesBig' : 'bubbles';
@@ -3776,6 +3791,7 @@ function dockSetDir(dir) {
 function dockPopPlace() {
   const el = $('inbox-panel'), near = `${DOCK_H + 6}px`;
   if (inboxQOpen) { el.style.top = dockDir === 'up' ? '6px' : near; el.style.bottom = dockDir === 'up' ? near : '6px'; }
+  if (questDockOpen) { const qp = $('q-dock'); qp.style.top = dockDir === 'up' ? '6px' : near; qp.style.bottom = dockDir === 'up' ? near : '6px'; }
   if (sbDockOpen) { const sp = $('sb-dock'); sp.style.top = dockDir === 'up' ? '6px' : near; sp.style.bottom = dockDir === 'up' ? near : '6px'; }
   const put = (node, g, fixedH) => {
     node.style.left = `${g.x}px`; node.style.width = `${g.width}px`;
@@ -3802,7 +3818,7 @@ function dockPopPlace() {
 // pointer over the empty room around the panel / queue → clicks go to the windows behind (main: setIgnoreMouseEvents)
 document.addEventListener('mousemove', e => {
   if (!dockOn || !dockPopKind()) return;
-  const hit = !!(e.target && e.target.closest && e.target.closest('#dock-strip, #inbox-panel, #sb-dock, .peer-term, .team-modal-bg, .dock-bubble, .dock-pop'));
+  const hit = !!(e.target && e.target.closest && e.target.closest('#dock-strip, #inbox-panel, #sb-dock, #q-dock, .peer-term, .team-modal-bg, .dock-bubble, .dock-pop'));
   if (hit === dockHit) return;
   dockHit = hit; window.orca.dock({ hit }).catch(() => {});
 });
@@ -4479,6 +4495,7 @@ let dockPop = null;   // { kind: 'add' | 'menu', key, repos }
 let dockAddWant = null;   // { name, handle, at } (Orca) or { cwd, before: ids then, at } (folder): the session "+" made, selected when its tile shows up
 function dockPopOpen(kind, key, html) {
   if (sbDockOpen) sbDockToggle(false);
+  if (questDockOpen) questDockToggle(false);
   dockTermClose(true); dockTipHide(); dockUsageHide();
   dockPop = { kind, key };
   const el = $('dock-pop'); el.innerHTML = html; el.hidden = false;
@@ -4924,6 +4941,7 @@ function dockLeave(page) {
   dockReqSig = '';
   if (inboxQOpen) inboxToggle(false);
   if (sbDockOpen) sbDockToggle(false);
+  if (questDockOpen) questDockToggle(false);
   window.orca.setOpacity(1);
   window.orca.dock({ on: false }).catch(() => {});
   const w = document.querySelector('.widget');
@@ -4946,6 +4964,7 @@ $('dock-expand').addEventListener('click', () => dockLeave());
 $('dock-settings').addEventListener('click', () => dockLeave('settings'));
 $('dock-inbox').addEventListener('click', e => { e.stopPropagation(); inboxToggle(); });
 $('dock-sb').addEventListener('click', e => { e.stopPropagation(); sbDockToggle(); });
+$('dock-q').addEventListener('click', e => { e.stopPropagation(); questDockToggle(); });
 $('dock-timer').addEventListener('click', e => { e.stopPropagation(); dockLeave('pomodoro'); });
 // 🔕 do not disturb: bubbles, pills and desktop alerts stop; off → the waiting choice bubbles come straight back
 $('dock-dnd').addEventListener('click', e => {
@@ -6784,6 +6803,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (inboxQOpen) { inboxToggle(false); return; }
     if (sbDockOpen) { sbDockToggle(false); $('dock-sb').focus(); return; }
+    if (questDockOpen) { questDockToggle(false); $('dock-q').focus(); return; }
     if (ctxMenuEl) { closeCtxMenu(); return; }
     if ($('team-modal')) { closeTeamModal(); return; }
     // the terminal views (a docked one gives the focus back to its tile), then the dock's hover panel
@@ -7648,6 +7668,7 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
     if (Math.floor(now / 400) % 2) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'bang');
     officeDrawSince(ctx, seat.chairX + 15, headY - 14, ch.statusSince, '#ff9a95');
   }
+  if (!sess.isSub && questMarked(sess.id)) questDrawMarker(ctx, seat.chairX - 17, headY + 2, now, ch.alpha);
   officeDrawName(ctx, sess, seat.chairX, seat.chairY + 10);
   if (!sess.isSub && peerConflictBySid.has(sess.id)) officeDrawPeerWarn(ctx, seat.chairX - 14, headY - 2, peerConflictBySid.get(sess.id)[0].level, now);
   } else if (seat.flip) drawDesk();
@@ -10417,6 +10438,7 @@ function sbDockToggle(open) {
     return;
   }
   if (inboxQOpen) inboxToggle(false);
+  if (questDockOpen) questDockToggle(false);
   dockPopClose(); dockTipHide(); dockUsageHide(); dockTermClose(true);
   sbDockOpen = true; $('dock-sb').setAttribute('aria-expanded', 'true');
   dockWake(); dockPopPlace(); dockAskPlace(); dockBoundsSync();
@@ -10776,6 +10798,7 @@ setInterval(inboxRefreshStatus, 30000); setTimeout(inboxRefreshStatus, 3000);
 // ── Jira tickets: list through Orca's own Jira connection, put an agent on a ticket (new worktree or an existing session),
 //    and turn its REPORT into a comment DRAFT that is posted only after the user confirms. Logic lives in core/jira.js ──
 const JIRA_TIMEOUT_MS = 3 * 60 * 60 * 1000;
+let jiraLoadedOnce = false;   // jiraLoad has run at least once (the quest dock panel loads Jira itself when the page never did)
 let jiraIssues = [], jiraConn = null, jiraErr = '', jiraBusy = false, jiraRenderPending = false;
 const jiraOpen = new Set(), jiraDetail = new Map();   // key → normalized issue (fetched on demand, memory only)
 let jiraFilter = 'assigned', jiraRepo = '', jiraDispatch = {};   // key → { key, summary, mode, sid, worktreeId, path, handle, name, sentAt, state, draft, stale }
@@ -10791,7 +10814,7 @@ function jiraSave() {
 const jiraHash = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); };
 $('jira-filter').value = jiraFilter;
 async function jiraLoad() {
-  if (jiraBusy) return; jiraBusy = true; jiraErr = '';
+  if (jiraBusy) return; jiraBusy = true; jiraErr = ''; jiraLoadedOnce = true;
   $('jira-list').innerHTML = `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text">${esc(t('불러오는 중…'))}</span></div>`;
   try {
     await jiraOAuthRefresh();
@@ -10813,6 +10836,7 @@ function jiraBadge(d) {
   return m ? `<span class="jira-badge ${m[0]}">${esc(t(m[1]))}</span>` : '';
 }
 function jiraRender() {
+  if (questDockOpen) questDockRender();   // the dock panel follows every Jira (re)load
   const a = document.activeElement;
   if (a && a.tagName === 'TEXTAREA' && ($('jira-list').contains(a) || $('jb-drawer').contains(a))) { jiraRenderPending = true; return; }   // never wipe a draft being edited
   jiraRenderPending = false;
@@ -11382,6 +11406,55 @@ function questRender(root) {
   }).join('');
 }
 // ── end of QUEST BOARD ──
+// dock panel (🗡 on the bar): questRender into #q-dock-body. Jira is loaded here when the Jira page never loaded it;
+// every quest-state / Jira reload re-renders it (questRefresh covers the roots, jiraRender calls questDockRender).
+function questDockRender() { if (questDockOpen) questRender($('q-dock-body')); }
+function questDockEnsure() {
+  if (!jiraLoadedOnce && !jiraBusy) Promise.resolve(jiraLoad()).catch(() => {});   // sets jiraBusy synchronously: the loading state shows
+}
+function questDockToggle(open) {
+  const want = open == null ? !questDockOpen : !!open;
+  if (want === questDockOpen) return;
+  const el = $('q-dock'), body = $('q-dock-body');
+  if (!want || !dockOn) {
+    questDockOpen = false; el.hidden = true; $('dock-q').setAttribute('aria-expanded', 'false');
+    quest.roots.delete(body); body.innerHTML = ''; quest.picker = '';
+    if (dockOn) { dockAskPlace(); dockBoundsSync(); }
+    return;
+  }
+  if (inboxQOpen) inboxToggle(false);
+  if (sbDockOpen) sbDockToggle(false);
+  dockPopClose(); dockTipHide(); dockUsageHide(); dockTermClose(true);
+  questDockOpen = true; $('dock-q').setAttribute('aria-expanded', 'true');
+  dockWake(); dockPopPlace(); dockAskPlace(); dockBoundsSync();
+  el.hidden = false;
+  questDockEnsure(); questLoad(); questDockRender();
+}
+$('q-dock').addEventListener('keydown', e => {
+  e.stopPropagation();   // the dock's digit shortcuts
+  if (e.key === 'Escape') { questDockToggle(false); $('dock-q').focus(); }
+});
+// a click outside closes it (a modal opened from a card is outside the panel too: it stays)
+document.addEventListener('click', e => { if (questDockOpen && !e.composedPath().some(n => n.id === 'q-dock' || n.id === 'dock-q' || (n.classList && n.classList.contains('team-modal-bg')))) questDockToggle(false); });
+// office marker: a small sword over a seat whose session holds an assigned quest with no report yet (AgentDeskQuest.markerFor)
+let questMarkFile = null, questMarkIds = new Set();
+function questMarked(sid) {
+  if (questMarkFile !== quest.file) {
+    questMarkFile = quest.file; questMarkIds = new Set();
+    for (const e of Object.values((quest.file && quest.file.quests) || {})) if (e && e.sessionId && AgentDeskQuest.markerFor(quest.file, e.sessionId, true)) questMarkIds.add(e.sessionId);
+  }
+  return questMarkIds.has(sid);
+}
+function questDrawMarker(ctx, x, y, now, alpha = 1) {
+  const bob = Math.floor(now / 500) % 2;   // 1 px bob: quiet, like the zzz
+  const X = Math.round(x), Y = Math.round(y) - bob;
+  ctx.save(); ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#2a2836'; ctx.fillRect(X - 1, Y - 1, 5, 9);   // outline
+  ctx.fillStyle = '#e8ecf4'; ctx.fillRect(X + 1, Y, 1, 5);   // blade
+  ctx.fillStyle = '#f2c037'; ctx.fillRect(X - 1, Y + 5, 5, 1);   // guard
+  ctx.fillStyle = '#c9743a'; ctx.fillRect(X + 1, Y + 6, 1, 2);   // grip
+  ctx.restore();
+}
 $('jira-board').addEventListener('change', e => {
   if (e.target.id !== 'jb-project') return;
   jbPrefs.project = e.target.value; jbSavePrefs(); jb.who.clear(); jb.q = ''; jb.drawer = ''; jiraLoad();
