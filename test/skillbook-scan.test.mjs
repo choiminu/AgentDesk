@@ -89,3 +89,48 @@ test('only listed repos', () => {
   assert.equal(find(r, i => i.name === 'beta-srv'), undefined);
   assert.ok(find(scanInventory({ home, repos: [repo, join(home, 'work', 'beta')] }), i => i.name === 'beta-srv'));
 });
+
+test('parse errors never leak file text', () => {
+  const { home, repo } = fixture();
+  put(join(home, '.claude.json'), '{"mcpServers":{"x":{"env":{"API_TOKEN":sk-SECRET9}}}}');
+  const r = scanInventory({ home, repos: [repo] });
+  assert.equal(r.sources.find(s => s.id === 'claude-mcp').error, 'invalid JSON');
+  assert.ok(!JSON.stringify(r).includes('sk-SECRET'));
+});
+
+test('command shows only the first token basename', () => {
+  const { home, repo } = fixture();
+  put(join(home, '.claude.json'), { mcpServers: { a: { command: 'npx -y pkg --token=a/b' }, b: { command: 'node /p/server.js' } } });
+  const r = scanInventory({ home, repos: [repo] });
+  assert.equal(find(r, i => i.name === 'a').mcp.command, 'npx');
+  assert.equal(find(r, i => i.name === 'b').mcp.command, 'node');
+  assert.ok(!JSON.stringify(r.items.filter(i => i.name === 'a' || i.name === 'b')).includes('token'));
+});
+
+test('parked entries with an invalid loc are dropped', () => {
+  const { home, repo } = fixture();
+  const e = (id, loc) => ({ id, kind: 'mcp', agent: 'claude', name: id, loc, at: 1 });
+  put(join(home, '.roca/skillbook-parked.json'), { v: 1, entries: [e('bad-where', { file: '/x', where: 'nope' }), e('no-file', { where: 'codex' }), e('no-loc'), e('ok', { file: '/x', where: 'codex' })] });
+  const r = scanInventory({ home, repos: [repo] });
+  assert.deepEqual(r.items.filter(i => i.on === false && i.kind === 'mcp').map(i => i.id), ['ok']);
+});
+
+test('gemini url is sse, httpUrl is http', () => {
+  const { home, repo } = fixture();
+  put(join(home, '.gemini/settings.json'), { mcpServers: { s: { url: 'https://h/x' }, h: { httpUrl: 'https://h/y' }, c: { command: 'gem' } } });
+  const r = scanInventory({ home, repos: [repo] });
+  assert.equal(find(r, i => i.name === 's').mcp.transport, 'sse');
+  assert.equal(find(r, i => i.name === 'h').mcp.transport, 'http');
+  assert.equal(find(r, i => i.name === 'c').mcp.transport, 'stdio');
+});
+
+test('same repo basename in two places gets distinct ids', () => {
+  const { home } = fixture();
+  const a = join(home, 'a', 'app'), b = join(home, 'b', 'app');
+  skill(join(a, '.claude/skills'), 'same', 'A'); skill(join(b, '.claude/skills'), 'same', 'B');
+  const r = scanInventory({ home, repos: [a, b] });
+  const hits = r.items.filter(i => i.name === 'same');
+  assert.equal(hits.length, 2); assert.equal(hits[0].repo, 'app');
+  assert.notEqual(hits[0].id, hits[1].id);
+  assert.equal(new Set(r.sources.map(s => s.id)).size, r.sources.length);
+});

@@ -7,22 +7,25 @@ import '../core/skillbook.js'; // classic script: sets globalThis.AgentDeskSkill
 const { parseSkillMd, tomlMcpServers } = globalThis.AgentDeskSkillbook;
 const SKILL_READ_MAX = 64 * 1024;
 const ALL = ['claude', 'codex', 'gemini'];
+const WHERES = ['claude-user', 'claude-project', 'mcpjson', 'codex', 'gemini'];
 
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
-const baseOf = cmd => (typeof cmd === 'string' ? cmd.trim().split(/[\\/]/).pop().split(/\s+/)[0] : '') || undefined;
+const baseOf = cmd => (typeof cmd === 'string' ? (cmd.trim().split(/\s+/)[0] || '').split(/[\\/]/).pop() : '') || undefined;
 const names = o => (isObj(o) ? Object.keys(o) : []);
 const readJson = f => JSON.parse(readFileSync(f, 'utf8'));
 function readHead(f) {
+  if (!statSync(f).isFile()) throw new Error('not a file');
   const fd = openSync(f, 'r');
   try { const b = Buffer.alloc(SKILL_READ_MAX); return b.toString('utf8', 0, readSync(fd, b, 0, SKILL_READ_MAX, 0)); } finally { closeSync(fd); }
 }
 const subdirs = dir => readdirSync(dir).filter(n => { try { return statSync(join(dir, n)).isDirectory(); } catch { return false; } }).sort();
 
 // one MCP entry from a JSON config; secrets stay behind
-function mcpFromJson(def) {
+function mcpFromJson(def, gemini = false) {
   const d = isObj(def) ? def : {};
   const url = d.url || d.httpUrl;
-  const transport = d.type === 'sse' || (typeof url === 'string' && /\/sse\b/.test(url) && d.type !== 'http') ? 'sse' : url ? 'http' : 'stdio';
+  let transport = d.type === 'sse' || (typeof url === 'string' && /\/sse\b/.test(url) && d.type !== 'http') ? 'sse' : url ? 'http' : 'stdio';
+  if (gemini) transport = d.httpUrl ? 'http' : d.url ? 'sse' : 'stdio'; // Gemini: url = SSE, httpUrl = streamable HTTP
   const out = { transport, envKeys: names(d.env) };
   const command = baseOf(d.command);
   if (command) out.command = command;
@@ -58,8 +61,8 @@ export function scanInventory({ home, repos = [] } = {}) {
 
   const add = it => {
     const agentPart = it.agents.length > 1 ? 'shared' : it.agents[0];
-    const id = `${it.kind}:${it.source}:${agentPart}:${it.repo || ''}:${it.idName || it.name}`;
-    delete it.idName;
+    const id = `${it.kind}:${it.source}:${agentPart}:${it.repoKey || it.repo || ''}:${it.idName || it.name}`;
+    delete it.idName; delete it.repoKey;
     if (seen.has(id)) return;
     seen.add(id);
     items.push({ id, ...it });
@@ -70,25 +73,25 @@ export function scanInventory({ home, repos = [] } = {}) {
     try { fn(); sources.push({ id, label, ok: true }); }
     catch (e) {
       if (optional && e && e.code === 'ENOENT') return;
-      sources.push({ id, label, ok: false, error: e && e.code === 'ENOENT' ? 'not found' : String((e && e.message) || e).slice(0, 200) });
+      sources.push({ id, label, ok: false, error: e && e.code === 'ENOENT' ? 'not found' : e instanceof SyntaxError ? 'invalid JSON' : 'unreadable' });
     }
   }
 
-  function skillsIn(dir, { src, agents, repo, on = true, plugin, pluginName }) {
+  function skillsIn(dir, { src, agents, repo, repoKey, on = true, plugin, pluginName }) {
     for (const d of subdirs(dir)) {
       let meta;
       try { meta = parseSkillMd(readHead(join(dir, d, 'SKILL.md'))); } catch { continue; }
       const name = meta.name || d;
       const usageKey = pluginName ? `${pluginName}:${name}` : name;
-      add({ kind: 'skill', name, idName: usageKey, agents: agents.slice(), source: src, ...(repo ? { repo } : {}), path: join(dir, d),
+      add({ kind: 'skill', name, idName: usageKey, agents: agents.slice(), source: src, ...(repo ? { repo, repoKey } : {}), path: join(dir, d),
         description: meta.description, triggers: meta.triggers, on, usageKey, ...(plugin ? { plugin } : {}) });
     }
   }
 
-  function mcpItems(servers, { src, agents, where, file, scope, repo }) {
+  function mcpItems(servers, { src, agents, where, file, scope, repo, repoKey }) {
     for (const name of names(servers)) {
-      add({ kind: 'mcp', name, agents: agents.slice(), source: src, ...(repo ? { repo } : {}), description: '', triggers: [], on: true, usageKey: name,
-        mcp: { ...mcpFromJson(servers[name]), scope }, loc: { file, where, ...(repo ? { repo } : {}) } });
+      add({ kind: 'mcp', name, agents: agents.slice(), source: src, ...(repo ? { repo, repoKey } : {}), description: '', triggers: [], on: true, usageKey: name,
+        mcp: { ...mcpFromJson(servers[name], where === 'gemini'), scope }, loc: { file, where, ...(repo ? { repo } : {}) } });
     }
   }
 
@@ -130,7 +133,7 @@ export function scanInventory({ home, repos = [] } = {}) {
     if (isObj(j.projects)) {
       for (const p of Object.keys(j.projects)) {
         if (!repoPaths.includes(norm(p))) continue;
-        mcpItems(j.projects[p] && j.projects[p].mcpServers, { src: 'project', agents: ['claude'], where: 'claude-project', file, scope: 'project', repo: basename(norm(p)) });
+        mcpItems(j.projects[p] && j.projects[p].mcpServers, { src: 'project', agents: ['claude'], where: 'claude-project', file, scope: 'project', repo: basename(norm(p)), repoKey: norm(p) });
       }
     }
   });
@@ -165,10 +168,10 @@ export function scanInventory({ home, repos = [] } = {}) {
   // per-repo sources
   for (const r of repoPaths) {
     const repo = basename(r);
-    source(`repo-skills:${repo}`, `${repo}/.claude/skills`, () => skillsIn(join(r, '.claude', 'skills'), { src: 'project', agents: ['claude'], repo }), { optional: true });
-    source(`repo-mcp:${repo}`, `${repo}/.mcp.json`, () => {
+    source(`repo-skills:${r}`, `${repo}/.claude/skills`, () => skillsIn(join(r, '.claude', 'skills'), { src: 'project', agents: ['claude'], repo, repoKey: r }), { optional: true });
+    source(`repo-mcp:${r}`, `${repo}/.mcp.json`, () => {
       const file = join(r, '.mcp.json');
-      mcpItems(readJson(file).mcpServers, { src: 'project', agents: ['claude'], where: 'mcpjson', file, scope: 'project', repo });
+      mcpItems(readJson(file).mcpServers, { src: 'project', agents: ['claude'], where: 'mcpjson', file, scope: 'project', repo, repoKey: r });
     }, { optional: true });
   }
 
@@ -179,12 +182,13 @@ export function scanInventory({ home, repos = [] } = {}) {
       if (!isObj(e) || e.kind !== 'mcp' || typeof e.id !== 'string' || typeof e.name !== 'string') continue;
       const agent = ALL.includes(e.agent) ? e.agent : 'claude';
       const where = e.loc && e.loc.where;
+      if (!WHERES.includes(where) || typeof e.loc.file !== 'string' || !e.loc.file) continue;
       const project = where === 'claude-project' || where === 'mcpjson';
-      const loc = isObj(e.loc) && typeof e.loc.file === 'string' ? { file: e.loc.file, where, ...(typeof e.loc.repo === 'string' ? { repo: e.loc.repo } : {}) } : undefined;
+      const loc = { file: e.loc.file, where, ...(typeof e.loc.repo === 'string' ? { repo: e.loc.repo } : {}) };
       if (seen.has(e.id)) continue;
       seen.add(e.id);
-      items.push({ id: e.id, kind: 'mcp', name: e.name, agents: [agent], source: project ? 'project' : 'user', ...(loc && loc.repo ? { repo: loc.repo } : {}),
-        description: '', triggers: [], on: false, usageKey: e.name, mcp: { transport: 'stdio', envKeys: [], scope: project ? 'project' : 'user' }, ...(loc ? { loc } : {}) });
+      items.push({ id: e.id, kind: 'mcp', name: e.name, agents: [agent], source: project ? 'project' : 'user', ...(loc.repo ? { repo: loc.repo } : {}),
+        description: '', triggers: [], on: false, usageKey: e.name, mcp: { transport: 'stdio', envKeys: [], scope: project ? 'project' : 'user' }, loc });
     }
   }, { optional: true });
 
