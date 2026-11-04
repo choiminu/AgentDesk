@@ -51,6 +51,26 @@ test('shop ui: install goes through the in-page confirm; update is display-only;
   assert.match(shop, /p\.detail === 'conflict'/);
 });
 
+test('shop ui: poll redraws only the bar on the shop tab; link errors translated at render; view-in-skillbook; picker', () => {
+  assert.match(html, /if \(sbBarOnly\) return;/);
+  assert.match(html, /sbBarOnly = sbState\.tab === 'shop' && !shopState\.loading;\s*try \{ skillbookRender\(\); \} finally \{ sbBarOnly = false; \}/);
+  assert.match(shop, /l\.errR = /);
+  assert.match(shop, /링크를 다시 찾으세요/);
+  assert.match(shop, /data-sb="shop-view"/);
+  assert.match(shop, /if \(r\.found\.length === 1\) shopState\.sel = /);
+  assert.match(shop, /\[가-힣\]\/\.test\(s\)/);
+  assert.match(shop, /it\.plan && it\.plan\.kind === 'installed'/);
+});
+
+test('shop ui: SHOP_ERR details are exactly payload.mjs DETAILS the user can see', () => {
+  const pay = readFileSync(new URL('../shop/payload.mjs', import.meta.url), 'utf8');
+  const details = [...pay.match(/const DETAILS = new Set\(\[([^\]]*)\]/)[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
+  const errBlock = shop.slice(shop.indexOf('const SHOP_ERR = {'), shop.indexOf('const SHOP_ERR_TOP'));
+  const mapped = d => errBlock.includes(`'${d}':`) || new RegExp(`[{,\\s]${d}:`).test(errBlock);
+  for (const d of ['conflict', 'exists', 'needs', 'missing', 'bad link', 'clone', 'empty', 'io', 'invalid JSON', 'manual', 'cli']) assert.ok(details.includes(d) && mapped(d), d);
+  for (const d of details) if (!['bad request', 'unparsed', 'kind'].includes(d)) assert.ok(mapped(d), 'unmapped detail ' + d);
+});
+
 test('shop ui: i18n check passes', () => {
   const r = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/i18n-check.mjs', import.meta.url))], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stdout + r.stderr);
