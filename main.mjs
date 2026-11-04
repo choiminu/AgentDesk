@@ -24,6 +24,8 @@ import { scanInventory } from "./skillbook/scan.mjs";
 import { createUsageStore, backfill as skillbookBackfill } from "./skillbook/usage.mjs";
 import { actOn as skillbookActOn, listRemoved as skillbookRemoved } from "./skillbook/actions.mjs";
 import { skillbookPayload } from "./skillbook/payload.mjs";
+import { loadCatalog } from "./shop/catalog.mjs";
+import { makeShopHandlers } from "./shop/ipc.mjs";
 import { randomUUID, createHash } from "node:crypto";
 import { openPermEndpoint, ensurePrivateDir, writePrivate, permHookScript as permHookSh, guardHookScript, nodeHookScript, winHookCmd, winHookCommand, winHookRunner, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK, PERM_ADDR } from "./perm/server.mjs";
 import { readJsonStrict, writeJsonAtomic, backupPrivate, isOurPermHook, isOurGuardHook, permHookPresent, installPermHookAt, uninstallPermHookAt, guardHookPresent, installGuardHookAt, uninstallGuardHookAt } from "./perm/settings.mjs";
@@ -2497,11 +2499,15 @@ function skillbookRepos() {
   }
   return [...out].sort();
 }
-// the claude CLI for plugin actions: no shell, fixed timeout; exit code and output go back to actions.mjs
-function sbRun(cmd, args) {
+// the claude / git CLIs for skillbook and shop actions: no shell; opts = { env, timeout } (shop/repo.mjs: git without
+// prompts, 60 s) — env is merged over our own, a timeout or signal kill gives a non-zero code; exit code and output go back
+// to the caller (actions.mjs / install.mjs / repo.mjs), which never passes them on
+function sbRun(cmd, args, opts) {
   const bin = cmd === "claude" ? (CLAUDE_PATHS.find(p => existsSync(p)) || "claude") : cmd;
-  return new Promise(resolve => execFile(bin, args, { timeout: 120000, maxBuffer: 4 * 1024 * 1024, windowsHide: true, env: { ...process.env, PATH: EXEC_PATH } },
-    (err, stdout, stderr) => resolve({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0, stdout: String(stdout || ""), stderr: String(stderr || (err && err.message) || "") })));
+  const env = opts && opts.env && typeof opts.env === "object" ? opts.env : {};
+  const timeout = opts && Number.isFinite(opts.timeout) && opts.timeout > 0 ? opts.timeout : 120000;
+  return new Promise(resolve => execFile(bin, args, { timeout, maxBuffer: 4 * 1024 * 1024, windowsHide: true, env: { ...process.env, PATH: EXEC_PATH, ...env } },
+    (err, stdout, stderr) => resolve({ code: err ? (typeof err.code === "number" && err.code !== 0 ? err.code : 1) : 0, stdout: String(stdout || ""), stderr: String(stderr || (err && err.message) || "") })));
 }
 ipcMain.handle("roca:skillbook", () => {
   try {
@@ -2531,6 +2537,31 @@ ipcMain.handle("roca:skillbook-act", (_e, req) => {
   sbQueue = job;
   return job;
 });
+// ── Shop: catalog list, pasted links, installs — handlers in shop/ipc.mjs (env values never logged or returned)
+async function shopFetchJson(url) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(10000), headers: { accept: "application/json" } });
+  if (!r.ok) throw Object.assign(new Error("http"), { status: r.status });
+  try { return await r.json(); } catch { throw Object.assign(new Error("invalid"), { code: "invalid" }); }
+}
+let shopHave = null;   // npx / uvx on EXEC_PATH, looked up once (and again on a refresh)
+async function shopHaveRunners(refresh) {
+  if (!shopHave || refresh) {
+    const [npx, uvx] = await Promise.all([whichCmd("npx"), whichCmd("uvx")]);
+    shopHave = { npx: !!npx, uvx: !!uvx };
+  }
+  return shopHave;
+}
+// installs and link clones share the Skillbook action queue
+function shopEnqueue(fn) { const job = sbQueue.then(fn); sbQueue = job.catch(() => {}); return job; }
+const shop = makeShopHandlers({
+  home: homedir(), run: sbRun, enqueue: shopEnqueue, have: shopHaveRunners,
+  loadCatalog: ({ refresh }) => loadCatalog({ home: homedir(), fetchJson: shopFetchJson, refresh }),
+  inventory: () => scanInventory({ home: homedir(), repos: skillbookRepos() }),
+});
+ipcMain.handle("roca:shop-list", (_e, req) => shop.list(req));
+ipcMain.handle("roca:shop-link", (_e, req) => shop.link(req));
+ipcMain.handle("roca:shop-install", (_e, req) => shop.install(req));
+// ── Shop end
 ipcMain.handle("roca:diff-stat", async (_e, req = {}) => {
   const sessionId = req && typeof req.sessionId === "string" ? req.sessionId : "", scope = req && req.scope === "branch" ? "branch" : "working";
   const seq = diffStatSeq.next(sessionId);

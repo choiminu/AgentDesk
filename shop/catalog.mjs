@@ -98,21 +98,25 @@ function loadMarketplaces(home) {
   const items = [];
   if (!isObj(known)) return items;
   for (const name of Object.keys(known)) {
-    if (!/^[\w.-]+$/.test(name)) continue; // the name becomes a path segment
+    if (!/^[\w.-]+$/.test(name) || name.startsWith('.')) continue; // the name becomes a path segment
     const f = join(dir, 'marketplaces', name, '.claude-plugin', 'marketplace.json');
     if (existsSync(f)) items.push(...parseMarketplace(readJson(f), name));
   }
   return items;
 }
 
+// every id once (the first wins): a marketplace may list a plugin twice, a cache may hold a record twice
 function merge(market, registry, smithery) {
   const byName = new Map();
-  const items = [...market];
-  for (const r of registry) { const it = { ...r }; byName.set(it.name, it); items.push(it); }
+  const ids = new Set();
+  const items = [];
+  const keep = it => { if (ids.has(it.id)) return false; ids.add(it.id); items.push(it); return true; };
+  for (const m of market) keep({ ...m });
+  for (const r of registry) { const it = { ...r }; if (keep(it) && !byName.has(it.name)) byName.set(it.name, it); }
   for (const s of smithery) {
     const r = byName.get(s.name);
     if (r) { if (s.popularity !== undefined) r.popularity = s.popularity; if (!r.description && s.description) r.description = s.description; }
-    else items.push({ ...s });
+    else keep({ ...s });
   }
   return items;
 }
@@ -121,7 +125,9 @@ export async function loadCatalog({ home, fetchJson, now = Date.now(), refresh =
   const cacheFile = join(home, '.roca', 'shop-cache.json');
   const raw = readJson(cacheFile);
   const cached = isObj(raw) && isObj(raw.sources) ? raw.sources : {};
-  const cacheOf = id => (isObj(cached[id]) && Array.isArray(cached[id].items) ? cached[id] : null);
+  // a hand-edited or older cache may hold anything: only items with a string id and name are kept
+  const okItem = it => isObj(it) && !!str(it.id) && !!str(it.name);
+  const cacheOf = id => (isObj(cached[id]) && Array.isArray(cached[id].items) ? { ...cached[id], items: cached[id].items.filter(okItem) } : null);
   const fresh = id => { const c = cacheOf(id); return !!c && Number.isFinite(c.fetchedAt) && now >= c.fetchedAt && now - c.fetchedAt < CACHE_MS; };
 
   const next = {};
