@@ -86,7 +86,7 @@ export function createDesk({ run, now = Date.now, timeoutMs = DESK_TIMEOUT_MS, m
       if (cur) return cur.promise;
       if (inflight.size >= maxInflight) return Promise.resolve({ ok: false, error: "busy" });
       const ac = new AbortController();
-      const promise = askDesk({ issue, party, repos, run, signal: ac.signal, timeoutMs }).then(res => {
+      const promise = askDesk({ issue, party, repos, run, signal: ac.signal, timeoutMs }).catch(() => ({ ok: false, error: "failed" })).then(res => {
         if (inflight.get(key) && inflight.get(key).ac === ac) inflight.delete(key);
         if (res.ok) cache.set(key, { at: now(), result: res });
         return res;
