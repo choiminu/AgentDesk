@@ -89,5 +89,5 @@ test('shop ui: install-result missing names the file; gone keeps reload / find-a
   assert.equal(shopErrText({ ok: false, error: 'gone', detail: 'missing' }), '목록을 다시 불러오세요');
   assert.equal(shopErrText({ ok: false, error: 'gone', detail: 'missing' }, true), '링크를 다시 찾으세요');
   assert.equal(shopErrText({ ok: false, error: 'failed', detail: 'clone' }), '저장소를 가져오지 못했습니다');
-  assert.match(fn('function shopPages'), /s\.id === 'registry' && s\.ok\) \? `<div class="sb-hint">\$\{esc\(t\('MCP 레지스트리는 최신 500개까지만 보입니다/);
+  assert.match(fn('function shopPages'), /s\.id === 'registry' && s\.ok\) \? `<div class="sb-hint">\$\{esc\(t\('MCP 레지스트리는 앞쪽 500개까지만 보입니다/);
 });

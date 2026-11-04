@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-BpXJWAREeVby3O2cB/0ge98kaTujoAtBdqSELhe54/I='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-eegZLm0h+JOMUsSk4mhbxMvF3F7CI6dQvepsRodot2I='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2578,7 +2578,7 @@ Object.assign(I18N, {
   '설치했습니다 (마켓 경로)': 'Installed (marketplace route)', '설치했습니다 (Claude 경로)': 'Installed (Claude route)', '설치했습니다 (에이전트 공용 폴더)': 'Installed (shared agents folder)', '설치하지 못했습니다': 'Could not install',
   '같은 이름의 마켓이 다른 출처로 이미 있어 자동 설치할 수 없습니다': 'A marketplace with the same name already exists from another source, so it cannot be installed automatically', '이미 있습니다': 'Already exists',
   '필요한 값을 모두 입력하세요': 'Fill in every required value', '목록을 다시 불러오세요': 'Reload the list', '필요한 파일을 찾지 못했습니다 (~/.claude.json 또는 SKILL.md)': 'A needed file was not found (~/.claude.json or SKILL.md)',
-  'MCP 레지스트리는 최신 500개까지만 보입니다 — Smithery에만 있는 항목은 직접 설정하세요': 'Only the newest part of the MCP registry is listed (up to 500) — items only on Smithery need manual setup', '지원하지 않는 링크입니다 (GitHub 저장소 링크만 됩니다)': 'Unsupported link (only GitHub repository links work)',
+  'MCP 레지스트리는 앞쪽 500개까지만 보입니다 — Smithery에만 있는 항목은 직접 설정하세요': 'Only the first 500 entries of the MCP registry are listed — items only on Smithery need manual setup', '지원하지 않는 링크입니다 (GitHub 저장소 링크만 됩니다)': 'Unsupported link (only GitHub repository links work)',
   '저장소를 가져오지 못했습니다': 'Could not fetch the repository', '이 링크에서 설치할 항목을 찾지 못했습니다': 'Nothing installable found at this link', 'Claude CLI를 실행하지 못했습니다': 'Could not run the Claude CLI',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
@@ -10602,7 +10602,7 @@ function shopPages() {
   const left = `<h4>${esc(t('🏪 상점'))}<button type="button" class="sb-btn off shop-refresh" data-sb="shop-refresh"${shopState.loading ? ' disabled' : ''}>${esc(t('새로고침'))}</button></h4>${sbTabsHtml(sbItems())}${shopLinkHtml()}`
     + `<input type="search" class="shop-in" data-shop-q placeholder="${esc(t('검색'))}" aria-label="${esc(t('검색'))}" value="${esc(shopState.q)}" autocomplete="off">`
     + `<div class="shop-ctl">${seg('filter', shopState.filter, SHOP_FILTERS)}${seg('sort', shopState.sort, SHOP_SORTS)}</div>`
-    + ((d && d.sources || []).some(s => s && s.id === 'registry' && s.ok) ? `<div class="sb-hint">${esc(t('MCP 레지스트리는 최신 500개까지만 보입니다 — Smithery에만 있는 항목은 직접 설정하세요'))}</div>` : '')
+    + ((d && d.sources || []).some(s => s && s.id === 'registry' && s.ok) ? `<div class="sb-hint">${esc(t('MCP 레지스트리는 앞쪽 500개까지만 보입니다 — Smithery에만 있는 항목은 직접 설정하세요'))}</div>` : '')
     + (bad.length ? `<div class="sb-hint">${esc(t('사용할 수 없는 출처'))}: <span data-verbatim>${esc(bad.map(s => t(SHOP_SRC[s.id] || s.id || '')).filter(Boolean).join(', '))}</span></div>` : '')
     + `<div class="shop-rows">${shopRowsHtml()}</div>`;
   return [left, shopDetail(shopCur())];
