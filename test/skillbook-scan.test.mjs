@@ -241,3 +241,13 @@ test('a plugin records whether it has anything countable (skills, commands, MCP 
   for (const n of ['style-plug', 'lsp-plug', 'hook-plug', 'emptymcp-plug', 'ghostplug']) assert.equal(c(n), false, n);
   for (const n of ['skill-plug', 'cmd-plug', 'mcpfile-plug', 'mcpflat-plug', 'manifest-plug', 'manifest-path-plug']) assert.equal(c(n), true, n);
 });
+
+test('hidden folders (an interrupted shop install temp) are never skills', () => {
+  const home = mkdtempSync(join(tmpdir(), 'sb-scan-'));
+  skill(join(home, '.claude/skills'), 'real-skill', 'Real.');
+  skill(join(home, '.claude/skills'), `.agentdesk-half-${process.pid}.tmp`, 'Half copied.');
+  skill(join(home, '.agents/skills'), '.agentdesk-other-1.tmp', 'Half copied.');
+  const names = scanInventory({ home, repos: [] }).items.filter(i => i.kind === 'skill').map(i => i.name);
+  assert.ok(names.includes('real-skill'));
+  assert.ok(!names.some(n => n.includes('agentdesk') || n.startsWith('.')), names.join(','));
+});

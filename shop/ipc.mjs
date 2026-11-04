@@ -91,7 +91,7 @@ export function makeShopHandlers(deps) {
       if (!entries) return bad('clone');
       if (!entries.length) return bad('empty');
       const have = await deps.have(false);
-      return { ok: true, found: linkFound(entries, { inventory: deps.inventory(), have, catalogItems: catalog && catalog.items, known: knownMarketplaces() }) };
+      return { ok: true, found: linkFound(entries, { inventory: deps.inventory(), have, catalogItems: catalog && catalog.items, known: knownMarketplaces(), home }) };
     } catch (e) { log('link', codeOf(e)); return bad('io'); }
   }
 

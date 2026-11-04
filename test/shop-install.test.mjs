@@ -180,14 +180,13 @@ test('plugin falls back to a local marketplace', async () => {
   const home = home0();
   const plan = planInstall({ kind: 'plugin', name: 'demo', marketplace: 'market', repo: 'someone/market-repo' });
   const calls = [];
-  let installs = 0;
   const run = fakeRun(calls, (cmd, args) => {
     if (cmd === 'git') { // the clone: make the temp folder with a marketplace manifest
       const dest = args[args.length - 1];
       put(join(dest, '.claude-plugin', 'marketplace.json'), { name: 'market', plugins: [{ name: 'demo', source: './demo' }] });
       return { code: 0 };
     }
-    if (args[1] === 'install' && ++installs === 1) return { code: 1, stderr: 'boom' };
+    if (args[1] === 'marketplace' && args[3] === 'someone/market-repo') return { code: 1, stderr: 'boom' }; // the remote add fails
     return { code: 0 };
   });
   const r = await runInstall({ home, plan, run });
@@ -196,7 +195,6 @@ test('plugin falls back to a local marketplace', async () => {
   assert.ok(existsSync(join(dir, '.claude-plugin', 'marketplace.json')));
   assert.deepEqual(calls.map(c => c[0] === 'git' ? 'git' : c.join(' ')), [
     'claude plugin marketplace add someone/market-repo',
-    'claude plugin install demo@market',
     'git',
     `claude plugin marketplace add ${dir}`,
     'claude plugin install demo@market',
@@ -212,7 +210,7 @@ test('plugin fallback only for an unknown marketplace with the same name', async
   const home = home0();
   const failInstall = calls => fakeRun(calls, (cmd, args) => {
     if (cmd === 'git') { put(join(args[args.length - 1], '.claude-plugin', 'marketplace.json'), { name: 'other-market', plugins: [] }); return { code: 0 }; }
-    return { code: args[1] === 'install' ? 1 : 0 };
+    return { code: 1 };
   });
   // the marketplace is known (no add step): no clone, the failure stands
   const known = planInstall({ kind: 'plugin', name: 'demo', marketplace: 'market' }, { installed: { marketplaces: new Set(['market']) } });
@@ -223,7 +221,70 @@ test('plugin fallback only for an unknown marketplace with the same name', async
   const plan = planInstall({ kind: 'plugin', name: 'demo', marketplace: 'market', repo: 'someone/market-repo' });
   calls = [];
   assert.deepEqual(await runInstall({ home, plan, run: failInstall(calls) }), { ok: false, error: 'failed', detail: 'cli' });
-  assert.deepEqual(calls.map(c => c[0] === 'git' ? 'git' : c.slice(1, 3).join(' ')), ['plugin marketplace', 'plugin install', 'git']);
+  assert.deepEqual(calls.map(c => c[0] === 'git' ? 'git' : c.slice(1, 3).join(' ')), ['plugin marketplace', 'git']);
+});
+
+test('plugin fallback runs only when the marketplace add step failed, not when only the install failed', async () => {
+  const home = home0();
+  const plan = planInstall({ kind: 'plugin', name: 'demo', marketplace: 'market', repo: 'someone/market-repo' });
+  const calls = [];
+  const run = fakeRun(calls, (cmd, args) => {
+    if (cmd === 'git') { put(join(args[args.length - 1], '.claude-plugin', 'marketplace.json'), { name: 'market', plugins: [] }); return { code: 0 }; }
+    return { code: args[1] === 'install' ? 1 : 0 };
+  });
+  assert.deepEqual(await runInstall({ home, plan, run }), { ok: false, error: 'failed', detail: 'cli' });
+  assert.deepEqual(calls.map(c => c.slice(0, 3).join(' ')), ['claude plugin marketplace', 'claude plugin install']);
+});
+
+test('a local-path marketplace installs from inside ~/.roca/shop only, with no clone fallback', async () => {
+  const home = home0();
+  const dir = join(home, '.roca', 'shop', 'acme-kit', 'sub');
+  mkdirSync(dir, { recursive: true });
+  const plan = planInstall({ kind: 'plugin', name: 'demo', marketplace: 'market', marketplaceSource: 'acme/kit', marketplacePath: dir });
+  assert.deepEqual(plan.show, [`claude plugin marketplace add ${dir}`, 'claude plugin install demo@market']);
+  let calls = [];
+  assert.deepEqual(await runInstall({ home, plan, run: fakeRun(calls) }), { ok: true, route: 'local' });
+  assert.deepEqual(calls, [['claude', 'plugin', 'marketplace', 'add', dir], ['claude', 'plugin', 'install', 'demo@market']]);
+  // add fails: no clone, a fixed code
+  calls = [];
+  assert.deepEqual(await runInstall({ home, plan, run: fakeRun(calls, () => ({ code: 1 })) }), { ok: false, error: 'failed', detail: 'cli' });
+  assert.deepEqual(calls.map(c => c[0]), ['claude']);
+  // outside ~/.roca/shop (also through a symlink, or the root itself): refused before anything runs
+  const out = mkdtempSync(join(tmpdir(), 'shop-out-'));
+  const link = join(home, '.roca', 'shop', 'sneaky');
+  symlinkSync(out, link);
+  for (const p of [out, link, join(home, '.roca', 'shop'), join(home, '.roca', 'shop', 'nope')]) {
+    calls = [];
+    const bad = planInstall({ kind: 'plugin', name: 'demo', marketplace: 'market', marketplacePath: p });
+    assert.deepEqual(await runInstall({ home, plan: bad, run: fakeRun(calls) }), { ok: false, error: 'failed', detail: 'bad request' }, p);
+    assert.equal(calls.length, 0);
+  }
+});
+
+test('secret names with "-" or "." are filled (headers and env)', async () => {
+  const home = home0();
+  const item = { kind: 'mcp', name: 'io.example/hy-srv', registry: { remotes: [{ type: 'streamable-http', url: 'https://hy.example.test/mcp',
+    headers: [{ name: 'X-API-Key', isRequired: true, isSecret: true }, { name: 'api.key', isSecret: true }] }] } };
+  const plan = planInstall(item);
+  assert.equal(plan.kind, 'mcp-write');
+  assert.deepEqual(plan.needs, ['X-API-Key', 'api.key']);
+  const r = await runInstall({ home, plan, env: { 'X-API-Key': SECRET, 'api.key': 'k2' }, run: fakeRun([]) });
+  assert.deepEqual(r, { ok: true, route: 'config' });
+  assert.deepEqual(json(join(home, '.claude.json')).mcpServers['hy-srv'].headers, { 'X-API-Key': SECRET, 'api.key': 'k2' });
+  assert.ok(!readFileSync(join(home, '.claude.json'), 'utf8').includes('${'));
+  // npm env names too
+  const plan2 = { kind: 'mcp-write', show: ['~/.claude.json mcpServers.env-srv'], needs: ['MY-TOKEN'], entry: { command: 'npx', args: ['-y', 'x'], env: { 'MY-TOKEN': '${MY-TOKEN}' } } };
+  assert.deepEqual(await runInstall({ home, plan: plan2, env: { 'MY-TOKEN': 'v' }, run: fakeRun([]) }), { ok: true, route: 'config' });
+  assert.deepEqual(json(join(home, '.claude.json')).mcpServers['env-srv'].env, { 'MY-TOKEN': 'v' });
+});
+
+test('a needed placeholder left after filling is refused', async () => {
+  const home = home0();
+  const before = readFileSync(join(home, '.claude.json'), 'utf8');
+  // "{" / "}" in a name: the pattern cannot match "${a}b}", so it would be written literally
+  const plan = { kind: 'mcp-write', show: ['~/.claude.json mcpServers.left-srv'], needs: ['a}b'], entry: { type: 'http', url: 'https://l.example.test', headers: { H: '${a}b}' } } };
+  assert.deepEqual(await runInstall({ home, plan, env: { 'a}b': SECRET }, run: fakeRun([]) }), { ok: false, error: 'failed', detail: 'bad request' });
+  assert.equal(readFileSync(join(home, '.claude.json'), 'utf8'), before);
 });
 
 test('plugin ref must be exactly name@marketplace', async () => {
