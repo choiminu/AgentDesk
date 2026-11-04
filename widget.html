@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-fqc2FiEyDfJI/CeTHJV5oxUY0WDEWOor/t3JhKhc8OU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-wBMYJP6e03+YrMhZxBKjk5p4BDWSoBTpHQp66ISvEog='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -11589,9 +11589,11 @@ function questWorktrees() {
     if (!e || e.kind !== 'worktree' || e.reportAt) continue;
     const d = jiraDispatch[k];
     if (!d) continue;
-    if (d.state === 'timeout' || d.state === 'discarded') { out[k] = { ended: true }; continue; }
-    const s = jiraSessFor(d);
-    out[k] = s ? { sessionId: s.id } : d.sid ? { sessionId: d.sid } : {};
+    if (d.state === 'discarded') { out[k] = { ended: true }; continue; }
+    const s = jiraSessFor(d), sid = s ? s.id : d.sid;
+    // a long task can pass the dispatch timeout while its agent still runs: timeout ends the quest only without a session
+    if (d.state === 'timeout' && !sid) { out[k] = { ended: true }; continue; }
+    out[k] = sid ? { sessionId: sid } : {};
   }
   return out;
 }
