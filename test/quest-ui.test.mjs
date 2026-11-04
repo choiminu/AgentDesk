@@ -216,3 +216,63 @@ test('quest ui: a missed preselect adds a disabled "선택하세요" placeholder
   assert.equal(go.disabled, true);
   onChange(); assert.equal(go.disabled, false); assert.equal(msg.textContent, '');
 });
+
+// ── Task 4: dock panel (🗡) and office marker ──
+test('quest dock: 🗡 button with an I18N title, shared dockSheetOpen mutual exclusion with 📥/📖', () => {
+  match(html, /<button class="dock-btn" id="dock-q"/);
+  match(html, /\['dock-q', '도크: 퀘스트'\]/);
+  match(html, /'도크: 퀘스트': 'Quests'/);
+  match(html, /const dockSheetOpen = \(\) => inboxQOpen \|\| sbDockOpen \|\| questDockOpen;/);
+  match(html, /dockFullPop = k => [^\n]*'quest'/);
+  match(html, /if \(questDockOpen\) return 'quest';/);
+  const tog = html.slice(html.indexOf('function questDockToggle('), html.indexOf("$('q-dock').addEventListener('keydown'"));
+  match(tog, /if \(inboxQOpen\) inboxToggle\(false\);\s*if \(sbDockOpen\) sbDockToggle\(false\);/);
+  const sbT = html.slice(html.indexOf('function sbDockToggle('), html.indexOf("$('sb-dock').addEventListener('keydown'"));
+  match(sbT, /if \(questDockOpen\) questDockToggle\(false\);/);
+  const inb = html.slice(html.indexOf('function inboxToggle('), html.indexOf('function inboxToggle(') + 1500);
+  match(inb, /questDockToggle\(false\)/);
+  match(html, /\$\('dock-q'\)\.addEventListener\('click', e => \{ e\.stopPropagation\(\); questDockToggle\(\); \}\)/);
+  match(html, /if \(questDockOpen\) \{ questDockToggle\(false\); \$\('dock-q'\)\.focus\(\); return; \}/);
+  match(html, /\.q-dock \.qb-col \{ flex: 0 0 auto; min-width: 0; \}/);   // groups stacked, scoped to the dock panel
+});
+
+test('quest dock: panel loads Jira once when the page never did; re-renders on Jira reload', () => {
+  match(html, /jiraBusy = true; jiraErr = ''; jiraLoadedOnce = true;/);
+  match(html, /function jiraRender\(\) \{\n  if \(questDockOpen\) questDockRender\(\);/);
+  const a2 = html.indexOf('function questDockRender('), b2 = html.indexOf('function questDockToggle(');
+  const sb = { jiraLoadedOnce: false, jiraBusy: false, loads: 0, jiraLoad() { sb.loads++; sb.jiraBusy = true; return Promise.resolve(); }, Promise, questDockOpen: true, rendered: [], $: id => id, questRender(r) { sb.rendered.push(r); } };
+  vm.createContext(sb); vm.runInContext(html.slice(a2, b2) + ';globalThis.ens = questDockEnsure; globalThis.rend = questDockRender;', sb);
+  sb.ens(); assert.equal(sb.loads, 1);
+  sb.jiraLoadedOnce = true; sb.jiraBusy = false; sb.ens(); assert.equal(sb.loads, 1, 'already loaded: no second load');
+  sb.rend(); assert.deepEqual(sb.rendered, ['q-dock-body']);
+  sb.questDockOpen = false; sb.rend(); assert.equal(sb.rendered.length, 1);
+});
+
+test('quest dock: disconnected shows the sign-in text, never throws', () => {
+  const { sb, q: Q } = boot();
+  const root = { isConnected: true, innerHTML: '', addEventListener() {} };
+  sb.jiraConn = { connected: false, error: '' }; assert.doesNotThrow(() => Q.questRender(root));
+  assert.match(root.innerHTML, /Jira가 연결되지 않았습니다/);
+});
+
+test('quest marker: AgentDeskQuest.markerFor conditions', () => {
+  const M = globalThis.AgentDeskQuest.markerFor;
+  const st = { quests: { 'EP-1': { kind: 'session', sessionId: 's1', at: 1 }, 'EP-2': { kind: 'session', sessionId: 's2', at: 1, reportAt: 5 }, 'EP-3': { kind: 'worktree', repo: 'api', at: 1 } } };
+  assert.equal(M(st, 's1', true), true);
+  assert.equal(M(st, 's1', false), false, 'not live');
+  assert.equal(M(st, 's2', true), false, 'reported');
+  assert.equal(M(st, 's3', true), false, 'other session');
+  assert.equal(M(st, '', true), false);
+  assert.equal(M(null, 's1', true), false);
+  assert.equal(M({ quests: { x: { kind: 'worktree', sessionId: 's1', at: 1 } } }, 's1', true), false, 'worktree entries have no marker');
+  assert.equal(M({}, 's1', true), false);
+});
+
+test('quest marker: drawn in the seated seat path, memoized per quest file', () => {
+  match(html, /if \(!sess\.isSub && questMarked\(sess\.id\)\) questDrawMarker\(ctx, seat\.chairX - 17, headY \+ 2, now, ch\.alpha\);/);
+  const a2 = html.indexOf('let questMarkFile'), b2 = html.indexOf('function questDrawMarker(');
+  const sb = { quest: { file: { quests: { A: { kind: 'session', sessionId: 's1', at: 1 }, B: { kind: 'session', sessionId: 's2', at: 1, reportAt: 2 } } } }, AgentDeskQuest: globalThis.AgentDeskQuest, Set, Object };
+  vm.createContext(sb); vm.runInContext(html.slice(a2, b2) + ';globalThis.m = questMarked;', sb);
+  assert.equal(sb.m('s1'), true); assert.equal(sb.m('s2'), false); assert.equal(sb.m('s9'), false);
+  sb.quest.file = { quests: {} }; assert.equal(sb.m('s1'), false, 'cache follows the new state file');
+});
