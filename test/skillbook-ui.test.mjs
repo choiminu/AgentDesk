@@ -36,7 +36,10 @@ test('skillbook ui: 📊 사용 기록 tab with the three periods, gauge and bul
   assert.match(sb, /\[7, '7일'\], \[30, '30일'\], \[0, '전체'\]/);
   for (const s of ['💤 안 쓰는 것', '고른 것 끄기', '휴지통으로', 'Codex·Gemini 전용 항목은 사용 기록을 셀 수 없어 빠졌습니다'])
     assert.ok(sb.includes(`'${s}'`), `copy: ${s}`);
-  assert.match(sb, /Math\.round\(10 \* n \/ max\)/);
+  // log scale with at least one cell for any use; colour by the period's own count (not the 30-day mastery)
+  assert.match(sb, /n \? Math\.max\(1, Math\.ceil\(10 \* Math\.log1p\(n\) \/ Math\.log1p\(max\)\)\) : 0/);
+  assert.match(sb, /sb-gauge\$\{n >= 20 \? '' : n >= 5 \? ' mid' : ' low'\}/);
+  assert.doesNotMatch(sb, /Math\.round\(10 \* n \/ max\)/);
 });
 
 test('skillbook ui: backfill line and polling while the page is open', () => {
@@ -51,8 +54,11 @@ test('skillbook ui: remove goes through the in-page confirm, never window.confir
   assert.equal((sb.match(/window\.orca\.skillbookAct\(/g) || []).length, 1);
   // every 'remove' run is started from sbConfirm's callback
   const runs = sb.split('\n').filter(l => /sbRun\([^)]*'remove'/.test(l));
-  assert.ok(runs.length >= 2, 'single and bulk remove');
+  assert.ok(runs.length >= 1, 'single remove');
   for (const l of runs) assert.match(l, /sbConfirm\(/, `remove without confirm: ${l.trim()}`);
+  // the bulk (off and trash alike): one confirm for the batch
+  assert.match(sb, /sbConfirm\([^\n]*\(\) => sbRun\(ids, a, skipped\)\)/);
+  assert.doesNotMatch(sb, /sbRun\(a === 'off'/);
   // the bulk: one confirm, then the items one by one, then one summary toast
   assert.match(sb, /for \(const id of ids\) \{[^}]*await sbAct\(id, action\)/);
   assert.equal((sb.match(/showInAppToast\(/g) || []).length, 1, 'one summary toast');
@@ -66,4 +72,38 @@ test('skillbook ui: user text goes through esc() and stays verbatim', () => {
 test('skillbook ui: every Korean string has an English entry', () => {
   const r = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/i18n-check.mjs', import.meta.url))], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+// ---- final fix wave ----
+const fn = name => { const i = sb.indexOf(`function ${name}(`); return i < 0 ? '' : sb.slice(i, sb.indexOf('\n}\n', i)); };
+
+test('skillbook ui: a failed poll keeps the data already shown', () => {
+  const load = fn('skillbookLoad');
+  assert.match(load, /if \(r && r\.ok\) sbState\.data = r;/);
+  assert.match(load, /else if \(!sbState\.data \|\| !sbState\.data\.ok\) sbState\.data = \{ ok: false/);
+});
+
+test('skillbook ui: while usage is still being read, 💤 has no rows and both bulk buttons are disabled', () => {
+  const pages = fn('sbUsagePages');
+  assert.match(pages, /const reading = [^;]*backfill === 'running'/);
+  assert.match(pages, /const dis = reading \|\| /);
+  assert.match(pages, /reading \? `<div class="sb-empty">\$\{esc\(t\('사용 기록을 읽는 중…'\)\)\}<\/div>`/);
+  assert.match(sb, /\(k === 'pick' \|\| k === 'bulk'\) && sbReading\(\)/);
+});
+
+test('skillbook ui: 📊 one row per kind + usageKey, 💤 only items that are on, each labelled by where it lives', () => {
+  const pages = fn('sbUsagePages');
+  assert.match(pages, /`\$\{it\.kind\}\\u0000\$\{it\.usageKey \|\| it\.id\}`/);
+  assert.match(sb, /×\$\{n\} 곳/);
+  assert.match(pages, /it\.on !== false && !sbCount\(it, sbState\.period\)/);
+  assert.match(pages, /\$\{sbWhere\(it\)\}/);
+  for (const s of ['사용자 설정', '공유 스킬', '확장'])
+    assert.ok(sb.includes(`'${s}'`), `copy: ${s}`);
+});
+
+test('skillbook ui: detail page shows the split by agent and the MCP tools seen', () => {
+  const d = fn('sbDetail');
+  assert.match(d, /kv\('에이전트별', /);
+  assert.match(d, /u\.byAgent/);
+  assert.match(d, /kv\('사용한 도구', \(u\.tools \|\| \[\]\)\.map\(x => `<span class="sb-chip" data-verbatim>\$\{esc\(x\)\}<\/span>`\)/);
 });
