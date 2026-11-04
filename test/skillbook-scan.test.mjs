@@ -127,6 +127,22 @@ test('claude project mcp items carry the exact projects key', () => {
   assert.equal(find(scanInventory({ home, repos: [repo] }), i => i.name === 'proj-srv').loc.project, repo);
 });
 
+test('the same mcp name in claude project and .mcp.json are two items', () => {
+  const { home, repo } = fixture();
+  put(join(repo, '.mcp.json'), { mcpServers: { 'proj-srv': { command: 'npx' } } });
+  const both = scanInventory({ home, repos: [repo] }).items.filter(i => i.name === 'proj-srv');
+  assert.deepEqual(both.map(i => i.loc.where).sort(), ['claude-project', 'mcpjson']);
+  assert.equal(new Set(both.map(i => i.id)).size, 2);
+});
+
+test('parked entries are listed by their store id', () => {
+  const { home, repo } = fixture();
+  const e = (sid, at) => ({ id: 'mcp:same', sid, kind: 'mcp', agent: 'claude', name: 'twin', loc: { file: '/x', where: 'codex' }, at });
+  put(join(home, '.roca/skillbook-parked.json'), { v: 1, entries: [e('mcp:same@1', 1), e('mcp:same@2', 2)] });
+  const r = scanInventory({ home, repos: [repo] });
+  assert.deepEqual(r.items.filter(i => i.name === 'twin').map(i => i.id), ['mcp:same@1', 'mcp:same@2']);
+});
+
 test('parked entries with an invalid loc are dropped', () => {
   const { home, repo } = fixture();
   const e = (id, loc) => ({ id, kind: 'mcp', agent: 'claude', name: id, loc, at: 1 });
