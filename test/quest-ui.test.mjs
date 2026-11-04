@@ -201,3 +201,18 @@ test('quest behavior: render shows load / error / not-connected states', () => {
   sb.jiraConn = null; Q.questRender(root); assert.match(root.innerHTML, /표시할 티켓이 없습니다/);
   sb.jiraBoardMode = false; sb.jiraIssues = [{ key: 'EP-2', summary: 'list mode', status: 'To Do', priority: 'Low', labels: [] }]; Q.questRender(root); assert.match(root.innerHTML, /list mode/);
 });
+
+test('quest ui: a missed preselect adds a disabled "선택하세요" placeholder and re-enables submit on change', () => {
+  const src = html.slice(html.indexOf('function jiraPreselectMiss('), html.indexOf('async function jiraWorktreeModal('));
+  const opts = [];
+  let onChange = null;
+  const sel = { value: 'x', firstChild: null, insertBefore(o) { opts.unshift(o); }, addEventListener(ev, fn) { if (ev === 'change') onChange = fn; } };
+  const go = { disabled: false }, msg = { textContent: '' };
+  const m = { querySelector: s => ({ '#s': sel, '#g': go, '#m': msg })[s] };
+  const sb = { t: x => x, document: { createElement: () => ({}) } };
+  vm.createContext(sb); vm.runInContext(src + ';globalThis.f = jiraPreselectMiss;', sb);
+  sb.f(m, '#s', '#g', '#m');
+  assert.equal(opts.length, 1); assert.equal(opts[0].disabled, true); assert.equal(opts[0].selected, true); assert.equal(opts[0].textContent, '선택하세요'); assert.equal(sel.value, '');
+  assert.equal(go.disabled, true);
+  onChange(); assert.equal(go.disabled, false); assert.equal(msg.textContent, '');
+});
