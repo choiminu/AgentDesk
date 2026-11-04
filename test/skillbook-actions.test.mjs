@@ -67,7 +67,8 @@ test('skill remove goes to the trash and restore points there', async () => {
   assert.deepEqual(await actOn({ home, item: it, action: 'remove', ...f }), { ok: true });
   assert.deepEqual(f.calls.trash, [it.path]);
   const [r] = listRemoved({ home, now: Date.now() });
-  assert.ok(r.id.startsWith(`${it.id}@`)); // its own stored copy assert.equal(r.how, 'trash'); assert.equal(r.kind, 'skill');
+  assert.ok(r.id.startsWith(`${it.id}@`)); // its own stored copy
+  assert.equal(r.how, 'trash'); assert.equal(r.kind, 'skill');
   assert.deepEqual(await actOn({ home, item: r, action: 'restore', ...f }), { ok: false, error: 'unsupported', detail: 'trash' });
   // a skill that is already gone is not trashed
   assert.deepEqual(await actOn({ home, item: it, action: 'remove', ...f }), { ok: false, error: 'gone' });

@@ -75,6 +75,8 @@ contextBridge.exposeInMainWorld("orca", {
   onShortcut: (cb) => ipcRenderer.on("roca:shortcut", (_e, p) => cb(p)),
   openExternal: (url) => ipcRenderer.invoke("roca:open-external", url),
   timeline: (req) => ipcRenderer.invoke("roca:timeline", req),
+  skillbook: () => ipcRenderer.invoke("roca:skillbook"),
+  skillbookAct: (req) => ipcRenderer.invoke("roca:skillbook-act", req),
   diffStat: (req) => ipcRenderer.invoke("roca:diff-stat", req),
   diffFile: (req) => ipcRenderer.invoke("roca:diff-file", req),
   diffOpenFile: (req) => ipcRenderer.invoke("roca:diff-open-file", req),
