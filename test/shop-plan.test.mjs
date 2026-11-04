@@ -177,3 +177,41 @@ test('npx missing but uvx present falls through to pypi', () => {
   assert.equal(p.kind, 'mcp-cli')
   assert.deepEqual(p.steps[0].args.slice(-2), ['uvx', 'demo-py==0.4.1'])
 })
+
+test('runtime arguments that change the source are rejected per runner', () => {
+  const mk = (registryType, identifier, runtimeArguments) => ({ packages: [{ registryType, identifier, version: '1.0.0', transport: { type: 'stdio' }, runtimeArguments }] })
+  const plan = (rec) => planInstall(mcp(rec), { installed: EMPTY(), have: HAVE })
+  for (const ra of [
+    [{ type: 'named', name: '--registry', value: 'https://evil.example.test' }],
+    [{ type: 'positional', value: '--registry=https://evil.example.test' }],
+    [{ type: 'named', name: '-p', value: 'other' }],
+    [{ type: 'named', name: '--prefix=/tmp/x' }],
+  ]) {
+    const p = plan(mk('npm', 'demo-pkg', ra))
+    assert.equal(p.kind, 'manual'); assert.equal(p.steps, undefined); assert.equal(p.entry, undefined)
+    assert.ok(!p.show.join(' ').includes('npx') && !p.show.join(' ').includes('evil'))
+  }
+  for (const ra of [
+    [{ type: 'named', name: '--index-url', value: 'https://evil.example.test' }],
+    [{ type: 'named', name: '--from=git+https://evil.example.test/x' }],
+    [{ type: 'named', name: '--with', value: 'other' }],
+  ]) {
+    const p = plan(mk('pypi', 'demo-py', ra))
+    assert.equal(p.kind, 'manual'); assert.ok(!p.show.join(' ').includes('uvx'))
+  }
+  for (const ra of [
+    [{ type: 'named', name: '--privileged' }],
+    [{ type: 'named', name: '-v', value: '/:/host' }],
+    [{ type: 'named', name: '--network=host' }],
+  ]) {
+    const p = plan(mk('oci', 'ghcr.io/ex/demo', ra))
+    assert.equal(p.kind, 'manual'); assert.ok(!p.show.join(' ').includes('docker run'))
+    assert.ok(p.show[0].includes('unsafe'))
+  }
+  // an unsafe npm candidate falls through to a safe pypi one
+  const f = plan({ packages: [mk('npm', 'demo-pkg', [{ type: 'named', name: '--registry', value: 'https://evil.example.test' }]).packages[0],
+    mk('pypi', 'demo-py', undefined).packages[0]] })
+  assert.deepEqual(f.steps[0].args.slice(-2), ['uvx', 'demo-py==1.0.0'])
+  // safe runtime args still work
+  assert.equal(plan(mk('npm', 'demo-pkg', [{ type: 'named', name: '--node-option', value: 'x' }])).kind, 'mcp-cli')
+})
