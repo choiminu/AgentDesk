@@ -17,6 +17,7 @@ test('only plain GitHub links are accepted', () => {
     'https://github.com.evil.com/a/b', 'https://user@github.com/a/b', 'https://github.com:444/a/b', 'https://github.com/a/b?x=1',
     'https://github.com/a/b#x', 'https://github.com/a', 'https://github.com/a/b/blob/main/x', 'file:///etc/passwd',
     'a/b c', 'a/b;rm', 'a/b$(x)', '', '   ', null, undefined, 42, 'a/b\nc/d', 'https://github.com/a/b/tree/', 'https://github.com/a/b/tree/main/%2e%2e/x',
+    '.a/b', 'a/.b', 'https://github.com/.a/b', 'https://github.com/a/.git', 'https://github.com/a/.b/tree/main',
   ];
   for (const t of bad) assert.equal(parseRepoLink(t), null, JSON.stringify(t));
   assert.deepEqual(parseRepoLink('own-er/re.po'), { owner: 'own-er', repo: 're.po' });

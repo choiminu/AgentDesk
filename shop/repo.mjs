@@ -9,7 +9,7 @@ const { parseSkillMd } = globalThis.AgentDeskSkillbook;
 const NAME_RE = /^[A-Za-z0-9_.-]{1,100}$/;
 const REF_RE = /^[A-Za-z0-9_./-]{1,100}$/;
 const SEG_RE = /^[A-Za-z0-9_.@+-]{1,100}$/;
-const bareName = s => NAME_RE.test(s) && s !== '.' && s !== '..' && !s.startsWith('-');
+const bareName = s => NAME_RE.test(s) && !s.startsWith('.') && !s.startsWith('-'); // no '.', '..', hidden names or options
 
 // → { owner, repo, ref?, path? } | null. A ref is the first segment after /tree/ (a branch name with a slash is not supported).
 export function parseRepoLink(text) {

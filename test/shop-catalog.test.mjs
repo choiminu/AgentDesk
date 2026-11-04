@@ -128,3 +128,26 @@ test('smithery merges into registry items by name', async () => {
   assert.equal(mcp.find(i => i.name === 'only/smith').source, 'smithery');
   rmSync(h, { recursive: true });
 });
+
+test('bad cached items, duplicate ids and dot marketplaces never crash', async () => {
+  const h = home();
+  const mp = join(h, '.claude', 'plugins');
+  writeFileSync(join(mp, 'known_marketplaces.json'), JSON.stringify({ 'demo-market': {}, '..': {}, '.hidden': {} }));
+  mkdirSync(join(mp, 'marketplaces', '.hidden', '.claude-plugin'), { recursive: true });
+  writeFileSync(join(mp, 'marketplaces', '.hidden', '.claude-plugin', 'marketplace.json'), JSON.stringify({ plugins: [{ name: 'hid' }] }));
+  writeFileSync(join(mp, 'marketplaces', 'demo-market', '.claude-plugin', 'marketplace.json'),
+    JSON.stringify({ plugins: [...MARKET.plugins, MARKET.plugins[0]] }));
+  mkdirSync(join(h, '.roca'), { recursive: true });
+  const dup = { id: 'registry::io.example/dup', kind: 'mcp', name: 'io.example/dup', source: 'registry' };
+  writeFileSync(join(h, '.roca', 'shop-cache.json'), JSON.stringify({ sources: {
+    registry: { fetchedAt: 1e12, items: [null, 7, 'x', [], dup, { ...dup }] },
+    smithery: { fetchedAt: 1e12, items: [null, { id: 'smithery::only/s', kind: 'mcp', name: 'only/s', source: 'smithery' }, false] },
+  } }));
+  const c = await loadCatalog({ home: h, fetchJson: async () => { throw new Error('offline'); }, now: 1e12 + 1000 });
+  const ids = c.items.map(i => i.id);
+  assert.equal(new Set(ids).size, ids.length, 'ids are unique');
+  assert.ok(ids.includes('registry::io.example/dup'));
+  assert.ok(ids.includes('smithery::only/s'));
+  assert.ok(!c.items.some(i => i.name === 'hid'), 'dot marketplace skipped');
+  rmSync(h, { recursive: true });
+});
