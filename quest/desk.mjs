@@ -1,7 +1,7 @@
 // AgentDesk Quest board: the front desk. One headless `claude -p` call proposes who takes a ticket (an idle session of
 // mine or a new worktree in a known repo). The proposal is only a suggestion: nothing dispatches without the owner's click.
 //
-//   deskArgs()                       → argv for `claude` (model AGENTDESK_QUEST_MODEL || haiku, JSON schema, no tools)
+//   deskArgs()                       → argv for `claude` (model AGENTDESK_QUEST_MODEL || haiku, JSON schema, no tools, no MCP, no settings)
 //   askDesk({ issue, party, repos, run, signal, timeoutMs })
 //        → Promise<{ ok: true, choice, reason } | { ok: false, error: 'timeout'|'invalid'|'failed'|'cancelled'|'busy' }>
 //        run(input, { signal }) → Promise<{ code, stdout }>; input = the masked front-desk prompt (stdin)
@@ -27,9 +27,21 @@ const Q = () => globalThis.AgentDeskQuest;
 const mask = s => globalThis.AgentDeskMask.mask(String(s ?? ""));
 
 export function deskArgs() {
+  // isolation: the ticket text is someone else's, so the run gets no tools at all (--tools ""), no MCP server
+  // (--strict-mcp-config with no --mcp-config), and no user / project / local settings (--setting-sources "": their
+  // allowlists, hooks and MCP entries do not apply). --disallowedTools stays as a second fence. It is variadic: keep it last.
   return ["-p", "--model", process.env.AGENTDESK_QUEST_MODEL || "haiku", "--output-format", "json", "--json-schema", Q().DESK_SCHEMA,
-    "--system-prompt", Q().DESK_SYSTEM, "--disable-slash-commands",
+    "--system-prompt", Q().DESK_SYSTEM, "--disable-slash-commands", "--tools", "", "--strict-mcp-config", "--setting-sources", "",
     "--disallowedTools", "Bash", "Edit", "Write", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "Agent", "Task"];
+}
+
+const DESC_HARD_MAX = 20000;
+function maskDesc(issue) {
+  if (!issue || typeof issue !== "object") return issue;
+  const cut = v => (v == null || v === "" ? v : mask(String(v).slice(0, DESC_HARD_MAX)));   // both places deskPrompt reads
+  const out = { ...issue, description: cut(issue.description) };
+  if (issue.fields && typeof issue.fields === "object") out.fields = { ...issue.fields, description: cut(issue.fields.description) };
+  return out;
 }
 
 // the `--output-format json` envelope: structured_output (with --json-schema), else `result` as a JSON string / object
@@ -45,8 +57,9 @@ function answerOf(stdout) {
 export async function askDesk({ issue, party, repos, run, signal, timeoutMs = DESK_TIMEOUT_MS } = {}) {
   if (typeof run !== "function") return { ok: false, error: "failed" };
   if (signal && signal.aborted) return { ok: false, error: "cancelled" };
-  // everything that leaves the machine (ticket, session names, repos, branches, summaries) is masked as one text
-  const input = mask(Q().deskPrompt(issue, party, repos));
+  // everything that leaves the machine (ticket, session names, repos, branches, summaries) is masked as one text. The
+  // description is masked whole first (main caps it at 20,000 chars), so the prompt's 1,500-char cut never splits a secret
+  const input = mask(Q().deskPrompt(maskDesc(issue), party, repos));
   const ac = new AbortController();
   let why = null;
   const onAbort = () => { why = why || "cancelled"; ac.abort(); };
