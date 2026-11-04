@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-O0BJdE2nRFq2tMm7EZF5Nvt0CwA+kVWv86lQlJxzbxU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-ZfdLhdFikLZgjvSmy7/2HBiTN4E1665PTYsuuUlsTgA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1742,6 +1742,7 @@
   .dock-msg { position: absolute; left: 50%; top: 2px; transform: translateX(-50%); z-index: 3; max-width: calc(100% - 16px); padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-raised, var(--surface)); color: var(--text); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 4px 12px rgba(0,0,0,0.25); pointer-events: none; animation: dockPop 160ms ease-out; }
   .dock-msg[hidden] { display: none; }
   .dock-msg.err { border-color: var(--red); color: var(--red-text); }
+  .dock-msg.info { border-color: var(--purple); color: var(--text); }
   .dock-perm[hidden], .dock-usage[hidden] { display: none; }
   .dock-perm { flex: 1 1 auto; min-width: 0; display: flex; }
   .dock-perm-in { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
@@ -2497,7 +2498,7 @@ Object.assign(I18N, {
 });
 // skillbook page
 Object.assign(I18N, {
-  '스킬북': 'Skillbook', '스킬': 'Skills', '플러그인': 'Plugins', '🧰 도구 주머니': '🧰 Tool pouch', '📊 사용 기록': '📊 Usage', '📖 목차': '📖 Index',
+  '스킬북': 'Skillbook', '스킬 사용': 'skill', '스킬': 'Skills', '플러그인': 'Plugins', '🧰 도구 주머니': '🧰 Tool pouch', '📊 사용 기록': '📊 Usage', '📖 목차': '📖 Index',
   '7일': '7 days', '30일': '30 days', '이번 주': 'this week', '미사용': 'unused', '사용 기록 없음': 'no usage record', '프로젝트': 'project',
   '하는 일': 'What it does', '이렇게 말하면 켜짐': 'Wakes up on', '출처': 'Source', '쓸 수 있는 에이전트': 'Agents', '범위': 'Scope', '실행': 'Runs as', '키 이름': 'Key names',
   '모든 프로젝트 (사용자 설정)': 'all projects (user settings)', '(값은 표시하지 않음)': '(values never shown)',
@@ -3013,7 +3014,7 @@ $('hooks-toggle').addEventListener('click', async () => {
   fetchData();
 });
 window.orca.onHookEvents(evts => {
-  for (const rec of evts) applyHookEvent(rec);
+  for (const rec of evts) { applyHookEvent(rec); skillCastFrom(rec); }
   if (hooksEnabled) screenTick();
 });
 // replay recent hook events before the first session fetch so hook-only sessions appear immediately
@@ -3021,6 +3022,73 @@ const hooksReady = refreshHooksStatus().then(async () => {
   if (!hooksEnabled) return;
   for (const rec of await window.orca.hooksRecent()) applyHookEvent(rec);
 }).catch(() => {});
+
+// ── "[스킬명] 스킬 사용": a live Skill tool call, or a /name prompt that names an installed skill, plays the skill-cast effect
+// (scripts/office-fx/skill-cast.js) at that session's office character and dock tile, with a short label. Live records
+// only (never the hooksRecent replay); the same session + skill at most once per 10 s, several sessions at once.
+const SKILL_CAST_GAP_MS = 10000;
+const SKILL_CAST_LIVE_MS = 60000;   // main's first read of the events file may push old records as new: skip those
+const SKILL_CAST_TAG_MS = 2500;
+const skillCastLast = new Map();   // `${sid}|${skill}` → ms of the last show
+let skillCastNames = null, skillCastNamesAt = 0, skillCastNamesP = null;
+// the skill a record uses, or '' (and whether it came from a prompt, which must name an installed skill)
+function skillCastOf(rec) {
+  const ev = rec && rec.ev;
+  if (!ev || typeof ev !== 'object') return null;
+  if (ev.hook_event_name === 'PreToolUse' && ev.tool_name === 'Skill') {
+    const k = ev.tool_input && typeof ev.tool_input.skill === 'string' ? ev.tool_input.skill.trim() : '';
+    return k ? { key: k, prompt: false } : null;
+  }
+  if (ev.hook_event_name === 'UserPromptSubmit' && typeof ev.prompt === 'string') {
+    const m = /<command-name>\s*\/([\w:.-]+)\s*<\/command-name>/.exec(ev.prompt) || /^\s*\/([\w:.-]+)/.exec(ev.prompt);
+    return m ? { key: m[1], prompt: true } : null;
+  }
+  return null;
+}
+// installed skill names (usage key "plugin:skill" and the bare name) from the skillbook scan, cached for 5 min
+async function skillCastInstalled(key) {
+  if (!skillCastNames || Date.now() - skillCastNamesAt > 5 * 60000) {
+    if (!skillCastNamesP) skillCastNamesP = (async () => {
+      const set = new Set();
+      try {
+        const r = await window.orca.skillbook();
+        for (const it of (r && r.ok && r.items) || []) if (it.kind === 'skill') { if (it.usageKey) set.add(it.usageKey); if (it.name) set.add(it.name); }
+      } catch {}
+      skillCastNames = set; skillCastNamesAt = Date.now(); skillCastNamesP = null;
+    })();
+    await skillCastNamesP;
+  }
+  return skillCastNames.has(key);
+}
+// "[brainstorming] 스킬 사용": the skill's own name (plugin prefix dropped), clipped
+function skillCastLabel(key) {
+  let name = String(key).split(':').pop();
+  if (name.length > 16) name = name.slice(0, 16) + '…';
+  return `[${name}] ${t('스킬 사용')}`;
+}
+async function skillCastFrom(rec) {
+  const u = skillCastOf(rec), sid = rec && rec.ev && rec.ev.session_id;
+  if (!u || !sid) return;
+  if (typeof rec.ts !== 'number' || Date.now() - rec.ts * 1000 > SKILL_CAST_LIVE_MS) return;
+  if (u.prompt && !await skillCastInstalled(u.key)) return;
+  const k = `${sid}|${u.key}`, now = Date.now();
+  if (now - (skillCastLast.get(k) || 0) < SKILL_CAST_GAP_MS) return;
+  skillCastLast.set(k, now);
+  if (skillCastLast.size > 200) for (const [kk, at] of skillCastLast) if (now - at >= SKILL_CAST_GAP_MS) skillCastLast.delete(kk);
+  const s = sessions.find(x => x.sessionId === sid) || sessions.find(x => { const hk = hookStateFor(x.id); return hk && hk.sid === sid; });
+  if (s) skillCastPlay(s, skillCastLabel(u.key));
+}
+function skillCastPlay(s, text) {
+  const ch = officeChars.get(s.id);
+  if (ch && ch.alpha > 0 && currentPage === 'office') {
+    officeFxPlay('skillCast', ...officeFeet(ch), ch);
+    if (officeSkillTags.length < 12) officeSkillTags.push({ ch, text, t0: performance.now() });
+  }
+  if (dockOn) {
+    if (dockFxAllowed()) { dockFxPlay(`me:${s.id}`, 'skillCast'); dockFxSync(); }
+    dockSkillHint(text);
+  }
+}
 
 // ── permission requests: one panel per session (oldest request first), on its card or above the list ──
 function permSessionOf(sid) {
@@ -3518,6 +3586,20 @@ function dockHint(text, cls, hard) {
   el.textContent = text; el.title = text; el.className = `dock-msg${cls ? ' ' + cls : ''}`; el.hidden = false;
   dockHideSet(false);   // a hidden bar comes back to show it
   clearTimeout(dockHintT); dockHintT = setTimeout(() => { el.hidden = true; }, cls === 'err' ? 5000 : 3000);
+}
+// "[name] 스킬 사용" (skillCastPlay): the same pill, purple, for SKILL_CAST_TAG_MS. Information only: it does not bring a
+// hidden bar back, take focus or replace an error on the pill; skills used close together share it (" · ").
+let dockSkillMsgs = [];   // [{ text, until }]
+function dockSkillHint(text) {
+  if (!dockOn || dockCfg.dnd) return;
+  const el = $('dock-msg');
+  if (!el.hidden && el.classList.contains('err')) return;
+  const now = Date.now();
+  dockSkillMsgs = dockSkillMsgs.filter(m => m.until > now && m.text !== text).slice(-2);
+  dockSkillMsgs.push({ text, until: now + SKILL_CAST_TAG_MS });
+  const all = dockSkillMsgs.map(m => m.text).join(' · ');
+  el.textContent = all; el.title = all; el.className = 'dock-msg info'; el.hidden = false;
+  clearTimeout(dockHintT); dockHintT = setTimeout(() => { el.hidden = true; dockSkillMsgs = []; }, SKILL_CAST_TAG_MS);
 }
 // [허용] [거부] for the open terminal window's session (its oldest request), in the window's input line: the permission
 // panel's own rules — permArm (0.8 s before the buttons work, [허용] stays off while data-truncated is 1) and permDecide
@@ -6791,7 +6873,7 @@ function officeSetSkin(sid, idx) {
 // sprite-sheet effects from pixelfx (MIT, patch-gg/pixelfx), baked by scripts/office-fx.mjs — rerun it and paste its
 // table here when the sheets change. px/py: the effect's origin (a character's feet) in the frame; dy: drawn that much
 // lower because pixelfx's stand-in is taller than our 16 x 32 characters.
-const OFFICE_FX = {"collect":{"src":"fx/collect-burst","w":112,"h":108,"px":56,"py":94,"cols":7,"n":42,"fps":30,"loop":false},"blinkIn":{"src":"fx/blink-in","w":136,"h":96,"px":68,"py":80,"cols":6,"n":43,"fps":30,"loop":false},"blinkOut":{"src":"fx/blink-out","w":136,"h":96,"px":68,"py":80,"cols":6,"n":49,"fps":30,"loop":false},"exclaim":{"src":"fx/exclamation","w":84,"h":104,"px":42,"py":92,"cols":8,"n":43,"fps":30,"loop":false,"dy":6},"sleep":{"src":"fx/zzz","w":24,"h":42,"px":4,"py":41,"cols":8,"n":30,"fps":10,"loop":true},"steam":{"src":"fx/steam","w":12,"h":18,"px":6,"py":17,"cols":7,"n":30,"fps":15,"loop":true},"rackA":{"src":"fx/rack-a","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"rackB":{"src":"fx/rack-b","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"skyDay":{"src":"fx/sky-day","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyDusk":{"src":"fx/sky-dusk","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyNight":{"src":"fx/sky-night","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true}};
+const OFFICE_FX = {"collect":{"src":"fx/collect-burst","w":112,"h":108,"px":56,"py":94,"cols":7,"n":42,"fps":30,"loop":false},"blinkIn":{"src":"fx/blink-in","w":136,"h":96,"px":68,"py":80,"cols":6,"n":43,"fps":30,"loop":false},"blinkOut":{"src":"fx/blink-out","w":136,"h":96,"px":68,"py":80,"cols":6,"n":49,"fps":30,"loop":false},"exclaim":{"src":"fx/exclamation","w":84,"h":104,"px":42,"py":92,"cols":8,"n":43,"fps":30,"loop":false,"dy":6},"sleep":{"src":"fx/zzz","w":24,"h":42,"px":4,"py":41,"cols":8,"n":30,"fps":10,"loop":true},"skillCast":{"src":"fx/skill-cast","w":48,"h":56,"px":24,"py":51,"cols":6,"n":25,"fps":20,"loop":false},"steam":{"src":"fx/steam","w":12,"h":18,"px":6,"py":17,"cols":7,"n":30,"fps":15,"loop":true},"rackA":{"src":"fx/rack-a","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"rackB":{"src":"fx/rack-b","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"skyDay":{"src":"fx/sky-day","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyDusk":{"src":"fx/sky-dusk","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyNight":{"src":"fx/sky-night","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true}};
 const officeFx = [];   // one-shots playing: { kind, x, y (feet), t, ch (follow that character while it lives) }
 function officeFxPlay(kind, x, y, ch = null) {
   if (OFFICE_FX[kind] && officeFx.length < 24) officeFx.push({ kind, x, y, t: 0, ch });
@@ -6821,6 +6903,26 @@ function officeFxDraw(ctx, kind, frame, x, y, alpha = 1) {
 }
 function officeDrawFx(ctx) {
   for (const e of officeFx) officeFxDraw(ctx, e.kind, Math.floor(e.t * OFFICE_FX[e.kind].fps), e.x, e.y);
+}
+// "[name] 스킬 사용" over a character's head (skillCastPlay): name-tag style in the office font, rises 6 px and fades
+// over SKILL_CAST_TAG_MS; drawn above the tool tag. Several at once stack upwards on one character.
+const officeSkillTags = [];   // { ch, text, t0 (performance.now) }
+function officeDrawSkillTags(ctx) {
+  const now = performance.now(), per = new Map();
+  for (let i = officeSkillTags.length - 1; i >= 0; i--) if (now - officeSkillTags[i].t0 >= SKILL_CAST_TAG_MS || officeChars.get(officeSkillTags[i].ch.sid) !== officeSkillTags[i].ch) officeSkillTags.splice(i, 1);
+  if (!officeSkillTags.length) return;
+  ctx.save();
+  ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (const g of officeSkillTags) {
+    const u = (now - g.t0) / SKILL_CAST_TAG_MS, n = per.get(g.ch) || 0; per.set(g.ch, n + 1);
+    const [cx, feetY] = officeFeet(g.ch), y0 = Math.round(feetY - 32 - 30 - n * 12 - u * 6);
+    const tw = Math.round(ctx.measureText(g.text).width + 6), x0 = Math.round(cx - tw / 2);
+    ctx.globalAlpha = (u < 0.1 ? u / 0.1 : 1) * (u > 0.65 ? (1 - u) / 0.35 : 1) * Math.min(1, g.ch.alpha);
+    ctx.fillStyle = 'rgba(12,14,22,0.85)'; ctx.fillRect(x0, y0, tw, 10);
+    ctx.fillStyle = '#b694f6'; ctx.fillRect(x0, y0 + 9, tw, 1);
+    ctx.fillStyle = '#e6dcff'; ctx.fillText(g.text, Math.round(cx), y0);
+  }
+  ctx.restore();
 }
 // zzz over a resting character: a loop picked by wall time (offset per session), so it needs no state and no frame-rate boost
 function officeDrawSleep(ctx, sid, x, feetY, now, alpha = 1) {
@@ -7139,7 +7241,7 @@ function officeFrame(now) {
   // a team flight, a drag, or the 1.5 s settle after a relayout.
   // Teammates' sessions do not count: their typing frames (>= 0.22 s each) still read at 10 fps, and counting them would
   // keep the full rate whenever team sharing shows a running session.
-  officeMoving = now - officeStartedAt < 1500 || !!officeDrag || officeFx.length > 0 || teamFlights.length > 0
+  officeMoving = now - officeStartedAt < 1500 || !!officeDrag || officeFx.length > 0 || officeSkillTags.length > 0 || teamFlights.length > 0
     || officePets.some(p => p.state === 'walk' || p.heartT > 0)
     || !!(debateState.running && debateState.currentHandle);
   if (!officeMoving) for (const c of officeChars.values()) {
@@ -7317,6 +7419,7 @@ function officeFrame(now) {
   for (const drawSign of officeSignQueue) drawSign();
   officeDrawTeamFlights(ctx);
   officeDrawFx(ctx);
+  officeDrawSkillTags(ctx);
 
   if (!shown.length) {
     ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.fillStyle = '#9aa0b4';
