@@ -83,6 +83,7 @@
       "guard/**/*",
       "statusline/**/*",
       "skillbook/**/*",
+      "quest/**/*",
       "package.json",
       "assets/**/*"
     ],

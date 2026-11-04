@@ -30,6 +30,8 @@ import { readJsonStrict, writeJsonAtomic, backupPrivate, isOurPermHook, isOurGua
 import { createGuardHandler, createGuardLog, writeGuardConfig, defaultGuardConfig, GUARD_MODES } from "./guard/guard.mjs";
 import * as jiraOAuth from "./jira-oauth.mjs";
 import { diffStat, diffFile, insideRepo, setGitPath } from "./diff/git.mjs";   // also loads core/diff.js (globalThis.AgentDeskDiff)
+import { createQuestState } from "./quest/state.mjs";
+import { createDesk, spawnRun, killAllDesk } from "./quest/desk.mjs";
 
 const exec = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -291,6 +293,78 @@ ipcMain.handle("roca:jira-oauth-save", (_e, clientId, clientSecret) => oauthCall
 ipcMain.handle("roca:jira-oauth-login", () => oauthCall(() => jiraOAuth.login()));
 ipcMain.handle("roca:jira-oauth-logout", () => oauthCall(() => jiraOAuth.logout()));
 ipcMain.handle("roca:jira-oauth-site", (_e, cloudId) => oauthCall(() => jiraOAuth.chooseSite(String(cloudId || ""))));
+// ── Quest board: assignment state (~/.roca/quests.json, quest/state.mjs) and the front desk (quest/desk.mjs: one
+// headless claude call per ticket proposing a session or a worktree; masked input, 90 s timeout, cancellable, 10-min
+// cache). The proposal never dispatches: the renderer opens the normal modal and records the assignment on send. ──
+const QUEST_KEY_RE = /^[A-Z][A-Z0-9_]*-\d+$/;
+const questStr = (v, max = 300) => typeof v === "string" && v.length > 0 && v.length <= max && !/[\u0000-\u001f\u007f]/.test(v);
+const questClip = (v, max) => (typeof v === "string" ? v : "").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").slice(0, max);
+let questStore = null, questDeskSvc = null;
+function questState() {
+  if (questStore) return questStore;
+  questStore = createQuestState({ file: join(ROCA_DIR, "quests.json") });
+  try { questStore.load(); } catch (e) { console.error("[quest] load", e && e.code); }
+  return questStore;
+}
+// PATH: EXEC_PATH so the packaged app (launched without a login shell) finds claude in ~/.local/bin or Homebrew
+const questDesk = () => questDeskSvc || (questDeskSvc = createDesk({ run: spawnRun({ env: { ...process.env, PATH: EXEC_PATH, AGENTDESK_RECALL: "1", DISABLE_OMC: "1", OMC_SKIP_HOOKS: "all" } }) }));
+app.on("will-quit", () => killAllDesk());
+// prune input: only what pruneState reads (key, status category, resolution / update dates), clipped
+function questPruneIssuesIn(issues) {
+  const out = [];
+  for (const i of Array.isArray(issues) ? issues.slice(0, 1000) : []) {
+    if (!i || typeof i !== "object" || !QUEST_KEY_RE.test(i.key || "")) continue;
+    const f = i.fields && typeof i.fields === "object" ? i.fields : {};
+    const st = f.status && typeof f.status === "object" ? f.status : i.status && typeof i.status === "object" ? i.status : {};
+    const sc = st.statusCategory;
+    const cat = questClip(sc && typeof sc === "object" ? sc.key : (i.cat && typeof i.cat === "object" ? i.cat.key : i.cat || i.statusCategory), 20);
+    out.push({ key: i.key, fields: { status: { statusCategory: { key: cat } }, resolutiondate: questClip(f.resolutiondate || i.resolutiondate, 40), updated: questClip(f.updated || i.updated, 40) } });
+  }
+  return out;
+}
+function questIssueIn(key, issue) {
+  const i = issue && typeof issue === "object" ? issue : {};
+  const f = i.fields && typeof i.fields === "object" ? i.fields : {};
+  const labels = (Array.isArray(f.labels) ? f.labels : Array.isArray(i.labels) ? i.labels : []).filter(questStr).slice(0, 20);
+  return { key, fields: { summary: questClip(f.summary != null ? f.summary : i.summary, 500), description: questClip(f.description != null ? f.description : i.description, 4000), labels } };
+}
+function questPartyIn(party) {
+  const out = [];
+  for (const p of Array.isArray(party) ? party.slice(0, 50) : []) {
+    if (!p || typeof p !== "object" || !questStr(p.id)) continue;
+    out.push({ id: p.id, name: questClip(p.name, 300), repo: questClip(p.repo, 300), branch: questClip(p.branch, 300), status: questClip(p.status, 40),
+      eligible: p.eligible === true, doing: questClip(p.doing, 300), skills: (Array.isArray(p.skills) ? p.skills : []).filter(s => questStr(s, 100)).slice(0, 8) });
+  }
+  return out;
+}
+const questRepos = repos => (Array.isArray(repos) ? repos : []).filter(r => questStr(r)).slice(0, 100);
+ipcMain.handle("roca:quest-state", () => questState().all());
+ipcMain.handle("roca:quest-assign", (_e, o = {}) => {
+  const { key, kind, sessionId, repo } = o || {};
+  if (!QUEST_KEY_RE.test(key || "")) return badArg("invalid Jira key");
+  if (kind === "session" ? !questStr(sessionId) : kind === "worktree" ? !questStr(repo) : true) return badArg("invalid assignment");
+  try { questState().set(key, kind === "session" ? { kind, sessionId } : { kind, repo }); return { ok: true }; }
+  catch (e) { return badArg(e.code || "save failed"); }
+});
+ipcMain.handle("roca:quest-report", (_e, o = {}) => {
+  const key = o && o.key;
+  if (!QUEST_KEY_RE.test(key || "")) return badArg("invalid Jira key");
+  try { return { ok: questState().report(key) }; } catch (e) { return badArg(e.code || "save failed"); }
+});
+ipcMain.handle("roca:quest-desk", (_e, o = {}) => {
+  const key = o && o.key;
+  if (!QUEST_KEY_RE.test(key || "")) return badArg("invalid Jira key");
+  return questDesk().ask({ key, issue: questIssueIn(key, o.issue), party: questPartyIn(o.party), repos: questRepos(o.repos) }).catch(() => ({ ok: false, error: "failed" }));
+});
+ipcMain.handle("roca:quest-prune", (_e, o = {}) => {
+  const issues = questPruneIssuesIn(o && o.issues);
+  try { return { ok: true, left: questState().prune(issues) }; } catch (e) { return badArg(e.code || "save failed"); }
+});
+ipcMain.handle("roca:quest-desk-cancel", (_e, o = {}) => {
+  const key = o && o.key;
+  if (!QUEST_KEY_RE.test(key || "")) return badArg("invalid Jira key");
+  return { ok: questDesk().cancel(key) };
+});
 ipcMain.handle("orca:worktree-create", async (_e, opts = {}) => {
   const name = String(opts.name || "");
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(name)) return badArg("invalid worktree name");
