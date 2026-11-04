@@ -18,7 +18,8 @@ function readHead(f) {
   const fd = openSync(f, 'r');
   try { const b = Buffer.alloc(SKILL_READ_MAX); return b.toString('utf8', 0, readSync(fd, b, 0, SKILL_READ_MAX, 0)); } finally { closeSync(fd); }
 }
-const subdirs = dir => readdirSync(dir).filter(n => { try { return statSync(join(dir, n)).isDirectory(); } catch { return false; } }).sort();
+// hidden names are skipped: an interrupted shop install leaves ".agentdesk-<name>-<pid>.tmp" behind, never a skill
+const subdirs = dir => readdirSync(dir).filter(n => { if (n.startsWith('.')) return false; try { return statSync(join(dir, n)).isDirectory(); } catch { return false; } }).sort();
 
 // one MCP entry from a JSON config; secrets stay behind
 function mcpFromJson(def, gemini = false) {

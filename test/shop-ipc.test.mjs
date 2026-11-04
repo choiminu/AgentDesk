@@ -144,7 +144,7 @@ test('install result carries no env values', async () => {
 });
 
 // ---- handlers (shop/ipc.mjs) over a temp home ----
-function harness({ files = {}, known, catalog = CATALOG, runInstall, loadCatalog } = {}) {
+function harness({ files = {}, known, catalog = CATALOG, runInstall, loadCatalog, inventory = INVENTORY } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'shop-ipc-'));
   if (known) put(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify(known));
   const calls = { run: [], load: [], enqueue: 0 };
@@ -157,7 +157,7 @@ function harness({ files = {}, known, catalog = CATALOG, runInstall, loadCatalog
   let q = Promise.resolve();
   const enqueue = fn => { calls.enqueue++; const j = q.then(fn); q = j.catch(() => {}); return j; };
   const h = makeShopHandlers({
-    home, run, enqueue, have: async () => ({ npx: true, uvx: false }), inventory: () => INVENTORY,
+    home, run, enqueue, have: async () => ({ npx: true, uvx: false }), inventory: () => inventory,
     loadCatalog: loadCatalog || (async ({ refresh }) => { calls.load.push(refresh); return catalog; }),
     ...(runInstall ? { runInstall } : {}),
   });
@@ -318,4 +318,50 @@ test('preload and package expose the shop', () => {
   assert.match(pre, /shopInstall: \(req\) => ipcRenderer\.invoke\("roca:shop-install", req\)/);
   const pkg = JSON.parse(src('package.json'));
   assert.ok(pkg.build.files.includes('shop/**/*'));
+});
+
+test('a /tree/<ref>/<path> link plans its marketplace from the previewed local folder', async () => {
+  const files = { 'sub/dir/.claude-plugin/marketplace.json': JSON.stringify({ name: 'kit-market', plugins: [{ name: 'p1', description: 'P1' }] }),
+    '.claude-plugin/marketplace.json': JSON.stringify({ name: 'root-market', plugins: [{ name: 'r1' }] }) };
+  const seen = [];
+  const { home, h } = harness({ files, runInstall: async a => { seen.push(a); return { ok: true, route: 'local' }; } });
+  const dir = join(home, '.roca', 'shop', 'acme-kit', 'sub', 'dir');
+  const r = await h.link({ text: 'https://github.com/acme/kit/tree/dev/sub/dir' });
+  const p = r.found.find(f => f.name === 'p1');
+  assert.ok(!r.found.some(f => f.name === 'r1'), 'only what the path holds');
+  assert.equal(p.plan.kind, 'plugin');
+  assert.deepEqual(p.plan.show, [`claude plugin marketplace add ${dir}`, 'claude plugin install p1@kit-market']);
+  assert.deepEqual(await h.install({ choiceId: p.choiceId }), { ok: true, route: 'local' });
+  assert.deepEqual(seen[0].plan.steps.map(s => s.args), [['plugin', 'marketplace', 'add', dir], ['plugin', 'install', 'p1@kit-market']]);
+  rmSync(home, { recursive: true, force: true });
+  // a ref alone (no path): the clone root, still local — the clone is that ref, owner/repo would be the default branch
+  const h2 = harness({ files: { '.claude-plugin/marketplace.json': files['sub/dir/.claude-plugin/marketplace.json'] } });
+  const p2 = (await h2.h.link({ text: 'https://github.com/acme/kit/tree/v2' })).found.find(f => f.name === 'p1');
+  assert.deepEqual(p2.plan.show, [`claude plugin marketplace add ${join(h2.home, '.roca', 'shop', 'acme-kit')}`, 'claude plugin install p1@kit-market']);
+  rmSync(h2.home, { recursive: true, force: true });
+  // linkItems: no ref/path → owner/repo, as before
+  const d = [{ kind: 'marketplace', name: 'm', path: '/h/.roca/shop/a-b', manifest: { name: 'm', plugins: [{ name: 'x' }] } }];
+  assert.equal(linkItems(d, { owner: 'a', repo: 'b' })[0].item.marketplacePath, undefined);
+  assert.equal(linkItems(d, { owner: 'a', repo: 'b', ref: 'v1' })[0].item.marketplacePath, '/h/.roca/shop/a-b');
+});
+
+test('re-pasting a link after a local-path install: installed, and a directory source in the clone is the same source', async () => {
+  const files = { 'sub/.claude-plugin/marketplace.json': JSON.stringify({ name: 'kit-market', plugins: [{ name: 'p1' }, { name: 'p2' }] }) };
+  const inventory = { items: [...INVENTORY.items, { kind: 'plugin', name: 'p1', agents: ['claude'], source: 'plugin', plugin: { marketplace: 'kit-market', version: '1.0.0' } }], sources: [] };
+  // harness makes its own home: known_marketplaces.json (pointing into that home) is written after it exists
+  const hh = harness({ files, inventory });
+  const home = hh.home;
+  put(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'kit-market': { source: { source: 'directory', path: join(home, '.roca', 'shop', 'acme-kit', 'sub') } } }));
+  const found = (await hh.h.link({ text: 'https://github.com/acme/kit/tree/main/sub' })).found;
+  const p1 = found.find(f => f.name === 'p1'), p2 = found.find(f => f.name === 'p2');
+  assert.equal(p1.plan.kind, 'installed', 'installed is checked before conflict');
+  assert.equal(p2.plan.kind, 'plugin', 'same clone folder → same source, no re-add');
+  assert.deepEqual(p2.plan.show, ['claude plugin install p2@kit-market']);
+  // the clone root itself is accepted too; another clone folder is not
+  put(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'kit-market': { source: { source: 'directory', path: join(home, '.roca', 'shop', 'acme-kit') } } }));
+  assert.equal((await hh.h.link({ text: 'https://github.com/acme/kit/tree/main/sub' })).found.find(f => f.name === 'p2').plan.kind, 'plugin');
+  put(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'kit-market': { source: { source: 'directory', path: join(home, '.roca', 'shop', 'acme-kit2') } } }));
+  const p2b = (await hh.h.link({ text: 'https://github.com/acme/kit/tree/main/sub' })).found.find(f => f.name === 'p2');
+  assert.equal(p2b.plan.detail, 'conflict');
+  rmSync(home, { recursive: true, force: true });
 });

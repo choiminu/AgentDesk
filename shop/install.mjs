@@ -4,7 +4,8 @@
 //          (never into argv, the result, a log line or another file); the plan object is not changed
 //     run(cmd, args, opts?) → Promise<{ code, stdout, stderr }> (execFile wrapper, no shell); its output never leaves here
 //     choice: { name? (mcp entry / skill name), path? (skill folder inside ~/.roca/shop) + allAgents? }
-//     plugin fallback: only when the plan adds the marketplace; clones that source, needs the same marketplace name
+//     plugin fallback: only when the plan's `marketplace add <remote>` step fails; clones that source, needs the same
+//     marketplace name. A local-path `marketplace add` must point inside ~/.roca/shop
 //   routes: 'config' (mcp-write), 'cli' (mcp-cli), 'marketplace' | 'local' (plugin), 'claude' | 'agents' (skill)
 //   error is 'failed' | 'unsupported'; detail is one of DETAILS (fixed codes, no CLI output or exception text)
 import { lstatSync, readFileSync, mkdirSync, cpSync, renameSync, rmSync, symlinkSync, realpathSync } from 'node:fs';
@@ -17,7 +18,7 @@ const { parseSkillMd } = globalThis.AgentDeskSkillbook;
 const DETAILS = new Set(['bad request', 'needs', 'exists', 'missing', 'invalid JSON', 'unparsed', 'io', 'cli', 'manual', 'kind']);
 const NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$/;
 const PLUGIN_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const PLACEHOLDER = /\$\{([A-Za-z0-9_]+)\}/g;
+const PLACEHOLDER = /\$\{([^{}]+)\}/g; // any name a plan may hold ("X-API-Key", "api.key"); only names in needs are replaced
 
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const fail = (error, detail) => ({ ok: false, error, detail: DETAILS.has(detail) ? detail : 'io' });
@@ -79,6 +80,9 @@ function mcpWrite(home, plan, env, choice) {
   const entry = { ...plan.entry };
   if (e0 !== undefined) entry.env = fill(e0, needs, env);
   if (h0 !== undefined) entry.headers = fill(h0, needs, env);
+  // a needed placeholder the pattern could not replace (a name holding "{" or "}") would be written literally: refused
+  const left = JSON.stringify([entry.env, entry.headers]);
+  if (needs.some(n => left.includes('${' + n + '}'))) return fail('failed', 'bad request');
   const r = addMcpEntry({ home, name, entry });
   if (!r.ok) return fail('failed', r.detail);
   return { ok: true, route: 'config', ...(plan.oauth ? { oauth: true } : {}) };
@@ -99,6 +103,12 @@ async function cliSteps(plan, run, route) {
 }
 
 // ---------- plugins ----------
+const isAddStep = s => s.args.length === 4 && s.args[0] === 'plugin' && s.args[1] === 'marketplace' && s.args[2] === 'add';
+// a local-path marketplace (a link with /tree/<ref>/<path>) must be a folder inside ~/.roca/shop (a link clone)
+function inShop(home, p) {
+  try { return realpathSync(resolve(p)).startsWith(realpathSync(join(home, '.roca', 'shop')) + sep); } catch { return false; }
+}
+
 async function plugin(home, plan, run) {
   const steps = Array.isArray(plan.steps) ? plan.steps : [];
   const install = steps[steps.length - 1];
@@ -106,19 +116,27 @@ async function plugin(home, plan, run) {
   const parts = install.args[2].split('@');
   if (parts.length !== 2 || !PLUGIN_RE.test(parts[0]) || !PLUGIN_RE.test(parts[1])) return fail('failed', 'bad request');
   const market = parts[1];
-  const first = await cliSteps(plan, run, 'marketplace');
-  if (first.ok) return first;
+  const add = steps.find(isAddStep);
+  if (add && isAbsolute(add.args[3]) && !inShop(home, add.args[3])) return fail('failed', 'bad request');
 
-  // fallback: only when the marketplace was unknown (the plan adds it) — clone its source and add it as a
-  // local-path marketplace, and only when the clone's marketplace.json has the planned name (the install ref stays)
-  const add = steps.find(s => s.args.length === 4 && s.args[0] === 'plugin' && s.args[1] === 'marketplace' && s.args[2] === 'add');
-  if (!add) return first;
-  const got = await fetchRepo({ home, link: add.args[3], run });
-  if (!got.ok) return first;
+  for (const s of steps) {
+    if (await claude(run, s.args)) continue;
+    // fallback: only when the `marketplace add` step itself failed for a remote source — clone that source and add
+    // it as a local-path marketplace, and only when the clone's marketplace.json has the planned name (the install ref stays).
+    // A failed `plugin install` (the marketplace is already added) is final.
+    if (s !== add || isAbsolute(add.args[3])) return fail('failed', 'cli');
+    return await localFallback(home, run, add.args[3], market, install.args);
+  }
+  return { ok: true, route: add && isAbsolute(add.args[3]) ? 'local' : 'marketplace' };
+}
+
+async function localFallback(home, run, source, market, installArgs) {
+  const got = await fetchRepo({ home, link: source, run });
+  if (!got.ok) return fail('failed', 'cli');
   const mk = detectRepo(got.dir).find(d => d.kind === 'marketplace');
-  if (!mk || mk.name !== market) return first;
+  if (!mk || mk.name !== market) return fail('failed', 'cli');
   if (!(await claude(run, ['plugin', 'marketplace', 'add', got.dir]))) return fail('failed', 'cli');
-  if (!(await claude(run, install.args))) return fail('failed', 'cli');
+  if (!(await claude(run, installArgs))) return fail('failed', 'cli');
   return { ok: true, route: 'local' };
 }
 
