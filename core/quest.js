@@ -9,6 +9,7 @@
 //   DESK_SYSTEM                          → system prompt for the front-desk call
 //   DESK_SCHEMA                          → JSON schema string for { choice, reason }
 //   acceptProposal(answer, party, repos) → { kind: 'session', id } | { kind: 'worktree', repo } | null
+//   markerFor(stateFile, sessionId, live)→ boolean   office marker: assigned (kind 'session'), no reportAt, session live
 //   pruneState(stateFile, issues, now)   → new state file without tickets done in Jira more than 30 days ago
 (function (root) {
 'use strict';
@@ -181,7 +182,18 @@ function pruneState(stateFile, issues, now) {
   return { v: 1, quests };
 }
 
-const AgentDeskQuest = { difficulty, groupOf, questView, partyOf, deskPrompt, DESK_SCHEMA, DESK_SYSTEM, acceptProposal, pruneState };
+// office marker: a session sitting on an assigned, not-yet-reported quest (kind 'session' bound to this session id)
+function markerFor(stateFile, sessionId, live) {
+  if (!live || !sessionId) return false;
+  const quests = stateFile && typeof stateFile === 'object' && stateFile.quests && typeof stateFile.quests === 'object' ? stateFile.quests : {};
+  for (const k of Object.keys(quests)) {
+    const e = quests[k];
+    if (e && typeof e === 'object' && e.kind === 'session' && e.sessionId === sessionId && !e.reportAt) return true;
+  }
+  return false;
+}
+
+const AgentDeskQuest = { markerFor, difficulty, groupOf, questView, partyOf, deskPrompt, DESK_SCHEMA, DESK_SYSTEM, acceptProposal, pruneState };
 root.AgentDeskQuest = AgentDeskQuest;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskQuest;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
