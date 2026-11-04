@@ -1,7 +1,7 @@
 // Shop installs: shop/install.mjs and addMcpEntry over a temp home with a fake runner (made-up names only).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, lstatSync, readlinkSync, realpathSync, statSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, lstatSync, readlinkSync, realpathSync, statSync, chmodSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { planInstall } from '../shop/plan.mjs';
@@ -59,18 +59,40 @@ test('env values only reach the config entry', async () => {
   assert.deepEqual(plan.entry.env, { TOKEN: '${TOKEN}' });
 });
 
-test('placeholders in headers and args are filled, other text is kept', async () => {
+test('placeholders in env and headers are filled, other text is kept', async () => {
   const home = home0();
   const plan = {
     kind: 'mcp-write', show: ['~/.claude.json mcpServers.hdr-srv', '  API_KEY', '  PASS'], needs: ['API_KEY', 'PASS'],
-    entry: { type: 'http', url: 'https://example.test/mcp', headers: { Authorization: 'Bearer ${API_KEY}', 'X-Other': '${NOT_NEEDED}' }, args: ['--pass=${PASS}'] },
+    entry: { type: 'http', url: 'https://example.test/mcp', headers: { Authorization: 'Bearer ${API_KEY}', 'X-Other': '${NOT_NEEDED}' }, env: { P: '${PASS}' } },
   };
-  // a value that itself looks like a placeholder is not expanded again
-  const r = await runInstall({ home, plan, env: { API_KEY: 'k-${PASS}', PASS: 'p1' }, run: fakeRun([]) });
+  const r = await runInstall({ home, plan, env: { API_KEY: 'k-1', PASS: 'p1' }, run: fakeRun([]) });
   assert.deepEqual(r, { ok: true, route: 'config' });
   assert.deepEqual(json(join(home, '.claude.json')).mcpServers['hdr-srv'], {
-    type: 'http', url: 'https://example.test/mcp', headers: { Authorization: 'Bearer k-${PASS}', 'X-Other': '${NOT_NEEDED}' }, args: ['--pass=p1'],
+    type: 'http', url: 'https://example.test/mcp', headers: { Authorization: 'Bearer k-1', 'X-Other': '${NOT_NEEDED}' }, env: { P: 'p1' },
   });
+});
+
+test('a needed placeholder outside env / headers is refused', async () => {
+  const before = { mcpServers: {} };
+  for (const entry of [
+    { command: 'npx', args: ['-y', 'demo', '--key=${TOKEN}'], env: { TOKEN: '${TOKEN}' } },
+    { type: 'http', url: 'https://example.test/${TOKEN}' },
+  ]) {
+    const home = home0(before);
+    const plan = { kind: 'mcp-write', show: ['~/.claude.json mcpServers.arg-srv'], needs: ['TOKEN'], entry };
+    assert.deepEqual(await runInstall({ home, plan, env: { TOKEN: SECRET }, run: fakeRun([]) }), { ok: false, error: 'failed', detail: 'bad request' });
+    assert.deepEqual(json(join(home, '.claude.json')), before);
+  }
+});
+
+test('typed values holding ${ are refused', async () => {
+  const home = home0();
+  const before = readFileSync(join(home, '.claude.json'), 'utf8');
+  const plan = planInstall(npmItem, { have: { npx: true } });
+  for (const v of ['${HOME}', 'a${PATH}b', 'x${']) {
+    assert.deepEqual(await runInstall({ home, plan, env: { TOKEN: v }, run: fakeRun([]) }), { ok: false, error: 'failed', detail: 'needs' });
+  }
+  assert.equal(readFileSync(join(home, '.claude.json'), 'utf8'), before);
 });
 
 test('missing env values refuse before anything is written', async () => {
@@ -184,55 +206,98 @@ test('plugin falls back to a local marketplace', async () => {
   const r2 = await runInstall({ home, plan, run: fakeRun(calls2, cmd => (cmd === 'git' ? { code: 128 } : { code: 1 })) });
   assert.deepEqual(r2, { ok: false, error: 'failed', detail: 'cli' });
   assert.deepEqual(calls2.map(c => c[0]), ['claude', 'git']);
-  // a link given by the caller (pasted link) is used for the clone when the plan has no add step
-  const known = planInstall({ kind: 'plugin', name: 'demo', marketplace: 'market' }, { installed: { marketplaces: new Set(['market']) } });
-  const calls3 = [];
-  installs = 0;
-  const r3 = await runInstall({ home, plan: known, run: fakeRun(calls3, (cmd, args) => {
-    if (cmd === 'git') { put(join(args[args.length - 1], '.claude-plugin', 'marketplace.json'), { name: 'market', plugins: [] }); return { code: 0 }; }
-    if (args[1] === 'install' && ++installs === 1) return { code: 1 };
-    return { code: 0 };
-  }), choice: { link: 'https://github.com/other/mk' } });
-  assert.deepEqual(r3, { ok: true, route: 'local' });
-  assert.ok(calls3.some(c => c[0] === 'git' && c.includes('https://github.com/other/mk.git')));
 });
 
-function skillSrc(name = 'demo-skill', folder = 'demo-folder') {
-  const root = mkdtempSync(join(tmpdir(), 'shop-src-'));
-  const src = join(root, folder);
-  put(join(src, 'SKILL.md'), `---\nname: ${name}\ndescription: Demo.\n---\nbody\n`);
+test('plugin fallback only for an unknown marketplace with the same name', async () => {
+  const home = home0();
+  const failInstall = calls => fakeRun(calls, (cmd, args) => {
+    if (cmd === 'git') { put(join(args[args.length - 1], '.claude-plugin', 'marketplace.json'), { name: 'other-market', plugins: [] }); return { code: 0 }; }
+    return { code: args[1] === 'install' ? 1 : 0 };
+  });
+  // the marketplace is known (no add step): no clone, the failure stands
+  const known = planInstall({ kind: 'plugin', name: 'demo', marketplace: 'market' }, { installed: { marketplaces: new Set(['market']) } });
+  let calls = [];
+  assert.deepEqual(await runInstall({ home, plan: known, run: failInstall(calls), choice: { link: 'https://github.com/other/mk' } }), { ok: false, error: 'failed', detail: 'cli' });
+  assert.deepEqual(calls, [['claude', 'plugin', 'install', 'demo@market']]);
+  // the clone's marketplace.json has another name: nothing is added
+  const plan = planInstall({ kind: 'plugin', name: 'demo', marketplace: 'market', repo: 'someone/market-repo' });
+  calls = [];
+  assert.deepEqual(await runInstall({ home, plan, run: failInstall(calls) }), { ok: false, error: 'failed', detail: 'cli' });
+  assert.deepEqual(calls.map(c => c[0] === 'git' ? 'git' : c.slice(1, 3).join(' ')), ['plugin marketplace', 'plugin install', 'git']);
+});
+
+test('plugin ref must be exactly name@marketplace', async () => {
+  const home = home0();
+  const calls = [];
+  for (const ref of ['demo', 'demo@a@b', '@market', 'demo@', '-x@m']) {
+    const plan = { kind: 'plugin', show: [], needs: [], steps: [{ cmd: 'claude', args: ['plugin', 'install', ref] }] };
+    assert.deepEqual(await runInstall({ home, plan, run: fakeRun(calls) }), { ok: false, error: 'failed', detail: 'bad request' }, ref);
+  }
+  assert.equal(calls.length, 0);
+});
+
+// a skill folder inside a link clone (~/.roca/shop/<owner>-<repo>/...)
+let srcN = 0;
+function skillSrc(home, name = 'demo-skill', folder = 'demo-folder', md) {
+  const src = join(home, '.roca', 'shop', `own-repo${++srcN}`, 'skills', folder);
+  put(join(src, 'SKILL.md'), md ?? `---\nname: ${name}\ndescription: Demo.\n---\nbody\n`);
   put(join(src, 'ref', 'notes.md'), 'notes\n');
   return src;
 }
+const SKILL = { kind: 'skill', show: [], needs: [] };
 
 test('skill copies into ~/.claude/skills under its SKILL.md name', async () => {
   const home = home0();
-  const src = skillSrc();
-  assert.deepEqual(await runInstall({ home, plan: { kind: 'skill', show: [], needs: [] }, choice: { path: src } }), { ok: true, route: 'claude' });
+  const src = skillSrc(home);
+  assert.deepEqual(await runInstall({ home, plan: SKILL, choice: { path: src } }), { ok: true, route: 'claude' });
   assert.equal(readFileSync(join(home, '.claude/skills/demo-skill/ref/notes.md'), 'utf8'), 'notes\n');
   assert.ok(existsSync(join(home, '.claude/skills/demo-skill/SKILL.md')));
   assert.ok(existsSync(src)); // the source stays
-  // no SKILL.md, or a path that is not a folder → refused
-  assert.deepEqual(await runInstall({ home, plan: { kind: 'skill', show: [], needs: [] }, choice: { path: join(src, 'ref') } }), { ok: false, error: 'failed', detail: 'missing' });
-  assert.deepEqual(await runInstall({ home, plan: { kind: 'skill', show: [], needs: [] }, choice: {} }), { ok: false, error: 'failed', detail: 'bad request' });
+  // no SKILL.md, or no path → refused
+  assert.deepEqual(await runInstall({ home, plan: SKILL, choice: { path: join(src, 'ref') } }), { ok: false, error: 'failed', detail: 'missing' });
+  assert.deepEqual(await runInstall({ home, plan: SKILL, choice: {} }), { ok: false, error: 'failed', detail: 'bad request' });
+});
+
+test('skill source must be inside ~/.roca/shop', async () => {
+  const home = home0();
+  const outside = join(mkdtempSync(join(tmpdir(), 'shop-src-')), 'out-skill');
+  put(join(outside, 'SKILL.md'), '---\nname: out-skill\n---\n');
+  put(join(home, 'elsewhere', 'x-skill', 'SKILL.md'), '---\nname: x-skill\n---\n');
+  mkdirSync(join(home, '.roca', 'shop'), { recursive: true });
+  symlinkSync(outside, join(home, '.roca', 'shop', 'linked'));
+  for (const path of [outside, join(home, 'elsewhere', 'x-skill'), join(home, '.roca', 'shop'), join(home, '.roca', 'shop', 'linked'), join(home, '.roca', 'shop', '..', '..', 'elsewhere', 'x-skill')]) {
+    assert.deepEqual(await runInstall({ home, plan: SKILL, choice: { path } }), { ok: false, error: 'failed', detail: 'bad request' }, path);
+  }
+  assert.ok(!existsSync(join(home, '.claude', 'skills')));
 });
 
 test('skill copy refuses an existing folder', async () => {
   const home = home0();
   put(join(home, '.claude/skills/demo-skill/SKILL.md'), 'mine\n');
-  const r = await runInstall({ home, plan: { kind: 'skill', show: [], needs: [] }, choice: { path: skillSrc() } });
+  const r = await runInstall({ home, plan: SKILL, choice: { path: skillSrc(home) } });
   assert.deepEqual(r, { ok: false, error: 'failed', detail: 'exists' });
   assert.equal(readFileSync(join(home, '.claude/skills/demo-skill/SKILL.md'), 'utf8'), 'mine\n');
   assert.deepEqual(readdirSync(join(home, '.claude/skills')), ['demo-skill']);
   // all agents: an existing ~/.claude/skills/<name> also refuses, and nothing is left in ~/.agents
-  const r2 = await runInstall({ home, plan: { kind: 'skill', show: [], needs: [] }, choice: { path: skillSrc(), allAgents: true } });
+  const r2 = await runInstall({ home, plan: SKILL, choice: { path: skillSrc(home), allAgents: true } });
   assert.deepEqual(r2, { ok: false, error: 'failed', detail: 'exists' });
   assert.ok(!existsSync(join(home, '.agents/skills/demo-skill')));
 });
 
+test('a turned-off skill of the same name refuses too', async () => {
+  for (const where of ['.claude/skills-disabled', '.agents/skills-disabled', '.agents/skills']) {
+    for (const allAgents of [false, true]) {
+      const home = home0();
+      put(join(home, where, 'demo-skill', 'SKILL.md'), 'mine\n');
+      assert.deepEqual(await runInstall({ home, plan: SKILL, choice: { path: skillSrc(home), allAgents } }), { ok: false, error: 'failed', detail: 'exists' }, where);
+      assert.ok(!existsSync(join(home, '.claude/skills/demo-skill')));
+    }
+  }
+});
+
 test('all agents skill gets a symlink', async () => {
   const home = home0();
-  const r = await runInstall({ home, plan: { kind: 'skill', show: [], needs: [] }, choice: { path: skillSrc('shared-skill'), allAgents: true } });
+  const r = await runInstall({ home, plan: SKILL, choice: { path: skillSrc(home, 'shared-skill'), allAgents: true } });
   assert.deepEqual(r, { ok: true, route: 'agents' });
   const target = join(home, '.agents/skills/shared-skill');
   const link = join(home, '.claude/skills/shared-skill');
@@ -245,14 +310,16 @@ test('all agents skill gets a symlink', async () => {
 
 test('skill name falls back to the folder name and must be safe', async () => {
   const home = home0();
-  const root = mkdtempSync(join(tmpdir(), 'shop-src-'));
-  const src = join(root, 'plain-folder');
-  put(join(src, 'SKILL.md'), 'no front matter\n');
-  assert.deepEqual(await runInstall({ home, plan: { kind: 'skill', show: [], needs: [] }, choice: { path: src } }), { ok: true, route: 'claude' });
+  assert.deepEqual(await runInstall({ home, plan: SKILL, choice: { path: skillSrc(home, '', 'plain-folder', 'no front matter\n') } }), { ok: true, route: 'claude' });
   assert.ok(existsSync(join(home, '.claude/skills/plain-folder/SKILL.md')));
-  const bad = skillSrc('../escape');
-  assert.deepEqual(await runInstall({ home, plan: { kind: 'skill', show: [], needs: [] }, choice: { path: bad } }), { ok: false, error: 'failed', detail: 'bad request' });
+  // an unsafe `name:` falls back to the folder name
+  assert.deepEqual(await runInstall({ home, plan: SKILL, choice: { path: skillSrc(home, '../escape', 'good-folder') } }), { ok: true, route: 'claude' });
+  assert.ok(existsSync(join(home, '.claude/skills/good-folder/SKILL.md')));
   assert.ok(!existsSync(join(home, '.claude/escape')));
+  assert.deepEqual(await runInstall({ home, plan: SKILL, choice: { path: skillSrc(home, 'a b', 'next-folder') } }), { ok: true, route: 'claude' });
+  assert.ok(existsSync(join(home, '.claude/skills/next-folder')));
+  // neither is safe → refused
+  assert.deepEqual(await runInstall({ home, plan: SKILL, choice: { path: skillSrc(home, '../escape', 'bad..folder') } }), { ok: false, error: 'failed', detail: 'bad request' });
 });
 
 test('installed, manual and unknown plans run nothing', async () => {

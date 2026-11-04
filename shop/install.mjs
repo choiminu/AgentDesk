@@ -3,7 +3,8 @@
 //     env: { NAME: value } for plan.needs — the values go into the one ~/.claude.json entry and nowhere else
 //          (never into argv, the result, a log line or another file); the plan object is not changed
 //     run(cmd, args, opts?) → Promise<{ code, stdout, stderr }> (execFile wrapper, no shell); its output never leaves here
-//     choice: { link? (plugin fallback clone source), name? (mcp entry / skill name), path? + allAgents? (skill) }
+//     choice: { name? (mcp entry / skill name), path? (skill folder inside ~/.roca/shop) + allAgents? }
+//     plugin fallback: only when the plan adds the marketplace; clones that source, needs the same marketplace name
 //   routes: 'config' (mcp-write), 'cli' (mcp-cli), 'marketplace' | 'local' (plugin), 'claude' | 'agents' (skill)
 //   error is 'failed' | 'unsupported'; detail is one of DETAILS (fixed codes, no CLI output or exception text)
 import { lstatSync, readFileSync, mkdirSync, cpSync, renameSync, rmSync, symlinkSync, realpathSync } from 'node:fs';
@@ -31,7 +32,7 @@ export async function runInstall({ home, plan, env, run, choice } = {}) {
       case 'manual': return fail('unsupported', 'manual');
       case 'mcp-write': return mcpWrite(home, plan, env, choice);
       case 'mcp-cli': return await cliSteps(plan, run, 'cli');
-      case 'plugin': return await plugin(home, plan, run, choice);
+      case 'plugin': return await plugin(home, plan, run);
       case 'skill': return skill(home, choice);
       default: return fail('unsupported', 'kind');
     }
@@ -46,7 +47,9 @@ function needsOk(plan, env) {
   if (!needs.every(n => typeof n === 'string')) return null;
   if (!needs.length) return needs;
   if (!isObj(env)) return null;
-  return needs.every(n => Object.prototype.hasOwnProperty.call(env, n) && typeof env[n] === 'string' && env[n] !== '') ? needs : null;
+  // a value holding "${" is refused: Claude Code expands ${VAR} in config values, so it could pull in another variable
+  const ok = v => typeof v === 'string' && v !== '' && !v.includes('${');
+  return needs.every(n => Object.prototype.hasOwnProperty.call(env, n) && ok(env[n])) ? needs : null;
 }
 
 // a copy of v with ${NAME} (NAME in needs) replaced in every string; one pass, so a value is never expanded again
@@ -69,7 +72,14 @@ function mcpWrite(home, plan, env, choice) {
   if (!needs) return fail('failed', 'needs');
   const name = entryName(plan, choice);
   if (!safeName(name) || !isObj(plan.entry)) return fail('failed', 'bad request');
-  const r = addMcpEntry({ home, name, entry: fill(plan.entry, needs, env) });
+  // secrets go to env / headers only: a needed placeholder anywhere else (args, command, url) would put the value on
+  // the server's command line or in a URL — refused
+  const { env: e0, headers: h0, ...rest } = plan.entry;
+  if (needs.some(n => JSON.stringify(rest).includes('${' + n + '}'))) return fail('failed', 'bad request');
+  const entry = { ...plan.entry };
+  if (e0 !== undefined) entry.env = fill(e0, needs, env);
+  if (h0 !== undefined) entry.headers = fill(h0, needs, env);
+  const r = addMcpEntry({ home, name, entry });
   if (!r.ok) return fail('failed', r.detail);
   return { ok: true, route: 'config', ...(plan.oauth ? { oauth: true } : {}) };
 }
@@ -89,34 +99,35 @@ async function cliSteps(plan, run, route) {
 }
 
 // ---------- plugins ----------
-async function plugin(home, plan, run, choice) {
+async function plugin(home, plan, run) {
   const steps = Array.isArray(plan.steps) ? plan.steps : [];
   const install = steps[steps.length - 1];
   if (!steps.length || !steps.every(okStep) || install.args[0] !== 'plugin' || install.args[1] !== 'install' || install.args.length !== 3) return fail('failed', 'bad request');
-  const [pname, market] = install.args[2].split('@');
-  if (!PLUGIN_RE.test(pname || '') || !PLUGIN_RE.test(market || '')) return fail('failed', 'bad request');
+  const parts = install.args[2].split('@');
+  if (parts.length !== 2 || !PLUGIN_RE.test(parts[0]) || !PLUGIN_RE.test(parts[1])) return fail('failed', 'bad request');
+  const market = parts[1];
   const first = await cliSteps(plan, run, 'marketplace');
   if (first.ok) return first;
 
-  // fallback: clone the repo and add it as a local-path marketplace
-  const add = steps.find(s => s.args[0] === 'plugin' && s.args[1] === 'marketplace' && s.args[2] === 'add');
-  const link = isObj(choice) && typeof choice.link === 'string' ? choice.link : add ? add.args[3] : null;
-  if (!link) return first;
-  const got = await fetchRepo({ home, link, run });
+  // fallback: only when the marketplace was unknown (the plan adds it) — clone its source and add it as a
+  // local-path marketplace, and only when the clone's marketplace.json has the planned name (the install ref stays)
+  const add = steps.find(s => s.args.length === 4 && s.args[0] === 'plugin' && s.args[1] === 'marketplace' && s.args[2] === 'add');
+  if (!add) return first;
+  const got = await fetchRepo({ home, link: add.args[3], run });
   if (!got.ok) return first;
   const mk = detectRepo(got.dir).find(d => d.kind === 'marketplace');
-  const ref = `${pname}@${mk && PLUGIN_RE.test(mk.name) ? mk.name : market}`;
+  if (!mk || mk.name !== market) return first;
   if (!(await claude(run, ['plugin', 'marketplace', 'add', got.dir]))) return fail('failed', 'cli');
-  if (!(await claude(run, ['plugin', 'install', ref]))) return fail('failed', 'cli');
+  if (!(await claude(run, install.args))) return fail('failed', 'cli');
   return { ok: true, route: 'local' };
 }
 
 // ---------- skills ----------
+// the caller's name, else SKILL.md `name:`, else the folder name — the first one that is a safe folder name
 function skillName(src, choice) {
-  if (typeof choice.name === 'string' && choice.name) return choice.name;
   let meta = null;
   try { meta = parseSkillMd(readFileSync(join(src, 'SKILL.md'), 'utf8').slice(0, 64 * 1024)); } catch { /* folder name */ }
-  return meta && meta.name ? meta.name : basename(src);
+  return [choice.name, meta && meta.name, basename(src)].find(safeName) || null;
 }
 
 // copies the folder without symlinks or .git (a clone has none of the former; this stays true for any source)
@@ -125,6 +136,10 @@ const noLinks = p => { try { const st = lstatSync(p); return !st.isSymbolicLink(
 function skill(home, choice) {
   if (!isObj(choice) || typeof choice.path !== 'string' || !isAbsolute(choice.path)) return fail('failed', 'bad request');
   const src = resolve(choice.path);
+  // only folders inside ~/.roca/shop (link clones) are copied
+  try {
+    if (!realpathSync(src).startsWith(realpathSync(join(home, '.roca', 'shop')) + sep)) return fail('failed', 'bad request');
+  } catch { return fail('failed', 'bad request'); }
   let st;
   try { st = lstatSync(src); } catch { return fail('failed', 'missing'); }
   if (!st.isDirectory()) return fail('failed', 'missing');
@@ -134,9 +149,9 @@ function skill(home, choice) {
 
   const claudeDir = join(home, '.claude', 'skills', name);
   const target = choice.allAgents ? join(home, '.agents', 'skills', name) : claudeDir;
-  if (exists(target) || exists(claudeDir)) return fail('failed', 'exists');
-  // a copy must not land inside its own source
-  try { const real = realpathSync(src); if (resolve(target).startsWith(real + sep)) return fail('failed', 'bad request'); } catch { return fail('failed', 'missing'); }
+  // a skill of that name, on or off, in either root: refuse (turning the other one on would collide)
+  const taken = ['.claude', '.agents'].flatMap(r => ['skills', 'skills-disabled'].map(d => join(home, r, d, name)));
+  if (taken.some(exists)) return fail('failed', 'exists');
 
   mkdirSync(dirname(target), { recursive: true });
   const tmp = join(dirname(target), `.agentdesk-${name}-${process.pid}.tmp`);
