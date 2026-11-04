@@ -107,3 +107,71 @@ test('skillbook ui: detail page shows the split by agent and the MCP tools seen'
   assert.match(d, /u\.byAgent/);
   assert.match(d, /kv\('사용한 도구', \(u\.tools \|\| \[\]\)\.map\(x => `<span class="sb-chip" data-verbatim>\$\{esc\(x\)\}<\/span>`\)/);
 });
+
+// ---- dock mode: the 📖 button opens the same book in a panel above the bar ----
+const cut = (s, a, b) => { const i = s.indexOf(a); return i < 0 ? '' : s.slice(i, s.indexOf(b, i + a.length)); };
+
+test('skillbook ui (dock): 📖 button next to 📥 with an I18N title and aria-label', () => {
+  assert.match(html, /<button class="dock-btn" id="dock-inbox"[^\n]*<\/button>\n\s*<button class="dock-btn" id="dock-sb" aria-haspopup="true" aria-expanded="false">📖<\/button>/);
+  assert.match(html, /'도크: 스킬북': 'Skillbook'/);
+  assert.match(cut(html, 'function dockLabels()', '\n}\n'), /\['dock-sb', '도크: 스킬북'\]/);
+  assert.match(html, /\$\('dock-sb'\)\.addEventListener\('click', e => \{ e\.stopPropagation\(\); sbDockToggle\(\); \}\);/);
+});
+
+test('skillbook ui (dock): the panel kind is reserved in dockPopKind and dockBoundsSync', () => {
+  assert.match(html, /<div class="inbox-panel sb-dock" id="sb-dock" role="dialog" aria-label="스킬북" hidden>/);
+  assert.match(html, /const DOCK_SB_H = 4\d\d, DOCK_SB_W = \d+;/);
+  assert.match(cut(html, 'function dockPopKind()', '\n}\n'), /if \(inboxQOpen\) return 'inbox';\n\s*if \(sbDockOpen\) return 'skillbook';/);
+  const bs = cut(html, 'function dockBoundsSync(natural)', '\n}\n');
+  assert.match(bs, /kind === 'skillbook' \? DOCK_SB_H/);
+  assert.match(bs, /popWidth: kind === 'skillbook' \? DOCK_SB_W : /, 'the window grows sideways for the two pages');
+  assert.match(bs, /dockFullPop\(kind\) \? \{ x: 8, width: Math\.max\(0, window\.innerWidth - 16\) \}/);
+  assert.match(bs, /!dockFullPop\(kind\) && !bubbles \? dockPopGeom\(kind\)/);
+  assert.match(html, /const dockFullPop = k => k === 'inbox' \|\| k === 'skillbook';/);
+  // placed like the review queue, and the pointer over it keeps the clicks
+  assert.match(cut(html, 'function dockPopPlace()', '\n}\n'), /if \(sbDockOpen\) \{[^\n]*\$\('sb-dock'\)/);
+  assert.match(html, /closest\('#dock-strip, #inbox-panel, #sb-dock, /);
+});
+
+test('skillbook ui (dock): one panel at a time; Esc, the button and leaving the dock close it', () => {
+  const tog = cut(html, 'function sbDockToggle(', '\n}\n');
+  assert.ok(tog, 'sbDockToggle exists');
+  for (const s of ['inboxToggle(false)', 'dockTermClose(true)', 'dockTipHide()', 'dockPopClose()', 'dockUsageHide()', 'dockBoundsSync()', 'skillbookLoad()'])
+    assert.ok(tog.includes(s), `sbDockToggle: ${s}`);
+  assert.match(tog, /if \(!want \|\| !dockOn\)/, 'only while docked');
+  assert.match(cut(html, 'function inboxToggle(', '\n}\n'), /if \(dockOn && sbDockOpen\) sbDockToggle\(false\);/);
+  assert.match(cut(html, 'function dockPopOpen(', '\n}\n'), /sbDockToggle\(false\)/);
+  assert.match(cut(html, 'function dockLeave(', '\n}\n'), /if \(sbDockOpen\) sbDockToggle\(false\);/);
+  assert.match(html, /if \(e\.key === 'Escape'\) \{\n\s*if \(inboxQOpen\) \{ inboxToggle\(false\); return; \}\n\s*if \(sbDockOpen\) \{ sbDockToggle\(false\); \$\('dock-sb'\)\.focus\(\); return; \}/);
+  // a click outside (composedPath: a click inside re-renders the book, so the target may be gone from the DOM)
+  assert.match(html, /if \(sbDockOpen && !e\.composedPath\(\)\.some\(n => n\.id === 'sb-dock' \|\| n\.id === 'dock-sb'\)\) sbDockToggle\(false\);/);
+  // hover cards, the terminal window, bubbles and the limit card yield to it as to the review queue
+  assert.match(html, /const dockSheetOpen = \(\) => inboxQOpen \|\| sbDockOpen;/);
+  assert.match(cut(html, 'function dockTipShow(', '\n}\n'), /dockSheetOpen\(\) \|\| dockTermBg\(\)/);
+  assert.match(cut(html, 'function dockAskPlace()', '\n}\n'), /const show = dockOn && !dockSheetOpen\(\)/);
+  assert.match(cut(html, 'function dockUsageShow()', '\n}\n'), /dockSheetOpen\(\)/);
+  assert.match(html, /const dockAskVisible = \(\) => dockOn && !dockSheetOpen\(\)/);
+  assert.match(html, /const dockDoneVisible = \(\) => dockOn && !dockSheetOpen\(\)/);
+  assert.match(html, /if \(!dockOn \|\| !y \|\| dockTyping\(\) \|\| dockSheetOpen\(\)\) return;/, 'hover does not open a terminal window');
+});
+
+test('skillbook ui (dock): skillbookRender draws into a container, one copy for the page and the panel', () => {
+  assert.match(sb, /function skillbookRender\(root = sbRoot\(\)\) \{\n\s*const bar = root && root\.querySelector\('\.sb-bar'\), book = root && root\.querySelector\('\.sb-book'\);/);
+  assert.match(sb, /const sbRoot = \(\) => \$\(sbDockOpen \? 'sb-dock' : 'page-skillbook'\);/);
+  assert.equal((html.match(/function skillbookRender\(/g) || []).length, 1);
+  assert.equal((html.match(/SB_AGENTS\.map\(/g) || []).length, 1, 'no second copy of the bar');
+  assert.match(html, /<div class="page" id="page-skillbook">\n\s*<div class="sb-bar"><\/div>\n\s*<div class="sb-book"><\/div>/);
+  assert.match(html, /id="sb-dock"[^>]*>\s*<div class="sb-bar"><\/div>\s*<div class="sb-book"><\/div>\s*<\/div>/);
+  // one click handler for both
+  assert.match(sb, /function sbClick\(e\) \{/);
+  assert.match(sb, /\$\('page-skillbook'\)\.addEventListener\('click', sbClick\);/);
+  assert.match(sb, /\$\('sb-dock'\)\.addEventListener\('click', sbClick\);/);
+  // compact type in the dock panel
+  assert.match(html, /\.sb-dock \.sb-pg \{[^}]*font-size: 11px/);
+});
+
+test('skillbook ui (dock): polling while usage is read covers the dock panel', () => {
+  const load = fn('skillbookLoad');
+  assert.match(load, /if \(currentPage !== 'skillbook' && !sbDockOpen\) return;/);
+  assert.match(load, /setTimeout\(\(\) => \(currentPage === 'skillbook' \|\| sbDockOpen\) && skillbookLoad\(\), 4000\)/);
+});

@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-Zc45OPHmRdcQVvxzcQP32tqWRJ824gtcqZXF6aqhxmI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-DdTTcr5ZQEXW3OtPue1vyjeuXgAcAQIiRuc+1fJgoW4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1091,6 +1091,17 @@
   .sb-gauge.mid i.on { background: #c88a1a; border-color: #8a5e10; }
   .sb-gauge.low i.on { background: #9a8a6a; border-color: #6e6248; }
   .sb-ribbon { display: inline-block; padding: 1px 6px; background: #b8452f; color: #fff; font-size: 10px; }
+  /* dock mode: the book in the panel above the bar (#sb-dock, DOCK_SB_H), compact type */
+  .sb-dock { display: flex; flex-direction: column; overflow: hidden; }
+  .sb-dock[hidden] { display: none; }
+  .sb-dock .sb-bar { padding: 4px 8px; }
+  .sb-dock .sb-book { margin: 0 6px 6px; padding: 6px; gap: 3px; }
+  .sb-dock .sb-pg { padding: 8px 10px; font-size: 11px; }
+  .sb-dock .sb-pg h4 { font-size: 12px; margin-bottom: 6px; }
+  .sb-dock .sb-row { font-size: 11px; padding: 2px; }
+  .sb-dock .sb-tab { font-size: 10px; margin-bottom: 4px; }
+  .sb-dock .sb-big { width: 40px; height: 40px; font-size: 18px; margin: 4px auto; }
+  .sb-dock .sb-kv { font-size: 10px; line-height: 1.6; }
   .sb-chk { flex-shrink: 0; width: 12px; height: 12px; display: inline-grid; place-items: center; border: 1px solid #b89c68; background: #f3e6c8; font-size: 9px; }
 
   /* ── Pomodoro page ── */
@@ -1865,6 +1876,11 @@
   </div>
 
   <div class="inbox-panel" id="inbox-panel" role="dialog" aria-label="검토 대기열" hidden></div>
+  <!-- dock mode: the skillbook (the same book as #page-skillbook, drawn by skillbookRender) above the bar (📖) -->
+  <div class="inbox-panel sb-dock" id="sb-dock" role="dialog" aria-label="스킬북" hidden>
+    <div class="sb-bar"></div>
+    <div class="sb-book"></div>
+  </div>
 
   <!-- Page navigation -->
   <div class="page-nav">
@@ -1950,8 +1966,8 @@
 
   <!-- PAGE: Skillbook — skills, plugins and MCP servers of Claude Code · Codex CLI · Gemini CLI, with their use (skillbook/*.mjs) -->
   <div class="page" id="page-skillbook">
-    <div class="sb-bar" id="sb-bar"></div>
-    <div class="sb-book" id="sb-book"></div>
+    <div class="sb-bar"></div>
+    <div class="sb-book"></div>
   </div>
 
   <!-- PAGE: Pomodoro -->
@@ -1993,6 +2009,7 @@
       <div class="dock-msg" id="dock-msg" role="status" aria-live="polite" hidden></div>
       <div class="dock-right" id="dock-right">
         <button class="dock-btn" id="dock-inbox" aria-haspopup="true" aria-expanded="false">📥<span id="dock-inbox-n">0</span></button>
+        <button class="dock-btn" id="dock-sb" aria-haspopup="true" aria-expanded="false">📖</button>
         <div class="dock-usage" id="dock-usage" role="img" hidden></div>
         <button class="dock-btn dock-timer" id="dock-timer" hidden><svg viewBox="0 0 22 22" aria-hidden="true"><circle class="tr-bg" cx="11" cy="11" r="9" fill="none" stroke-width="3"/><circle class="tr-fg" id="dock-timer-fg" cx="11" cy="11" r="9" fill="none" stroke-width="3" stroke-dasharray="56.55" stroke-dashoffset="0"/></svg><span class="tr-t" id="dock-timer-t"></span></button>
         <button class="dock-btn" id="dock-dnd" aria-pressed="false">🔕</button>
@@ -2354,7 +2371,7 @@ Object.assign(I18N, {
   '도크: 세션': 'Sessions', '도크: 팀원 세션': 'Teammate sessions', '도크: 대기열': 'queue', '도크: 서브에이전트': 'subagents', '도크: 위임받음': 'delegated to you',
   '도크: 작업 중': 'running', '도크: 입력 대기': 'waiting for input', '도크: 승인 필요': 'needs approval', '도크: 오류': 'error', '도크: 완료': 'done',
   '도크: 보냄': 'Sent', '도크: 허용': 'Allow', '도크: 이번만 허용': 'Allow once', '도크: 거부': 'Deny',
-  '도크: 설정': 'Settings', '도크: 패널로 펼치기 (⌘⇧D)': 'Expand to the panel (⌘⇧D)', '도크: 검토 대기열': 'Review queue',
+  '도크: 설정': 'Settings', '도크: 패널로 펼치기 (⌘⇧D)': 'Expand to the panel (⌘⇧D)', '도크: 검토 대기열': 'Review queue', '도크: 스킬북': 'Skillbook',
   '도크: 한도': 'Plan limits', '도크: 더 보기 — 눌러서 패널에서 봅니다': 'more — click to see them in the panel',
   '호버 시 터미널 창 열기': 'Open the terminal window on hover',
   '도크 애니메이션': 'Dock animation', '작업 중인 캐릭터의 움직임, 활동 바, 대기·승인 표시의 깜박임을 켭니다. 꺼도 상태 색은 그대로입니다.': 'Working characters move, the activity bars breathe and waiting / approval marks blink. Off: the state colours stay.',
@@ -3198,6 +3215,7 @@ function inboxToggle(open) {
   if (!inboxQOpen) { el.hidden = true; el.innerHTML = ''; inboxQSig = ''; clearTimeout(inboxQArmT); if (dockOn) { dockAskPlace(); dockBoundsSync(); } return; }
   // dock mode: the list opens above the bar (the window grows upward while it is open)
   if (dockOn) dockWake();
+  if (dockOn && sbDockOpen) sbDockToggle(false);
   if (dockOn) { dockTipHide(); dockTermClose(true); dockPopPlace(); dockBoundsSync(); }
   else { el.style.bottom = ''; el.style.top = `${Math.round(document.querySelector('.header').getBoundingClientRect().bottom) + 2}px`; }
   el.hidden = false; inboxDraw();
@@ -3268,6 +3286,12 @@ inboxRender();
 //    right-hand buttons: hovering a tile opens its terminal window (the remote terminal view's markup, fed by this PC's
 //    terminal) with the input line and [허용][거부]; clicking it goes to the real terminal. Panel sizes: core/dock.js POP. ──
 const DOCK_INBOX_H = 360;
+const DOCK_SB_H = 420, DOCK_SB_W = 640;   // the skillbook panel (📖): the same book as the page, in compact type; the window grows sideways to fit its two pages
+let sbDockOpen = false;   // the skillbook panel above the bar is open (sbDockToggle)
+// the room's full-width panels: the review queue (📥) and the skillbook (📖) — one at a time; while one is open the hover
+// cards, the terminal window, the bubbles and the limit card wait
+const dockFullPop = k => k === 'inbox' || k === 'skillbook';
+const dockSheetOpen = () => inboxQOpen || sbDockOpen;
 let DOCK_H = 72;   // the bar's height: AgentDeskDock.stripHeight(size) (dockSizeApply)
 // localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, size, autoHide, yieldOrca, idleMin, hidden }
 let dockCfg = { start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, yieldOrca: true, idleMin: 60, hidden: {}, order: [], addRepo: '' };   // order: my session ids in the user's drag order
@@ -3397,7 +3421,7 @@ function dockLabels() {
   if (dockLabelLang === LANG) return;
   dockLabelLang = LANG;
   $('dock-tiles').setAttribute('aria-label', dockT('도크: 세션'));
-  for (const [id, k] of [['dock-settings', '도크: 설정'], ['dock-expand', '도크: 패널로 펼치기 (⌘⇧D)']]) { $(id).title = dockT(k); $(id).setAttribute('aria-label', dockT(k)); }
+  for (const [id, k] of [['dock-sb', '도크: 스킬북'], ['dock-settings', '도크: 설정'], ['dock-expand', '도크: 패널로 펼치기 (⌘⇧D)']]) { $(id).title = dockT(k); $(id).setAttribute('aria-label', dockT(k)); }
   dockSig = '';
 }
 function dockDraw() {
@@ -3564,7 +3588,7 @@ function dockUsageHtml() {
 }
 function dockUsageFill() { const el = $('dock-utip'), html = dockUsageHtml(); if (el.innerHTML !== html) el.innerHTML = html; }
 function dockUsageShow() {
-  if (!dockOn || $('dock-usage').hidden || inboxQOpen || dockTermBg()) return;
+  if (!dockOn || $('dock-usage').hidden || dockSheetOpen() || dockTermBg()) return;
   dockWake();
   dockUsageOn = true; dockUsageFill(); $('dock-utip').hidden = false;
   dockPopPlace(); dockBoundsSync();
@@ -3579,18 +3603,18 @@ function dockBoundsSync(natural) {
   if (natural != null) dockNatural = Math.round(natural);
   if (!dockOn) return;
   const kind = dockPopKind();
-  const extra = kind === 'inbox' ? DOCK_INBOX_H : AgentDeskDock.popExtra(kind, dockAskH);   // bubbles: room for the tallest one
+  const extra = kind === 'inbox' ? DOCK_INBOX_H : kind === 'skillbook' ? DOCK_SB_H : AgentDeskDock.popExtra(kind, dockAskH);   // bubbles: room for the tallest one
   // the part of the room the panel / queue covers (x and width in the window): Windows / Linux cut the window to the
   // bar plus this, so the rest of the room is neither drawn nor clickable. popWidth: the window grows sideways for it.
   const bubbles = kind === 'bubbles' || kind === 'bubblesBig' || kind === 'bubblesDone';
-  const g = kind && kind !== 'inbox' && !bubbles ? dockPopGeom(kind) : null;
-  let pop = kind === 'inbox' ? { x: 8, width: Math.max(0, window.innerWidth - 16) } : bubbles ? dockAskBand : g ? { x: g.x, width: g.width } : null;
+  const g = kind && !dockFullPop(kind) && !bubbles ? dockPopGeom(kind) : null;
+  let pop = dockFullPop(kind) ? { x: 8, width: Math.max(0, window.innerWidth - 16) } : bubbles ? dockAskBand : g ? { x: g.x, width: g.width } : null;
   // a card open beside the bubbles (a tile's, the limit card): its part of the room is drawn too
   if (bubbles && pop) for (const k of [dockTipKey ? 'tipSmall' : '', dockUsageOn ? 'usage' : ''].filter(Boolean)) {
     const c = dockPopGeom(k); if (!c) continue;
     const x0 = Math.min(pop.x, c.x); pop = { x: x0, width: Math.max(pop.x + pop.width, c.x + c.width) - x0 };
   }
-  const req = { on: true, contentWidth: dockNatural, height: DOCK_H, extra, popWidth: bubbles ? dockAskWant : g ? g.want : 0, pop, remembered: dockCfg.pos,
+  const req = { on: true, contentWidth: dockNatural, height: DOCK_H, extra, popWidth: kind === 'skillbook' ? DOCK_SB_W : bubbles ? dockAskWant : g ? g.want : 0, pop, remembered: dockCfg.pos,
     hidden: AgentDeskDock.dockHitPlan({ hidden: dockHidden, popKind: kind, extra }).sendWithBounds };   // auto-hidden: main keeps the click-through
   const sig = JSON.stringify(req);
   if (sig === dockReqSig) return;
@@ -3612,6 +3636,7 @@ function dockWinSet(b) {
 // what the room above / below the bar holds: the review queue, a terminal window, the hover panel, or nothing
 function dockPopKind() {
   if (inboxQOpen) return 'inbox';
+  if (sbDockOpen) return 'skillbook';
   if (dockTermBg()) return 'term';
   if (dockPop) return dockPop.kind;   // a panel the user opened: the new-session form, a tile's menu
   if (dockAskVisible()) return [...dockAsk.values()].some(a => a.placed && a.big) ? 'bubblesBig' : 'bubbles';
@@ -3642,6 +3667,7 @@ function dockSetDir(dir) {
 function dockPopPlace() {
   const el = $('inbox-panel'), near = `${DOCK_H + 6}px`;
   if (inboxQOpen) { el.style.top = dockDir === 'up' ? '6px' : near; el.style.bottom = dockDir === 'up' ? near : '6px'; }
+  if (sbDockOpen) { const sp = $('sb-dock'); sp.style.top = dockDir === 'up' ? '6px' : near; sp.style.bottom = dockDir === 'up' ? near : '6px'; }
   const put = (node, g, fixedH) => {
     node.style.left = `${g.x}px`; node.style.width = `${g.width}px`;
     node.style.top = g.top == null ? '' : `${g.top}px`; node.style.bottom = g.bottom == null ? '' : `${g.bottom}px`;
@@ -3667,7 +3693,7 @@ function dockPopPlace() {
 // pointer over the empty room around the panel / queue → clicks go to the windows behind (main: setIgnoreMouseEvents)
 document.addEventListener('mousemove', e => {
   if (!dockOn || !dockPopKind()) return;
-  const hit = !!(e.target && e.target.closest && e.target.closest('#dock-strip, #inbox-panel, .peer-term, .team-modal-bg, .dock-bubble, .dock-pop'));
+  const hit = !!(e.target && e.target.closest && e.target.closest('#dock-strip, #inbox-panel, #sb-dock, .peer-term, .team-modal-bg, .dock-bubble, .dock-pop'));
   if (hit === dockHit) return;
   dockHit = hit; window.orca.dock({ hit }).catch(() => {});
 });
@@ -3724,7 +3750,7 @@ function dockTipHtml(x) {
 function dockTipShow(key) {
   dockWake();
   const x = dockTileOf(key), tile = $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(key)}"]`), tip = $('dock-tip');
-  if (!x || !tile || inboxQOpen || dockTermBg() || dockPop || dockAskOn(key)) { dockTipHide(); return; }   // the window / its bubble show more than the card
+  if (!x || !tile || dockSheetOpen() || dockTermBg() || dockPop || dockAskOn(key)) { dockTipHide(); return; }   // the window / its bubble show more than the card
   if (dockDone.has(key)) { dockDoneDrop(key); dockAskPlace(); }   // its completion bubble: seen (the card says more)
   const html = dockTipHtml(x);
   if (html !== dockTipLast) { tip.innerHTML = html; dockTipLast = html; }
@@ -3830,7 +3856,7 @@ function dockHover(key) {
     if (gen !== dockHoverGen) return;
     if (on === false) { dockHoverLeave(); return; }   // a replayed event: the pointer is elsewhere — check what should stay
     const y = dockTileOf(key);
-    if (!dockOn || !y || dockTyping() || inboxQOpen) return;
+    if (!dockOn || !y || dockTyping() || dockSheetOpen()) return;
     dockTipHide(); dockSel = key; dockDraw();
     dockTermFor(y); dockHoverOpened = !!dockTermBg();
   }, open ? 80 : DOCK_HOVER_MS);
@@ -3983,8 +4009,8 @@ const dockAskClosed = new Map();   // tile key → the prompt (sig / permission 
 const dockAskClosedId = a => (a.kind === 'perm' ? `perm:${a.perm ? a.perm.id : ''}` : String(a.sig || ''));
 const dockAskMuted = a => { if (dockAskClosed.get(a.key) === dockAskClosedId(a)) return true; const r = a.kind === 'choice' && !a.sent && dockAskSentSig.get(a.key); return !!(r && r.sig === a.sig && Date.now() - r.at < DOCK_ASK_MUTE_MS); };
 function dockAskClose(a) { dockAskClosed.set(a.key, dockAskClosedId(a)); if (a.el) a.el.hidden = true; a.placed = false; dockAskPlace(); dockBoundsSync(); }
-const dockAskVisible = () => dockOn && !inboxQOpen && !dockTermBg() && !dockPop && [...dockAsk.values()].some(a => a.placed);
-const dockDoneVisible = () => dockOn && !inboxQOpen && !dockTermBg() && !dockPop && [...dockDone.values()].some(d => d.placed);
+const dockAskVisible = () => dockOn && !dockSheetOpen() && !dockTermBg() && !dockPop && [...dockAsk.values()].some(a => a.placed);
+const dockDoneVisible = () => dockOn && !dockSheetOpen() && !dockTermBg() && !dockPop && [...dockDone.values()].some(d => d.placed);
 const dockAskOn = key => { const a = dockAsk.get(key); return !!(a && a.placed && dockAskVisible()); };
 // Orca in front (dockCfg.yieldOrca, macOS): the question is already on the screen there, so the choice bubbles stay
 // folded (AgentDeskDock.askYield — the tile keeps its !; pointing at the tile opens its bubble) and a hidden bar stays
@@ -4009,7 +4035,7 @@ function dockFrontCheck(force) {
   return dockFront.busy;
 }
 // a bubble folded for Orca that pointing at its tile would open (dockHover)
-const dockAskYielded = key => { const a = dockAsk.get(key); return !!(a && a.yielded && a.el && dockOn && !inboxQOpen && !dockTermBg() && !dockPop); };
+const dockAskYielded = key => { const a = dockAsk.get(key); return !!(a && a.yielded && a.el && dockOn && !dockSheetOpen() && !dockTermBg() && !dockPop); };
 // which sessions wait for a choice now: new bubbles, changed requests, finished ones gone; screens read every DOCK_ASK_MS
 function dockAskSync() {
   if (!dockOn || !dockModelNow) return;
@@ -4035,7 +4061,7 @@ function dockAskSync() {
   for (const [k, a] of [...dockAsk]) if (!seen.has(k) && !(a.sent && now - a.sentAt < DOCK_ASK_SENT_MS)) dockAskDrop(k);
   // read only what can be seen: not while a terminal window / the review queue hides the bubbles, not for one that did
   // not fit (a new one is read once, to know whether it has a prompt)
-  const seen2 = !inboxQOpen && !dockTermBg();
+  const seen2 = !dockSheetOpen() && !dockTermBg();
   for (const a of dockAsk.values()) if (a.kind === 'choice' && a.handle && !a.busy && !a.reading && now - a.readAt >= DOCK_ASK_MS && seen2 && (!a.el || a.placed || !a.sig || a.muted)) dockAskRead(a);
   dockAskRender();
   if (dockAsk.size && !dockAskT) dockAskT = setInterval(() => { if (dockOn && !document.hidden) dockAskSync(); }, DOCK_ASK_MS);
@@ -4227,7 +4253,7 @@ const dockAskHeight = a => AgentDeskDock.bubbleHeight(a && a.kind === 'choice' &
 // side by side over their tiles (bubbleLayout); what does not fit waits (hidden), the oldest first
 function dockAskPlace() {
   const box = $('dock-asks'), P = AgentDeskDock.POP;
-  const show = dockOn && !inboxQOpen && !dockTermBg() && !dockPop;
+  const show = dockOn && !dockSheetOpen() && !dockTermBg() && !dockPop;
   box.hidden = !show;
   const items = [];
   for (const a of dockAsk.values()) {
@@ -4343,6 +4369,7 @@ function dockDoneSync() {
 let dockPop = null;   // { kind: 'add' | 'menu', key, repos }
 let dockAddWant = null;   // { name, handle, at } (Orca) or { cwd, before: ids then, at } (folder): the session "+" made, selected when its tile shows up
 function dockPopOpen(kind, key, html) {
+  if (sbDockOpen) sbDockToggle(false);
   dockTermClose(true); dockTipHide(); dockUsageHide();
   dockPop = { kind, key };
   const el = $('dock-pop'); el.innerHTML = html; el.hidden = false;
@@ -4787,6 +4814,7 @@ function dockLeave(page) {
   if (dockPermEl) { dockPermEl.remove(); dockPermEl = null; }
   dockReqSig = '';
   if (inboxQOpen) inboxToggle(false);
+  if (sbDockOpen) sbDockToggle(false);
   window.orca.setOpacity(1);
   window.orca.dock({ on: false }).catch(() => {});
   const w = document.querySelector('.widget');
@@ -4808,6 +4836,7 @@ $('dock-btn').addEventListener('click', () => dockEnter());
 $('dock-expand').addEventListener('click', () => dockLeave());
 $('dock-settings').addEventListener('click', () => dockLeave('settings'));
 $('dock-inbox').addEventListener('click', e => { e.stopPropagation(); inboxToggle(); });
+$('dock-sb').addEventListener('click', e => { e.stopPropagation(); sbDockToggle(); });
 $('dock-timer').addEventListener('click', e => { e.stopPropagation(); dockLeave('pomodoro'); });
 // 🔕 do not disturb: bubbles, pills and desktop alerts stop; off → the waiting choice bubbles come straight back
 $('dock-dnd').addEventListener('click', e => {
@@ -4881,7 +4910,7 @@ document.addEventListener('keydown', e => {
   if (!dockOn || e.isComposing || e.altKey || e.shiftKey) return;
   const tg = e.target || {}, tag = String(tg.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select' || tg.isContentEditable) return;
-  if (inboxQOpen || $('team-modal')) return;
+  if (dockSheetOpen() || $('team-modal')) return;
   const inBubble = tg.closest && tg.closest('.dock-bubble');
   if (e.key === 'Escape') {
     if (inBubble && !dockTermBg()) { e.preventDefault(); e.stopImmediatePropagation(); dockTileFocus(inBubble.dataset.key); }   // not the Esc handler below
@@ -6645,6 +6674,7 @@ document.addEventListener('mousedown', e => { if (ctxMenuEl && !ctxMenuEl.contai
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (inboxQOpen) { inboxToggle(false); return; }
+    if (sbDockOpen) { sbDockToggle(false); $('dock-sb').focus(); return; }
     if (ctxMenuEl) { closeCtxMenu(); return; }
     if ($('team-modal')) { closeTeamModal(); return; }
     // the terminal views (a docked one gives the focus back to its tile), then the dock's hover panel
@@ -10065,10 +10095,10 @@ async function skillbookLoad() {
   // a failed poll keeps what is shown (and keeps polling while usage was still being read)
   if (r && r.ok) sbState.data = r;
   else if (!sbState.data || !sbState.data.ok) sbState.data = { ok: false, items: [], sources: [], removed: [], backfill: 'done' };
-  if (currentPage !== 'skillbook') return;
+  if (currentPage !== 'skillbook' && !sbDockOpen) return;
   skillbookRender();
-  clearTimeout(sbPollTimer);   // usage still being read from the transcripts: ask again while the page stays open
-  if (sbState.data.backfill === 'running') sbPollTimer = setTimeout(() => currentPage === 'skillbook' && skillbookLoad(), 4000);
+  clearTimeout(sbPollTimer);   // usage still being read from the transcripts: ask again while the page / the dock panel stays open
+  if (sbState.data.backfill === 'running') sbPollTimer = setTimeout(() => (currentPage === 'skillbook' || sbDockOpen) && skillbookLoad(), 4000);
 }
 async function sbAct(id, action) {
   try { return (await window.orca.skillbookAct({ id, action })) || { ok: false, error: 'failed' }; }
@@ -10085,7 +10115,7 @@ async function sbRun(ids, action, skipped = []) {
   sbState.busy = false; sbState.picked.clear();
   const one = ids.length + skipped.length === 1;
   const msg = one ? (ok ? `${nameOf(ids[0])}: ${t(SB_DONE[action])}` : fails[0]) : `${sbNum(ok)} ${t(SB_DONE[action])}${fails.length ? ` · ${t('실패')} ${fails.length}: ${fails.join(', ')}` : ''}`;
-  if (action !== 'reveal' || fails.length) showInAppToast(msg, fails.length ? 'error' : undefined);
+  if (action !== 'reveal' || fails.length) showInAppToast(msg, fails.length ? 'error' : undefined, undefined, undefined, { user: true });   // docked: a failure shows as the bar's pill, 🔕 or not
   if (action === 'reveal') skillbookRender(); else await skillbookLoad();
 }
 function sbConfirm(text, okLabel, run) { sbState.ask = { text, okLabel, run }; skillbookRender(); }
@@ -10179,8 +10209,10 @@ function sbUsagePages(items) {
 function sbTabsHtml(items) {
   return `<div>${SB_TABS.map(([v, l]) => `<button type="button" class="sb-tab${sbState.tab === v ? ' on' : ''}${v === 'mcp' ? ' mcp' : ''}" data-sb="tab" data-v="${v}">${esc(t(l))}${v === 'usage' ? '' : ` ${items.filter(it => it.kind === v).length}`}</button>`).join('')}</div>`;
 }
-function skillbookRender() {
-  const bar = $('sb-bar'), book = $('sb-book'); if (!bar || !book) return;
+// the book is drawn into one container: the page, or the dock panel while it is open (dock mode hides the page)
+const sbRoot = () => $(sbDockOpen ? 'sb-dock' : 'page-skillbook');
+function skillbookRender(root = sbRoot()) {
+  const bar = root && root.querySelector('.sb-bar'), book = root && root.querySelector('.sb-book'); if (!bar || !book) return;
   const d = sbState.data, items = sbItems();
   const bad = d ? (d.sources || []).filter(s => s && s.ok === false) : [];
   bar.innerHTML = SB_AGENTS.map(([v, l]) => `<button type="button" class="sb-ag${sbState.agent === v ? ' on' : ''}" data-sb="agent" data-v="${v}">${esc(t(l))}</button>`).join('')
@@ -10202,7 +10234,7 @@ function skillbookRender() {
   book.innerHTML = `<div class="sb-pg">${left}</div><div class="sb-pg">${right}</div>`;
   book.querySelectorAll('.sb-pg').forEach((p, i) => { p.scrollTop = keep[i] || 0; });
 }
-$('page-skillbook').addEventListener('click', e => {
+function sbClick(e) {
   const b = e.target.closest('[data-sb]'); if (!b || b.disabled) return;
   const k = b.dataset.sb, id = b.dataset.id, it = id ? sbAll().find(x => x.id === id) : null;
   if (k === 'ask-no') { sbState.ask = null; skillbookRender(); return; }
@@ -10236,7 +10268,34 @@ $('page-skillbook').addEventListener('click', e => {
     return;
   }
   skillbookRender();
+}
+$('page-skillbook').addEventListener('click', sbClick);
+$('sb-dock').addEventListener('click', sbClick);
+// dock mode (📖 on the bar): the same book in a panel above the bar, like the review queue (📥) — one of the two at a
+// time; Esc, the button again, a click outside it or leaving the dock closes it (dockLeave)
+function sbDockToggle(open) {
+  const want = open == null ? !sbDockOpen : !!open;
+  if (want === sbDockOpen) return;
+  const el = $('sb-dock');
+  if (!want || !dockOn) {
+    sbDockOpen = false; el.hidden = true; $('dock-sb').setAttribute('aria-expanded', 'false');
+    el.querySelector('.sb-bar').innerHTML = ''; el.querySelector('.sb-book').innerHTML = ''; sbState.ask = null;
+    if (currentPage !== 'skillbook') clearTimeout(sbPollTimer);
+    if (dockOn) { dockAskPlace(); dockBoundsSync(); }
+    return;
+  }
+  if (inboxQOpen) inboxToggle(false);
+  dockPopClose(); dockTipHide(); dockUsageHide(); dockTermClose(true);
+  sbDockOpen = true; $('dock-sb').setAttribute('aria-expanded', 'true');
+  dockWake(); dockPopPlace(); dockAskPlace(); dockBoundsSync();
+  el.hidden = false; skillbookRender(); skillbookLoad();
+}
+$('sb-dock').addEventListener('keydown', e => {
+  e.stopPropagation();   // the dock's digit shortcuts
+  if (e.key === 'Escape') { sbDockToggle(false); $('dock-sb').focus(); }
 });
+// a click outside closes it (composedPath: a click inside re-renders the book, so its target may be gone from the DOM)
+document.addEventListener('click', e => { if (sbDockOpen && !e.composedPath().some(n => n.id === 'sb-dock' || n.id === 'dock-sb')) sbDockToggle(false); });
 // ── end of SKILLBOOK PAGE ──
 
 // ═══════════════════════════════════════════════════════════════════
