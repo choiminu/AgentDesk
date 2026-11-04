@@ -20,6 +20,10 @@ import "./core/dock.js";      // globalThis.AgentDeskDock: dock mode window boun
 import "./core/desktop.js";   // globalThis.AgentDeskDesktop: global shortcuts, start-at-login entry
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, NODE_CANDIDATES, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { relayState, installRelayAt, uninstallRelayAt } from "./statusline/install.mjs";
+import { scanInventory } from "./skillbook/scan.mjs";
+import { createUsageStore, backfill as skillbookBackfill } from "./skillbook/usage.mjs";
+import { actOn as skillbookActOn, listRemoved as skillbookRemoved } from "./skillbook/actions.mjs";
+import { skillbookPayload } from "./skillbook/payload.mjs";
 import { randomUUID, createHash } from "node:crypto";
 import { openPermEndpoint, ensurePrivateDir, writePrivate, permHookScript as permHookSh, guardHookScript, nodeHookScript, winHookCmd, winHookCommand, winHookRunner, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK, PERM_ADDR } from "./perm/server.mjs";
 import { readJsonStrict, writeJsonAtomic, backupPrivate, isOurPermHook, isOurGuardHook, permHookPresent, installPermHookAt, uninstallPermHookAt, guardHookPresent, installGuardHookAt, uninstallGuardHookAt } from "./perm/settings.mjs";
@@ -138,6 +142,7 @@ function createWindow() {
     }
   }
   mainWindow.webContents.on("did-finish-load", () => console.log(`[win] did-finish-load url=${mainWindow.webContents.getURL()}`));
+  mainWindow.webContents.once("did-finish-load", () => setTimeout(startSkillbookBackfill, 5000));   // after the page is up, never during startup
   mainWindow.webContents.on("render-process-gone", (_e, d) => console.log(`[win] render-process-gone reason=${d.reason} code=${d.exitCode}`));
   mainWindow.webContents.on("console-message", (_e, level, msg) => {
     if (level >= 2 || process.env.ROCA_DEBUG) console.log(`[renderer:${level}] ${msg}`);
@@ -1207,6 +1212,45 @@ function uninstallHooks(agents) {
   return { ok: true, agents: list };
 }
 
+// ── Skillbook usage: one store (~/.roca/skillbook-usage.json) fed with every new hook record, plus a one-time
+// transcript backfill over ~/.claude/projects (skillbook/usage.mjs). The events log is re-read from the start on every
+// launch, so records at or before the store file's last save time (sbFeedFrom) were already counted and are skipped.
+const SKILLBOOK_USAGE = join(ROCA_DIR, "skillbook-usage.json");
+let skillbookStore = null, sbFeedFrom = 0, sbSaveTimer = null, sbBackfillStarted = false;
+// session cwd → newest hook record time (ms); the skillbook's project sources come from here (skillbookRepos)
+const sbCwds = new Map();
+function sbStore() {
+  if (skillbookStore) return skillbookStore;
+  skillbookStore = createUsageStore({ file: SKILLBOOK_USAGE });
+  skillbookStore.load();
+  try { sbFeedFrom = statSync(SKILLBOOK_USAGE).mtimeMs; } catch { sbFeedFrom = 0; }
+  return skillbookStore;
+}
+function sbSave() { clearTimeout(sbSaveTimer); sbSaveTimer = null; if (skillbookStore) { try { skillbookStore.save(); } catch (e) { console.error("[skillbook] save", e && e.message); } } }
+function sbSaveSoon() { if (!sbSaveTimer) sbSaveTimer = setTimeout(sbSave, 10000); }   // debounced: never a write per record
+function sbFeed(o) {
+  const at = o && typeof o.ts === "number" ? o.ts * 1000 : NaN;
+  const ev = o && o.ev;
+  if (!ev || !Number.isFinite(at)) return;
+  if (typeof ev.cwd === "string" && ev.cwd && at > (sbCwds.get(ev.cwd) || 0)) { if (sbCwds.size > 2000) sbCwds.clear(); sbCwds.set(ev.cwd, at); }
+  if (ev.hook_event_name !== "PreToolUse" && ev.hook_event_name !== "UserPromptSubmit") return;   // the only records that can hold a use
+  const store = sbStore();
+  if (at <= sbFeedFrom) return;
+  store.addRecord(o);
+  sbSaveSoon();
+}
+function startSkillbookBackfill() {
+  if (sbBackfillStarted || !SINGLE_INSTANCE) return;
+  sbBackfillStarted = true;
+  const store = sbStore();
+  if (store.backfillDone()) return;
+  console.log("[skillbook] backfill start");
+  skillbookBackfill(store, { roots: [CLAUDE_PROJECTS_DIR], cutoff: Date.now() })
+    .then(r => console.log(`[skillbook] backfill done files=${r.files} uses=${r.uses} skipped=${r.skipped}`),
+          e => console.error("[skillbook] backfill failed", e && e.message));
+}
+app.on("will-quit", () => { if (SINGLE_INSTANCE) sbSave(); });
+
 let eventsOffset = 0;
 let eventsWatcher = null;
 let eventsPollTimer = null;
@@ -1226,7 +1270,7 @@ function readNewEvents() {
     const out = [];
     for (const line of buf.toString("utf-8").split("\n")) {
       if (!line.trim()) continue;
-      try { const o = JSON.parse(line.replace(/^\uFEFF/, "")); noteKnownSession(o); timelineIndex.add(o); out.push(o); } catch {}   // PowerShell may write a BOM
+      try { const o = JSON.parse(line.replace(/^\uFEFF/, "")); noteKnownSession(o); timelineIndex.add(o); sbFeed(o); out.push(o); } catch {}   // PowerShell may write a BOM
     }
     return out;
   } catch { return []; }
@@ -2347,6 +2391,69 @@ ipcMain.handle("roca:timeline", (_e, req = {}) => {
     const limit = Math.max(1, Math.min(AgentDeskTimeline.MAX_EVENTS, Number(req.limit) || AgentDeskTimeline.MAX_EVENTS));
     return { ok: true, ...AgentDeskTimeline.buildModel(entries, { limit, truncated: got.truncated || entries.length < got.entries.length }) };
   } catch (e) { console.error("[timeline]", e && e.message); return { ok: false, error: "timeline failed" }; }
+});
+
+// ── Skillbook (skills, plugins, MCP servers per agent): inventory + usage, and off / on / remove / restore / reveal ──
+// repos (project-level sources): the cwds of hook sessions seen in the last 30 days. An open session sends hook records,
+// so it is in there too; sessions without hooks are not. Each cwd is widened to its git root by looking for a .git
+// entry in the parent folders (no git process); the home folder itself is never a repo (its skills are the user's).
+const SB_REPO_MS = 30 * 24 * 60 * 60 * 1000;
+const sbRootCache = new Map();
+function sbRepoRoot(cwd) {
+  if (sbRootCache.has(cwd)) return sbRootCache.get(cwd);
+  let root = cwd;
+  for (let d = cwd, i = 0; i < 30; i++) {
+    if (existsSync(join(d, ".git"))) { root = d; break; }
+    const up = dirname(d);
+    if (up === d || d === homedir()) break;
+    d = up;
+  }
+  if (sbRootCache.size > 2000) sbRootCache.clear();
+  sbRootCache.set(cwd, root);
+  return root;
+}
+function skillbookRepos() {
+  const since = Date.now() - SB_REPO_MS, home = homedir(), out = new Set();
+  for (const [cwd, at] of sbCwds) {
+    if (at < since || !isAbsolute(cwd) || !existsSync(cwd)) continue;
+    const r = sbRepoRoot(cwd);
+    if (r !== home) out.add(r);
+  }
+  return [...out].sort();
+}
+// the claude CLI for plugin actions: no shell, fixed timeout; exit code and output go back to actions.mjs
+function sbRun(cmd, args) {
+  const bin = cmd === "claude" ? (CLAUDE_PATHS.find(p => existsSync(p)) || "claude") : cmd;
+  return new Promise(resolve => execFile(bin, args, { timeout: 120000, maxBuffer: 4 * 1024 * 1024, windowsHide: true, env: { ...process.env, PATH: EXEC_PATH } },
+    (err, stdout, stderr) => resolve({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0, stdout: String(stdout || ""), stderr: String(stderr || (err && err.message) || "") })));
+}
+ipcMain.handle("roca:skillbook", () => {
+  try {
+    pushEvents(readNewEvents());   // count whatever the hooks appended since the last poll
+    const home = homedir();
+    return skillbookPayload({ inventory: scanInventory({ home, repos: skillbookRepos() }), store: sbStore(), removed: skillbookRemoved({ home }), now: Date.now() });
+  } catch (e) { console.error("[skillbook]", e && e.message); return { ok: false, error: "skillbook failed" }; }
+});
+// the renderer sends only { id, action }; the item comes from a fresh scan (restore: the removed list), ids used as given
+const SB_ACTIONS = ["off", "on", "remove", "restore", "reveal"];
+let sbQueue = Promise.resolve();   // one action at a time: each re-reads the config the previous one wrote
+async function skillbookAct(id, action) {
+  const home = homedir(), repos = skillbookRepos();
+  const item = action === "restore" ? skillbookRemoved({ home }).find(r => r.id === id) : scanInventory({ home, repos }).items.find(i => i.id === id);
+  if (!item) return { ok: false, error: "gone" };
+  if (action === "reveal") {
+    if (typeof item.path !== "string" || !isAbsolute(item.path)) return { ok: false, error: "unsupported", detail: "path" };
+    shell.showItemInFolder(item.path);
+    return { ok: true };
+  }
+  return skillbookActOn({ home, item, action, repos, trash: p => shell.trashItem(p), run: sbRun });
+}
+ipcMain.handle("roca:skillbook-act", (_e, req) => {
+  const id = req && req.id, action = req && req.action;
+  if (typeof id !== "string" || !id || id.length > 300 || /[\u0000-\u001f\u007f]/.test(id) || !SB_ACTIONS.includes(action)) return { ok: false, error: "failed", detail: "bad request" };
+  const job = sbQueue.then(() => skillbookAct(id, action)).catch(e => { console.error("[skillbook] act", e && e.message); return { ok: false, error: "failed", detail: "error" }; });
+  sbQueue = job;
+  return job;
 });
 ipcMain.handle("roca:diff-stat", async (_e, req = {}) => {
   const sessionId = req && typeof req.sessionId === "string" ? req.sessionId : "", scope = req && req.scope === "branch" ? "branch" : "working";

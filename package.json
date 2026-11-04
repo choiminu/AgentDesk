@@ -82,6 +82,7 @@
       "perm/**/*",
       "guard/**/*",
       "statusline/**/*",
+      "skillbook/**/*",
       "package.json",
       "assets/**/*"
     ],
