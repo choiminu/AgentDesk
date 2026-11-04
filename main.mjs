@@ -328,7 +328,7 @@ function questIssueIn(key, issue) {
   const i = issue && typeof issue === "object" ? issue : {};
   const f = i.fields && typeof i.fields === "object" ? i.fields : {};
   const labels = (Array.isArray(f.labels) ? f.labels : Array.isArray(i.labels) ? i.labels : []).filter(questStr).slice(0, 20);
-  return { key, fields: { summary: questClip(f.summary != null ? f.summary : i.summary, 500), description: questClip(f.description != null ? f.description : i.description, 4000), labels } };
+  return { key, fields: { summary: questClip(f.summary != null ? f.summary : i.summary, 500), description: questClip(f.description != null ? f.description : i.description, 20000), labels } };   // hard cap only: the desk masks the full text, then cuts it
 }
 function questPartyIn(party) {
   const out = [];
@@ -358,9 +358,12 @@ ipcMain.handle("roca:quest-desk", (_e, o = {}) => {
   if (!QUEST_KEY_RE.test(key || "")) return badArg("invalid Jira key");
   return questDesk().ask({ key, issue: questIssueIn(key, o.issue), party: questPartyIn(o.party), repos: questRepos(o.repos) }).catch(() => ({ ok: false, error: "failed" }));
 });
+// projects: the project keys a successful, complete load covered (the renderer sends them only then); their entries that the
+// load did not return and that are quiet for over 30 days are dropped too
+const questPruneProjectsIn = p => (Array.isArray(p) ? p.slice(0, 50) : []).filter(k => typeof k === "string" && /^[A-Z][A-Z0-9_]{0,49}$/.test(k));
 ipcMain.handle("roca:quest-prune", (_e, o = {}) => {
-  const issues = questPruneIssuesIn(o && o.issues);
-  try { return { ok: true, left: questState().prune(issues) }; } catch (e) { return badArg(e.code || "save failed"); }
+  const issues = questPruneIssuesIn(o && o.issues), projects = questPruneProjectsIn(o && o.projects);
+  try { return { ok: true, left: questState().prune(issues, projects) }; } catch (e) { return badArg(e.code || "save failed"); }
 });
 ipcMain.handle("roca:quest-desk-cancel", (_e, o = {}) => {
   const key = o && o.key;

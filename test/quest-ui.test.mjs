@@ -29,7 +29,7 @@ test('quest ui: 퀘스트 mode switch on the board and core/quest.js loaded', ()
 
 test('quest ui: cards render through questRender(root) into any container, state kept outside the DOM', () => {
   match(q, /function questRender\(root\)/);
-  match(fn('questRender'), /AgentDeskQuest\.questView\(questIssues\(\), quest\.file, live\)/);
+  match(fn('questRender'), /AgentDeskQuest\.questView\(questIssues\(\), quest\.file, live(, questWorktrees\(\))?\)/);
   match(q, /const quest = \{ file: [^\n]*proposals: new Map\(\), pending: new Map\(\)/);
   match(q, /QUEST_GROUPS = \[\['new', '새 퀘스트'\], \['doing', ''\], \['report', '보고 대기'\], \['done', '완료'\]\]/);
   match(q, /'In progress'/);
@@ -70,8 +70,8 @@ test('quest ui: assignment recorded only after the modal send succeeds; report h
 });
 
 test('quest ui: prune after board load; party inputs carry hasPerm, doing and skills', () => {
-  match(html, /window\.orca\.questPrune\(\{ issues: jb\.issues \}\)/);
-  match(html, /window\.orca\.questPrune\(\{ issues: jiraIssues \}\)/);
+  match(html, /window\.orca\.questPrune\(\{ issues: jb\.issues[,}]/);
+  match(html, /window\.orca\.questPrune\(\{ issues: jiraIssues[,}]/);
   const party = fn('questParty');
   match(party, /hasPerm:/); match(party, /doing: nowSummaries\.get\(s\.id\)/); match(party, /skills: questSkills\.get\(sid\)/);
   match(party, /AgentDeskQuest\.partyOf\(src, handles\)/);
@@ -107,7 +107,8 @@ function boot(over = {}) {
     AgentDeskQuest: globalThis.AgentDeskQuest, AgentDeskJira: globalThis.AgentDeskJira,
     esc, escA: esc, t: x => x, LANG: 'ko', $: () => null,
     sessions: [], handles: new Map(), nowSummaries: new Map(), jb: { issues: [], q: '', who: new Set(), err: '' }, jiraIssues: [], jiraDetail: new Map(),
-    jiraBoardMode: true, jiraBusy: false, jiraErr: '', jiraConn: null,
+    jiraBoardMode: true, jiraBusy: false, jiraErr: '', jiraConn: null, jiraDispatch: {},
+    jiraSessFor: d => (d.sid ? sb.sessions.find(x => x.id === d.sid) || null : null),
     dockPermMap: () => new Map(), hookStateFor: () => null, skillCastOf: () => null,
     jiraSessionModal: rec('jiraSessionModal'), jiraWorktreeModal: rec('jiraWorktreeModal'), jbBarRender() {}, jiraRender() {},
     window: { orca: { onHookEvents() {}, questState: async () => ({ quests: {} }), questAssign: rec('questAssign'), questReport: rec('questReport'), questDeskCancel: rec('questDeskCancel'),
@@ -115,7 +116,7 @@ function boot(over = {}) {
       questDesk: rec('questDesk'), terminalSend: rec('terminalSend'), worktreeCreate: rec('worktreeCreate') } },
   };
   vm.createContext(sb);
-  vm.runInContext(q + '\n;globalThis.__q = { quest, questAuto, questAccept, questPick, questCardHtml, questPickerHtml, questParty, questRepoList, questRender, questWire, questCancel, QUEST_PROPOSAL_MS };', sb);
+  vm.runInContext(q + '\n;globalThis.__q = { quest, questAuto, questAccept, questPick, questCardHtml, questPickerHtml, questParty, questRepoList, questRender, questWire, questCancel, QUEST_PROPOSAL_MS, questWorktrees, questCanAssign, questPruneProjects };', sb);
   return { sb, calls, q: sb.__q };
 }
 const sess = (id, status, extra = {}) => ({ id, name: id, status, connected: true, repo: 'api', cwd: '/w/api/x', branch: 'b', ...extra });
@@ -271,7 +272,7 @@ test('quest marker: AgentDeskQuest.markerFor conditions', () => {
 test('quest marker: drawn in the seated seat path, memoized per quest file', () => {
   match(html, /if \(!sess\.isSub && questMarked\(sess\.id, sess\.connected && sess\.ended !== true\)\) questDrawMarker\(ctx, seat\.chairX \+ 12, headY \+ 2, now, ch\.alpha\);/);
   const a2 = html.indexOf('let questMarkFile'), b2 = html.indexOf('function questDrawMarker(');
-  const sb = { quest: { file: { quests: { A: { kind: 'session', sessionId: 's1', at: 1 }, B: { kind: 'session', sessionId: 's2', at: 1, reportAt: 2 } } } }, AgentDeskQuest: globalThis.AgentDeskQuest, Set, Object };
+  const sb = { quest: { file: { quests: { A: { kind: 'session', sessionId: 's1', at: 1 }, B: { kind: 'session', sessionId: 's2', at: 1, reportAt: 2 } } } }, jiraDispatch: {}, AgentDeskQuest: globalThis.AgentDeskQuest, Set, Object, Date };
   vm.createContext(sb); vm.runInContext(html.slice(a2, b2) + ';globalThis.m = questMarked;', sb);
   assert.equal(sb.m('s1', true), true); assert.equal(sb.m('s2', true), false); assert.equal(sb.m('s9', true), false);
   assert.equal(sb.m('s1', false), false, 'ended / disconnected session: no marker');
@@ -299,4 +300,78 @@ test('quest dock fix round 1: disconnected dock variant points at the Jira page 
   assert.doesNotMatch(root.innerHTML, /연결 설정/);
   match(html, /else if \(act === 'jira'\) dockLeave\('jira'\);/);
   match(html, /'Jira 페이지에서 연결하세요': 'Connect on the Jira page'/);
+});
+
+// ── final review fixes ──
+const cardOf = (root, key) => { const i = root.innerHTML.indexOf(`<div class="qb-card" data-key="${key}"`); return root.innerHTML.slice(i, root.innerHTML.indexOf('<div class="qb-card"', i + 1) > 0 ? root.innerHTML.indexOf('<div class="qb-card"', i + 1) : undefined); };
+const colOf = (root, key) => { const h = root.innerHTML, i = h.indexOf(`data-key="${key}"`); return h.slice(h.lastIndexOf('data-group="', i) + 12, h.indexOf('"', h.lastIndexOf('data-group="', i) + 12)); };
+test('quest final: ended or stuck quests can be reassigned (Jira 진행 중, ended session, dead worktree)', () => {
+  const { sb, q: Q } = boot();
+  const root = { isConnected: true, innerHTML: '', addEventListener() {} };
+  sb.sessions = [sess('s1', 'running')]; sb.handles.set('s1', 'h1');
+  const ip = k => ({ key: k, summary: k, status: 'Doing', cat: 'indeterminate', priority: 'High', labels: [] });
+  sb.jb.issues = [ip('TKT-1'), ip('TKT-2'), ip('TKT-3'), ip('TKT-4'), ip('TKT-5'), ip('TKT-6'), ip('TKT-7')];
+  Q.quest.file = { quests: {
+    'TKT-2': { kind: 'session', sessionId: 'gone', at: 1 },     // ended session
+    'TKT-3': { kind: 'session', sessionId: 's1', at: 1 },       // live session → no 맡기기
+    'TKT-4': { kind: 'worktree', repo: 'api', at: 1 },          // dispatch timed out
+    'TKT-5': { kind: 'worktree', repo: 'api', at: 1 },          // mapped session gone
+    'TKT-6': { kind: 'worktree', repo: 'api', at: 1 },          // mapped to a live session → no 맡기기
+    'TKT-7': { kind: 'worktree', repo: 'api', at: 1 },          // still starting (not mapped yet) → no 맡기기
+  } };
+  sb.jiraDispatch = { 'TKT-4': { key: 'TKT-4', state: 'timeout' }, 'TKT-5': { key: 'TKT-5', state: 'sent', sid: 'dead' }, 'TKT-6': { key: 'TKT-6', state: 'sent', sid: 's1' }, 'TKT-7': { key: 'TKT-7', state: 'sent', sid: '' } };
+  Q.questRender(root);
+  for (const k of ['TKT-1', 'TKT-2', 'TKT-4', 'TKT-5']) { assert.match(cardOf(root, k), /data-q="open"/, k); assert.match(cardOf(root, k), /data-q="auto"/, k); }
+  for (const k of ['TKT-3', 'TKT-6', 'TKT-7']) assert.doesNotMatch(cardOf(root, k), /data-q="open"/, k);
+  assert.match(cardOf(root, 'TKT-4'), /종료됨/); assert.match(cardOf(root, 'TKT-5'), /종료됨/);
+  for (const k of ['TKT-1', 'TKT-2', 'TKT-4', 'TKT-5', 'TKT-6']) assert.equal(colOf(root, k), 'doing', k);   // Jira says 진행 중
+  // the picker opens on such a card too
+  Q.quest.picker = 'TKT-4'; Q.questRender(root); assert.match(cardOf(root, 'TKT-4'), /qb-pick/);
+  // a discarded dispatch or a missing record also ends a worktree quest; a Jira 'new' ticket goes back to 새 퀘스트
+  sb.jb.issues = [{ key: 'TKT-8', summary: 'x', cat: 'new', labels: [] }, { key: 'TKT-9', summary: 'x', cat: 'new', labels: [] }];
+  Q.quest.file = { quests: { 'TKT-8': { kind: 'worktree', repo: 'api', at: 1 }, 'TKT-9': { kind: 'worktree', repo: 'api', at: 1 } } };
+  sb.jiraDispatch = { 'TKT-8': { key: 'TKT-8', state: 'discarded' } };
+  Q.questRender(root);
+  for (const k of ['TKT-8', 'TKT-9']) { assert.equal(colOf(root, k), 'new', k); assert.match(cardOf(root, k), /data-q="open"/, k); }
+  match(fn('questRender'), /AgentDeskQuest\.questView\(questIssues\(\), quest\.file, live, questWorktrees\(\)\)/);
+});
+
+test('quest final: desk errors show a short fixed reason under 직접 고르세요', () => {
+  const { q: Q } = boot();
+  const why = { failed: 'claude CLI를 실행하지 못했습니다', timeout: '응답이 늦어 중단했습니다', busy: '다른 제안이 진행 중입니다', invalid: '제안이 목록에 없습니다' };
+  for (const [code, text] of Object.entries(why)) {
+    Q.quest.errors.set('TKT-1', code);
+    const h = Q.questCardHtml({ key: 'TKT-1', title: 't', difficulty: 1, group: 'new', status: '' });
+    assert.match(h, /직접 고르세요/); assert.ok(h.includes(`<span class="qb-why">${text}</span>`), code);
+  }
+  for (const code of ['stale', 'ENOENT: spawn claude', '__proto__']) {
+    Q.quest.errors.set('TKT-1', code);
+    const h = Q.questCardHtml({ key: 'TKT-1', title: 't', difficulty: 1, group: 'new', status: '' });
+    assert.match(h, /직접 고르세요/); assert.doesNotMatch(h, /qb-why/, code); assert.ok(!h.includes('ENOENT'));
+  }
+  for (const text of Object.values(why)) match(html, new RegExp(`'${text}': '[A-Za-z]`));
+});
+
+test('quest final: prune sends project keys only after a complete, successful load', () => {
+  const { q: Q } = boot();
+  assert.deepEqual([...Q.questPruneProjects([{ key: 'TKT-1' }, { key: 'TKT-2' }, { key: 'OPS-3' }, { key: 'bad' }, null], true)], ['TKT', 'OPS']);
+  assert.deepEqual([...Q.questPruneProjects([{ key: 'TKT-1' }], false)], []);
+  match(html, /window\.orca\.questPrune\(\{ issues: jb\.issues, projects: jb\.truncated \? \[\] : \[jb\.project\] \}\)/);
+  match(html, /if \(r && r\.ok !== false && window\.orca\.questPrune\) Promise\.resolve\(window\.orca\.questPrune\(\{ issues: jiraIssues, projects: questPruneProjects\(jiraIssues, jiraIssues\.length < 50\) \}\)\)/);
+  match(html, /window\.orca\.jiraList\(\{ filter: jiraFilter, limit: 50 \}\)/);
+  // the board prune runs after the early returns of a failed board load
+  const jbl = html.slice(html.indexOf("const r = await window.orca.jiraBoard(jb.project"), html.indexOf('function jbBuildCols('));
+  assert.ok(jbl.indexOf("if (!r || r.ok === false)") < jbl.indexOf('questPrune'));
+});
+
+test('quest final: a worktree quest marks the seat of its mapped live session', () => {
+  const a2 = html.indexOf('let questMarkFile'), b2 = html.indexOf('function questDrawMarker(');
+  const sb = { quest: { file: { quests: { A: { kind: 'worktree', repo: 'api', at: 1 }, B: { kind: 'worktree', repo: 'api', at: 1, reportAt: 2 }, C: { kind: 'worktree', repo: 'api', at: 1 } } } },
+    jiraDispatch: { A: { state: 'sent', sid: 'w1' }, B: { state: 'sent', sid: 'w2' }, C: { state: 'timeout', sid: 'w3' } }, AgentDeskQuest: globalThis.AgentDeskQuest, Set, Object, Date };
+  vm.createContext(sb); vm.runInContext(html.slice(a2, b2) + ';globalThis.m = questMarked;', sb);
+  assert.equal(sb.m('w1', true), true); assert.equal(sb.m('w1', false), false, 'not live');
+  assert.equal(sb.m('w2', true), false, 'reported'); assert.equal(sb.m('w3', true), false, 'timed out');
+  // the mapping arrives after the state file: picked up within a second without a new file
+  sb.jiraDispatch.A.sid = ''; sb.quest.file = { quests: { ...sb.quest.file.quests } }; assert.equal(sb.m('w1', true), false);
+  sb.jiraDispatch.A.sid = 'w4'; vm.runInContext('questMarkAt = 0;', sb); assert.equal(sb.m('w4', true), true);
 });

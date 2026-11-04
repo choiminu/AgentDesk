@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tT4A60Sg+cUysrXKJLczyxVJOEuslaTbP1LO8IMqO5I='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-fqc2FiEyDfJI/CeTHJV5oxUY0WDEWOor/t3JhKhc8OU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1020,6 +1020,7 @@
   @keyframes qb-spin { to { transform: rotate(360deg); } }
   .qb-prop { margin-top: 6px; padding: 5px 7px; border: 1px dashed var(--accent); border-radius: 6px; font-size: var(--fs-xs); color: var(--text); overflow-wrap: anywhere; }
   .qb-err { margin-top: 6px; font-size: var(--fs-xs); color: var(--red-text); }
+  .qb-why { display: block; margin-top: 2px; color: var(--text3); }
   .qb-pick { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
   .qb-row { display: flex; flex-direction: column; gap: 2px; padding: 5px 7px; border: 1px solid var(--border-subtle); border-radius: 6px; font-size: var(--fs-xs); }
   .qb-row.off { opacity: 0.55; }
@@ -2155,7 +2156,7 @@ let LANG = 'en';
 try { LANG = localStorage.getItem('roca-lang') || 'en'; } catch {}
 const I18N = {
   '퀘스트': 'Quests', '선택하세요': 'Choose one', '미리 고른 대상을 찾을 수 없습니다. 직접 고르세요': 'The preselected target is gone. Please pick one yourself', 'Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다': 'View Jira tickets as quests and hand them to an agent', '맡기기': 'Assign', '새 워크트리에서 시작': 'Start in a new worktree',
-  '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', '직접 고르세요': 'Please pick one yourself', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
+  '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', '직접 고르세요': 'Please pick one yourself', 'claude CLI를 실행하지 못했습니다': 'Could not run the claude CLI', '응답이 늦어 중단했습니다': 'Stopped: the answer took too long', '다른 제안이 진행 중입니다': 'Another proposal is in progress', '제안이 목록에 없습니다': 'The proposal was not in the list', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
   '설정': 'Settings', '표시': 'Appearance', '언어': 'Language', 'UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.': 'UI language. Also applies to office text and team prompts.',
   '테마': 'Theme', '시스템 설정을 따르거나 라이트/다크로 고정합니다.': 'Follow the system or force light / dark.', '시스템': 'System', '라이트': 'Light', '다크': 'Dark',
   '감지와 알림': 'Detection & alerts', '정확 감지 (Claude Code 훅)': 'Exact detection (Claude Code hooks)',
@@ -11061,7 +11062,8 @@ async function jiraLoad() {
       const r = await window.orca.jiraList({ filter: jiraFilter, limit: 50 });
       if (r && r.ok === false) jiraErr = AgentDeskJira.errorText(r);
       jiraIssues = AgentDeskJira.issuesFrom(r);
-      if (window.orca.questPrune) Promise.resolve(window.orca.questPrune({ issues: jiraIssues })).then(() => questLoad(), () => {}).catch(() => {});
+      // prune only after a load that worked; the absence rule (projects) only when the list was not cut at the limit
+      if (r && r.ok !== false && window.orca.questPrune) Promise.resolve(window.orca.questPrune({ issues: jiraIssues, projects: questPruneProjects(jiraIssues, jiraIssues.length < 50) })).then(() => questLoad(), () => {}).catch(() => {});
     } else jiraIssues = [];
   } catch (e) { jiraErr = e.message; }
   finally { jiraBusy = false; }
@@ -11369,7 +11371,7 @@ async function jbLoad() {
   jb.issues = (r.result.issues || []).map(AgentDeskJira.boardIssue).filter(Boolean);
   jiraIssues = jb.issues;   // fallback facts for dispatch when the issue fetch fails
   jbBuildCols();
-  if (window.orca.questPrune) Promise.resolve(window.orca.questPrune({ issues: jb.issues })).then(() => questLoad(), () => {}).catch(() => {});   // fire-and-forget
+  if (window.orca.questPrune) Promise.resolve(window.orca.questPrune({ issues: jb.issues, projects: jb.truncated ? [] : [jb.project] })).then(() => questLoad(), () => {}).catch(() => {});   // fire-and-forget; a truncated board is a partial load
 }
 function jbBuildCols() { jb.cols = AgentDeskJira.buildColumns(jb.data && jb.data.statuses, jbPrefs.cols[jb.project], jb.data && jb.data.boardColumns); }
 // a broken avatar image just disappears (no inline onerror: the CSP forbids inline handlers)
@@ -11574,6 +11576,30 @@ function questPick(key, sid) {
   if (!p || !p.eligible) { quest.errors.set(key, 'stale'); quest.picker = key; questRefresh(); return; }
   jiraSessionModal(key, sid);
 }
+// prune's absence rule: the project keys a complete list load covered (the list has no single project: the prefixes it holds)
+function questPruneProjects(issues, complete) {
+  if (!complete) return [];
+  return [...new Set((Array.isArray(issues) ? issues : []).map(i => String((i && i.key) || '').replace(/-\d+$/, '')).filter(k => /^[A-Z][A-Z0-9_]*$/.test(k)))];
+}
+// what the renderer knows of each open worktree quest's dispatch (AgentDeskQuest.questView worktrees): no record, timed out
+// or discarded → ended; a mapped session id (jiraSessFor) → ended once that session is no longer live
+function questWorktrees() {
+  const out = {};
+  for (const [k, e] of Object.entries((quest.file && quest.file.quests) || {})) {
+    if (!e || e.kind !== 'worktree' || e.reportAt) continue;
+    const d = jiraDispatch[k];
+    if (!d) continue;
+    if (d.state === 'timeout' || d.state === 'discarded') { out[k] = { ended: true }; continue; }
+    const s = jiraSessFor(d);
+    out[k] = s ? { sessionId: s.id } : d.sid ? { sessionId: d.sid } : {};
+  }
+  return out;
+}
+// any card without a live AgentDesk assignment can be handed out: a new ticket, an ended quest, or a Jira 진행 중 ticket
+// AgentDesk never assigned
+const questCanAssign = c => c.group === 'new' || !!(c.quest && c.quest.ended) || (c.group === 'doing' && !c.quest);
+// the desk's error codes (quest/desk.mjs askDesk) as a short reason under 직접 고르세요; never raw error text
+const QUEST_ERR_WHY = { failed: 'claude CLI를 실행하지 못했습니다', timeout: '응답이 늦어 중단했습니다', busy: '다른 제안이 진행 중입니다', invalid: '제안이 목록에 없습니다' };
 function questStars(n) { return n ? '★'.repeat(n) + '☆'.repeat(3 - n) : '·'; }
 function questPickerHtml(key) {
   const party = questParty().sort((a, b) => (b.eligible ? 1 : 0) - (a.eligible ? 1 : 0));   // eligible sessions first
@@ -11594,7 +11620,7 @@ function questCardHtml(c) {
   let prop = quest.proposals.get(key);
   if (prop && Date.now() - prop.at > QUEST_PROPOSAL_MS) prop = null;   // expired: hide the row
   let acts = '';
-  if (c.group === 'new') {
+  if (questCanAssign(c)) {
     acts = pend ? `<span class="qb-spin"></span><span>${esc(t('프런트데스크가 고르는 중…'))}</span><button data-q="cancel" data-key="${escA(key)}">${esc(t('취소'))}</button>`
       : `<button data-q="open" data-key="${escA(key)}">${esc(t('맡기기'))}</button><button data-q="auto" data-key="${escA(key)}">${esc(t('자동'))}</button>`;
   }
@@ -11604,8 +11630,8 @@ function questCardHtml(c) {
     ${who ? `<div class="qb-who" data-verbatim>${esc(who)}</div>` : ''}
     ${acts ? `<div class="qb-acts">${acts}</div>` : ''}
     ${prop ? `<div class="qb-prop" data-verbatim>⟶ ${esc(prop.label)} · ${esc(prop.reason)}<div class="qb-acts"><button data-q="accept" data-key="${escA(key)}">${esc(t('맡기기'))}</button><button data-q="other" data-key="${escA(key)}">${esc(t('다른 사람'))}</button></div></div>` : ''}
-    ${err ? `<div class="qb-err">${esc(t('직접 고르세요'))}</div>` : ''}
-    ${quest.picker === key && c.group === 'new' ? questPickerHtml(key) : ''}</div>`;
+    ${err ? `<div class="qb-err">${esc(t('직접 고르세요'))}${Object.prototype.hasOwnProperty.call(QUEST_ERR_WHY, err) ? `<span class="qb-why">${esc(t(QUEST_ERR_WHY[err]))}</span>` : ''}</div>` : ''}
+    ${quest.picker === key && questCanAssign(c) ? questPickerHtml(key) : ''}</div>`;
 }
 function questWire(root) {
   if (quest.wired.has(root)) return; quest.wired.add(root);
@@ -11637,7 +11663,7 @@ function questRender(root) {
   const err = (jiraBoardMode && jb.err) || jiraErr;
   if (err) { root.innerHTML = questEmptyHtml(err); return; }
   const live = new Set(sessions.filter(s => s.connected && s.ended !== true).map(s => s.id));
-  const cards = AgentDeskQuest.questView(questIssues(), quest.file, live);
+  const cards = AgentDeskQuest.questView(questIssues(), quest.file, live, questWorktrees());
   if (!cards.length) { root.innerHTML = questEmptyHtml(t('표시할 티켓이 없습니다')); return; }
   root.innerHTML = QUEST_GROUPS.map(([g, label]) => {
     const list = cards.filter(c => c.group === g);
@@ -11677,12 +11703,18 @@ $('q-dock').addEventListener('keydown', e => {
 // a click outside closes it (a modal opened from a card is outside the panel too: it stays)
 document.addEventListener('click', e => { if (questDockOpen && Date.now() - teamModalClosedAt > 300 && !e.composedPath().some(n => n.id === 'q-dock' || n.id === 'dock-q' || (n.classList && n.classList.contains('team-modal-bg')))) questDockToggle(false); });
 // office marker: a small sword over a seat whose session holds an assigned quest with no report yet (AgentDeskQuest.markerFor)
-let questMarkFile = null, questMarkIds = new Set();
+// a worktree quest marks the session its dispatch was mapped to (jiraSessFor sets d.sid); the mapping arrives later than the
+// state file, so the memo is also refreshed once a second
+let questMarkFile = null, questMarkIds = new Set(), questMarkAt = 0;
 function questMarked(sid, live) {
   if (!live) return false;   // an ended / disconnected session has no marker
-  if (questMarkFile !== quest.file) {
-    questMarkFile = quest.file; questMarkIds = new Set();
-    for (const e of Object.values((quest.file && quest.file.quests) || {})) if (e && e.sessionId && AgentDeskQuest.markerFor(quest.file, e.sessionId, true)) questMarkIds.add(e.sessionId);
+  const now = Date.now();
+  if (questMarkFile !== quest.file || now - questMarkAt > 1000) {
+    questMarkFile = quest.file; questMarkAt = now; questMarkIds = new Set();
+    const qs = (quest.file && quest.file.quests) || {}, wt = {};
+    for (const [k, e] of Object.entries(qs)) { const d = e && e.kind === 'worktree' && !e.reportAt ? jiraDispatch[k] : null; if (d && d.state === 'sent' && d.sid) wt[k] = d.sid; }
+    for (const e of Object.values(qs)) if (e && e.sessionId && AgentDeskQuest.markerFor(quest.file, e.sessionId, true)) questMarkIds.add(e.sessionId);
+    for (const id of Object.values(wt)) if (AgentDeskQuest.markerFor(quest.file, id, true, wt)) questMarkIds.add(id);
   }
   return questMarkIds.has(sid);
 }

@@ -1,10 +1,12 @@
 // AgentDesk Quest board: the quest state file (~/.roca/quests.json), mode 0600, atomic writes.
 //   { v: 1, quests: { [ticketKey]: { kind: 'session'|'worktree', sessionId?, repo?, at, reportAt? } } }
 //
-//   createQuestState({ file, now }) → { load(), get(key), set(key, entry), report(key, at), drop(key), all(), prune(doneKeys) }
+//   createQuestState({ file, now }) → { load(), get(key), set(key, entry), report(key, at), drop(key), all(), prune(doneKeys, projects) }
 //     set     → stores a cleaned copy (unknown fields dropped; 'session' needs sessionId, 'worktree' needs repo; throws otherwise)
 //     report  → marks reportAt (now() when at is not given); false when the ticket has no entry
-//     prune   → removes the listed keys (strings) and, for Jira issues (objects), tickets done more than 30 days ago
+//     prune   → removes the listed keys (strings) and, for Jira issues (objects), tickets done more than 30 days ago;
+//               projects (keys of a successful, complete load) also drops their entries the load did not return that are
+//               quiet for over 30 days (core/quest.js pruneState)
 //     all()   → a deep copy of the file object
 //     load    → keys that are not ticket keys (QUEST_KEY_RE: __proto__, junk) are dropped
 import { readFileSync, writeFileSync, renameSync, chmodSync, unlinkSync, mkdirSync } from "node:fs";
@@ -73,12 +75,13 @@ export function createQuestState({ file, now = Date.now } = {}) {
       return true;
     },
     all() { return { v: 1, quests: JSON.parse(JSON.stringify(data.quests)) }; },
-    prune(doneKeys) {
+    prune(doneKeys, projects) {
       const list = Array.isArray(doneKeys) ? doneKeys : [];
       const before = Object.keys(data.quests).length;
       for (const k of list) if (typeof k === "string") delete data.quests[k];
       const issues = list.filter(i => i && typeof i === "object");
-      if (issues.length) data = { v: 1, quests: Object.assign(Object.create(null), globalThis.AgentDeskQuest.pruneState(data, issues, now()).quests) };
+      const ps = Array.isArray(projects) ? projects.filter(p => typeof p === "string") : [];
+      if (issues.length || ps.length) data = { v: 1, quests: Object.assign(Object.create(null), globalThis.AgentDeskQuest.pruneState(data, issues, now(), ps).quests) };
       if (Object.keys(data.quests).length !== before) save();
       return Object.keys(data.quests).length;
     },

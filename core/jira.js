@@ -3,7 +3,9 @@
 // docs, so every reader accepts several plausible field names) and REPORT text captured from a terminal screen.
 //
 //   isKey(k)                         → true for "ABC-123"
-//   normalizeIssue(raw)              → { key, summary, status, priority, assignee, labels, description, url, updated } | null
+//   normalizeIssue(raw)              → { key, summary, status, statusCategory?, priority, assignee, labels, description, url, updated } | null
+//                                      statusCategory ('new' | 'indeterminate' | 'done') only when the item carries one: raw.statusCategory
+//                                      (string or { key }), fields.status.statusCategory.key or status.statusCategory.key
 //   issuesFrom(res) / issueFrom(res) → normalized issues out of a list/search or an issue reply
 //   connectionFrom(res)              → { connected, sites, error }
 //   worktreeName(key)                → safe worktree name ("abc-123")
@@ -61,7 +63,10 @@ function normalizeIssue(raw) {
   if (!isKey(key)) return null;
   const labels = pick(raw.labels, f.labels) || [];
   const desc = pick(raw.descriptionText, raw.description, f.description, raw.body);
-  return {
+  const stObj = [f.status, raw.status].find(x => x && typeof x === 'object' && x.statusCategory) || null;
+  const scRaw = pick(stObj && stObj.statusCategory, raw.statusCategory, f.statusCategory);
+  const sc = scRaw && typeof scRaw === 'object' ? scRaw.key : scRaw;
+  const out = {
     key,
     summary: String(pick(raw.summary, f.summary, raw.title) || ''),
     status: nameOf(pick(raw.status, f.status, raw.statusName)),
@@ -72,6 +77,8 @@ function normalizeIssue(raw) {
     url: String(pick(raw.url, raw.webUrl, raw.browseUrl, raw.htmlUrl) || ''),
     updated: String(pick(raw.updated, f.updated, raw.updatedAt) || ''),
   };
+  if (sc === 'new' || sc === 'indeterminate' || sc === 'done') out.statusCategory = sc;   // the quest view groups by it (list mode)
+  return out;
 }
 
 const resultOf = res => (res && typeof res === 'object' && 'result' in res) ? res.result : res;
