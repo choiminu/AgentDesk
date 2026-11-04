@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-ZfdLhdFikLZgjvSmy7/2HBiTN4E1665PTYsuuUlsTgA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-k3ev9JmrrQ4vKCHxt3HyyAaBr12jq5XZQirl21t9CBI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1004,6 +1004,26 @@
   .jb-edit button { appearance: none; border: 1px solid var(--border); background: var(--bg-solid); color: var(--text2); font-size: var(--fs-xs); padding: 0 5px; border-radius: 4px; cursor: pointer; text-transform: none; }
   .jb-edit button:disabled { opacity: 0.35; cursor: default; }
   .jb-colb { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 8px; display: flex; flex-direction: column; gap: 6px; }
+  .jb-quest { flex: 1; min-height: 0; display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 8px 12px; align-items: stretch; }
+  .jb-quest[hidden] { display: none; }
+  .qb-col { flex: 1 1 220px; min-width: 200px; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+  .qb-colh { display: flex; gap: 6px; align-items: center; padding: 8px 10px 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--text2); }
+  .qb-colb { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 8px; display: flex; flex-direction: column; gap: 6px; }
+  .qb-card { background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 9px; box-shadow: var(--shadow-card); font-size: var(--fs-sm); color: var(--text); }
+  .qb-top { display: flex; gap: 6px; align-items: center; font-size: var(--fs-xs); color: var(--text2); }
+  .qb-stars { color: var(--yellow-text); letter-spacing: 1px; }
+  .qb-title { margin-top: 4px; font-size: var(--fs-md); line-height: 1.4; overflow-wrap: anywhere; }
+  .qb-who, .qb-due { margin-top: 4px; font-size: var(--fs-xs); color: var(--text2); overflow-wrap: anywhere; }
+  .qb-due.over { color: var(--red-text); }
+  .qb-acts { display: flex; gap: 6px; margin-top: 6px; align-items: center; flex-wrap: wrap; }
+  .qb-spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: qb-spin 0.8s linear infinite; }
+  @keyframes qb-spin { to { transform: rotate(360deg); } }
+  .qb-prop { margin-top: 6px; padding: 5px 7px; border: 1px dashed var(--accent); border-radius: 6px; font-size: var(--fs-xs); color: var(--text); overflow-wrap: anywhere; }
+  .qb-err { margin-top: 6px; font-size: var(--fs-xs); color: var(--red-text); }
+  .qb-pick { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+  .qb-row { display: flex; flex-direction: column; gap: 2px; padding: 5px 7px; border: 1px solid var(--border-subtle); border-radius: 6px; font-size: var(--fs-xs); }
+  .qb-row.off { opacity: 0.55; }
+  .qb-row .qb-sk span { display: inline-block; margin: 2px 3px 0 0; padding: 0 5px; border-radius: 8px; background: var(--accent-dim); color: var(--text2); }
   .jb-card { background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 9px; cursor: pointer; box-shadow: var(--shadow-card); }
   .jb-card:hover { background: var(--surface-hover); }
   .jb-card.sel { border-color: var(--accent); }
@@ -1954,13 +1974,16 @@
     <div class="jira-header">
       <span style="font-size:var(--fs-sm);color:var(--text2);font-weight:600">Jira 티켓</span>
       <select class="jira-filter" id="jira-filter" title="목록 필터"><option value="assigned">내 담당</option><option value="reported">내가 보고</option><option value="all">전체</option></select>
+      <button id="jira-quest-btn" title="Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다">퀘스트</button>
       <button id="jira-refresh">새로고침</button>
     </div>
     <div class="jira-conn" id="jira-conn"></div>
     <div class="jira-list" id="jira-list"></div>
+    <div class="jb-quest" id="jira-quest" hidden></div>
     <div class="jira-board" id="jira-board" hidden>
       <div class="jb-bar" id="jb-bar"></div>
       <div class="jb-cols" id="jb-cols"></div>
+      <div class="jb-quest" id="jb-quest" hidden></div>
       <div class="jb-drawer" id="jb-drawer" hidden></div>
     </div>
   </div>
@@ -2046,6 +2069,7 @@
 <script src="core/mask.js"></script>
 <script src="core/guard.js"></script>
 <script src="core/jira.js"></script>
+<script src="core/quest.js"></script>
 <script src="core/team.js"></script>
 <script src="core/diff.js"></script>
 <script src="core/usage.js"></script>
@@ -2107,6 +2131,8 @@ function trunc(s, n) { return !s ? '' : s.length > n ? s.slice(0, n) + '…' : s
 let LANG = 'en';
 try { LANG = localStorage.getItem('roca-lang') || 'en'; } catch {}
 const I18N = {
+  '퀘스트': 'Quests', '선택하세요': 'Choose one', '미리 고른 대상을 찾을 수 없습니다. 직접 고르세요': 'The preselected target is gone. Please pick one yourself', 'Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다': 'View Jira tickets as quests and hand them to an agent', '맡기기': 'Assign', '새 워크트리에서 시작': 'Start in a new worktree',
+  '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', '직접 고르세요': 'Please pick one yourself', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
   '설정': 'Settings', '표시': 'Appearance', '언어': 'Language', 'UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.': 'UI language. Also applies to office text and team prompts.',
   '테마': 'Theme', '시스템 설정을 따르거나 라이트/다크로 고정합니다.': 'Follow the system or force light / dark.', '시스템': 'System', '라이트': 'Light', '다크': 'Dark',
   '감지와 알림': 'Detection & alerts', '정확 감지 (Claude Code 훅)': 'Exact detection (Claude Code hooks)',
@@ -2998,7 +3024,7 @@ async function enableHooks() {
   if (!r || r.ok === false) { showInAppToast(`${t('훅 설치 실패')}: ${r ? r.error : ''}`, 'error'); return false; }
   setHooksConsent('done');
   hookSessions.clear();
-  for (const rec of await window.orca.hooksRecent()) applyHookEvent(rec);
+  for (const rec of await window.orca.hooksRecent()) { applyHookEvent(rec); questSkillNote(rec); }
   await refreshHooksStatus();
   return true;
 }
@@ -3020,7 +3046,7 @@ window.orca.onHookEvents(evts => {
 // replay recent hook events before the first session fetch so hook-only sessions appear immediately
 const hooksReady = refreshHooksStatus().then(async () => {
   if (!hooksEnabled) return;
-  for (const rec of await window.orca.hooksRecent()) applyHookEvent(rec);
+  for (const rec of await window.orca.hooksRecent()) { applyHookEvent(rec); questSkillNote(rec); }
 }).catch(() => {});
 
 // ── "[스킬명] 스킬 사용": a live Skill tool call, or a /name prompt that names an installed skill, plays the skill-cast effect
@@ -10775,6 +10801,7 @@ async function jiraLoad() {
       const r = await window.orca.jiraList({ filter: jiraFilter, limit: 50 });
       if (r && r.ok === false) jiraErr = AgentDeskJira.errorText(r);
       jiraIssues = AgentDeskJira.issuesFrom(r);
+      if (window.orca.questPrune) Promise.resolve(window.orca.questPrune({ issues: jiraIssues })).then(() => questLoad(), () => {}).catch(() => {});
     } else jiraIssues = [];
   } catch (e) { jiraErr = e.message; }
   finally { jiraBusy = false; }
@@ -10794,7 +10821,9 @@ function jiraRender() {
   jbColsRender(); jbDrawerRender();
 }
 function jiraListRender() {
-  const el = $('jira-list');
+  const el = $('jira-list'), qe = $('jira-quest');
+  qe.hidden = !questOn; el.hidden = questOn;
+  if (questOn) { questRender(qe); return; }
   if (jiraConn && !jiraConn.connected) {
     el.innerHTML = `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text" style="text-align:center;padding:0 16px">${esc(jiraConn.error || t('Jira가 연결되지 않았습니다. 위 "연결 설정"에 Atlassian OAuth 앱의 Client ID·Secret을 넣고 로그인하세요 (앱 만드는 방법: 저장소의 docs/JIRA-SETUP.md). Orca를 쓰면 Orca 설정 → Jira 연결도 쓸 수 있습니다.'))}</span></div>`;
     return;
@@ -10898,13 +10927,20 @@ function jiraGuideChipsHtml() {
 function jiraGuideWire(m, ta) {
   m.addEventListener('click', e => { const c = e.target.closest('.jira-chip'); if (!c) return; ta.value = c.dataset.g; ta.focus(); ta.dispatchEvent(new Event('input', { bubbles: true })); });
 }
-async function jiraWorktreeModal(key) {
+// a quest's preselected session / repo is gone: warn, and keep the submit button off until the owner picks something on purpose
+function jiraPreselectMiss(m, selSel, goSel, msgSel) {
+  const go = m.querySelector(goSel), msg = m.querySelector(msgSel), sel = m.querySelector(selSel);
+  go.disabled = true; msg.textContent = `⚠ ${t('미리 고른 대상을 찾을 수 없습니다. 직접 고르세요')}`;
+  const ph = document.createElement('option'); ph.value = ''; ph.disabled = true; ph.selected = true; ph.textContent = t('선택하세요'); sel.insertBefore(ph, sel.firstChild); sel.value = '';   // any real pick then fires change (works for a single option too)
+  sel.addEventListener('change', () => { go.disabled = false; msg.textContent = ''; }, { once: true });
+}
+async function jiraWorktreeModal(key, preselect) {   // preselect (optional): the repo label a quest proposal named
   if (!await jiraPeerConfirm(key)) return;
   const i = await jiraIssueFull(key);
   let repos = [];
   try { const r = await window.orca.repos(); repos = (r?.result?.repos || []).filter(x => x && x.id); } catch {}
   const m = teamModal(`<h3>${esc(t('워크트리로 배치'))} · ${esc(key)}</h3><p data-verbatim>${esc(i.summary)}</p>
-    <label class="jira-field">${esc(t('Orca 저장소'))}<select id="jira-wt-repo">${repos.map(r => `<option value="id:${esc(r.id)}" ${'id:' + r.id === jiraRepo ? 'selected' : ''}>${esc(r.displayName || r.path || r.id)}</option>`).join('')}</select></label>
+    <label class="jira-field">${esc(t('Orca 저장소'))}<select id="jira-wt-repo">${repos.map(r => `<option value="id:${esc(r.id)}" ${preselect ? ((r.displayName || r.path || r.id) === preselect ? 'selected' : '') : ('id:' + r.id === jiraRepo ? 'selected' : '')}>${esc(r.displayName || r.path || r.id)}</option>`).join('')}</select></label>
     <label class="jira-field">${esc(t('워크트리 이름'))}<input type="text" id="jira-wt-name" value="${esc(AgentDeskJira.worktreeName(key))}"></label>
     <label class="jira-field">${esc(t('지침 (선택)'))}<textarea id="jira-wt-guide" placeholder="${esc(t('예: 원인 분석만 하고 코드는 고치지 말 것'))}"></textarea></label>
     ${jiraGuideChipsHtml()}
@@ -10917,8 +10953,10 @@ async function jiraWorktreeModal(key) {
   m.querySelector('#jira-wt-guide').addEventListener('input', wtPrev); m.querySelector('#jira-wt-auto').addEventListener('change', wtPrev);
   jiraGuideWire(m, m.querySelector('#jira-wt-guide')); wtPrev();
   if (!repos.length) m.querySelector('#jira-wt-msg').textContent = t('Orca에 등록된 저장소가 없습니다');
+  else if (preselect && !repos.some(r => (r.displayName || r.path || r.id) === preselect)) jiraPreselectMiss(m, '#jira-wt-repo', '#jira-wt-go', '#jira-wt-msg');
   m.querySelector('#jira-wt-go').onclick = async (e) => {
-    const repo = m.querySelector('#jira-wt-repo').value, name = m.querySelector('#jira-wt-name').value.trim(), msg = m.querySelector('#jira-wt-msg');
+    const repoSel = m.querySelector('#jira-wt-repo'), repoLabel = (repoSel.selectedOptions[0] || {}).textContent || '';
+    const repo = repoSel.value, name = m.querySelector('#jira-wt-name').value.trim(), msg = m.querySelector('#jira-wt-msg');
     if (!repo) { msg.textContent = t('저장소를 고르세요'); return; }
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(name)) { msg.textContent = t('이름은 영문·숫자·- _ . 만 쓸 수 있습니다'); return; }
     const prompt = wtPrompt().replace(/\r?\n+/g, ' ').trim();
@@ -10930,20 +10968,22 @@ async function jiraWorktreeModal(key) {
     const res = r.result || {}, wt = res.worktree || res;
     jiraDispatch[key] = { key, summary: i.summary.slice(0, 200), mode: 'worktree', sid: '', worktreeId: wt.worktreeId || wt.id || '', path: wt.path || wt.worktreePath || '', handle: res.launch?.outcome?.handle || res.agentTerminalHandle || '', name, sentAt: Date.now(), state: 'sent' };
     jiraSave(); closeTeamModal(); jiraRender(); fetchData();
+    questNoteAssign(key, { kind: 'worktree', repo: repoLabel });
     showInAppToast(`🎫 ${key} → ${name}`);
   };
 }
-async function jiraSessionModal(key) {
+async function jiraSessionModal(key, preselect) {   // preselect (optional): the session id a quest proposal named
   if (!await jiraPeerConfirm(key)) return;
   const live = sessions.filter(s => s.connected && handles.get(s.id) && !s.isSub);
   const m = teamModal(`<h3>${esc(t('기존 세션에 연결'))} · ${esc(key)}</h3><p>${esc(t('세션은 지침을 먼저 받고, 이어서 티켓 내용을 받습니다.'))}</p>
-    <label class="jira-field">${esc(t('세션'))}<select id="jira-ss-sess">${live.map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.status === 'running' ? ' (' + esc(t('작업 중')) + ')' : ''}</option>`).join('')}</select></label>
+    <label class="jira-field">${esc(t('세션'))}<select id="jira-ss-sess">${live.map(s => `<option value="${esc(s.id)}"${s.id === preselect ? ' selected' : ''}>${esc(s.name)}${s.status === 'running' ? ' (' + esc(t('작업 중')) + ')' : ''}</option>`).join('')}</select></label>
     <label class="jira-field">${esc(t('지침 (필수)'))}<textarea id="jira-ss-guide" placeholder="${esc(t('이 티켓을 어떻게 다룰지 먼저 알려 주세요'))}"></textarea></label>
     ${jiraGuideChipsHtml()}
     <div class="row"><button class="primary" id="jira-ss-go">${esc(t('보내기'))}</button><button id="jira-ss-cancel">${esc(t('취소'))}</button><span id="jira-ss-msg" style="color:var(--text3)"></span></div>`);
   m.querySelector('#jira-ss-cancel').onclick = closeTeamModal;
   jiraGuideWire(m, m.querySelector('#jira-ss-guide'));
   if (!live.length) m.querySelector('#jira-ss-msg').textContent = t('연결된 세션이 없습니다');
+  else if (preselect && !live.some(s => s.id === preselect)) jiraPreselectMiss(m, '#jira-ss-sess', '#jira-ss-go', '#jira-ss-msg');
   m.querySelector('#jira-ss-go').onclick = async (e) => {
     const sess = sessions.find(s => s.id === m.querySelector('#jira-ss-sess').value), msg = m.querySelector('#jira-ss-msg');
     const guide = m.querySelector('#jira-ss-guide').value.trim();
@@ -10958,6 +10998,7 @@ async function jiraSessionModal(key) {
       if (!r?.result?.send?.accepted) throw new Error(t('전송이 거부되었습니다 (세션이 입력 대기 상태인지 확인)'));
       jiraDispatch[key] = { key, summary: i.summary.slice(0, 200), mode: 'session', sid: sess.id, name: sess.name, sentAt: Date.now(), state: 'sent', stale };
       jiraSave(); jiraGuideRemember(guide); closeTeamModal(); jiraRender();
+      questNoteAssign(key, { kind: 'session', sessionId: sess.id });
       const ch = officeChars.get(sess.id); if (ch) ch.reactT = 1.5;
       showInAppToast(`🎫 ${key} → ${sess.name}`);
     } catch (err) { e.target.disabled = false; msg.textContent = `⚠ ${err.message}`; }
@@ -10979,6 +11020,7 @@ async function jiraCapture(d, sess, manual) {
   // The main process masks again on post
   const dr = AgentDeskJira.reportToCommentDraft(rep.slice(0, 48000), { session: sess.name, lang: LANG });
   d.state = 'report'; d.draft = dr.text; d.masked = dr.masked; d.reportAt = Date.now();
+  questNoteReport(d.key);
   peerRememberReport(sess.id, rep);
   jiraSave(); jiraRender();
   showInAppToast(`🎫 ${d.key}: ${t('보고 도착 — Jira 탭에서 댓글 초안 확인')}`);
@@ -10998,6 +11040,7 @@ async function jiraTick() {
   }
 }
 setInterval(jiraTick, 2500); jiraSave();
+$('jira-quest-btn').addEventListener('click', questToggle);
 $('jira-refresh').addEventListener('click', () => { jiraDetail.clear(); jiraLoad(); });
 $('jira-filter').addEventListener('change', e => { jiraFilter = e.target.value; jiraSave(); jiraLoad(); });
 const jiraItemFocusOut = e => { if (e.target.tagName === 'TEXTAREA' && jiraRenderPending) setTimeout(jiraRender, 0); };
@@ -11045,7 +11088,7 @@ function jbSavePrefs() { try { localStorage.setItem('roca-jira-board', JSON.stri
 const escA = v => esc(v == null ? '' : String(v)).replace(/"/g, '&quot;');
 function jiraSetMode(board) {
   jiraBoardMode = board;
-  $('jira-board').hidden = !board; $('jira-list').hidden = board; $('jira-filter').hidden = board;
+  $('jira-board').hidden = !board; $('jira-list').hidden = board || questOn; $('jira-filter').hidden = board; $('jira-quest-btn').hidden = board; $('jira-quest').hidden = board || !questOn;
   if (currentPage === 'jira') { const sz = board ? { w: 1100, h: 720 } : PAGE_SIZES.jira; window.orca.resizeWindow(sz.w, sz.h, board); }
 }
 async function jbLoad() {
@@ -11065,6 +11108,7 @@ async function jbLoad() {
   jb.issues = (r.result.issues || []).map(AgentDeskJira.boardIssue).filter(Boolean);
   jiraIssues = jb.issues;   // fallback facts for dispatch when the issue fetch fails
   jbBuildCols();
+  if (window.orca.questPrune) Promise.resolve(window.orca.questPrune({ issues: jb.issues })).then(() => questLoad(), () => {}).catch(() => {});   // fire-and-forget
 }
 function jbBuildCols() { jb.cols = AgentDeskJira.buildColumns(jb.data && jb.data.statuses, jbPrefs.cols[jb.project], jb.data && jb.data.boardColumns); }
 // a broken avatar image just disappears (no inline onerror: the CSP forbids inline handlers)
@@ -11079,6 +11123,7 @@ function jbBarRender() {
     <input type="text" id="jb-q" placeholder="${escA(t('보드 검색'))}" value="${escA(jb.q)}" spellcheck="false">
     <span class="jb-chips">${[...people].map(([id, p]) => `<button class="jb-av${jb.who.has(id) ? ' on' : ''}" data-jb="who" data-id="${escA(id)}" title="${escA(p.me ? `${t('내 계정')} · ${p.name}` : p.name)}">${jbAvatar(p.name, p.avatar)}</button>`).join('')}</span>
     <button class="jb-btn${jb.mine ? ' on' : ''}" data-jb="mine">${esc(t('내 담당만'))}</button>
+    <button class="jb-btn${questOn ? ' on' : ''}" data-jb="quest" title="${escA(t('Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다'))}">${esc(t('퀘스트'))}</button>
     <button class="jb-btn" data-jb="clear">${esc(t('필터 지우기'))}</button>
     <button class="jb-btn${jb.edit ? ' on' : ''}" data-jb="edit" title="${escA(t('열 순서 바꾸기·숨기기'))}">${esc(t('열 편집'))}</button>
     ${open.length ? `<button class="jb-btn" data-jb="dispatch">${esc(t('배치 중'))} ${open.length}</button>` : ''}
@@ -11094,6 +11139,8 @@ function jbCardHtml(i) {
     <div class="jb-foot"><span class="jb-type ${ty.cls}" title="${escA(i.type)}">${ty.icon}</span><span class="jb-key">${esc(i.key)}</span>${jiraBadge(d)}<span class="jb-pri ${pr.cls}" title="${escA(i.priority)}">${pr.icon}</span>${i.assignee ? `<span title="${escA(i.assignee)}">${jbAvatar(i.assignee, i.avatar)}</span>` : `<span class="jb-ava" title="${escA(t('담당자 없음'))}"><i>–</i></span>`}</div></div>`;
 }
 function jbColsRender() {
+  const qe = $('jb-quest'); qe.hidden = !questOn; $('jb-cols').hidden = questOn;
+  if (questOn) { questRender(qe); return; }
   const el = $('jb-cols'), err = jb.err || jiraErr;
   if (err || !jb.cols.length) { el.innerHTML = `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text" data-verbatim>${esc(err || t('표시할 열이 없습니다'))}</span></div>`; return; }
   const groups = AgentDeskJira.groupIssues(jb.cols, AgentDeskJira.filterIssues(jb.issues, { q: jb.q, assignees: jb.who }));
@@ -11127,6 +11174,7 @@ $('jira-board').addEventListener('click', e => {
   const prefs = () => (jbPrefs.cols[jb.project] = jbPrefs.cols[jb.project] || { order: [], hidden: [] });
   if (act === 'close') { jb.drawer = ''; jbColsRender(); jbDrawerRender(); }
   else if (act === 'who') { const id = b.dataset.id; if (jb.who.has(id)) jb.who.delete(id); else jb.who.add(id); jbBarRender(); jbColsRender(); }
+  else if (act === 'quest') questToggle();
   else if (act === 'mine') { jb.mine = !jb.mine; jiraLoad(); }
   else if (act === 'clear') { jb.q = ''; jb.who.clear(); if (jb.mine) { jb.mine = false; jiraLoad(); } else { jbBarRender(); jbColsRender(); } }
   else if (act === 'edit') { jb.edit = !jb.edit; jbBarRender(); jbColsRender(); }
@@ -11143,6 +11191,197 @@ document.addEventListener('keydown', e => {   // Jira board: "/" jumps to the se
   const q = $('jb-q'); if (q) { e.preventDefault(); q.focus(); q.select(); }
 });
 $('jira-board').addEventListener('input', e => { if (e.target.id === 'jb-q') { jb.q = e.target.value; jbColsRender(); } });
+
+// ── QUEST BOARD (Jira page "퀘스트" view): Jira tickets as quests handed to one of my agent sessions. Pure logic is
+//    core/quest.js (questView, partyOf, acceptProposal); state lives in main (~/.roca/quests.json). questRender(root)
+//    draws into ANY container (the dock panel reuses it), so its state is kept here, outside the DOM. 자동 only
+//    PROPOSES: nothing is dispatched until the user presses 맡기기, which re-checks the choice and opens the normal
+//    session / worktree modal; the assignment is recorded only when that modal's send succeeds (questNoteAssign). ──
+let questOn = false;
+const QUEST_PROPOSAL_MS = 10 * 60 * 1000;   // same as the desk's cache (quest/desk.mjs DESK_CACHE_MS)
+const quest = { file: { quests: {} }, proposals: new Map(), pending: new Map(), errors: new Map(), picker: '', roots: new Set(), wired: new WeakSet(), seq: 0, orcaRepos: [] };
+const questSkills = new Map();   // claude session_id → recent Skill names, newest first
+const QUEST_GROUPS = [['new', '새 퀘스트'], ['doing', ''], ['report', '보고 대기'], ['done', '완료']];
+const questGroupLabel = (g, ko) => g === 'doing' ? (LANG === 'en' ? 'In progress' : '진행 중') : t(ko);
+function questSkillNote(rec) {
+  const u = skillCastOf(rec), sid = rec && rec.ev && rec.ev.session_id;
+  if (!u || u.prompt || !sid) return;   // a live Skill tool call only (a /name prompt needs the installed-skill check)
+  const name = String(u.key).split(':').pop();
+  const list = (questSkills.get(sid) || []).filter(x => x !== name);
+  list.unshift(name);
+  questSkills.set(sid, list.slice(0, 8));
+  if (questSkills.size > 200) questSkills.delete(questSkills.keys().next().value);
+}
+window.orca.onHookEvents(evts => { for (const rec of evts) questSkillNote(rec); });   // live Skill uses (a second listener; the replay is fed from the hooksRecent loops)
+async function questLoad() {
+  try { const f = await window.orca.questState(); if (f && f.quests && typeof f.quests === 'object') quest.file = f; } catch {}
+  questRefresh();
+}
+function questRefresh() {
+  for (const r of quest.roots) { if (!r.isConnected) { quest.roots.delete(r); continue; } questRender(r); }
+}
+function questToggle() {
+  questOn = !questOn;
+  if (questOn) questLoad();
+  const b = $('jira-quest-btn'); if (b) b.classList.toggle('on', questOn);
+  if (jiraBoardMode) jbBarRender();
+  jiraRender();
+}
+// recording is best-effort: a failed save never blocks the dispatch that already happened
+async function questNoteAssign(key, a) {
+  try { await window.orca.questAssign({ key, ...a }); } catch {}
+  quest.proposals.delete(key); quest.picker = '';
+  await questLoad();
+}
+async function questNoteReport(key) {
+  try { await window.orca.questReport({ key }); } catch {}
+  await questLoad();
+}
+// Orca repo label (what the worktree modal offers and the desk may name); the Orca repo whose path contains a cwd (path prefix with a separator)
+const questRepoLabel = r => String(r.displayName || r.path || r.id);
+function questRepoOf(cwd) {
+  const c = String(cwd || '').replace(/[\\/]+$/, '');
+  let best = null;
+  for (const r of quest.orcaRepos) {
+    const p = String(r.path || '').replace(/[\\/]+$/, '');
+    if (p && (c === p || c.startsWith(p + '/') || c.startsWith(p + '\\')) && (!best || p.length > String(best.path).replace(/[\\/]+$/, '').length)) best = r;
+  }
+  return best;
+}
+// my sessions as the front desk sees them: permission-waiting ones are not eligible; "doing" = the dashboard's one-liner
+function questParty() {
+  const perm = dockPermMap();
+  const src = sessions.map(s => {
+    const sid = s.sessionId || (hookStateFor(s.id) || {}).sid || '';
+    const orca = questRepoOf(s.cwd || s.repo);
+    return { ...s, repo: orca ? questRepoLabel(orca) : s.repo, hasPerm: perm.has(s.id) || (s.needsInput === true && s.status !== 'done'), doing: nowSummaries.get(s.id) || '', skills: questSkills.get(sid) || [] };
+  });
+  return AgentDeskQuest.partyOf(src, handles);
+}
+// repos for the worktree option: the Orca repos only (the worktree modal can create nowhere else), labelled as the modal labels them
+async function questRepoList() {
+  try { const r = await window.orca.repos(); quest.orcaRepos = (r?.result?.repos || []).filter(x => x && x.id); } catch {}
+  return [...new Set(quest.orcaRepos.map(questRepoLabel))];
+}
+function questOpenPicker(key) {
+  quest.picker = quest.picker === key ? '' : key;
+  quest.proposals.delete(key); quest.errors.delete(key);
+  questRefresh();
+}
+async function questAuto(key) {
+  if (quest.pending.has(key)) return;
+  const token = ++quest.seq;
+  quest.pending.set(key, token); quest.errors.delete(key); quest.proposals.delete(key); quest.picker = '';
+  questRefresh();
+  let party = [], repos = [], r;
+  try {
+    repos = await questRepoList(); party = questParty();
+    const bi = questIssues().find(i => i.key === key) || { key };
+    const det = jiraDetail.get(key);   // cached drawer detail (plain text); no new fetch
+    r = await window.orca.questDesk({ key, issue: { key, summary: bi.summary || '', description: (det && det.description) || '', labels: bi.labels || [], components: bi.components || [], priority: bi.priority || '' }, party, repos });
+  } catch { r = { ok: false, error: 'failed' }; }
+  if (quest.pending.get(key) !== token) return;   // cancelled, or a newer ask owns this ticket now
+  quest.pending.delete(key);
+  if (!r || r.ok !== true) { if (!(r && r.error === 'cancelled')) quest.errors.set(key, (r && r.error) || 'failed'); }
+  else {
+    const acc = AgentDeskQuest.acceptProposal({ choice: r.choice, reason: r.reason }, party, repos);
+    const at = Date.now();
+    if (!acc) quest.errors.set(key, 'invalid');
+    else if (acc.kind === 'session') { const p = party.find(x => x.id === acc.id); quest.proposals.set(key, { kind: 'session', id: acc.id, label: p ? p.name : acc.id, reason: String(r.reason || ''), at }); }
+    else quest.proposals.set(key, { kind: 'worktree', repo: acc.repo, label: acc.repo, reason: String(r.reason || ''), at });
+  }
+  questRefresh();
+}
+function questCancel(key) {
+  if (!quest.pending.delete(key)) return;
+  Promise.resolve(window.orca.questDeskCancel({ key })).catch(() => {});
+  questRefresh();
+}
+// the proposal row's 맡기기: the choice is checked again against the sessions and repos as they are NOW
+async function questAccept(key) {
+  const p = quest.proposals.get(key); if (!p) return;
+  let ok = null;
+  if (Date.now() - p.at <= QUEST_PROPOSAL_MS) {
+    const repos = await questRepoList(), party = questParty();
+    ok = AgentDeskQuest.acceptProposal({ choice: p.kind === 'session' ? { kind: 'session', id: p.id } : { kind: 'worktree', repo: p.repo } }, party, repos);
+  }
+  if (!ok) { quest.proposals.delete(key); quest.errors.set(key, 'stale'); quest.picker = key; questRefresh(); return; }
+  if (ok.kind === 'session') jiraSessionModal(key, ok.id); else jiraWorktreeModal(key, ok.repo);
+}
+function questPick(key, sid) {
+  const p = questParty().find(x => x.id === sid);
+  if (!p || !p.eligible) { quest.errors.set(key, 'stale'); quest.picker = key; questRefresh(); return; }
+  jiraSessionModal(key, sid);
+}
+function questStars(n) { return n ? '★'.repeat(n) + '☆'.repeat(3 - n) : '·'; }
+function questPickerHtml(key) {
+  const party = questParty().sort((a, b) => (b.eligible ? 1 : 0) - (a.eligible ? 1 : 0));   // eligible sessions first
+  const rows = party.map(p => `<div class="qb-row${p.eligible ? '' : ' off'}"><div><b data-verbatim>${esc(p.name)}</b> <span data-verbatim>${esc(p.repo)}${p.branch ? ' · ' + esc(p.branch) : ''}</span></div>
+    ${p.doing ? `<div data-verbatim>${esc(p.doing)}</div>` : ''}${p.skills.length ? `<div class="qb-sk" data-verbatim>${p.skills.map(x => `<span>${esc(x)}</span>`).join('')}</div>` : ''}
+    <div>${p.eligible ? `<button data-q="pick" data-key="${escA(key)}" data-sid="${escA(p.id)}">${esc(t('맡기기'))}</button>` : `<button disabled>${esc(t('작업 중'))}</button>`}</div></div>`);
+  return `<div class="qb-pick">${rows.join('')}<button data-q="wt" data-key="${escA(key)}">${esc(t('새 워크트리에서 시작'))}</button></div>`;
+}
+function questCardHtml(c) {
+  const over = c.due && AgentDeskJira.isOverdue(c.due, c.group === 'done' ? 'done' : 'new');
+  let who = '';
+  if (c.quest) {
+    if (c.quest.ended) who = t('종료됨');
+    else if (c.quest.sessionId) { const s = sessions.find(x => x.id === c.quest.sessionId); who = s ? s.name : t('종료됨'); }
+    else who = c.quest.repo || '';
+  } else if (c.assignee) who = c.assignee;
+  const key = c.key, pend = quest.pending.has(key), err = quest.errors.get(key);
+  let prop = quest.proposals.get(key);
+  if (prop && Date.now() - prop.at > QUEST_PROPOSAL_MS) prop = null;   // expired: hide the row
+  let acts = '';
+  if (c.group === 'new') {
+    acts = pend ? `<span class="qb-spin"></span><span>${esc(t('프런트데스크가 고르는 중…'))}</span><button data-q="cancel" data-key="${escA(key)}">${esc(t('취소'))}</button>`
+      : `<button data-q="open" data-key="${escA(key)}">${esc(t('맡기기'))}</button><button data-q="auto" data-key="${escA(key)}">${esc(t('자동'))}</button>`;
+  }
+  return `<div class="qb-card" data-key="${escA(key)}"><div class="qb-top"><span class="qb-stars" title="${escA(t('난이도'))}">${questStars(c.difficulty)}</span><b class="jb-key">${esc(key)}</b></div>
+    <div class="qb-title" data-verbatim>${esc(c.title)}</div>
+    ${c.due ? `<div class="qb-due${over ? ' over' : ''}">${over ? '⚠ ' : '📅 '}${esc(AgentDeskJira.formatDue(c.due, LANG))}</div>` : ''}
+    ${who ? `<div class="qb-who" data-verbatim>${esc(who)}</div>` : ''}
+    ${acts ? `<div class="qb-acts">${acts}</div>` : ''}
+    ${prop ? `<div class="qb-prop" data-verbatim>⟶ ${esc(prop.label)} · ${esc(prop.reason)}<div class="qb-acts"><button data-q="accept" data-key="${escA(key)}">${esc(t('맡기기'))}</button><button data-q="other" data-key="${escA(key)}">${esc(t('다른 사람'))}</button></div></div>` : ''}
+    ${err ? `<div class="qb-err">${esc(t('직접 고르세요'))}</div>` : ''}
+    ${quest.picker === key && c.group === 'new' ? questPickerHtml(key) : ''}</div>`;
+}
+function questWire(root) {
+  if (quest.wired.has(root)) return; quest.wired.add(root);
+  root.addEventListener('click', e => {
+    const b = e.target.closest('[data-q]'); if (!b || b.disabled) return;
+    const key = b.dataset.key, act = b.dataset.q;
+    if (act === 'open') questOpenPicker(key);
+    else if (act === 'auto') questAuto(key);
+    else if (act === 'cancel') questCancel(key);
+    else if (act === 'pick') questPick(key, b.dataset.sid);
+    else if (act === 'wt') jiraWorktreeModal(key);
+    else if (act === 'other') { quest.proposals.delete(key); quest.picker = key; questRefresh(); }
+    else if (act === 'accept') questAccept(key);   // the only path from a proposal to a dispatch, and it still goes through the normal modal
+  });
+}
+// the tickets the view shows: the board's own search and avatar filters in board mode, the loaded list otherwise
+function questIssues() {
+  return jiraBoardMode ? AgentDeskJira.filterIssues(jb.issues, { q: jb.q, assignees: jb.who }) : jiraIssues;
+}
+const questEmptyHtml = text => `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text" data-verbatim>${esc(text)}</span></div>`;
+function questRender(root) {
+  if (!root) return;
+  quest.roots.add(root); questWire(root);
+  // explicit states first: loading, not connected, error, empty
+  if (jiraBusy) { root.innerHTML = questEmptyHtml(t('불러오는 중…')); return; }
+  if (jiraConn && !jiraConn.connected) { root.innerHTML = questEmptyHtml(jiraConn.error || t('Jira가 연결되지 않았습니다. 위 "연결 설정"에 Atlassian OAuth 앱의 Client ID·Secret을 넣고 로그인하세요 (앱 만드는 방법: 저장소의 docs/JIRA-SETUP.md). Orca를 쓰면 Orca 설정 → Jira 연결도 쓸 수 있습니다.')); return; }
+  const err = (jiraBoardMode && jb.err) || jiraErr;
+  if (err) { root.innerHTML = questEmptyHtml(err); return; }
+  const live = new Set(sessions.filter(s => s.connected && s.ended !== true).map(s => s.id));
+  const cards = AgentDeskQuest.questView(questIssues(), quest.file, live);
+  if (!cards.length) { root.innerHTML = questEmptyHtml(t('표시할 티켓이 없습니다')); return; }
+  root.innerHTML = QUEST_GROUPS.map(([g, label]) => {
+    const list = cards.filter(c => c.group === g);
+    return `<div class="qb-col" data-group="${g}"><div class="qb-colh"><span>${esc(questGroupLabel(g, label))}</span><span class="jb-cnt">${list.length}</span></div><div class="qb-colb">${list.map(questCardHtml).join('')}</div></div>`;
+  }).join('');
+}
+// ── end of QUEST BOARD ──
 $('jira-board').addEventListener('change', e => {
   if (e.target.id !== 'jb-project') return;
   jbPrefs.project = e.target.value; jbSavePrefs(); jb.who.clear(); jb.q = ''; jb.drawer = ''; jiraLoad();
