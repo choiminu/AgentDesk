@@ -9,6 +9,7 @@
 //   but recorded with another source (or none we can read) gets a manual plan with detail 'conflict' and never installs
 import { planInstall, hasUpdate, mcpEntryName } from './plan.mjs';
 import { parseMarketplace } from './catalog.mjs';
+import { join, resolve, isAbsolute, sep } from 'node:path';
 
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const str = v => (typeof v === 'string' ? v : '');
@@ -39,12 +40,19 @@ const publicPlan = p => ({ kind: p.kind, show: list(p.show).map(String), needs: 
   ...(p.detail === 'conflict' ? { detail: 'conflict' } : {}) });
 
 const lc = v => str(v).toLowerCase();
-// does the known marketplace `name` come from this link's repo? (github repo, or a git URL on github.com)
-function sameSource(rec, ownerRepo) {
+// does the known marketplace `name` come from this link's repo? (github repo, a git URL on github.com, or a local-path
+// marketplace inside this repo's link clone ~/.roca/shop/<owner>-<repo> — what a /tree/ link or the fallback adds)
+function sameSource(rec, ownerRepo, home) {
   const src = isObj(rec) && isObj(rec.source) ? rec.source : null;
   if (!src || !ownerRepo) return false;
   const want = lc(ownerRepo);
   if (src.source === 'github') return lc(src.repo) === want;
+  if (src.source === 'directory') {
+    if (typeof home !== 'string' || !isAbsolute(home) || !str(src.path) || !isAbsolute(src.path)) return false;
+    const clone = join(home, '.roca', 'shop', ownerRepo.replace('/', '-'));
+    const p = resolve(src.path);
+    return p === clone || p.startsWith(clone + sep);
+  }
   if (src.source === 'git' || src.source === 'url') {
     const m = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/i.exec(str(src.url));
     return !!m && lc(m[1]) === want;
@@ -53,11 +61,12 @@ function sameSource(rec, ownerRepo) {
 }
 const CONFLICT = { kind: 'manual', show: ['같은 이름의 마켓이 이미 다른 출처로 등록되어 있습니다 (marketplace name conflict)'], needs: [], detail: 'conflict' };
 
-function planOf(item, installed, have, known) {
-  if (item.source === 'link' && item.kind === 'plugin' && str(item.marketplace)) {
+function planOf(item, installed, have, known, home) {
+  // an installed plugin shows as installed, whatever source its marketplace was added from
+  if (item.source === 'link' && item.kind === 'plugin' && str(item.marketplace) && !installed.plugins.has(`${item.name}@${item.marketplace}`)) {
     const name = item.marketplace;
     const kn = isObj(known) && Object.prototype.hasOwnProperty.call(known, name);
-    if ((kn || installed.marketplaces.has(name)) && !(kn && sameSource(known[name], item.marketplaceSource))) return { ...CONFLICT, show: CONFLICT.show.slice() };
+    if ((kn || installed.marketplaces.has(name)) && !(kn && sameSource(known[name], item.marketplaceSource, home))) return { ...CONFLICT, show: CONFLICT.show.slice() };
   }
   try { return planInstall(item, { installed, have: isObj(have) ? have : {} }); } catch { return { kind: 'manual', show: [], needs: [] }; }
 }
@@ -80,8 +89,10 @@ export function shopPayload({ catalog, inventory, have } = {}) {
 }
 
 // detectRepo results: a marketplace becomes its plugins (installed through the link as marketplace source); a lone
-// plugin.json has no marketplace (→ manual); skills keep their folder (the install copies it); server.json is a registry record
-export function linkItems(detected, { owner, repo } = {}) {
+// plugin.json has no marketplace (→ manual); skills keep their folder (the install copies it); server.json is a registry record.
+// A link with a ref or path (/tree/<ref>/<path>) adds the previewed marketplace folder (inside the clone) as a local path:
+// `owner/repo` alone would install the default branch root, not what was shown
+export function linkItems(detected, { owner, repo, ref, path } = {}) {
   const out = [];
   const source = `${owner}/${repo}`;
   const listed = new Set();
@@ -91,7 +102,8 @@ export function linkItems(detected, { owner, repo } = {}) {
       if (listed.has(p.name)) continue;
       listed.add(p.name);
       const { repo: _r, ...plug } = p;
-      out.push({ item: { ...plug, source: 'link', marketplaceSource: source }, choice: {}, hasScripts: false });
+      const local = (ref || path) && str(d.path) && isAbsolute(d.path) ? { marketplacePath: d.path } : {};
+      out.push({ item: { ...plug, source: 'link', marketplaceSource: source, ...local }, choice: {}, hasScripts: false });
     }
   }
   for (const d of list(detected)) {
@@ -105,11 +117,11 @@ export function linkItems(detected, { owner, repo } = {}) {
 }
 
 // what the renderer may send for a link choice: no manifest, no path
-export function linkFound(entries, { inventory, have, catalogItems, known } = {}) {
+export function linkFound(entries, { inventory, have, catalogItems, known, home } = {}) {
   const installed = installedOf(inventory, catalogItems, known);
   return list(entries).map(e => ({
     choiceId: e.choiceId, kind: e.item.kind, name: e.item.name, description: str(e.item.description), hasScripts: !!e.hasScripts,
-    plan: publicPlan(planOf(e.item, installed, have, known)),
+    plan: publicPlan(planOf(e.item, installed, have, known, home)),
   }));
 }
 
@@ -142,7 +154,7 @@ export function fixed(r) {
 // the plan is made again here from a fresh inventory (an earlier install in the queue may have changed it)
 export async function shopInstallJob({ home, item, choice, env, allAgents, inventory, catalogItems, known, have, run, runInstall } = {}) {
   if (!isObj(item) || typeof runInstall !== 'function') return fixed({ ok: false, error: 'failed', detail: 'bad request' });
-  const plan = planOf(item, installedOf(inventory, catalogItems, known), have, known);
+  const plan = planOf(item, installedOf(inventory, catalogItems, known), have, known, home);
   if (plan.detail === 'conflict') return fixed({ ok: false, error: 'unsupported', detail: 'conflict' });
   const vals = checkEnv(env, plan.needs);
   if (!vals) return fixed({ ok: false, error: 'failed', detail: 'needs' });
