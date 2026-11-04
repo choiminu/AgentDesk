@@ -19,16 +19,41 @@ function daysCount(byDay, now, days) {
   return sum;
 }
 
+// a Claude plugin is never recorded by its own name: its skills are "<plugin>:<skill>" and its MCP tools come from
+// server "plugin_<plugin>_<server>", so the plugin's uses are the sum of every store key with one of those prefixes
+function pluginEntry(name, store) {
+  if (!store || typeof store.keys !== 'function') return undefined; // cannot sum: not counted (kept out of 💤)
+  const pre = [`${name}:`, `plugin_${name}_`];
+  const out = { total: 0, byDay: {}, lastAt: 0, lastRepo: '', byAgent: {} };
+  let any = false;
+  for (const k of store.keys()) {
+    if (!pre.some(p => k.startsWith(p))) continue;
+    const e = store.get(k);
+    if (!e) continue;
+    any = true;
+    out.total += e.total || 0;
+    for (const [d, n] of Object.entries(e.byDay || {})) out.byDay[d] = (out.byDay[d] || 0) + n;
+    for (const [a, n] of Object.entries(e.byAgent || {})) out.byAgent[a] = (out.byAgent[a] || 0) + n;
+    if ((e.lastAt || 0) > out.lastAt) { out.lastAt = e.lastAt; out.lastRepo = e.lastRepo || ''; }
+  }
+  return any ? out : null;
+}
+
 function usesOf(item, store, now) {
   const agents = Array.isArray(item.agents) ? item.agents : [];
-  const counted = agents.some(a => !UNCOUNTED.includes(a));
-  const e = counted && store && typeof item.usageKey === 'string' && item.usageKey ? store.get(item.usageKey) : null;
+  let counted = agents.some(a => !UNCOUNTED.includes(a));
+  let e = null;
+  if (counted && store && item.kind === 'plugin' && item.source === 'plugin') {
+    e = pluginEntry(item.name, store);
+    if (e === undefined) { counted = false; e = null; }
+  } else if (counted && store && typeof item.usageKey === 'string' && item.usageKey) e = store.get(item.usageKey);
   if (!e) return { week: 0, month: 0, total: 0, mastery: 0, counted };
   const month = daysCount(e.byDay, now, 30);
   const out = { week: weekCount(e.byDay, now), month, total: e.total || 0, mastery: mastery(month), counted };
   if (e.lastAt) out.lastAt = e.lastAt;
   if (e.lastRepo) out.lastRepo = e.lastRepo;
   if (e.byAgent && Object.keys(e.byAgent).length) out.byAgent = { ...e.byAgent };
+  if (item.kind === 'mcp' && Array.isArray(e.tools) && e.tools.length) out.tools = e.tools.slice(0, 30);
   return out;
 }
 
@@ -52,7 +77,7 @@ function canOf(item) {
   } else if (item.kind === 'mcp') {
     can.off = item.on !== false;
     can.on = item.on === false;
-    can.remove = true;
+    can.remove = !(item.loc && item.loc.where === 'mcpjson'); // a .mcp.json is a team file in git: off / on only
   }
   return can;
 }

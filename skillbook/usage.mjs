@@ -20,6 +20,13 @@ const nullo = () => Object.create(null); // user-influenced names ("__proto__", 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const num = v => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
 const minDayOf = now => dayKey(now - KEEP_DAYS * 86400e3);
+const TOOLS_MAX = 30;                 // MCP tool names kept per server (names only: what the skillbook shows as "사용한 도구")
+const TOOL_RE = /^[\w.-]{1,128}$/;
+function addTool(e, tool) {
+  if (typeof tool !== 'string' || !TOOL_RE.test(tool)) return;
+  if (!e.tools) e.tools = [];
+  if (e.tools.length < TOOLS_MAX && !e.tools.includes(tool)) e.tools.push(tool);
+}
 
 function bump(keys, u, minDay) {
   let e = keys[u.key];
@@ -30,6 +37,7 @@ function bump(keys, u, minDay) {
   if (u.at >= e.lastAt) { e.lastAt = u.at; e.lastRepo = u.repo || ''; }
   const a = String(u.agent || 'claude');
   e.byAgent[a] = (e.byAgent[a] || 0) + 1;
+  if (u.kind === 'mcp') addTool(e, u.tool);
 }
 function prune(keys, minDay) {
   for (const e of Object.values(keys)) for (const d of Object.keys(e.byDay)) if (d < minDay) delete e.byDay[d];
@@ -42,6 +50,7 @@ function merge(keys, add) {
     for (const [d, n] of Object.entries(s.byDay)) e.byDay[d] = (e.byDay[d] || 0) + n;
     for (const [a, n] of Object.entries(s.byAgent)) e.byAgent[a] = (e.byAgent[a] || 0) + n;
     if (s.lastAt >= e.lastAt) { e.lastAt = s.lastAt; e.lastRepo = s.lastRepo; }
+    for (const t of s.tools || []) addTool(e, t);
   }
 }
 // repair one loaded entry; null when nothing usable is left
@@ -78,6 +87,7 @@ function sanitize(e) {
   const out = { total: num(e.total), byDay: nullo(), lastAt: num(e.lastAt), lastRepo: typeof e.lastRepo === 'string' ? e.lastRepo : '', byAgent: nullo() };
   if (isObj(e.byDay)) for (const [d, n] of Object.entries(e.byDay)) if (DAY_RE.test(d) && num(n) > 0) out.byDay[d] = num(n);
   if (isObj(e.byAgent)) for (const [a, n] of Object.entries(e.byAgent)) if (num(n) > 0) out.byAgent[a] = num(n);
+  if (Array.isArray(e.tools)) for (const t of e.tools) addTool(out, t);
   return out.total > 0 ? out : null;
 }
 
@@ -127,6 +137,7 @@ export function createUsageStore({ file, now = Date.now }) {
     repos() { return Object.keys(pruneRepos(st.repos, now())).sort(); },
     save() { prune(st.keys, minDayOf(now())); st.repos = pruneRepos(st.repos, now()); writeJsonAtomic(file, st); },
     get(key) { return st.keys[key] || null; },
+    keys() { return Object.keys(st.keys); },
     cutoff: () => st.cutoff,
     backfillDone: () => st.backfilled === true,
     // internals for backfill()

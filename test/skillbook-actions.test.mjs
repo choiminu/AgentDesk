@@ -121,10 +121,10 @@ test('mcp off parks and on restores byte-for-byte', async () => {
   assert.equal(readFileSync(cf, 'utf8'), CODEX);
 });
 
-test('mcp in project, .mcp.json and gemini: remove and restore', async () => {
+test('mcp in project and gemini: remove and restore', async () => {
   const { home, repo } = fixture();
   const f = fakes();
-  const files = { 'proj-srv': join(home, '.claude.json'), 'file-srv': join(repo, '.mcp.json'), 'gem-srv': join(home, '.gemini/settings.json') };
+  const files = { 'proj-srv': join(home, '.claude.json'), 'gem-srv': join(home, '.gemini/settings.json') };
   for (const [name, file] of Object.entries(files)) {
     const before = json(file);
     const it = item(home, repo, i => i.name === name);
@@ -229,10 +229,10 @@ test('plugin actions call the CLI', async () => {
   assert.deepEqual(listRemoved({ home, now: Date.now() }), []);
   // a failing CLI is reported and leaves no removed entry
   const bad = { ...f, run: async () => ({ code: 1, stdout: '', stderr: 'not found\n' }) };
-  assert.deepEqual(await actOn({ home, item: it, action: 'remove', ...bad }), { ok: false, error: 'failed', detail: 'not found' });
+  assert.deepEqual(await actOn({ home, item: it, action: 'remove', ...bad }), { ok: false, error: 'failed', detail: 'cli' }); // CLI output never reaches the renderer
   assert.deepEqual(listRemoved({ home, now: Date.now() }), []);
   const thrown = { ...f, run: async () => { throw new Error('spawn claude ENOENT'); } };
-  assert.deepEqual(await actOn({ home, item: it, action: 'off', ...thrown }), { ok: false, error: 'failed', detail: 'spawn claude ENOENT' });
+  assert.deepEqual(await actOn({ home, item: it, action: 'off', ...thrown }), { ok: false, error: 'failed', detail: 'cli' });
 });
 
 test('unsupported things say so', async () => {
@@ -375,4 +375,99 @@ test('skill remove only takes folders the scan reads', async () => {
   put(join(home, '.codex/skills/cx-skill/SKILL.md'), '---\nname: cx-skill\n---\n');
   for (const name of ['proj-skill', 'cx-skill']) assert.deepEqual(await actOn({ home, item: item(home, repo, i => i.name === name), action: 'remove', repos: [repo], ...f }), { ok: true }, name);
   assert.equal(f.calls.trash.length, 2);
+});
+
+// ---- final fix wave ----
+test('.mcp.json server off / on uses disabledMcpjsonServers in ~/.claude.json, never the team file', async () => {
+  const { home, repo } = fixture();
+  const f = fakes();
+  const cj = join(home, '.claude.json'), mj = join(repo, '.mcp.json');
+  const mcpBytes = readFileSync(mj, 'utf8');
+  const before = json(cj);
+  const it = item(home, repo, i => i.name === 'file-srv');
+  assert.equal(it.can, undefined); // scan item; payload adds can
+  assert.deepEqual(await actOn({ home, item: it, action: 'off', ...f }), { ok: true });
+  assert.equal(readFileSync(mj, 'utf8'), mcpBytes);
+  const mid = json(cj);
+  assert.deepEqual(mid.projects[repo].disabledMcpjsonServers, ['file-srv']);
+  assert.deepEqual(Object.keys(mid), Object.keys(before));
+  assert.deepEqual({ ...mid.projects[repo], disabledMcpjsonServers: undefined }, { ...before.projects[repo], disabledMcpjsonServers: undefined });
+  assert.ok(backups(home).some(b => b.startsWith('.claude.json.')));
+  assert.ok(!existsSync(join(home, '.roca/skillbook-parked.json')));
+  const off = item(home, repo, i => i.name === 'file-srv');
+  assert.equal(off.on, false); assert.equal(off.id, it.id);
+  // other names in the list are kept
+  const c = json(cj); c.projects[repo].disabledMcpjsonServers = ['other', 'file-srv']; put(cj, c);
+  assert.deepEqual(await actOn({ home, item: off, action: 'on', ...f }), { ok: true });
+  assert.deepEqual(json(cj).projects[repo].disabledMcpjsonServers, ['other']);
+  assert.equal(readFileSync(mj, 'utf8'), mcpBytes);
+  assert.equal(item(home, repo, i => i.name === 'file-srv').on, true);
+  // on again: no longer listed
+  assert.deepEqual(await actOn({ home, item: off, action: 'on', ...f }), { ok: false, error: 'gone' });
+  // remove / restore are not offered for .mcp.json
+  assert.deepEqual(await actOn({ home, item: it, action: 'remove', ...f }), { ok: false, error: 'unsupported', detail: 'location' });
+  assert.equal(readFileSync(mj, 'utf8'), mcpBytes);
+  put(join(home, '.roca/skillbook-removed.json'), { v: 1, entries: [{ id: 'r1', sid: 'r1', kind: 'mcp', agent: 'claude', name: 'file-srv', loc: { file: mj, where: 'mcpjson' }, at: Date.now(), how: 'config', json: { command: 'npx' } }] });
+  assert.deepEqual(await actOn({ home, item: { id: 'r1', kind: 'mcp', name: 'file-srv' }, action: 'restore', ...f }), { ok: false, error: 'unsupported', detail: 'location' });
+  assert.equal(readFileSync(mj, 'utf8'), mcpBytes);
+});
+
+test('.mcp.json server off without a project entry in ~/.claude.json refuses', async () => {
+  const { home, repo } = fixture();
+  const f = fakes();
+  const cj = join(home, '.claude.json');
+  const it = item(home, repo, i => i.name === 'file-srv');
+  // the entry went away after the scan
+  const c = json(cj); delete c.projects[repo]; put(cj, c);
+  const text = readFileSync(cj, 'utf8');
+  assert.deepEqual(await actOn({ home, item: it, action: 'off', ...f }), { ok: false, error: 'failed', detail: 'missing' });
+  // scanned without a project entry
+  const it2 = item(home, repo, i => i.name === 'file-srv');
+  assert.deepEqual(await actOn({ home, item: it2, action: 'off', ...f }), { ok: false, error: 'failed', detail: 'missing' });
+  assert.equal(readFileSync(cj, 'utf8'), text);
+  assert.deepEqual(backups(home), []);
+  // the server left .mcp.json
+  const c2 = json(cj); c2.projects[repo] = { allowedTools: [] }; put(cj, c2);
+  const it3 = item(home, repo, i => i.name === 'file-srv');
+  put(join(repo, '.mcp.json'), { mcpServers: {} });
+  assert.deepEqual(await actOn({ home, item: it3, action: 'off', ...f }), { ok: false, error: 'gone' });
+  assert.equal(json(cj).projects[repo].disabledMcpjsonServers, undefined);
+});
+
+test('errors reach the caller as fixed codes, never file text', async () => {
+  const { home, repo } = fixture();
+  const f = fakes();
+  const cj = join(home, '.claude.json');
+  const it = item(home, repo, i => i.name === 'user-srv');
+  writeFileSync(cj, '{"mcpServers":{"user-srv":{"env":{"K":sk-live-SECRET}}}}');
+  const r = await actOn({ home, item: it, action: 'off', ...f });
+  assert.equal(r.ok, false); assert.equal(r.error, 'failed'); assert.equal(r.detail, 'invalid JSON');
+  assert.ok(!JSON.stringify(r).includes('sk-live'));
+  // a broken store too
+  put(cj, CLAUDE_JSON);
+  put(join(home, '.roca/skillbook-parked.json'), '{"entries":[sk-live-SECRET');
+  const r2 = await actOn({ home, item: item(home, repo, i => i.name === 'user-srv'), action: 'off', ...f });
+  assert.deepEqual(r2, { ok: false, error: 'failed', detail: 'invalid JSON' });
+  // an unexpected throw (trash fails) is 'io', not its message
+  const boom = { ...f, trash: async () => { throw new Error('EPERM /secret/path sk-live-SECRET'); } };
+  const r3 = await actOn({ home, item: item(home, repo, i => i.name === 'demo-skill'), action: 'remove', ...boom });
+  assert.deepEqual(r3, { ok: false, error: 'failed', detail: 'io' });
+});
+
+test('backups keep the newest 20 per config file', async () => {
+  const { home, repo } = fixture();
+  const f = fakes();
+  const dir = join(home, '.roca/skillbook-backup');
+  mkdirSync(dir, { recursive: true });
+  for (let i = 0; i < 25; i++) writeFileSync(join(dir, `.claude.json.${1000 + i}`), 'old');
+  for (let i = 0; i < 3; i++) writeFileSync(join(dir, `config.toml.${1000 + i}`), 'old');
+  writeFileSync(join(dir, 'unrelated.txt'), 'x');
+  assert.deepEqual(await actOn({ home, item: item(home, repo, i => i.name === 'user-srv'), action: 'off', ...f }), { ok: true });
+  const left = readdirSync(dir);
+  const cj = left.filter(n => n.startsWith('.claude.json.')).sort((a, b) => Number(b.split('.').pop()) - Number(a.split('.').pop()));
+  assert.equal(cj.length, 20);
+  assert.ok(Number(cj[0].split('.').pop()) > 2000, 'the new backup is kept');
+  assert.ok(!cj.includes('.claude.json.1000') && !cj.includes('.claude.json.1005') && cj.includes('.claude.json.1006'));
+  assert.equal(left.filter(n => n.startsWith('config.toml.')).length, 3);
+  assert.ok(left.includes('unrelated.txt'));
 });

@@ -218,3 +218,39 @@ test('backfill notes each transcript folder as a repo', async () => {
   await backfill(store, { roots: [root], cutoff });
   assert.deepEqual(store.repos(), ['/w/demo-app']);
 });
+
+// ---- final fix wave ----
+test('mcp tool names are kept per server (names only, at most 30, survive save/load)', () => {
+  const dir = tmp(); const now = Date.UTC(2026, 10, 4, 12, 0, 0);
+  const store = createUsageStore({ file: join(dir, 'u.json'), now: () => now });
+  store.load();
+  store.addRecord({ ts: now / 1000, agent: 'claude', ev: { hook_event_name: 'PreToolUse', tool_name: 'mcp__db__query', tool_input: { sql: 'select sk-SECRET' } } });
+  store.addRecord({ ts: now / 1000, agent: 'claude', ev: { hook_event_name: 'PreToolUse', tool_name: 'mcp__db__query', tool_input: {} } });
+  store.addRecord({ ts: now / 1000, agent: 'claude', ev: { hook_event_name: 'PreToolUse', tool_name: 'mcp__db__list_tables', tool_input: {} } });
+  store.add({ key: 'db', kind: 'mcp', agent: 'claude', at: now, tool: 'bad name with spaces' });
+  for (let i = 0; i < 40; i++) store.add({ key: 'big', kind: 'mcp', agent: 'claude', at: now, tool: `t${i}` });
+  store.add({ key: 'demo-skill', kind: 'skill', agent: 'claude', at: now });
+  assert.deepEqual(store.get('db').tools, ['query', 'list_tables']);
+  assert.equal(store.get('big').tools.length, 30);
+  assert.equal(store.get('demo-skill').tools, undefined);
+  store.save();
+  assert.ok(!readFileSync(join(dir, 'u.json'), 'utf8').includes('sk-SECRET'));
+  const raw = JSON.parse(readFileSync(join(dir, 'u.json'), 'utf8'));
+  raw.keys.db.tools.push('x y', 7, 'ok_tool');
+  for (let i = 0; i < 40; i++) raw.keys.db.tools.push(`z${i}`);
+  writeFileSync(join(dir, 'u.json'), JSON.stringify(raw));
+  const re = createUsageStore({ file: join(dir, 'u.json'), now: () => now }); re.load();
+  assert.deepEqual(re.get('db').tools.slice(0, 3), ['query', 'list_tables', 'ok_tool']);
+  assert.equal(re.get('db').tools.length, 30);
+  assert.deepEqual(re.keys().sort(), ['big', 'db', 'demo-skill']);
+});
+
+test('backfill keeps mcp tool names too', async () => {
+  const dir = tmp(); const cutoff = Date.UTC(2026, 10, 3, 12, 0, 0);
+  const mline = JSON.stringify({ type: 'assistant', timestamp: new Date(cutoff - HOUR).toISOString(), message: { role: 'assistant', content: [{ type: 'tool_use', id: 't', name: 'mcp__db__query', input: {} }] } });
+  const root = projects(dir, { 'a.jsonl': [mline] });
+  const store = createUsageStore({ file: join(dir, 'u.json'), now: () => cutoff + HOUR });
+  store.load();
+  await backfill(store, { roots: [root], cutoff });
+  assert.deepEqual(store.get('db').tools, ['query']);
+});

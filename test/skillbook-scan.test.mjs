@@ -1,7 +1,7 @@
 // Skillbook inventory scan: skillbook/scan.mjs over a temp home (made-up names only).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, statSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, statSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { scanInventory } from '../skillbook/scan.mjs';
@@ -169,4 +169,39 @@ test('same repo basename in two places gets distinct ids', () => {
   assert.equal(hits.length, 2); assert.equal(hits[0].repo, 'app');
   assert.notEqual(hits[0].id, hits[1].id);
   assert.equal(new Set(r.sources.map(s => s.id)).size, r.sources.length);
+});
+
+// ---- final fix wave ----
+test('a ~/.claude/skills link into ~/.agents/skills is the shared item, once', async () => {
+  const { home, repo } = fixture();
+  const { symlinkSync } = await import('node:fs');
+  symlinkSync(join(home, '.agents/skills/shared-skill'), join(home, '.claude/skills/shared-skill'));
+  // a link to somewhere else stays a Claude skill of its own
+  skill(join(home, 'elsewhere'), 'linked-skill', 'Elsewhere.');
+  symlinkSync(join(home, 'elsewhere/linked-skill'), join(home, '.claude/skills/linked-skill'));
+  const r = scanInventory({ home, repos: [repo] });
+  const shared = r.items.filter(i => i.name === 'shared-skill');
+  assert.equal(shared.length, 1);
+  assert.equal(shared[0].source, 'shared');
+  assert.deepEqual(shared[0].agents, ['claude', 'codex', 'gemini']);
+  assert.equal(shared[0].path, join(home, '.agents/skills/shared-skill'));
+  const linked = r.items.filter(i => i.name === 'linked-skill');
+  assert.equal(linked.length, 1); assert.deepEqual(linked[0].agents, ['claude']);
+});
+
+test('.mcp.json servers: exact projects key, and off when listed in disabledMcpjsonServers', () => {
+  const { home, repo } = fixture();
+  const cj = join(home, '.claude.json');
+  const c = JSON.parse(readFileSync(cj, 'utf8'));
+  c.projects[repo].disabledMcpjsonServers = ['file-srv', 'not-there'];
+  put(cj, c);
+  const r = scanInventory({ home, repos: [repo] });
+  const f = find(r, i => i.name === 'file-srv');
+  assert.equal(f.on, false);
+  assert.equal(f.loc.project, repo);
+  assert.equal(r.items.filter(i => i.name === 'file-srv').length, 1);
+  // no project entry: listed as on, without a project key
+  delete c.projects[repo]; put(cj, c);
+  const g = find(scanInventory({ home, repos: [repo] }), i => i.name === 'file-srv');
+  assert.equal(g.on, true); assert.equal(g.loc.project, undefined);
 });

@@ -1,6 +1,8 @@
 // Safe edits of agent hook settings files (~/.claude/settings.json, ~/.gemini/settings.json, ~/.codex/hooks.json).
 //   readJsonStrict(file)   → {} when the file is missing or empty; throws when it exists but is not a JSON object
-//                            (never treat a broken file as {} and write that back over the user's settings)
+//                            (never treat a broken file as {} and write that back over the user's settings);
+//                            the error's code is 'EJSON' (not JSON / not an object) or the read error's code, and its
+//                            message never quotes the file's text
 //   writeJsonAtomic(file)  → tmp file + rename, keeping the original file mode (new files 0600)
 //   backupPrivate(file, dir, name) → copy into dir (0700) as a 0600 file
 //   installPermHookAt / uninstallPermHookAt → the widget approval hook on PermissionRequest; every other hook is kept
@@ -11,11 +13,13 @@ import { basename, dirname, join } from "node:path";
 export function readJsonStrict(file) {
   if (!existsSync(file)) return {};
   let raw;
-  try { raw = readFileSync(file, "utf-8"); } catch (e) { throw new Error(`${basename(file)}을 읽을 수 없습니다: ${e.message}`); }
+  // the messages never quote the file: a JSON.parse message carries the text around the error (it may hold a token)
+  const err = (why, code) => Object.assign(new Error(`${basename(file)}을 읽을 수 없습니다: ${why}`), { code });
+  try { raw = readFileSync(file, "utf-8"); } catch (e) { throw err(e && e.code ? e.code : "읽기 오류", e && e.code ? e.code : "EIO"); }
   if (!raw.trim()) return {};
   let o;
-  try { o = JSON.parse(raw); } catch (e) { throw new Error(`${basename(file)}을 읽을 수 없습니다: ${e.message}`); }
-  if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error(`${basename(file)}을 읽을 수 없습니다: JSON 객체가 아닙니다`);
+  try { o = JSON.parse(raw); } catch { throw err("JSON 형식이 아닙니다", "EJSON"); }
+  if (!o || typeof o !== "object" || Array.isArray(o)) throw err("JSON 객체가 아닙니다", "EJSON");
   return o;
 }
 export function writeJsonAtomic(file, obj) {

@@ -71,7 +71,9 @@ test('usage key for plugin and plain skills', () => {
   assert.deepEqual(a, [{ key: 'pixelfx:pixelfx', kind: 'skill', agent: 'claude', at: 1730000000500, repo: 'app' }]);
   assert.equal(S.usageFromRecord(hook({ tool_name: 'Skill', tool_input: { skill: 'how' } }))[0].key, 'how');
   const m = S.usageFromRecord(hook({ tool_name: 'mcp__mysql-test__mysql_query' }, 'codex'))[0];
-  assert.equal(m.key, 'mysql-test'); assert.equal(m.kind, 'mcp'); assert.equal(m.agent, 'codex');
+  assert.equal(m.key, 'mysql-test'); assert.equal(m.kind, 'mcp'); assert.equal(m.agent, 'codex'); assert.equal(m.tool, 'mysql_query');
+  assert.equal(S.usageFromRecord(hook({ tool_name: 'mcp__plugin_omc_t__run_it' }))[0].tool, 'run_it');
+  assert.equal('tool' in a[0], false); // skills carry no tool name
   const p = S.usageFromRecord(hook({ hook_event_name: 'UserPromptSubmit', prompt: '/agent-picker do it' }));
   assert.equal(p[0].key, 'agent-picker');
   assert.deepEqual(S.usageFromRecord(hook({ hook_event_name: 'PostToolUse', tool_name: 'Skill', tool_input: { skill: 'how' } })), []);
@@ -87,7 +89,7 @@ test('transcript lines', () => {
   const u2 = S.usageFromTranscriptLine(JSON.stringify({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'text', text: '/how it works' }] } }));
   assert.equal(u2[0].key, 'how');
   const mc = S.usageFromTranscriptLine(JSON.stringify({ type: 'assistant', timestamp: ts, message: { content: [{ type: 'tool_use', name: 'mcp__db__q', input: {} }] } }));
-  assert.equal(mc[0].kind, 'mcp');
+  assert.equal(mc[0].kind, 'mcp'); assert.equal(mc[0].tool, 'q');
   assert.deepEqual(S.usageFromTranscriptLine('not json {'), []);
   assert.deepEqual(S.usageFromTranscriptLine(''), []);
 });
