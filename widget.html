@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-odF7FzECyk9RHqySawmjINfuGpUmrhS4r9/WZjm4PDo='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-1x3zZ20iW8OdT6S/lDZc3FsIvseuDdEnQ3eNQnIkKw0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -10536,7 +10536,7 @@ function shopLinkHtml() {
   const l = shopState.link;
   const found = (l.found || []).map(f => shopRow({ ...f, id: 'link:' + f.choiceId })).join('');
   return `<div class="shop-link"><div class="shop-linkrow"><input type="text" class="shop-in" data-shop-link placeholder="${esc(t('🔗 링크로 설치'))}: github.com/owner/repo" value="${esc(shopState.linkText)}" aria-label="${esc(t('🔗 링크로 설치'))}" spellcheck="false" autocomplete="off"><button type="button" class="sb-btn" data-sb="shop-link"${l.busy ? ' disabled' : ''}>${esc(t(l.busy ? '찾는 중…' : '찾기'))}</button></div>`
-    + (l.err ? `<div class="sb-note err">${esc(shopErrText(l.errR))}</div>` : '')
+    + (l.err ? `<div class="sb-note err">${esc(shopErrText(l.errR, true))}</div>` : '')
     + (l.found ? `<div class="sb-hint">${esc(t(l.found.length > 1 ? '여러 개를 찾았습니다 — 하나를 고르세요' : '찾았습니다'))}</div>${found}` : '') + `</div>`;
 }
 const shopAskBox = () => `<div id="shop-ask">${sbAskHtml()}</div>`;
