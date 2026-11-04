@@ -1,7 +1,7 @@
 // Shop pasted links: validate a plain public GitHub link, shallow-clone it, tell what is inside.
 // Security: parseRepoLink is the only gate; nothing else here builds a command from user text.
-import { readFileSync, readdirSync, lstatSync, realpathSync, mkdirSync, rmSync, openSync, readSync, closeSync } from 'node:fs';
-import { join, resolve, sep, basename } from 'node:path';
+import { readFileSync, readdirSync, lstatSync, realpathSync, mkdirSync, rmSync, renameSync, openSync, readSync, closeSync } from 'node:fs';
+import { join, resolve, sep, basename, relative } from 'node:path';
 import '../core/skillbook.js'; // classic script: sets globalThis.AgentDeskSkillbook
 
 const { parseSkillMd } = globalThis.AgentDeskSkillbook;
@@ -44,24 +44,44 @@ export function parseRepoLink(text) {
 }
 
 // → { ok: true, dir } | { ok: false, error: 'bad link' | 'clone failed' }
+// `run(cmd, args, opts)` — opts = { env, timeout }: the caller's wrapper merges env over its own and applies the timeout.
+// The clone goes to a temp sibling and replaces the old clone only after it succeeded.
+const CLONE_ENV = { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ASKPASS: '', SSH_ASKPASS: '' };
+const CLONE_OPTS = ['-c', 'core.symlinks=false', '-c', 'core.hooksPath=/dev/null', '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always'];
 export async function fetchRepo({ home, link, run }) {
   const p = parseRepoLink(link);
   if (!p) return { ok: false, error: 'bad link' };
-  const dir = join(home, '.roca', 'shop', `${p.owner}-${p.repo}`);
+  const root = join(home, '.roca', 'shop');
+  const dir = join(root, `${p.owner}-${p.repo}`);
+  const tmp = join(root, `.tmp-${p.owner}-${p.repo}`);
   try {
-    mkdirSync(join(home, '.roca', 'shop'), { recursive: true, mode: 0o700 });
+    mkdirSync(root, { recursive: true, mode: 0o700 });
+    rmSync(tmp, { recursive: true, force: true });
+    const args = [...CLONE_OPTS, 'clone', '--depth', '1', '--no-tags', ...(p.ref ? ['--branch', p.ref] : []), '--', `https://github.com/${p.owner}/${p.repo}.git`, tmp];
+    const r = await run('git', args, { env: { ...CLONE_ENV }, timeout: 60000 });
+    if (r && typeof r === 'object' && r.code !== undefined && r.code !== 0) throw new Error('clone');
+    if (!lstatSync(tmp).isDirectory()) throw new Error('clone');
     rmSync(dir, { recursive: true, force: true });
-    const r = await run('git', ['clone', '--depth', '1', ...(p.ref ? ['--branch', p.ref] : []), '--', `https://github.com/${p.owner}/${p.repo}.git`, dir]);
-    if (r && typeof r === 'object' && r.code !== undefined && r.code !== 0) return { ok: false, error: 'clone failed' };
+    renameSync(tmp, dir);
     return { ok: true, dir };
-  } catch { return { ok: false, error: 'clone failed' }; }
+  } catch {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+    return { ok: false, error: 'clone failed' };
+  }
 }
 
 const SCRIPT_EXT = /\.(sh|py|js|mjs)$/i;
-const SKIP_DIR = n => n === '.git' || n === 'node_modules' || (n.startsWith('.') && n !== '.claude-plugin');
+const SKIP_DIR = n => n === '.git' || n === 'node_modules' || (n.startsWith('.') && n !== '.claude');
+const JSON_MAX = 1024 * 1024;
 const MAX_SKILLS = 200;
 
-function readJson(f) { try { if (!lstatSync(f).isFile()) return null; const j = JSON.parse(readFileSync(f, 'utf8')); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; } catch { return null; } }
+// true when no component between the clone root and p is a symlink (and p stays inside it)
+let CLONE = null;
+function plain(p) {
+  if (!CLONE) return false;
+  try { return realpathSync(p) === join(CLONE.real, relative(CLONE.lex, resolve(p))); } catch { return false; }
+}
+function readJson(f) { try { const st = lstatSync(f); if (!st.isFile() || st.size > JSON_MAX) return null; if (!plain(f)) return null; const j = JSON.parse(readFileSync(f, 'utf8')); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; } catch { return null; } }
 function readHead(f) {
   const fd = openSync(f, 'r');
   try { const b = Buffer.alloc(64 * 1024); return b.toString('utf8', 0, readSync(fd, b, 0, b.length, 0)); } finally { closeSync(fd); }
@@ -69,13 +89,13 @@ function readHead(f) {
 const str = v => (typeof v === 'string' ? v : '');
 
 function hasScripts(dir, depth = 0, seen = { n: 0 }) {
-  let ents; try { ents = readdirSync(dir); } catch { return false; }
+  let ents; try { ents = readdirSync(dir); } catch { return true; }
   for (const n of ents) {
-    if (++seen.n > 500) return false;
+    if (++seen.n > 500) return true; // fail closed: too big to inspect
     let st; try { st = lstatSync(join(dir, n)); } catch { continue; }
     if (st.isSymbolicLink()) continue;
     if (st.isFile()) { if (SCRIPT_EXT.test(n) || (st.mode & 0o111)) return true; }
-    else if (st.isDirectory() && depth < 3 && n !== '.git' && hasScripts(join(dir, n), depth + 1, seen)) return true;
+    else if (st.isDirectory() && n !== '.git') { if (depth >= 3 || hasScripts(join(dir, n), depth + 1, seen)) return true; }
   }
   return false;
 }
@@ -107,6 +127,8 @@ export function detectRepo(dir, path) {
     const real = realpathSync(base);
     if (real !== rootReal && !real.startsWith(rootReal + sep)) return [];
     if (!lstatSync(real).isDirectory()) return [];
+    CLONE = { real: rootReal, lex: resolve(dir) };
+    if (!plain(base)) return [];
   } catch { return []; }
   const out = [];
   const mk = readJson(join(base, '.claude-plugin', 'marketplace.json'));

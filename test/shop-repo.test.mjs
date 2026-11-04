@@ -1,7 +1,7 @@
 // Shop pasted links: shop/repo.mjs (made-up names, temp dirs only, no network).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, existsSync, symlinkSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseRepoLink, fetchRepo, detectRepo } from '../shop/repo.mjs';
@@ -27,16 +27,23 @@ test('only plain GitHub links are accepted', () => {
   assert.deepEqual(parseRepoLink('https://github.com/a/b/tree/main/skills/x'), { owner: 'a', repo: 'b', ref: 'main', path: 'skills/x' });
 });
 
+const OPTS = ['-c', 'core.symlinks=false', '-c', 'core.hooksPath=/dev/null', '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always'];
+const mkRun = (calls, code = 0) => async (cmd, args, opts) => { calls.push([cmd, args, opts]); if (code === 0) mkdirSync(args[args.length - 1], { recursive: true }); return { code, stdout: '', stderr: '' }; };
+
 test('clone command is fixed', async () => {
   const home = mkdtempSync(join(tmpdir(), 'shop-home-'));
   const calls = [];
-  const run = async (cmd, args) => { calls.push([cmd, args]); return { code: 0, stdout: '', stderr: '' }; };
+  const run = mkRun(calls);
   const dir = join(home, '.roca', 'shop', 'a-b');
+  const tmp = join(home, '.roca', 'shop', '.tmp-a-b');
   let r = await fetchRepo({ home, link: 'a/b', run });
   assert.deepEqual(r, { ok: true, dir });
-  assert.deepEqual(calls[0], ['git', ['clone', '--depth', '1', '--', 'https://github.com/a/b.git', dir]]);
+  assert.deepEqual(calls[0][1], [...OPTS, 'clone', '--depth', '1', '--no-tags', '--', 'https://github.com/a/b.git', tmp]);
+  assert.equal(calls[0][0], 'git');
+  assert.deepEqual(calls[0][2], { env: { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ASKPASS: '', SSH_ASKPASS: '' }, timeout: 60000 });
+  assert.ok(existsSync(dir) && !existsSync(tmp));
   r = await fetchRepo({ home, link: 'https://github.com/a/b/tree/v2/sub', run });
-  assert.deepEqual(calls[1], ['git', ['clone', '--depth', '1', '--branch', 'v2', '--', 'https://github.com/a/b.git', dir]]);
+  assert.deepEqual(calls[1][1], [...OPTS, 'clone', '--depth', '1', '--no-tags', '--branch', 'v2', '--', 'https://github.com/a/b.git', tmp]);
   const n = calls.length;
   assert.deepEqual(await fetchRepo({ home, link: '--upload-pack=x', run }), { ok: false, error: 'bad link' });
   assert.equal(calls.length, n);
@@ -44,12 +51,50 @@ test('clone command is fixed', async () => {
   assert.deepEqual(await fetchRepo({ home, link: 'a/b', run: async () => { throw new Error('x'); } }), { ok: false, error: 'clone failed' });
 });
 
-test('older clone of the same repo is replaced', async () => {
+test('older clone is replaced on success and kept on failure', async () => {
   const home = mkdtempSync(join(tmpdir(), 'shop-home-'));
   const dir = join(home, '.roca', 'shop', 'a-b');
   put(join(dir, 'old.txt'), 'x');
-  await fetchRepo({ home, link: 'a/b', run: async () => ({ code: 0 }) });
+  assert.equal((await fetchRepo({ home, link: 'a/b', run: mkRun([], 128) })).ok, false);
+  assert.ok(existsSync(join(dir, 'old.txt')));
+  assert.equal((await fetchRepo({ home, link: 'a/b', run: async () => { throw new Error('t'); } })).ok, false);
+  assert.ok(existsSync(join(dir, 'old.txt')));
+  assert.equal((await fetchRepo({ home, link: 'a/b', run: mkRun([]) })).ok, true);
   assert.equal(existsSync(join(dir, 'old.txt')), false);
+});
+
+test('symlinked manifest dirs and oversized manifests are ignored', () => {
+  const outside = mkdtempSync(join(tmpdir(), 'shop-out-'));
+  put(join(outside, 'plugin.json'), { name: 'evil' });
+  put(join(outside, 'marketplace.json'), { name: 'evil' });
+  const d = mkdtempSync(join(tmpdir(), 'shop-det-'));
+  symlinkSync(outside, join(d, '.claude-plugin'));
+  assert.deepEqual(detectRepo(d), []);
+  const e = mkdtempSync(join(tmpdir(), 'shop-det-'));
+  mkdirSync(join(e, 'sub'));
+  symlinkSync(outside, join(e, 'sub', 'link'));
+  put(join(outside, 'sub-plugin', '.claude-plugin', 'plugin.json'), { name: 'evil2' });
+  assert.deepEqual(detectRepo(e, 'sub/link'), []);
+  const big = mkdtempSync(join(tmpdir(), 'shop-det-'));
+  put(join(big, 'server.json'), JSON.stringify({ name: 'big', pad: 'x'.repeat(1024 * 1024 + 10) }));
+  put(join(big, '.claude-plugin', 'plugin.json'), { name: 'ok' });
+  assert.deepEqual(detectRepo(big).map(x => x.name), ['ok']);
+});
+
+test('hasScripts fails closed on big or deep folders', () => {
+  const d = mkdtempSync(join(tmpdir(), 'shop-det-'));
+  skillMd(join(d, 'deep'), 'deep', 'x');
+  put(join(d, 'deep', 'a', 'b', 'c', 'd', 'note.txt'), 'x');
+  skillMd(join(d, 'many'), 'many', 'x');
+  for (let i = 0; i < 520; i++) put(join(d, 'many', `f${i}.txt`), 'x');
+  const r = Object.fromEntries(detectRepo(d).map(x => [x.name, x.hasScripts]));
+  assert.deepEqual(r, { deep: true, many: true });
+});
+
+test('skills under .claude/skills are found', () => {
+  const d = mkdtempSync(join(tmpdir(), 'shop-det-'));
+  skillMd(join(d, '.claude', 'skills', 'hidden'), 'hidden', 'h');
+  assert.deepEqual(detectRepo(d).map(x => x.name), ['hidden']);
 });
 
 test('detection order and several matches', () => {
