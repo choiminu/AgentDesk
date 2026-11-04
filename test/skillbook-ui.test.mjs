@@ -127,7 +127,7 @@ test('skillbook ui (dock): the panel kind is reserved in dockPopKind and dockBou
   assert.match(bs, /popWidth: kind === 'skillbook' \? DOCK_SB_W : /, 'the window grows sideways for the two pages');
   assert.match(bs, /dockFullPop\(kind\) \? \{ x: 8, width: Math\.max\(0, window\.innerWidth - 16\) \}/);
   assert.match(bs, /!dockFullPop\(kind\) && !bubbles \? dockPopGeom\(kind\)/);
-  assert.match(html, /const dockFullPop = k => k === 'inbox' \|\| k === 'skillbook';/);
+  assert.match(html, /const dockFullPop = k => k === 'inbox' \|\| k === 'skillbook' \|\| k === 'quest';/);
   // placed like the review queue, and the pointer over it keeps the clicks
   assert.match(cut(html, 'function dockPopPlace()', '\n}\n'), /if \(sbDockOpen\) \{[^\n]*\$\('sb-dock'\)/);
   assert.match(html, /closest\('#dock-strip, #inbox-panel, #sb-dock, /);
@@ -142,11 +142,11 @@ test('skillbook ui (dock): one panel at a time; Esc, the button and leaving the 
   assert.match(cut(html, 'function inboxToggle(', '\n}\n'), /if \(dockOn && sbDockOpen\) sbDockToggle\(false\);/);
   assert.match(cut(html, 'function dockPopOpen(', '\n}\n'), /sbDockToggle\(false\)/);
   assert.match(cut(html, 'function dockLeave(', '\n}\n'), /if \(sbDockOpen\) sbDockToggle\(false\);/);
-  assert.match(html, /if \(e\.key === 'Escape'\) \{\n\s*if \(inboxQOpen\) \{ inboxToggle\(false\); return; \}\n\s*if \(sbDockOpen\) \{ sbDockToggle\(false\); \$\('dock-sb'\)\.focus\(\); return; \}/);
+  assert.match(html, /if \(e\.key === 'Escape'\) \{\n(?:\s*if \(dockOn && \$\('team-modal'\)\)[^\n]*\n)?\s*if \(inboxQOpen\) \{ inboxToggle\(false\); return; \}\n\s*if \(sbDockOpen\) \{ sbDockToggle\(false\); \$\('dock-sb'\)\.focus\(\); return; \}/);
   // a click outside (composedPath: a click inside re-renders the book, so the target may be gone from the DOM)
   assert.match(html, /if \(sbDockOpen && !e\.composedPath\(\)\.some\(n => n\.id === 'sb-dock' \|\| n\.id === 'dock-sb'\)\) sbDockToggle\(false\);/);
   // hover cards, the terminal window, bubbles and the limit card yield to it as to the review queue
-  assert.match(html, /const dockSheetOpen = \(\) => inboxQOpen \|\| sbDockOpen;/);
+  assert.match(html, /const dockSheetOpen = \(\) => inboxQOpen \|\| sbDockOpen \|\| questDockOpen;/);
   assert.match(cut(html, 'function dockTipShow(', '\n}\n'), /dockSheetOpen\(\) \|\| dockTermBg\(\)/);
   assert.match(cut(html, 'function dockAskPlace()', '\n}\n'), /const show = dockOn && !dockSheetOpen\(\)/);
   assert.match(cut(html, 'function dockUsageShow()', '\n}\n'), /dockSheetOpen\(\)/);
