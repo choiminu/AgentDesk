@@ -49,6 +49,44 @@ test('ended session frees the quest', () => {
   assert.equal(v[0].group, 'new');
   assert.equal(v[0].quest.ended, true);
   assert.equal(v[0].quest.sessionId, 'gone');
+  // a Jira 진행 중 ticket: the card stays in 진행 중 (Jira says so) but the quest is marked ended, so it can be reassigned
+  const [w] = Q.questView([issue('A-1', 'indeterminate')], state, live);
+  assert.equal(w.group, 'doing');
+  assert.equal(w.quest.ended, true);
+});
+
+test('ended session frees the quest: a dead worktree', () => {
+  const live = new Set(['s1']);
+  const state = { v: 1, quests: { 'A-1': { kind: 'worktree', repo: 'api', at: 1 } } };
+  const view = wt => Q.questView([issue('A-1', 'new')], state, live, wt)[0];
+  // no worktrees input (old callers): a worktree entry stays 진행 중
+  assert.equal(view(undefined).group, 'doing'); assert.equal(view(undefined).quest.ended, undefined);
+  // dispatch not mapped yet (still starting) / mapped to a live session: still 진행 중
+  assert.equal(view({ 'A-1': {} }).group, 'doing');
+  assert.equal(view({ 'A-1': { sessionId: 's1' } }).group, 'doing');
+  assert.equal(view({ 'A-1': { sessionId: 's1' } }).quest.ended, undefined);
+  // mapped session gone, dispatch timed out / discarded, or no dispatch record: ended → back to Jira's own group
+  for (const wt of [{ 'A-1': { sessionId: 'gone' } }, { 'A-1': { ended: true } }, {}]) {
+    const c = view(wt);
+    assert.equal(c.group, 'new', JSON.stringify(wt)); assert.equal(c.quest.ended, true);
+  }
+  const jiraDoing = Q.questView([issue('A-1', 'indeterminate')], state, live, { 'A-1': { ended: true } })[0];
+  assert.equal(jiraDoing.group, 'doing'); assert.equal(jiraDoing.quest.ended, true);
+  // a reported worktree quest is never "ended"
+  const rep = Q.questView([issue('A-1', 'new')], { quests: { 'A-1': { kind: 'worktree', repo: 'api', at: 1, reportAt: 2 } } }, live, {})[0];
+  assert.equal(rep.group, 'report'); assert.equal(rep.quest.ended, undefined);
+  assert.equal(Q.groupOf(issue('A-1', 'new'), state.quests['A-1'], live, true), 'new');
+  assert.equal(Q.groupOf(issue('A-1', 'new'), state.quests['A-1'], live, false), 'doing');
+});
+
+test('markerFor: a worktree quest marks the session its dispatch maps to', () => {
+  const st = { quests: { 'A-1': { kind: 'worktree', repo: 'api', at: 1 }, 'A-2': { kind: 'worktree', repo: 'api', at: 1, reportAt: 3 } } };
+  assert.equal(Q.markerFor(st, 's1', true, { 'A-1': 's1' }), true);
+  assert.equal(Q.markerFor(st, 's1', false, { 'A-1': 's1' }), false, 'not live');
+  assert.equal(Q.markerFor(st, 's2', true, { 'A-1': 's1' }), false, 'other session');
+  assert.equal(Q.markerFor(st, 's1', true, { 'A-2': 's1' }), false, 'reported');
+  assert.equal(Q.markerFor(st, 's1', true), false, 'no mapping');
+  assert.equal(Q.markerFor(st, 's1', true, { 'A-9': 's1' }), false, 'mapping for a key with no entry');
 });
 
 test('questView maps fields', () => {
@@ -133,6 +171,29 @@ test('pruneState drops tickets done over 30 days ago', () => {
   assert.deepEqual(Object.keys(out.quests).sort(), ['A-2', 'A-3']);
   assert.equal(out.v, 1);
   assert.ok(st.quests['A-1']);  // input untouched
+});
+
+test('pruneState: after a complete load, quiet entries of the loaded project that the load did not return go', () => {
+  const now = Date.parse('2026-11-04T00:00:00Z'), day = 864e5;
+  const st = { v: 1, quests: {
+    'EP-1': { kind: 'session', sessionId: 's', at: now - 40 * day },                       // absent, quiet 40 days → gone
+    'EP-2': { kind: 'worktree', repo: 'r', at: now - 40 * day, reportAt: now - 5 * day },  // absent, reported 5 days ago → kept
+    'EP-3': { kind: 'session', sessionId: 's', at: now - 5 * day },                         // absent, recent → kept
+    'EP-4': { kind: 'session', sessionId: 's', at: now - 90 * day },                        // returned by the load → kept
+    'OPS-1': { kind: 'session', sessionId: 's', at: now - 90 * day },                       // another project → kept
+    'EPX-1': { kind: 'session', sessionId: 's', at: now - 90 * day },                       // prefix must match whole → kept
+    'EP-5': { kind: 'worktree', repo: 'r', at: now - 31 * day, reportAt: now - 31 * day },  // absent, quiet 31 days → gone
+  } };
+  const loaded = [issue('EP-4', 'indeterminate'), issue('EP-6', 'new')];
+  assert.deepEqual(Object.keys(Q.pruneState(st, loaded, now, ['EP']).quests).sort(), ['EP-2', 'EP-3', 'EP-4', 'EPX-1', 'OPS-1']);
+  // no projects (a failed / partial load): only the done-30-days rule applies, nothing is pruned by absence
+  assert.equal(Object.keys(Q.pruneState(st, loaded, now).quests).length, 7);
+  assert.equal(Object.keys(Q.pruneState(st, loaded, now, []).quests).length, 7);
+  assert.equal(Object.keys(Q.pruneState(st, loaded, now, ['ep', '', null, 'E P']).quests).length, 7, 'junk project keys are ignored');
+  // the done rule still works alongside
+  const both = Q.pruneState(st, [...loaded, issue('EP-3', 'done', { resolutiondate: new Date(now - 40 * day).toISOString() })], now, ['EP']);
+  assert.deepEqual(Object.keys(both.quests).sort(), ['EP-2', 'EP-4', 'EPX-1', 'OPS-1']);
+  assert.ok(st.quests['EP-1'], 'input untouched');
 });
 
 test('deskPrompt keeps untrusted ticket text inside its block', () => {
