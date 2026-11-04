@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-i9d7gheb0ncFT9Ke1D0MuY9ZzR4ARWIeXfvn++jvFBg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-57La3afKpOv940K42rZ6JHH5tz0quK++27I6zkuuTYE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1585,7 +1585,23 @@
   .dock-spr.k0 { background-image: url('assets/pixel/char_0.png'); } .dock-spr.k1 { background-image: url('assets/pixel/char_1.png'); }
   .dock-spr.k2 { background-image: url('assets/pixel/char_2.png'); } .dock-spr.k3 { background-image: url('assets/pixel/char_3.png'); }
   .dock-spr.k4 { background-image: url('assets/pixel/char_4.png'); } .dock-spr.k5 { background-image: url('assets/pixel/char_5.png'); }
+  .dock-spr.k6 { background-image: url('assets/pixel/char_6.png'); } .dock-spr.k7 { background-image: url('assets/pixel/char_7.png'); }
+  .dock-spr.k8 { background-image: url('assets/pixel/char_8.png'); } .dock-spr.k9 { background-image: url('assets/pixel/char_9.png'); }
+  .dock-spr.k10 { background-image: url('assets/pixel/char_10.png'); } .dock-spr.k11 { background-image: url('assets/pixel/char_11.png'); }
   .dock-tile.st-done .dock-spr { opacity: 0.5; filter: grayscale(0.7); }
+  /* the office's pixelfx sheets on a tile (dockFx*): clipped to the tile, feet on the sprite's baseline */
+  .dock-fxc { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; z-index: 2; }
+  .dock-fx { position: absolute; background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; }
+  /* an agent in error flickers: red and cyan split off for a moment every 2.4 s (dockCfg.anim, reduced motion off) */
+  @media (prefers-reduced-motion: no-preference) {
+    .dock-tiles.fx .dock-tile.st-err .dock-spr { animation: dockGlitch 2.4s steps(1) infinite; }
+  }
+  @keyframes dockGlitch {
+    0%, 13%, 100% { filter: none; translate: 0 0; }
+    3% { filter: drop-shadow(-2px 0 0 rgba(255, 59, 107, 0.8)) drop-shadow(1px 0 0 rgba(59, 232, 255, 0.8)); translate: 1px 0; }
+    6% { filter: drop-shadow(2px 0 0 rgba(255, 59, 107, 0.8)) drop-shadow(-1px 0 0 rgba(59, 232, 255, 0.8)); translate: -1px 0; }
+    9% { filter: drop-shadow(-1px 0 0 rgba(255, 59, 107, 0.8)) drop-shadow(2px 0 0 rgba(59, 232, 255, 0.8)); translate: 0 0; }
+  }
   /* the state as a floor ring under the character's feet */
   .dock-dot { position: absolute; left: 50%; bottom: 16px; width: 22px; height: 6px; margin-left: -11px; border-radius: 50%; background: var(--ring); opacity: 0.55; }
   .dock-tiles.s40 .dock-dot { bottom: 3px; width: 18px; margin-left: -9px; }
@@ -3338,6 +3354,7 @@ function dockDraw() {
   dockAskSync();
   // a session of mine stopped working: its completion bubble (dockDoneFire); one that works / asks again loses it
   for (const c of changes) if (c.key.startsWith('me:') && c.from === 'run' && c.ms >= DOCK_DONE_MIN_RUN_MS && (c.to === 'input' || c.to === 'done')) dockDoneFire(c.key);
+  dockFxSync(changes);
   dockDoneSync();
   dockTermSync(); dockPermSync(); dockHoverCheck();
   dockRightDraw(); dockTimerDraw();
@@ -3370,7 +3387,7 @@ function dockTileHtml(x) {
 }
 function dockTilesDraw(m) {
   const el = $('dock-tiles'), a = document.activeElement, fKey = a && el.contains(a) ? a.dataset.key : '';
-  el.className = `dock-tiles s${m.size}`;
+  el.className = `dock-tiles s${m.size}${dockFxAllowed() ? ' fx' : ''}`;
   const add = `<button class="dock-tile add" data-key="add:me" aria-label="${esc(dockT('도크: 새 세션'))}" title="${esc(dockT('도크: 새 세션'))}" tabindex="-1">＋</button>`;
   const none = !m.mine.length && !m.peers.length ? `<span class="dock-empty">${esc(dockT('도크: 세션 없음 · 터미널에서 에이전트를 시작하세요'))}</span>` : '';
   const idleLab = `${dockT('도크: 쉬는 세션')} ${dockIdleN}`;
@@ -4580,6 +4597,67 @@ function dockAnimStop() {
   for (const spr of $('dock-tiles').querySelectorAll('.dock-spr[style]')) spr.style.backgroundPositionX = '';
 }
 if (dockReduced.addEventListener) dockReduced.addEventListener('change', () => dockAnimKick());
+// ── the office's pixelfx effects on dock tiles: a sparkle when work finishes, a blink when a new session arrives,
+// zzz over a finished one (the glitch on an error is CSS: dockGlitch). Same sheets and OFFICE_FX table as the office;
+// one-shots run once and go, the zzz loop is stepped by wall time. Off with the dock animation setting / reduced motion.
+const dockFxAllowed = () => dockAnimAllowed();
+const dockFxSeen = new Set();   // tile keys the bar has shown: an unseen one blinks in (not on the first draw)
+const dockFxPlaying = new Map();   // tile key → one-shots still playing [{ kind, t0 }]: put back when the tiles are redrawn
+let dockFxT = 0, dockFxPrimed = false;
+function dockFxPlay(key, kind) {
+  const list = dockFxPlaying.get(key) || [];
+  list.push({ kind, t0: performance.now() });
+  dockFxPlaying.set(key, list);
+}
+function dockFxEl(b, kind, loop, t0 = performance.now()) {
+  const f = OFFICE_FX[kind], small = $('dock-tiles').classList.contains('s40');
+  let c = b.querySelector('.dock-fxc');
+  if (!c) { c = document.createElement('span'); c.className = 'dock-fxc'; c.setAttribute('aria-hidden', 'true'); b.appendChild(c); }
+  const el = document.createElement('span');
+  el.className = 'dock-fx'; el.dataset.fx = kind; el.dataset.t0 = String(t0);
+  if (loop) el.dataset.loop = '1';
+  // feet on the sprite's baseline (the tile's bottom padding)
+  const feet = small ? 5 : 18;
+  Object.assign(el.style, { width: `${f.w}px`, height: `${f.h}px`, left: `calc(50% - ${f.px}px)`, bottom: `${feet - (f.h - f.py)}px`, backgroundImage: `url('assets/pixel/${f.src}.png')` });
+  c.appendChild(el);
+  return el;
+}
+function dockFxSync(changes) {
+  const tiles = $('dock-tiles');
+  if (!dockFxAllowed()) { for (const c of tiles.querySelectorAll('.dock-fxc')) c.remove(); dockFxSeen.clear(); dockFxPlaying.clear(); dockFxPrimed = false; return; }
+  for (const c of changes || []) if (c.key.startsWith('me:') && c.from === 'run' && (c.to === 'input' || c.to === 'done')) dockFxPlay(c.key, 'collect');
+  const now = performance.now();
+  for (const [k, list] of dockFxPlaying) {
+    const live = list.filter(e => (now - e.t0) / 1000 * OFFICE_FX[e.kind].fps < OFFICE_FX[e.kind].n);
+    if (live.length) dockFxPlaying.set(k, live); else dockFxPlaying.delete(k);
+  }
+  for (const b of tiles.querySelectorAll('.dock-tile[data-key^="me:"]')) {
+    const k = b.dataset.key;
+    if (!dockFxSeen.has(k)) { dockFxSeen.add(k); if (dockFxPrimed) dockFxPlay(k, 'blinkIn'); }
+    for (const e of dockFxPlaying.get(k) || []) if (!b.querySelector(`.dock-fx[data-t0="${e.t0}"]`)) dockFxEl(b, e.kind, false, e.t0);
+    const z = b.querySelector('.dock-fx[data-fx="sleep"]');
+    if (b.classList.contains('st-done') && !z) dockFxEl(b, 'sleep', true);
+    else if (!b.classList.contains('st-done') && z) z.remove();
+  }
+  dockFxPrimed = true;
+  dockFxStep();
+}
+function dockFxStep() {
+  clearTimeout(dockFxT); dockFxT = 0;
+  const els = dockFxAllowed() ? $('dock-tiles').querySelectorAll('.dock-fx') : [];
+  if (!els.length) return;
+  const now = performance.now();
+  for (const el of els) {
+    const f = OFFICE_FX[el.dataset.fx], loop = el.dataset.loop === '1';
+    let i = Math.floor(((loop ? now : now - Number(el.dataset.t0)) / 1000) * f.fps);
+    if (!loop && i >= f.n) { el.remove(); continue; }
+    if (loop) i %= f.n;
+    el.style.backgroundPosition = `${-(i % f.cols) * f.w}px ${-Math.floor(i / f.cols) * f.h}px`;
+  }
+  // one-shots at 30 fps; only zzz left → 10 fps is plenty
+  const fast = [...$('dock-tiles').querySelectorAll('.dock-fx')].some(el => el.dataset.loop !== '1');
+  dockFxT = setTimeout(() => requestAnimationFrame(dockFxStep), fast ? 33 : 100);
+}
 // the chat panel's call: type, Enter, wait up to 15 s for the turn to start → { sent (accepted: clear the input), err, msg }
 async function dockSendTo(s, handle, text) {
   try {
@@ -6506,7 +6584,7 @@ const OFFICE = {
   SEAT_H: 6,        // tiles per seat (y)
   WALL_H: 4,        // wall tiles at top (decor row + whiteboard row)
   PAD: 1,           // margin tiles
-  CHAR_COUNT: 6,
+  CHAR_COUNT: 12,   // char_6 … char_11: recolors of char_0 … char_5 (scripts/office-skins.mjs)
 };
 const officeImgs = {};
 let officeReady = false;
@@ -6530,7 +6608,7 @@ function officeLoadImages() {
     'floor_plank', 'floor_tiles', 'floor_checker', 'floor_grid', 'floor_brick',
     'bookshelf', 'double_bookshelf', 'whiteboard', 'large_painting', 'small_painting', 'small_painting_2', 'hanging_plant', 'clock', 'cactus', 'plant_2', 'bin', 'pot', 'pet_gitcat', 'pet_claudio'];
   for (let i = 0; i < OFFICE.CHAR_COUNT; i++) names.push(`char_${i}`);
-  names.push(...OFFICE_KENNEY);
+  names.push(...OFFICE_KENNEY, ...Object.values(OFFICE_FX).map(f => f.src));
   return Promise.all(names.map(n => new Promise(res => {
     const img = new Image();
     img.onload = () => { officeImgs[n] = img; res(); };
@@ -6592,30 +6670,59 @@ function officeSetSkin(sid, idx) {
   officeSkins[sid] = ((idx % OFFICE.CHAR_COUNT) + OFFICE.CHAR_COUNT) % OFFICE.CHAR_COUNT;
   try { localStorage.setItem('roca-office-skins', JSON.stringify(officeSkins)); } catch {}
 }
-// confetti burst above a desk when a session finishes its work
-const officeParticles = [];
-function officeBurst(x, y, n = 18) {
-  const colors = ['#ffd98a', '#5fc7b3', '#9cc4ff', '#ff9a95', '#c7a8ff', '#f2f3f6'];
-  for (let i = 0; i < n; i++) {
-    const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6, sp = 40 + Math.random() * 50;
-    officeParticles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, color: colors[i % colors.length], t: 0, life: 0.9 + Math.random() * 0.5, spin: Math.random() < 0.5 });
+// sprite-sheet effects from pixelfx (MIT, patch-gg/pixelfx), baked by scripts/office-fx.mjs — rerun it and paste its
+// table here when the sheets change. px/py: the effect's origin (a character's feet) in the frame; dy: drawn that much
+// lower because pixelfx's stand-in is taller than our 16 x 32 characters.
+const OFFICE_FX = {"collect":{"src":"fx/collect-burst","w":112,"h":108,"px":56,"py":94,"cols":7,"n":42,"fps":30,"loop":false},"blinkIn":{"src":"fx/blink-in","w":136,"h":96,"px":68,"py":80,"cols":6,"n":43,"fps":30,"loop":false},"blinkOut":{"src":"fx/blink-out","w":136,"h":96,"px":68,"py":80,"cols":6,"n":49,"fps":30,"loop":false},"exclaim":{"src":"fx/exclamation","w":84,"h":104,"px":42,"py":92,"cols":8,"n":43,"fps":30,"loop":false,"dy":6},"sleep":{"src":"fx/zzz","w":24,"h":42,"px":4,"py":41,"cols":8,"n":30,"fps":10,"loop":true},"steam":{"src":"fx/steam","w":12,"h":18,"px":6,"py":17,"cols":7,"n":30,"fps":15,"loop":true},"rackA":{"src":"fx/rack-a","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"rackB":{"src":"fx/rack-b","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"skyDay":{"src":"fx/sky-day","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyDusk":{"src":"fx/sky-dusk","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyNight":{"src":"fx/sky-night","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true}};
+const officeFx = [];   // one-shots playing: { kind, x, y (feet), t, ch (follow that character while it lives) }
+function officeFxPlay(kind, x, y, ch = null) {
+  if (OFFICE_FX[kind] && officeFx.length < 24) officeFx.push({ kind, x, y, t: 0, ch });
+}
+// feet of a character drawn by officeDrawChar at (x, y)
+const officeFeet = ch => [ch.x, ch.y + 8];
+function officeFxTick(dt) {
+  for (let i = officeFx.length - 1; i >= 0; i--) {
+    const e = officeFx[i], f = OFFICE_FX[e.kind]; e.t += dt;
+    if (e.t * f.fps >= f.n) { officeFx.splice(i, 1); continue; }
+    if (e.ch && officeChars.get(e.ch.sid) === e.ch) [e.x, e.y] = officeFeet(e.ch);
   }
 }
-function officeParticlesTick(dt) {
-  for (let i = officeParticles.length - 1; i >= 0; i--) {
-    const p = officeParticles[i]; p.t += dt;
-    if (p.t >= p.life) { officeParticles.splice(i, 1); continue; }
-    p.vy += 120 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.98;
-  }
+// a character leaving: one blink-out where it stands, not for one that never fully appeared or while the office settles
+function officeBlinkOut(ch, now) {
+  if (ch.outFx || ch.alpha < 0.5 || now - officeStartedAt < 1500) return;
+  ch.outFx = true;
+  officeFxPlay('blinkOut', ...officeFeet(ch));
 }
-function officeDrawParticles(ctx) {
-  for (const p of officeParticles) {
-    ctx.globalAlpha = Math.max(0, 1 - p.t / p.life);
-    ctx.fillStyle = p.color;
-    const w = p.spin && Math.floor(p.t * 12) % 2 ? 1 : 2;
-    ctx.fillRect(Math.round(p.x), Math.round(p.y), w, 2);
-  }
+function officeFxDraw(ctx, kind, frame, x, y, alpha = 1) {
+  const f = OFFICE_FX[kind], img = officeImgs[f.src];
+  if (!img) return;
+  const i = f.loop ? frame % f.n : Math.min(frame, f.n - 1);
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.drawImage(img, (i % f.cols) * f.w, Math.floor(i / f.cols) * f.h, f.w, f.h, Math.round(x - f.px), Math.round(y - f.py + (f.dy || 0)), f.w, f.h);
   ctx.globalAlpha = 1;
+}
+function officeDrawFx(ctx) {
+  for (const e of officeFx) officeFxDraw(ctx, e.kind, Math.floor(e.t * OFFICE_FX[e.kind].fps), e.x, e.y);
+}
+// zzz over a resting character: a loop picked by wall time (offset per session), so it needs no state and no frame-rate boost
+function officeDrawSleep(ctx, sid, x, feetY, now, alpha = 1) {
+  officeFxDraw(ctx, 'sleep', Math.floor((now / 1000 + (officeHash(sid) % 97) / 40) * OFFICE_FX.sleep.fps), x, feetY, alpha);
+}
+// an agent in error flickers: for 0.3 s every 2.4 s, red and cyan copies split off and a slice of it slips sideways
+function officeDrawGlitch(ctx, sheet, frameCol, dir, x, y, now, sid) {
+  const ph = (now / 1000 + (officeHash(sid) % 31) / 13) % 2.4;
+  if (ph > 0.3) return;
+  const row = dir === 1 ? 1 : dir === 0 ? 0 : 2, k = Math.floor(ph / 0.075), dx = Math.round(x - 8), dy = Math.round(y - 24);
+  const sc = officeScratch.getContext('2d');
+  for (const [col, off] of [['#ff3b6b', k % 2 ? 2 : -2], ['#3be8ff', k % 2 ? -1 : 1]]) {
+    sc.globalCompositeOperation = 'source-over'; sc.clearRect(0, 0, 16, 32);
+    sc.drawImage(sheet, frameCol * 16, row * 32, 16, 32, 0, 0, 16, 32);
+    sc.globalCompositeOperation = 'source-atop'; sc.fillStyle = col; sc.fillRect(0, 0, 16, 32);
+    ctx.globalAlpha = 0.55; ctx.drawImage(officeScratch, dx + off, dy); ctx.globalAlpha = 1;
+  }
+  sc.globalCompositeOperation = 'source-over';
+  const sy = 6 + (k * 7) % 20;
+  ctx.drawImage(sheet, frameCol * 16, row * 32 + sy, 16, 3, dx + (k % 2 ? 3 : -3), dy + sy, 16, 3);
 }
 
 const OFFICE_DEMO = location.hash.split(',')[0] === '#office-demo' ? [
@@ -6641,7 +6748,7 @@ if (OFFICE_DEMO) {
   const demoHover = setInterval(() => { const c = officeChars.get('demo-8'); if (c) { officeHover = c; clearInterval(demoHover); } }, 500);
   setTimeout(() => { officeHover = null; }, 15000);
   // renderer timers start ~3s after the main-process screenshot timers, so the lounge shot (24s) is prepared from 17.5s
-  setTimeout(() => { const c = officeChars.get('demo-3'); if (c) officeBurst(c.x, c.y - 30, 28); }, 9300);
+  setTimeout(() => { const c = officeChars.get('demo-3'); if (c) officeFxPlay('collect', ...officeFeet(c)); }, 9300);
   for (const ms of [2500, 4500]) setTimeout(() => { $('office-wrap').scrollTo({ top: 0, behavior: 'instant' }); }, ms);
   setTimeout(() => { const c = officeChars.get('demo-4'); if (c) officeAskOpen(c); }, 2500);
   setTimeout(officeAskClose, 11500);
@@ -6733,13 +6840,14 @@ function officeFrame(now) {
       officeChars.set(sess.id, ch);
     }
     ch.sess = sess; ch.fading = false;
+    if (!(sess.isSub && sess.status === 'done')) ch.outFx = false;   // back in the office: it may blink out again later
     if (ch.lastStatus !== sess.status) {
-      if (ch.lastStatus === 'running' && sess.status === 'done' && !sess.isSub) { officeBeep('done'); officeBurst(ch.x, ch.y - 30); }
+      if (ch.lastStatus === 'running' && sess.status === 'done' && !sess.isSub) { officeBeep('done'); officeFxPlay('collect', ...officeFeet(ch)); }
       ch.lastStatus = sess.status; ch.statusSince = Date.now();
     }
     if (!!sess.needsInput !== !!ch.lastNeedsInput) {
       // a question that is already pending when the office first sees the session opens the popover too, just without the beep
-      if (sess.needsInput) { if (ch.lastNeedsInput !== undefined) { ch.alertT = 4; officeBeep('ask'); } officeAskAuto(ch); }
+      if (sess.needsInput) { if (ch.lastNeedsInput !== undefined) { ch.alertT = 4; officeBeep('ask'); officeFxPlay('exclaim', ...officeFeet(ch), ch); } officeAskAuto(ch); }
       ch.lastNeedsInput = !!sess.needsInput;
       if (sess.needsInput) { const tm = teamOf(sess.id); if (tm && tm.pm !== sess.id) teamLog(tm, 'needs-input', `${sess.name}: 사용자 입력 대기`, { from: sess.name }); }
     }
@@ -6764,7 +6872,7 @@ function officeFrame(now) {
     }
   }
   for (const [sid, ch] of officeChars) {
-    if (!shownIds.has(sid)) { ch.fading = true; ch.alpha -= dt * 2; if (ch.alpha <= 0) officeChars.delete(sid); }
+    if (!shownIds.has(sid)) { officeBlinkOut(ch, now); ch.fading = true; ch.alpha -= dt * 2; if (ch.alpha <= 0) officeChars.delete(sid); }
     else if (ch.alpha < 1) ch.alpha = Math.min(1, ch.alpha + dt * 1.6);
   }
 
@@ -6822,7 +6930,7 @@ function officeFrame(now) {
   if (zoneBlock) y += zoneBlock.h;
 
   // lounge: idle agents rest on sofas (finished subagents just fade out)
-  for (const c of officeChars.values()) if (c.sess && c.sess.isSub && c.sess.status === 'done') { c.fading = true; c.alpha = Math.min(c.alpha, 0.99); }
+  for (const c of officeChars.values()) if (c.sess && c.sess.isSub && c.sess.status === 'done') { officeBlinkOut(c, now); c.fading = true; c.alpha = Math.min(c.alpha, 0.99); }
   const idle = [...officeChars.values()]
     .filter(c => !c.fading && !c.meeting && !pinned.has(c.sid) && c.sess.status === 'done')
     .sort((a, b) => a.sid < b.sid ? -1 : 1);
@@ -6869,6 +6977,7 @@ function officeFrame(now) {
     if (ch.state === 'spawn') {
       if (seat) { ch.x = seat.chairX; ch.y = seat.chairY; ch.state = 'sit'; }
       else { ch.x = graph.xs[Math.floor(Math.random() * graph.xs.length)]; ch.y = graph.ys[graph.ys.length - 1]; ch.state = 'pause'; ch.pauseT = 0.5; }
+      if (now - officeStartedAt > 1500) officeFxPlay('blinkIn', ...officeFeet(ch), ch);
     }
     if (seat) {
       ch.lastAisleY = seat.aisleY;
@@ -6905,14 +7014,14 @@ function officeFrame(now) {
   }
   for (let i = teamFlights.length - 1; i >= 0; i--) { teamFlights[i].t += dt; if (teamFlights[i].t >= teamFlights[i].dur) teamFlights.splice(i, 1); }
   for (const p of officePets) officePetTick(p, dt, lounge, originX, usableW);
-  officeParticlesTick(dt);
+  officeFxTick(dt);
   // frame-cap input for officeLoop. "Moving" = something changes between frames: a local character that is not seated
   // (walking / pausing / leaving), fading or materializing (alpha < 1), reacting (reactT / alertT), a local session typing
-  // or waving (running / needsInput), a walking pet or one showing a heart, a debate speaker (meeting room), confetti,
+  // or waving (running / needsInput), a walking pet or one showing a heart, a debate speaker (meeting room), an effect playing,
   // a team flight, a drag, or the 1.5 s settle after a relayout.
   // Teammates' sessions do not count: their typing frames (>= 0.22 s each) still read at 10 fps, and counting them would
   // keep the full rate whenever team sharing shows a running session.
-  officeMoving = now - officeStartedAt < 1500 || !!officeDrag || officeParticles.length > 0 || teamFlights.length > 0
+  officeMoving = now - officeStartedAt < 1500 || !!officeDrag || officeFx.length > 0 || teamFlights.length > 0
     || officePets.some(p => p.state === 'walk' || p.heartT > 0)
     || !!(debateState.running && debateState.currentHandle);
   if (!officeMoving) for (const c of officeChars.values()) {
@@ -7003,6 +7112,7 @@ function officeFrame(now) {
           const img = im[key]; if (!img) continue;
           if (cx + img.width > maxX) break;
           ctx.drawImage(img, cx, baseY - img.height);
+          if (key === 'k_rack_a' || key === 'k_rack_b') officeFxDraw(ctx, key === 'k_rack_a' ? 'rackA' : 'rackB', Math.floor(now / 100), cx, baseY - img.height);
           cx += img.width + 6;
         }
       }
@@ -7059,7 +7169,7 @@ function officeFrame(now) {
       seated.forEach((seat, k) => {
         const ch = seat.ch;
         if (ch.reactT > 0) drawBubble(ctx, seat.chairX + 2, seat.chairY - 44, 1, 'dots');
-        else if (Math.floor(now / 2200 + officeHash(ch.sid) % 5) % 3 === 0) drawBubble(ctx, seat.chairX + 2, seat.chairY - 44 - bob, 1, 'zz');
+        else if (Math.floor(now / 2400 + officeHash(ch.sid) % 5) % 3 === 0) officeDrawSleep(ctx, ch.sid, seat.chairX, seat.chairY + 8, now, ch.alpha);
         officeDrawName(ctx, ch.sess, seat.chairX, seat.chairY + 9, ch.alpha, { maxLen: 9, gauge: false });
         officeSeats.push({ x: seat.chairX - 8, y: seat.chairY - 24, w: 16, h: 32, ch });
       });
@@ -7080,7 +7190,7 @@ function officeFrame(now) {
     ch.drawn = [frameCol, ch.dir, ch.x, ch.y];
     officeDrawChar(ctx, sheet, frameCol, ch.dir, ch.x, ch.y, ch.alpha);
     if (ch.reactT > 0) drawBubble(ctx, ch.x + 2, ch.y - 44, 1, 'dots');
-    else if (!walking && !ch.fading && ch.sess && ch.sess.status === 'done') drawBubble(ctx, ch.x + 2, ch.y - 44 - bob, 1, 'zz');
+    else if (!walking && !ch.fading && ch.sess && ch.sess.status === 'done') officeDrawSleep(ctx, ch.sid, ch.x, ch.y + 8, now, ch.alpha);
     if (ch.sess) officeDrawName(ctx, ch.sess, ch.x, ch.y + 3, ch.alpha);
   } });
   for (const p of officePets) zItems.push({ z: p.y, draw: () => officeDrawPet(ctx, im, p) });
@@ -7088,7 +7198,7 @@ function officeFrame(now) {
   for (const it of zItems) it.draw();
   for (const drawSign of officeSignQueue) drawSign();
   officeDrawTeamFlights(ctx);
-  officeDrawParticles(ctx);
+  officeDrawFx(ctx);
 
   if (!shown.length) {
     ctx.font = `${officeFontPx}px ${OFFICE_FONT}`; ctx.textAlign = 'center'; ctx.fillStyle = '#9aa0b4';
@@ -7244,7 +7354,7 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
     if (sess) {
       const k = officeHash(sess.id) % 7;
       if (k >= 4) { const vase = im[['k_vase_a', 'k_vase_b', 'k_vase_c'][k - 4]]; if (vase) ctx.drawImage(vase, deskX + 34, deskY - 2); }
-      if (k === 0 && im.coffee) ctx.drawImage(im.coffee, deskX + 33, deskY + 4);
+      if (k === 0 && im.coffee) { ctx.drawImage(im.coffee, deskX + 33, deskY + 4); officeFxDraw(ctx, 'steam', Math.floor((now / 1000 + (officeHash(sess.id) % 7) / 3) * OFFICE_FX.steam.fps), deskX + 45, deskY + 5); }
       else if (k === 1 && im.pot) ctx.drawImage(im.pot, deskX + 2, deskY + 2);
       else if (k === 2) { ctx.fillStyle = '#f1efe6'; ctx.fillRect(deskX + 36, deskY + 14, 9, 7); ctx.fillStyle = '#b9b6ad'; ctx.fillRect(deskX + 38, deskY + 16, 5, 1); ctx.fillRect(deskX + 38, deskY + 18, 5, 1); }
     }
@@ -7269,6 +7379,7 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
   } else if (st === 'error') { dir = 0; frameCol = 0; }
   ch.drawn = [frameCol, dir, seat.chairX, seat.chairY];
   if (sheet) officeDrawChar(ctx, sheet, frameCol, dir, seat.chairX, seat.chairY, ch.alpha);
+  if (sheet && st === 'error' && ch.alpha >= 1) officeDrawGlitch(ctx, sheet, frameCol, dir, seat.chairX, seat.chairY, now, ch.sid);
   if (seat.flip) drawDesk();
   const headY = seat.chairY - 24;
   if (ch.reactT > 0) drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'dots');
@@ -7292,7 +7403,6 @@ function officeDrawDeskSeat(ctx, im, seat, now, bob, pulse, pcFrame, SEAT_PX, SE
   }
   officeDrawName(ctx, sess, seat.chairX, seat.chairY + 10);
   if (!sess.isSub && peerConflictBySid.has(sess.id)) officeDrawPeerWarn(ctx, seat.chairX - 14, headY - 2, peerConflictBySid.get(sess.id)[0].level, now);
-  if (ch.alertT > 0) officeDrawAlert(ctx, seat.chairX, seat.chairY - 12, ch.alertT);
   } else if (seat.flip) drawDesk();
   officeSeats.push({ x: sx, y: sy, w: SEAT_PX, h: SEAT_PY, ch });
 
@@ -7361,16 +7471,6 @@ function officeDrawTrail(ctx, ch, cx, y) {
     ctx.fillRect(Math.round(cx - w / 2 + i * 5), y, 3, 3);
   });
   ctx.globalAlpha = 1;
-}
-function officeDrawAlert(ctx, cx, cy, t) {
-  const p = 1 - t / 4;                       // 0 → 1 over 4s
-  for (let k = 0; k < 2; k++) {
-    const q = (p * 1.6 + k * 0.5) % 1;
-    const r = 8 + q * 30;
-    ctx.strokeStyle = `rgba(242,192,55,${(1 - q) * 0.9})`;
-    ctx.lineWidth = 2 - q;
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
-  }
 }
 // ── inline answer: read the choice prompt off the terminal screen and answer it from the office ──
 // Claude Code renders choices as "❯ 1. Yes" / "  2. No"; permission dialogs wrap them in a │ box.
@@ -7693,7 +7793,7 @@ function officeDrawPeerSeat(ctx, im, seat, area, now, bob, pcFrame) {
       drawBubble(ctx, seat.chairX + 2, headY - 16 - (sess.needsInput ? bob : 0), 1, sess.needsInput ? 'ask' : 'check');
       if (sess.needsInput && sess.askSince) officeDrawSince(ctx, seat.chairX + 15, headY - 14 - bob, sess.askSince, '#F2C037');
     } else if (st === 'error') drawBubble(ctx, seat.chairX + 2, headY - 16, 1, 'bang');
-    else drawBubble(ctx, seat.chairX + 2, headY - 16 - bob, 1, 'zz');
+    else officeDrawSleep(ctx, area.peer.name + ':' + sess.id, seat.chairX, seat.chairY + 8, now);
   }
   officeDrawName(ctx, sess, seat.chairX, seat.chairY + 10, off ? 0.6 : 1, { gauge: !off });
   ctx.fillStyle = off ? '#8a8a96' : area.color; ctx.fillRect(seat.chairX - 6, seat.chairY + 8, 12, 2);   // teammate colour bar above the name
@@ -7957,8 +8057,8 @@ function officeDrawWindows(ctx, worldW) {
     ctx.fillStyle = '#1c1b26'; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
     const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, sky[0]); g.addColorStop(1, sky[1]);
     ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
-    if (night) { ctx.fillStyle = '#e8ecff'; for (let k = 0; k < 6; k++) { const sx = x + 3 + (officeHash(`s${i}${k}`) % (w - 6)), sy = y + 2 + (officeHash(`t${i}${k}`) % (h - 6)); ctx.fillRect(sx, sy, 1, 1); } }
-    else { ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(x + 6, y + 5, 10, 3); ctx.fillRect(x + 9, y + 3, 5, 2); }
+    // clouds drift by day and dusk, stars twinkle at night (a pixelfx loop per pane, offset so panes differ)
+    officeFxDraw(ctx, night ? 'skyNight' : dusk ? 'skyDusk' : 'skyDay', Math.floor((performance.now() / 1000 + i * 3.7) * OFFICE_FX.skyDay.fps), x, y);
     ctx.fillStyle = '#5a5570'; ctx.fillRect(x + Math.floor(w / 2) - 1, y, 2, h); ctx.fillRect(x, y + Math.floor(h / 2) - 1, w, 2);
     ctx.fillStyle = '#6a6484'; ctx.fillRect(x - 3, y + h + 2, w + 6, 2);   // sill
   }
