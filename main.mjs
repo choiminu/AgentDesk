@@ -1217,6 +1217,8 @@ function uninstallHooks(agents) {
 // launch and after the hook trims it, so the store de-duplicates (feedRecord: newest-fed mark + record keys, saved with
 // it). The store also keeps each record's cwd with its time (noteRepo, 30 days): the skillbook's project folders.
 const SKILLBOOK_USAGE = join(ROCA_DIR, "skillbook-usage.json");
+// skillbook errors are logged by code only: a message may quote a config file (JSON.parse shows the text near the error)
+const sbErrCode = e => (e && typeof e.code === "string" ? e.code : e && e.name ? e.name : "error");
 let skillbookStore = null, sbSaveTimer = null, sbBackfillStarted = false;
 function sbStore() {
   if (skillbookStore) return skillbookStore;
@@ -1224,7 +1226,7 @@ function sbStore() {
   skillbookStore.load();
   return skillbookStore;
 }
-function sbSave() { clearTimeout(sbSaveTimer); sbSaveTimer = null; if (skillbookStore) { try { skillbookStore.save(); } catch (e) { console.error("[skillbook] save", e && e.message); } } }
+function sbSave() { clearTimeout(sbSaveTimer); sbSaveTimer = null; if (skillbookStore) { try { skillbookStore.save(); } catch (e) { console.error("[skillbook] save", sbErrCode(e)); } } }
 function sbSaveSoon() { if (!sbSaveTimer) sbSaveTimer = setTimeout(sbSave, 10000); }   // debounced: never a write per record
 function sbFeed(o) {
   const at = o && typeof o.ts === "number" ? o.ts * 1000 : NaN;
@@ -1244,7 +1246,7 @@ function startSkillbookBackfill() {
   console.log("[skillbook] backfill start");
   skillbookBackfill(store, { roots: [CLAUDE_PROJECTS_DIR], cutoff: Date.now() })
     .then(r => console.log(`[skillbook] backfill done files=${r.files} uses=${r.uses} skipped=${r.skipped}`),
-          e => console.error("[skillbook] backfill failed", e && e.message));
+          e => console.error("[skillbook] backfill failed", sbErrCode(e)));
 }
 app.on("will-quit", () => { if (SINGLE_INSTANCE) sbSave(); });
 
@@ -2432,7 +2434,7 @@ ipcMain.handle("roca:skillbook", () => {
     pushEvents(readNewEvents());   // count whatever the hooks appended since the last poll
     const home = homedir();
     return skillbookPayload({ inventory: scanInventory({ home, repos: skillbookRepos() }), store: sbStore(), removed: skillbookRemoved({ home }), now: Date.now() });
-  } catch (e) { console.error("[skillbook]", e && e.message); return { ok: false, error: "skillbook failed" }; }
+  } catch (e) { console.error("[skillbook]", sbErrCode(e)); return { ok: false, error: "skillbook failed" }; }
 });
 // the renderer sends only { id, action }; the item comes from a fresh scan (restore: the removed list), ids used as given
 const SB_ACTIONS = ["off", "on", "remove", "restore", "reveal"];
@@ -2451,7 +2453,7 @@ async function skillbookAct(id, action) {
 ipcMain.handle("roca:skillbook-act", (_e, req) => {
   const id = req && req.id, action = req && req.action;
   if (typeof id !== "string" || !id || id.length > 300 || /[\u0000-\u001f\u007f]/.test(id) || !SB_ACTIONS.includes(action)) return { ok: false, error: "failed", detail: "bad request" };
-  const job = sbQueue.then(() => skillbookAct(id, action)).catch(e => { console.error("[skillbook] act", e && e.message); return { ok: false, error: "failed", detail: "error" }; });
+  const job = sbQueue.then(() => skillbookAct(id, action)).catch(e => { console.error("[skillbook] act", sbErrCode(e)); return { ok: false, error: "failed", detail: "io" }; });
   sbQueue = job;
   return job;
 });

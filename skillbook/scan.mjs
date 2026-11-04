@@ -1,7 +1,7 @@
 // Skillbook inventory scan: read-only, synchronous, one try/catch per source.
 // Returns names, paths and key NAMES only for MCP servers: never env/header values, args, URLs or full commands.
-import { readFileSync, readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs';
-import { join, basename, resolve } from 'node:path';
+import { readFileSync, readdirSync, statSync, lstatSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
+import { join, basename, dirname, resolve } from 'node:path';
 import '../core/skillbook.js'; // classic script: sets globalThis.AgentDeskSkillbook (package is type:module, so no module.exports)
 
 const { parseSkillMd, tomlLines, tomlMcpServers } = globalThis.AgentDeskSkillbook;
@@ -89,8 +89,18 @@ export function scanInventory({ home, repos = [] } = {}) {
     }
   }
 
-  function skillsIn(dir, { src, agents, repo, repoKey, on = true, plugin, pluginName }) {
+  // a link in an agent's own skills folder that points into ~/.agents/skills(-disabled) is the shared item, listed once
+  const realOr = p => { try { return realpathSync(p); } catch { return null; } };
+  const sharedRoots = ['skills', 'skills-disabled'].map(n => realOr(join(home, '.agents', n))).filter(Boolean);
+  const linksToShared = p => {
+    try { if (!lstatSync(p).isSymbolicLink()) return false; } catch { return false; }
+    const r = realOr(p);
+    return !!r && sharedRoots.includes(dirname(r));
+  };
+
+  function skillsIn(dir, { src, agents, repo, repoKey, on = true, plugin, pluginName, skipShared = false }) {
     for (const d of subdirs(dir)) {
+      if (skipShared && linksToShared(join(dir, d))) continue;
       let meta;
       try { meta = parseSkillMd(readHead(join(dir, d, 'SKILL.md'))); } catch { continue; }
       const name = meta.name || d;
@@ -100,17 +110,17 @@ export function scanInventory({ home, repos = [] } = {}) {
     }
   }
 
-  function mcpItems(servers, { src, agents, where, file, scope, repo, repoKey, project }) {
+  function mcpItems(servers, { src, agents, where, file, scope, repo, repoKey, project, disabled = [] }) {
     for (const name of names(servers)) {
-      add({ kind: 'mcp', name, idName: `${where}:${name}`, agents: agents.slice(), source: src, ...(repo ? { repo, repoKey } : {}), description: '', triggers: [], on: true, usageKey: name,
+      add({ kind: 'mcp', name, idName: `${where}:${name}`, agents: agents.slice(), source: src, ...(repo ? { repo, repoKey } : {}), description: '', triggers: [], on: !disabled.includes(name), usageKey: name,
         mcp: { ...mcpFromJson(servers[name], where === 'gemini'), scope }, loc: { file, where, ...(repo ? { repo } : {}), ...(project ? { project } : {}) } });
     }
   }
 
   // Claude skills
   const cl = join(home, '.claude');
-  source('claude-skills', '~/.claude/skills', () => skillsIn(join(cl, 'skills'), { src: 'user', agents: ['claude'] }), { optional: true });
-  source('claude-skills-disabled', '~/.claude/skills-disabled', () => skillsIn(join(cl, 'skills-disabled'), { src: 'user', agents: ['claude'], on: false }), { optional: true });
+  source('claude-skills', '~/.claude/skills', () => skillsIn(join(cl, 'skills'), { src: 'user', agents: ['claude'], skipShared: true }), { optional: true });
+  source('claude-skills-disabled', '~/.claude/skills-disabled', () => skillsIn(join(cl, 'skills-disabled'), { src: 'user', agents: ['claude'], on: false, skipShared: true }), { optional: true });
 
   // Claude plugins and their skills
   source('claude-plugins', '~/.claude/plugins', () => {
@@ -135,12 +145,14 @@ export function scanInventory({ home, repos = [] } = {}) {
   // shared and Codex skills
   source('agents-skills', '~/.agents/skills', () => skillsIn(join(home, '.agents', 'skills'), { src: 'shared', agents: ALL }), { optional: true });
   source('agents-skills-disabled', '~/.agents/skills-disabled', () => skillsIn(join(home, '.agents', 'skills-disabled'), { src: 'shared', agents: ALL, on: false }), { optional: true });
-  source('codex-skills', '~/.codex/skills', () => skillsIn(join(home, '.codex', 'skills'), { src: 'user', agents: ['codex'] }), { optional: true });
+  source('codex-skills', '~/.codex/skills', () => skillsIn(join(home, '.codex', 'skills'), { src: 'user', agents: ['codex'], skipShared: true }), { optional: true });
 
   // Claude MCP: user level, and project level for listed repos only
+  let claudeJson = null; // kept for the .mcp.json servers below: their off switch lives in projects[<repo>]
   source('claude-mcp', '~/.claude.json', () => {
     const file = join(home, '.claude.json');
     const j = readJson(file);
+    claudeJson = isObj(j) ? j : null;
     mcpItems(j.mcpServers, { src: 'user', agents: ['claude'], where: 'claude-user', file, scope: 'user' });
     if (isObj(j.projects)) {
       for (const p of Object.keys(j.projects)) {
@@ -183,7 +195,13 @@ export function scanInventory({ home, repos = [] } = {}) {
     source(`repo-skills:${r}`, `${repo}/.claude/skills`, () => skillsIn(join(r, '.claude', 'skills'), { src: 'project', agents: ['claude'], repo, repoKey: r }), { optional: true });
     source(`repo-mcp:${r}`, `${repo}/.mcp.json`, () => {
       const file = join(r, '.mcp.json');
-      mcpItems(readJson(file).mcpServers, { src: 'project', agents: ['claude'], where: 'mcpjson', file, scope: 'project', repo, repoKey: r });
+      const servers = readJson(file).mcpServers;
+      // Claude Code's per-project switch: ~/.claude.json projects[<exact key>].disabledMcpjsonServers
+      const projects = claudeJson && isObj(claudeJson.projects) ? claudeJson.projects : {};
+      const project = Object.keys(projects).find(p => isObj(projects[p]) && norm(p) === r);
+      const off = project && projects[project].disabledMcpjsonServers;
+      const disabled = Array.isArray(off) ? off.filter(x => typeof x === 'string') : [];
+      mcpItems(servers, { src: 'project', agents: ['claude'], where: 'mcpjson', file, scope: 'project', repo, repoKey: r, ...(project ? { project } : {}), disabled });
     }, { optional: true });
   }
 

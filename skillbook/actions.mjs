@@ -1,5 +1,6 @@
 // Skillbook actions: turn off / on, remove / restore one skill, plugin or MCP server. Main process only.
 //   actOn({ home, item, action, trash, run, repos? }) → { ok: true } | { ok: false, error: 'gone'|'unsupported'|'failed', detail? }
+//     detail is one of DETAILS (fixed codes): exception messages, file text and CLI output never reach the caller
 //     action: 'off' | 'on' | 'remove' | 'restore'; item: a scanInventory item (restore: a listRemoved row, looked up by id)
 //     repos: the repo paths the scan was given (limits which <repo>/.claude/skills folders remove may trash)
 //     a parked item's / removed row's id is its stored entry's own key (sid), so on / restore act on that exact copy
@@ -8,11 +9,13 @@
 //
 // Skills: off/on move the folder between <root>/skills and <root>/skills-disabled (~/.claude, ~/.agents); remove → trash.
 // Plugins: the claude CLI (disable / enable / uninstall / install).
+// .mcp.json servers (a team file in git): off / on only, through Claude Code's own per-project switch
+// ~/.claude.json projects[<exact key>].disabledMcpjsonServers; the .mcp.json itself is never written. No remove / restore.
 // MCP: the entry is taken out of its config into ~/.roca/skillbook-parked.json (off) or skillbook-removed.json (remove),
 // verbatim (JSON object or exact TOML text), and written back by on / restore. Those files hold secrets: mode 0600, main only.
 // Every config write re-reads the file first, fails with 'gone' when the entry is no longer there (nothing written),
 // backs the file up to ~/.roca/skillbook-backup, changes only that entry and writes atomically.
-import { existsSync, lstatSync, realpathSync, readFileSync, writeFileSync, renameSync, mkdirSync, statSync, chmodSync, unlinkSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync, readFileSync, readdirSync, writeFileSync, renameSync, mkdirSync, statSync, chmodSync, unlinkSync } from 'node:fs';
 import { join, dirname, basename, resolve, isAbsolute } from 'node:path';
 import '../core/skillbook.js'; // classic script: sets globalThis.AgentDeskSkillbook
 import { readJsonStrict, writeJsonAtomic, backupPrivate } from '../perm/settings.mjs';
@@ -23,12 +26,15 @@ const PARKED = 'skillbook-parked.json';
 const REMOVED = 'skillbook-removed.json';
 const ACTIONS = ['off', 'on', 'remove', 'restore'];
 const PLUGIN_PART = /^[\w.:+-]+$/;
+const KEEP_BACKUPS = 20; // per config file name in ~/.roca/skillbook-backup (0600 copies that hold secrets)
+const DETAILS = new Set(['bad request', 'action', 'location', 'plugin', 'kind', 'trash', 'empty', 'unparsed', 'exists', 'missing', 'invalid JSON', 'io', 'cli']);
+// a thrown error as a fixed code (its message may quote a config file)
+const errDetail = e => (e && (e.code === 'EJSON' || e instanceof SyntaxError) ? 'invalid JSON' : e && e.code === 'ENOENT' ? 'missing' : 'io');
 
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const has = (o, k) => isObj(o) && Object.prototype.hasOwnProperty.call(o, k);
 const fail = (error, detail) => (detail ? { ok: false, error, detail } : { ok: false, error });
 const exists = p => { try { lstatSync(p); return true; } catch { return false; } };
-const firstLine = s => String(s || '').trim().split(/\r?\n/)[0].slice(0, 200);
 
 // ---------- ~/.roca stores ----------
 const storeFile = (home, name) => join(home, '.roca', name);
@@ -73,7 +79,16 @@ function mcpSummary(m) {
 }
 
 function backup(home, file) {
-  backupPrivate(file, join(home, '.roca', 'skillbook-backup'), `${basename(file)}.${Date.now()}`);
+  const dir = join(home, '.roca', 'skillbook-backup'), base = basename(file);
+  backupPrivate(file, dir, `${base}.${Date.now()}`);
+  pruneBackups(dir, base);
+}
+// keep the newest KEEP_BACKUPS copies of one config (named <base>.<ms>); other files in the folder are left alone
+function pruneBackups(dir, base) {
+  let names; try { names = readdirSync(dir); } catch { return; }
+  const at = n => Number(n.slice(base.length + 1));
+  const mine = names.filter(n => n.startsWith(`${base}.`) && /^\d+$/.test(n.slice(base.length + 1))).sort((a, b) => at(b) - at(a));
+  for (const n of mine.slice(KEEP_BACKUPS)) { try { unlinkSync(join(dir, n)); } catch { /* next time */ } }
 }
 function writeTextAtomic(file, text) {
   let mode = 0o600; try { mode = statSync(file).mode & 0o777; } catch {}
@@ -205,6 +220,35 @@ function mcpOut(home, item, storeName, now) {
   });
 }
 
+// .mcp.json server off / on: add or drop its name in ~/.claude.json projects[loc.project].disabledMcpjsonServers
+function mcpjsonSwitch(home, item, action) {
+  const loc = item.loc;
+  if (!isObj(loc) || typeof loc.file !== 'string' || !isAbsolute(loc.file) || basename(loc.file) !== '.mcp.json') return fail('unsupported', 'location');
+  if (typeof loc.project !== 'string' || !loc.project) return fail('failed', 'missing'); // Claude Code has no entry for this folder yet
+  if (resolve(loc.project) !== dirname(resolve(loc.file))) return fail('unsupported', 'location');
+  let cj = join(home, '.claude.json');
+  try { cj = realpathSync(cj); } catch { /* missing: refused below */ }
+  if (!existsSync(cj)) return fail('failed', 'missing');
+  const obj = readJsonStrict(cj); // re-read right before the write
+  const proj = isObj(obj.projects) && has(obj.projects, loc.project) ? obj.projects[loc.project] : null;
+  if (!isObj(proj)) return fail('failed', 'missing'); // never create a project entry
+  const list = has(proj, 'disabledMcpjsonServers') ? proj.disabledMcpjsonServers : [];
+  if (!Array.isArray(list)) return fail('failed', 'unparsed');
+  const name = item.name;
+  if (action === 'off') {
+    const team = readJsonStrict(loc.file);
+    if (!isObj(team.mcpServers) || !has(team.mcpServers, name)) return fail('gone');
+    if (list.includes(name)) return { ok: true }; // already off
+    proj.disabledMcpjsonServers = list.concat(name);
+  } else {
+    if (!list.includes(name)) return fail('gone');
+    proj.disabledMcpjsonServers = list.filter(x => x !== name);
+  }
+  backup(home, cj);
+  writeJsonAtomic(cj, obj);
+  return { ok: true };
+}
+
 // ---------- skills ----------
 function skillMove(home, item, action) {
   if (item.plugin || typeof item.path !== 'string' || !isAbsolute(item.path)) return fail('unsupported', 'location');
@@ -250,13 +294,18 @@ function pluginRef(name, marketplace) {
 }
 async function claude(run, args) {
   let r;
-  try { r = await run('claude', args); } catch (e) { return fail('failed', firstLine(e && e.message) || 'run'); }
-  if (!r || r.code !== 0) return fail('failed', firstLine(r && (r.stderr || r.stdout)) || `exit ${r && r.code}`);
+  try { r = await run('claude', args); } catch { return fail('failed', 'cli'); }
+  if (!r || r.code !== 0) return fail('failed', 'cli'); // the CLI's output stays in main
   return { ok: true };
 }
 
 // ---------- entry points ----------
-export async function actOn({ home, item, action, trash, run, repos } = {}) {
+export async function actOn(req = {}) {
+  const r = await act(req);
+  if (r && r.ok === false && r.detail !== undefined && !DETAILS.has(r.detail)) return { ...r, detail: 'io' };
+  return r;
+}
+async function act({ home, item, action, trash, run, repos } = {}) {
   if (typeof home !== 'string' || !home || !isObj(item) || typeof item.id !== 'string' || typeof item.name !== 'string') return fail('failed', 'bad request');
   if (!ACTIONS.includes(action)) return fail('unsupported', 'action');
   const now = Date.now();
@@ -275,6 +324,7 @@ export async function actOn({ home, item, action, trash, run, repos } = {}) {
       return r;
     }
     if (item.kind !== 'mcp') return fail('unsupported', 'kind');
+    if (isObj(item.loc) && item.loc.where === 'mcpjson') return action === 'remove' ? fail('unsupported', 'location') : mcpjsonSwitch(home, item, action);
     if (action === 'off') return mcpOut(home, item, PARKED, now);
     if (action === 'remove') {
       const parked = readStore(home, PARKED);
@@ -296,7 +346,7 @@ export async function actOn({ home, item, action, trash, run, repos } = {}) {
     writeStore(home, PARKED, without(parked, item.id), now);
     return r;
   } catch (e) {
-    return fail('failed', firstLine(e && e.message) || 'error');
+    return fail('failed', errDetail(e));
   }
 }
 
@@ -309,7 +359,10 @@ async function restore(home, item, run, now) {
     const ref = isObj(e.plugin) && pluginRef(e.plugin.name, e.plugin.marketplace);
     if (!ref) return fail('unsupported', 'plugin');
     r = await claude(run, ['plugin', 'install', ref]);
-  } else if (e.kind === 'mcp') r = putBack(home, e);
+  } else if (e.kind === 'mcp') {
+    if (isObj(e.loc) && e.loc.where === 'mcpjson') return fail('unsupported', 'location'); // never write a team file
+    r = putBack(home, e);
+  }
   else return fail('unsupported', 'kind');
   if (!r.ok) return r;
   writeStore(home, REMOVED, without(readStore(home, REMOVED), keyOf(e)), now); // re-read: the CLI call awaited

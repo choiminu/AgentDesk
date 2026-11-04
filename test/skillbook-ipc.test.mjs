@@ -86,7 +86,8 @@ test('usage keys without an inventory item are dropped', () => {
   use(fx.store, 'demoplug:plug-skill', 0, 1);
   const p = build(fx);
   assert.ok(!JSON.stringify(p).includes('"Users"'));
-  assert.equal(p.items.reduce((s, i) => s + i.uses.total, 0), 1);
+  assert.equal(p.items.filter(i => i.kind !== 'plugin').reduce((s, i) => s + i.uses.total, 0), 1);
+  assert.equal(byName(p, 'demoplug', 'plugin').uses.total, 1); // the plugin sums its own skills' uses
   assert.equal(byName(p, 'plug-skill').uses.total, 1);
 });
 
@@ -143,4 +144,49 @@ test('removed rows can be restored only where actOn can (MCP, plugin; not a tras
   mk(join(home, '.roca'), { recursive: true });
   wf(join(home, '.roca/skillbook-removed.json'), JSON.stringify({ v: 1, entries: [{ id: 'skill:user:claude::gone', sid: 'skill:user:claude::gone@5', kind: 'skill', agent: 'claude', name: 'gone', path: join(home, 'x'), at: Date.now(), how: 'trash' }] }));
   assert.deepEqual(await actOn({ home, item: { id: 'skill:user:claude::gone@5', name: 'gone', kind: 'skill' }, action: 'restore', trash: async () => {}, run: async () => ({ code: 0 }) }), { ok: false, error: 'unsupported', detail: 'trash' });
+});
+
+// ---- final fix wave ----
+test('a Claude plugin counts the uses of its skills and MCP tools', () => {
+  const fx = fixture();
+  use(fx.store, 'demoplug:plug-skill', 0, 2);
+  use(fx.store, 'demoplug:other-skill', 20, 1, 'codex');
+  fx.store.add({ key: 'plugin_demoplug_srv', kind: 'mcp', agent: 'claude', at: NOW - 40 * DAY, repo: 'beta', tool: 't' });
+  use(fx.store, 'demoplugx:nope', 0, 5);          // another plugin whose name starts the same
+  use(fx.store, 'plugin_demoplugx_srv', 0, 5);
+  use(fx.store, 'demoplug', 0, 7);                 // the bare name is not a use of the plugin
+  const u = byName(build(fx), 'demoplug', 'plugin').uses;
+  assert.equal(u.counted, true);
+  assert.equal(u.week, 2); assert.equal(u.month, 3); assert.equal(u.total, 4);
+  assert.equal(u.mastery, 1);
+  assert.equal(u.lastAt, NOW); assert.equal(u.lastRepo, 'alpha');
+  assert.deepEqual(u.byAgent, { claude: 3, codex: 1 });
+  // the plugin's own skill item still counts only its own key
+  assert.equal(byName(build(fx), 'plug-skill').uses.total, 2);
+});
+
+test('a plugin whose usage cannot be summed is not counted (never lands in 💤)', () => {
+  const fx = fixture();
+  const store = { get: k => fx.store.get(k), backfillDone: () => false }; // no keys(): an older store
+  const p = skillbookPayload({ inventory: scanInventory({ home: fx.home, repos: [fx.repo] }), store, removed: [], now: NOW });
+  assert.equal(byName(p, 'demoplug', 'plugin').uses.counted, false);
+});
+
+test('mcp items carry the tool names seen in usage; shared items carry the agent split', () => {
+  const fx = fixture();
+  for (const tool of ['query', 'query', 'list']) fx.store.add({ key: 'user-srv', kind: 'mcp', agent: 'claude', at: NOW, repo: 'alpha', tool });
+  use(fx.store, 'shared-skill', 0, 4);
+  use(fx.store, 'shared-skill', 0, 1, 'gemini');
+  const p = build(fx);
+  assert.deepEqual(byName(p, 'user-srv').uses.tools, ['query', 'list']);
+  assert.equal(byName(p, 'user-skill').uses.tools, undefined);
+  assert.deepEqual(byName(p, 'shared-skill').uses.byAgent, { claude: 4, gemini: 1 });
+});
+
+test('.mcp.json servers offer off / on but never remove', () => {
+  const fx = fixture();
+  put(join(fx.repo, '.mcp.json'), { mcpServers: { 'file-srv': { command: 'npx' } } });
+  const it = byName(build(fx), 'file-srv');
+  assert.equal(it.loc.where, 'mcpjson');
+  assert.deepEqual(it.can, { off: true, on: false, remove: false, restore: false, reveal: false });
 });

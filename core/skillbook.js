@@ -6,7 +6,8 @@
 //   tomlRemoveSection(text, name)        → { text, removed|null }  drops one [mcp_servers.<name>] section (and its sub-tables); removed = exact text
 //                                          (null too when a multi-line value never closes: the section end cannot be trusted)
 //   tomlLines(lines)                     → [{ line, header, path, cont }] (+ .open)  header = a real [x]/[[x]] line, not one inside a multi-line value
-//   usageFromRecord(rec)                 → [{ key, kind: 'skill'|'mcp', agent, at(ms), repo }]  from a hook record { ts, agent?, ev }
+//   usageFromRecord(rec)                 → [{ key, kind: 'skill'|'mcp', agent, at(ms), repo, tool? }]  from a hook record { ts, agent?, ev }
+//                                          (tool: the MCP tool name of mcp__<server>__<tool>)
 //   usageFromTranscriptLine(line, agent) → same shape, from one Claude Code transcript JSON line
 //   mastery(n)                           → 0 | 1 | 2 | 3  for uses in the last 30 days (0 / 1-4 / 5-19 / ≥ 20)
 //   weekCount(byDay, now)                → uses over the last 7 local days including today (byDay: 'YYYY-MM-DD' → n)
@@ -151,8 +152,8 @@ function usageOfTool(name, input) {
     const k = input && typeof input.skill === 'string' ? input.skill.trim() : '';
     return k ? { key: k, kind: 'skill' } : null;
   }
-  const m = /^mcp__(.+?)__.+$/.exec(typeof name === 'string' ? name : '');
-  return m ? { key: m[1], kind: 'mcp' } : null;
+  const m = /^mcp__(.+?)__(.+)$/.exec(typeof name === 'string' ? name : '');
+  return m ? { key: m[1], kind: 'mcp', tool: m[2] } : null;
 }
 function usageOfPrompt(text) {
   if (typeof text !== 'string') return null;
