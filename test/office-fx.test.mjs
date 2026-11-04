@@ -9,7 +9,7 @@ const FX = JSON.parse(html.match(/^const OFFICE_FX = (\{.*\});$/m)[1]);
 const pngSize = file => { const b = readFileSync(file); return [b.readUInt32BE(16), b.readUInt32BE(20)]; };
 
 test('office fx: every sheet exists and its size matches the table', () => {
-  assert.deepEqual(Object.keys(FX).sort(), ['blinkIn', 'blinkOut', 'collect', 'exclaim', 'rackA', 'rackB', 'skyDay', 'skyDusk', 'skyNight', 'sleep', 'steam']);
+  assert.deepEqual(Object.keys(FX).sort(), ['blinkIn', 'blinkOut', 'collect', 'exclaim', 'rackA', 'rackB', 'skillCast', 'skyDay', 'skyDusk', 'skyNight', 'sleep', 'steam']);
   for (const [key, f] of Object.entries(FX)) {
     const file = new URL(`../assets/pixel/${f.src}.png`, import.meta.url);
     assert.ok(existsSync(file), `${key}: ${f.src}.png missing`);
@@ -17,7 +17,7 @@ test('office fx: every sheet exists and its size matches the table', () => {
     assert.ok(f.px >= 0 && f.px <= f.w && f.py >= 0 && f.py <= f.h, `${key}: pivot inside the frame`);
   }
   for (const k of ['sleep', 'steam', 'rackA', 'rackB', 'skyDay', 'skyDusk', 'skyNight']) assert.equal(FX[k].loop, true, `${k} loops`);
-  for (const k of ['collect', 'blinkIn', 'blinkOut', 'exclaim']) assert.equal(FX[k].loop, false, `${k} is a one-shot`);
+  for (const k of ['collect', 'blinkIn', 'blinkOut', 'exclaim', 'skillCast']) assert.equal(FX[k].loop, false, `${k} is a one-shot`);
 });
 
 test('office fx: wired to finish, question, arrival, departure, rest and error', () => {

@@ -27,6 +27,7 @@ const EFFECTS = [
   { key: "blinkOut", id: "arcane/blink-out", file: "blink-out", options: { palette: ELECTRIC }, actor: true },
   { key: "exclaim", id: "ui/exclamation", file: "exclamation", options: {}, head: true },
   { key: "sleep", id: "office/zzz", file: "zzz", options: {} },
+  { key: "skillCast", id: "office/skill-cast", file: "skill-cast", options: {} },
   { key: "steam", id: "office/steam", file: "steam", options: {} },
   { key: "rackA", id: "office/rack-leds", file: "rack-a", options: { face: [2, 5] } },
   { key: "rackB", id: "office/rack-leds", file: "rack-b", options: { face: [10, 13], seed: 7 } },

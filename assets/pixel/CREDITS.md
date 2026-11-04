@@ -17,7 +17,7 @@ UI fonts (../fonts): Manrope by Mikhail Sharanda and JetBrains Mono by JetBrains
 https://github.com/sharanda/manrope · https://github.com/JetBrains/JetBrainsMono
 
 fx/*.png are sprite sheets baked from pixelfx by Patch (MIT; parts adapted from Hugo Duprez's Sprite Fusion effects, MIT)
-by scripts/office-fx.mjs: collect-burst, blink-in / blink-out (with our char_0 as the silhouette), exclamation; zzz, steam, rack-a/b and sky-* are
+by scripts/office-fx.mjs: collect-burst, blink-in / blink-out (with our char_0 as the silhouette), exclamation; zzz, skill-cast, steam, rack-a/b and sky-* are
 our own effects (scripts/office-fx/*.js) rendered with its tools
 https://github.com/patch-gg/pixelfx · https://www.spritefusion.com/pixel-art-vfx
 
