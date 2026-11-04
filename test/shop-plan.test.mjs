@@ -146,16 +146,6 @@ test('hostile values are rejected before any argv is built', () => {
   assert.equal(planInstall({ kind: 'plugin', name: 'p', marketplace: 'm', repo: '--upload-pack=x' }, { installed: EMPTY(), have: HAVE }).kind, 'manual')
 })
 
-test('runtime arguments precede the package, package arguments follow', () => {
-  const rec = { packages: [{ registryType: 'npm', identifier: 'demo-pkg', version: '1.0.0', transport: { type: 'stdio' },
-    runtimeArguments: [{ type: 'named', name: '--node-option', value: 'x' }],
-    packageArguments: [{ type: 'positional', value: 'serve' }] }] }
-  assert.deepEqual(planInstall(mcp(rec), { installed: EMPTY(), have: HAVE }).entry.args, ['-y', '--node-option', 'x', 'demo-pkg@1.0.0', 'serve'])
-  const oci = planInstall(mcp({ packages: [{ registryType: 'oci', identifier: 'ghcr.io/ex/demo', version: '1', transport: { type: 'stdio' },
-    runtimeArguments: [{ type: 'named', name: '-e', value: 'A=b' }], packageArguments: [{ type: 'positional', value: 'serve' }] }] }), { installed: EMPTY(), have: HAVE })
-  assert.equal(oci.show[0], 'docker run -i --rm -e A=b ghcr.io/ex/demo:1 serve')
-})
-
 test('secret arguments become placeholders and needs names', () => {
   const rec = { packages: [{ registryType: 'npm', identifier: 'demo-pkg', version: '1.0.0', transport: { type: 'stdio' },
     packageArguments: [
@@ -178,40 +168,35 @@ test('npx missing but uvx present falls through to pypi', () => {
   assert.deepEqual(p.steps[0].args.slice(-2), ['uvx', 'demo-py==0.4.1'])
 })
 
-test('runtime arguments that change the source are rejected per runner', () => {
-  const mk = (registryType, identifier, runtimeArguments) => ({ packages: [{ registryType, identifier, version: '1.0.0', transport: { type: 'stdio' }, runtimeArguments }] })
+test('any runtime argument makes npx/uvx ineligible and docker non-runnable', () => {
+  const mk = (registryType, identifier, runtimeArguments, packageArguments) =>
+    ({ packages: [{ registryType, identifier, version: '1.0.0', transport: { type: 'stdio' }, runtimeArguments, packageArguments }] })
   const plan = (rec) => planInstall(mcp(rec), { installed: EMPTY(), have: HAVE })
   for (const ra of [
-    [{ type: 'named', name: '--registry', value: 'https://evil.example.test' }],
-    [{ type: 'positional', value: '--registry=https://evil.example.test' }],
-    [{ type: 'named', name: '-p', value: 'other' }],
-    [{ type: 'named', name: '--prefix=/tmp/x' }],
+    [{ type: 'named', name: '-ihttps://evil.example.test' }],
+    [{ type: 'positional', value: '-pX' }],
+    [{ type: 'named', name: '--regis', value: 'https://evil.example.test' }],
+    [{ type: 'named', name: '--node-option', value: 'x' }],
   ]) {
-    const p = plan(mk('npm', 'demo-pkg', ra))
-    assert.equal(p.kind, 'manual'); assert.equal(p.steps, undefined); assert.equal(p.entry, undefined)
-    assert.ok(!p.show.join(' ').includes('npx') && !p.show.join(' ').includes('evil'))
+    for (const [t, id] of [['npm', 'demo-pkg'], ['pypi', 'demo-py']]) {
+      const p = plan(mk(t, id, ra))
+      assert.equal(p.kind, 'manual'); assert.equal(p.steps, undefined); assert.equal(p.entry, undefined)
+      assert.ok(!/npx|uvx|evil/.test(p.show.join(' ')))
+    }
   }
-  for (const ra of [
-    [{ type: 'named', name: '--index-url', value: 'https://evil.example.test' }],
-    [{ type: 'named', name: '--from=git+https://evil.example.test/x' }],
-    [{ type: 'named', name: '--with', value: 'other' }],
-  ]) {
-    const p = plan(mk('pypi', 'demo-py', ra))
-    assert.equal(p.kind, 'manual'); assert.ok(!p.show.join(' ').includes('uvx'))
-  }
-  for (const ra of [
-    [{ type: 'named', name: '--privileged' }],
-    [{ type: 'named', name: '-v', value: '/:/host' }],
-    [{ type: 'named', name: '--network=host' }],
-  ]) {
-    const p = plan(mk('oci', 'ghcr.io/ex/demo', ra))
-    assert.equal(p.kind, 'manual'); assert.ok(!p.show.join(' ').includes('docker run'))
-    assert.ok(p.show[0].includes('unsafe'))
-  }
-  // an unsafe npm candidate falls through to a safe pypi one
-  const f = plan({ packages: [mk('npm', 'demo-pkg', [{ type: 'named', name: '--registry', value: 'https://evil.example.test' }]).packages[0],
-    mk('pypi', 'demo-py', undefined).packages[0]] })
+  const d = plan(mk('oci', 'ghcr.io/ex/demo', [{ type: 'named', name: '-v/:/host' }]))
+  assert.equal(d.kind, 'manual'); assert.deepEqual(d.show, ['실행 인자가 있어 직접 확인이 필요합니다'])
+  assert.equal(plan(mk('oci', 'ghcr.io/ex/demo', undefined)).show[0], 'docker run --rm -i ghcr.io/ex/demo:1.0.0')
+  // an ineligible npm candidate falls through to a clean pypi one
+  const f = plan({ packages: [mk('npm', 'demo-pkg', [{ type: 'named', name: '--registry', value: 'x' }]).packages[0], mk('pypi', 'demo-py').packages[0]] })
   assert.deepEqual(f.steps[0].args.slice(-2), ['uvx', 'demo-py==1.0.0'])
-  // safe runtime args still work
-  assert.equal(plan(mk('npm', 'demo-pkg', [{ type: 'named', name: '--node-option', value: 'x' }])).kind, 'mcp-cli')
+})
+
+test('package argument values must not look like options', () => {
+  const rec = (pa) => ({ packages: [{ registryType: 'npm', identifier: 'demo-pkg', version: '1.0.0', transport: { type: 'stdio' }, packageArguments: pa }] })
+  const plan = (r) => planInstall(mcp(r), { installed: EMPTY(), have: HAVE })
+  assert.equal(plan(rec([{ type: 'positional', value: '--evil' }])).kind, 'manual')
+  assert.equal(plan(rec([{ type: 'named', name: '--port', value: '-1' }])).kind, 'manual')
+  assert.equal(plan(rec([{ type: 'named', name: '--bad name', value: 'x' }])).kind, 'manual')
+  assert.deepEqual(plan(rec([{ type: 'named', name: '--port', value: '80' }, { type: 'positional', value: 'serve' }])).entry.args, ['-y', 'demo-pkg@1.0.0', '--port', '80', 'serve'])
 })

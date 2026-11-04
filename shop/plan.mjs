@@ -55,19 +55,19 @@ function okUrl(u) {
   } catch { return false }
 }
 const okSource = (s) => typeof s === 'string' && !s.startsWith('-') && (RE.ghRepo.test(s) || /^https:\/\/[^\s]+$/.test(s))
-const DENY = {
-  npm: ['--registry', '--userconfig', '--package', '-p', '--call', '-c', '--prefix', '--cache'],
-  pypi: ['--index', '--index-url', '-i', '--extra-index-url', '--find-links', '-f', '--from', '--with', '--python', '--default-index'],
-  oci: ['--privileged', '-v', '--volume', '--mount', '--network', '--cap-add', '--pid', '--ipc', '--device'],
+const hasRuntimeArgs = (p) => Array.isArray(p.runtimeArguments) && p.runtimeArguments.length > 0
+// package arguments (after the package): a value must not look like an option, unless it belongs to a
+// well-formed named argument.
+function okPackageArgs(list) {
+  return (list || []).every((a) => {
+    if (!a || typeof a !== 'object') return true
+    const v = a.value != null && a.value !== '' ? String(a.value) : null
+    if (v && v.startsWith('-')) return false
+    if (a.type === 'named') return typeof a.name === 'string' && /^--?[A-Za-z][A-Za-z0-9-]*$/.test(a.name)
+    return true
+  })
 }
-// true when a runtime argument (name or value, `--x` or `--x=...`) changes the package source or the sandbox
-function unsafeRuntime(list, type) {
-  const deny = DENY[type]
-  if (!deny) return false
-  return (list || []).some((a) => a && typeof a === 'object' &&
-    [a.name, a.value].some((t) => typeof t === 'string' && deny.some((d) => t === d || t.startsWith(d + '='))))
-}
-const UNSAFE = ['자동 설치 불가 — 출처·권한을 바꾸는 실행 인자가 있어 명령을 제공하지 않음 (unsafe runtime arguments)']
+const RUNARGS = ['실행 인자가 있어 직접 확인이 필요합니다']
 const CANNOT = ['자동 설치 불가 — 레지스트리 정보를 확인하세요 (cannot be installed automatically)']
 
 const q = (s) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${String(s).replace(/'/g, `'\\''`)}'`)
@@ -122,7 +122,7 @@ function candidates(rec) {
     const r = remotes.find((x) => x && x.type === type && okUrl(x.url))
     if (r) out.push({ via: 'remote', remote: r })
   }
-  const pk = (rec.packages || []).filter((p) => okPkg(p) && !unsafeRuntime(p.runtimeArguments, p.registryType))
+  const pk = (rec.packages || []).filter((p) => okPkg(p) && !hasRuntimeArgs(p) && okPackageArgs(p.packageArguments))
   const npm = pk.find((p) => p.registryType === 'npm')
   if (npm) out.push({ via: 'npm', pkg: npm })
   const py = pk.find((p) => p.registryType === 'pypi')
@@ -132,16 +132,16 @@ function candidates(rec) {
 
 function manualShow(p) {
   if (!okPkg(p)) return CANNOT
-  if (unsafeRuntime(p.runtimeArguments, p.registryType)) return UNSAFE
+  if (hasRuntimeArgs(p)) return RUNARGS
+  if (!okPackageArgs(p.packageArguments)) return CANNOT
   const id = p.identifier
   const ver = p.version
   const needs = []
-  const rt = argWords(p.runtimeArguments, needs)
   const pa = argWords(p.packageArguments, needs)
-  if (p.registryType === 'oci') return [cmdLine(['docker', 'run', '-i', '--rm', ...rt, ver && !String(id).includes(':') ? `${id}:${ver}` : id, ...pa])]
-  if (p.registryType === 'nuget') return [cmdLine(['dnx', ver ? `${id}@${ver}` : id, '--yes', ...rt, ...pa])]
-  if (p.registryType === 'npm') return [cmdLine(['npx', '-y', ...rt, ver ? `${id}@${ver}` : id, ...pa])]
-  if (p.registryType === 'pypi') return [cmdLine(['uvx', ...rt, ver ? `${id}==${ver}` : id, ...pa])]
+  if (p.registryType === 'oci') return [cmdLine(['docker', 'run', '--rm', '-i', ver && !String(id).includes(':') ? `${id}:${ver}` : id, ...pa])]
+  if (p.registryType === 'nuget') return [cmdLine(['dnx', ver ? `${id}@${ver}` : id, '--yes', ...pa])]
+  if (p.registryType === 'npm') return [cmdLine(['npx', '-y', ver ? `${id}@${ver}` : id, ...pa])]
+  if (p.registryType === 'pypi') return [cmdLine(['uvx', ver ? `${id}==${ver}` : id, ...pa])]
   return CANNOT
 }
 
@@ -157,7 +157,7 @@ function planMcp(item, installed, have) {
   if (!usable) {
     // docker/oci/nuget only, or the needed runner is missing: show the command to copy
     const first = cands.find((c) => c.via !== 'remote')?.pkg
-      || (rec.packages || []).find((p) => okPkg(p) && !unsafeRuntime(p.runtimeArguments, p.registryType))
+      || (rec.packages || []).find((p) => okPkg(p) && !hasRuntimeArgs(p))
       || (rec.packages || []).find((p) => okPkg(p))
     return { kind: 'manual', show: first ? manualShow(first) : CANNOT, needs: [] }
   }
@@ -177,12 +177,11 @@ function planMcp(item, installed, have) {
   } else {
     const p = usable.pkg
     needs = needNames(p.environmentVariables)
-    const rt = argWords(p.runtimeArguments, needs)
-    const pa = argWords(p.packageArguments, needs)
+      const pa = argWords(p.packageArguments, needs)
     const [command, pre, ref] = usable.via === 'npm'
       ? ['npx', ['-y'], p.version ? `${p.identifier}@${p.version}` : p.identifier]
       : ['uvx', [], p.version ? `${p.identifier}==${p.version}` : p.identifier]
-    const args = [...pre, ...rt, ref, ...pa]
+    const args = [...pre, ref, ...pa]
     needs = uniq(needs)
     entry = { command, args }
     if (needs.length) entry.env = placeholders(needs.filter((n) => needNames(p.environmentVariables).includes(n)))
