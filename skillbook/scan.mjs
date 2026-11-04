@@ -102,7 +102,7 @@ export function scanInventory({ home, repos = [] } = {}) {
 
   function mcpItems(servers, { src, agents, where, file, scope, repo, repoKey, project }) {
     for (const name of names(servers)) {
-      add({ kind: 'mcp', name, agents: agents.slice(), source: src, ...(repo ? { repo, repoKey } : {}), description: '', triggers: [], on: true, usageKey: name,
+      add({ kind: 'mcp', name, idName: `${where}:${name}`, agents: agents.slice(), source: src, ...(repo ? { repo, repoKey } : {}), description: '', triggers: [], on: true, usageKey: name,
         mcp: { ...mcpFromJson(servers[name], where === 'gemini'), scope }, loc: { file, where, ...(repo ? { repo } : {}), ...(project ? { project } : {}) } });
     }
   }
@@ -156,7 +156,7 @@ export function scanInventory({ home, repos = [] } = {}) {
     const text = readFileSync(file, 'utf8');
     for (const s of tomlMcpServers(text)) {
       const d = tomlDetails(text, s.name);
-      add({ kind: 'mcp', name: s.name, agents: ['codex'], source: 'user', description: '', triggers: [], on: true, usageKey: s.name,
+      add({ kind: 'mcp', name: s.name, idName: `codex:${s.name}`, agents: ['codex'], source: 'user', description: '', triggers: [], on: true, usageKey: s.name,
         mcp: { transport: s.transport, ...(d.command ? { command: d.command } : {}), envKeys: d.envKeys, scope: 'user' }, loc: { file, where: 'codex' } });
     }
   });
@@ -192,14 +192,15 @@ export function scanInventory({ home, repos = [] } = {}) {
     const p = readJson(join(home, '.roca', 'skillbook-parked.json'));
     for (const e of Array.isArray(p.entries) ? p.entries : []) {
       if (!isObj(e) || e.kind !== 'mcp' || typeof e.id !== 'string' || typeof e.name !== 'string') continue;
+      const id = typeof e.sid === 'string' && e.sid ? e.sid : e.id; // each stored copy is its own item
       const agent = ALL.includes(e.agent) ? e.agent : 'claude';
       const where = e.loc && e.loc.where;
       if (!WHERES.includes(where) || typeof e.loc.file !== 'string' || !e.loc.file) continue;
       const project = where === 'claude-project' || where === 'mcpjson';
       const loc = { file: e.loc.file, where, ...(typeof e.loc.repo === 'string' ? { repo: e.loc.repo } : {}), ...(where === 'claude-project' && typeof e.loc.project === 'string' ? { project: e.loc.project } : {}) };
-      if (seen.has(e.id)) continue;
-      seen.add(e.id);
-      items.push({ id: e.id, kind: 'mcp', name: e.name, agents: [agent], source: project ? 'project' : 'user', ...(loc.repo ? { repo: loc.repo } : {}),
+      if (seen.has(id)) continue;
+      seen.add(id);
+      items.push({ id, kind: 'mcp', name: e.name, agents: [agent], source: project ? 'project' : 'user', ...(loc.repo ? { repo: loc.repo } : {}),
         description: '', triggers: [], on: false, usageKey: e.name, mcp: parkedSummary(e.mcp, project ? 'project' : 'user'), loc });
     }
   }, { optional: true });

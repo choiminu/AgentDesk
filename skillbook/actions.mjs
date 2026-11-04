@@ -1,6 +1,8 @@
 // Skillbook actions: turn off / on, remove / restore one skill, plugin or MCP server. Main process only.
-//   actOn({ home, item, action, trash, run }) → { ok: true } | { ok: false, error: 'gone'|'unsupported'|'failed', detail? }
+//   actOn({ home, item, action, trash, run, repos? }) → { ok: true } | { ok: false, error: 'gone'|'unsupported'|'failed', detail? }
 //     action: 'off' | 'on' | 'remove' | 'restore'; item: a scanInventory item (restore: a listRemoved row, looked up by id)
+//     repos: the repo paths the scan was given (limits which <repo>/.claude/skills folders remove may trash)
+//     a parked item's / removed row's id is its stored entry's own key (sid), so on / restore act on that exact copy
 //     trash(path) → Promise<void> (shell.trashItem); run(cmd, args) → Promise<{ code, stdout, stderr }> (execFile wrapper)
 //   listRemoved({ home, now }) → [{ id, kind, name, removedAt, how }]  removed in the last 30 days, no config contents
 //
@@ -10,7 +12,7 @@
 // verbatim (JSON object or exact TOML text), and written back by on / restore. Those files hold secrets: mode 0600, main only.
 // Every config write re-reads the file first, fails with 'gone' when the entry is no longer there (nothing written),
 // backs the file up to ~/.roca/skillbook-backup, changes only that entry and writes atomically.
-import { existsSync, lstatSync, readFileSync, writeFileSync, renameSync, mkdirSync, statSync, chmodSync, unlinkSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync, readFileSync, writeFileSync, renameSync, mkdirSync, statSync, chmodSync, unlinkSync } from 'node:fs';
 import { join, dirname, basename, resolve, isAbsolute } from 'node:path';
 import '../core/skillbook.js'; // classic script: sets globalThis.AgentDeskSkillbook
 import { readJsonStrict, writeJsonAtomic, backupPrivate } from '../perm/settings.mjs';
@@ -41,9 +43,21 @@ function writeStore(home, name, store, now) {
   writeJsonAtomic(f, { v: 1, entries });
   chmodSync(f, 0o600);
 }
-const withEntry = (store, e) => ({ v: 1, entries: store.entries.filter(x => x.id !== e.id).concat(e) });
-const without = (store, id) => ({ v: 1, entries: store.entries.filter(x => x.id !== id) });
-const findLive = (store, id, now, expires) => store.entries.find(e => e.id === id && (!expires || (typeof e.at === 'number' && now - e.at <= KEEP_REMOVED_MS)));
+// every stored copy has its own key (sid = <item id>@<at>, made unique); entries are never replaced, so a stored
+// config (often the only copy) is never overwritten by a later off / remove of the same name. Old entries without sid use id.
+const keyOf = e => (typeof e.sid === 'string' && e.sid ? e.sid : e.id);
+function withEntry(store, e) {
+  const taken = new Set(store.entries.map(keyOf));
+  const base = typeof e.sid === 'string' && e.sid ? e.sid : `${e.id}@${e.at}`;
+  let sid = base;
+  for (let n = 2; taken.has(sid); n++) sid = `${base}.${n}`;
+  return { v: 1, entries: store.entries.concat({ ...e, sid }) };
+}
+function without(store, key) {
+  const i = store.entries.findIndex(e => keyOf(e) === key);
+  return { v: 1, entries: i < 0 ? store.entries : store.entries.filter((_, j) => j !== i) };
+}
+const findLive = (store, key, now, expires) => store.entries.find(e => keyOf(e) === key && (!expires || (typeof e.at === 'number' && now - e.at <= KEEP_REMOVED_MS)));
 
 function baseEntry(item, now) {
   const agents = Array.isArray(item.agents) && item.agents.length ? item.agents : ['claude'];
@@ -79,7 +93,9 @@ function checkLoc(home, loc) {
   const want = { 'claude-user': join(home, '.claude.json'), 'claude-project': join(home, '.claude.json'), codex: join(home, '.codex', 'config.toml'), gemini: join(home, '.gemini', 'settings.json') }[loc.where];
   if (want ? f !== resolve(want) : !(loc.where === 'mcpjson' && basename(f) === '.mcp.json')) return null;
   if (loc.where === 'claude-project' && (typeof loc.project !== 'string' || !loc.project)) return null;
-  return { ...loc, file: f };
+  let real = f;
+  try { real = realpathSync(f); } catch { /* missing: written where it is */ }
+  return { ...loc, file: real }; // a symlinked config: read, back up and write its target, the link stays
 }
 
 // the mcpServers object holding the entry (create: make missing containers for on / restore)
@@ -143,18 +159,27 @@ function putBack(home, entry) {
     try { text = readFileSync(loc.file, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     if (tomlMcpServers(text).some(s => s.name === name)) return fail('failed', 'exists');
     const lines = tomlLines(text.split(/(?<=\n)/));
+    if (lines.open) return fail('failed', 'unparsed'); // a value never closes: no safe place to insert
+    const nl = /\r\n/.test(text) ? '\r\n' : '\n';
     let pos = -1, off = 0;
     if (typeof entry.before === 'string') {
       for (const l of lines) { if (l.header && l.line.replace(/\r?\n$/, '') === entry.before) { pos = off; break; } off += l.line.length; }
     }
-    const add = entry.toml;
-    const out = pos >= 0 ? text.slice(0, pos) + add + text.slice(pos) : text + (text && !text.endsWith('\n') ? '\n' : '') + add;
+    let add = entry.toml;
+    if (pos >= 0 && !add.endsWith('\n')) add += nl; // never join the restored text onto the next header
+    const out = pos >= 0 ? text.slice(0, pos) + add + text.slice(pos) : text + (text && !text.endsWith('\n') ? nl : '') + add;
     if (existsSync(loc.file)) backup(home, loc.file);
     else mkdirSync(dirname(loc.file), { recursive: true });
     writeTextAtomic(loc.file, out);
     return { ok: true };
   }
   if (!isObj(entry.json)) return fail('failed', 'empty');
+  if (loc.where === 'claude-user' || loc.where === 'claude-project') {
+    // ~/.claude.json is Claude Code's own state file: never create one holding only mcpServers
+    let raw = '';
+    try { raw = readFileSync(loc.file, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    if (!raw.trim()) return fail('failed', 'missing');
+  }
   const obj = readJsonStrict(loc.file);
   const at = jsonBox(obj, loc, true);
   if (!at) return fail('failed', 'unparsed');
@@ -195,10 +220,21 @@ function skillMove(home, item, action) {
   renameSync(path, dest);
   return { ok: true };
 }
-async function skillRemove(home, item, trash, now) {
+// a skill folder may be trashed only from a folder the scan reads: the home roots, or <repo>/.claude/skills of
+// the item's repo (one of `repos` when given, otherwise a repo whose folder name is item.repo)
+function removableSkill(home, item, repos) {
+  const parent = dirname(resolve(item.path));
+  const roots = [['.claude', 'skills'], ['.claude', 'skills-disabled'], ['.agents', 'skills'], ['.agents', 'skills-disabled'], ['.codex', 'skills']].map(p => resolve(home, ...p));
+  if (roots.includes(parent)) return true;
+  if (typeof item.repo !== 'string' || !item.repo || basename(parent) !== 'skills' || basename(dirname(parent)) !== '.claude') return false;
+  const repo = dirname(dirname(parent));
+  if (basename(repo) !== item.repo) return false;
+  return !Array.isArray(repos) || repos.some(r => typeof r === 'string' && resolve(r) === repo);
+}
+async function skillRemove(home, item, trash, now, repos) {
   if (item.plugin || typeof item.path !== 'string' || !isAbsolute(item.path)) return fail('unsupported', 'location');
   const path = resolve(item.path);
-  if (!['skills', 'skills-disabled'].includes(basename(dirname(path)))) return fail('unsupported', 'location');
+  if (!removableSkill(home, item, repos)) return fail('unsupported', 'location');
   if (!exists(path)) return fail('gone');
   readStore(home, REMOVED); // a broken store fails before anything moves
   await trash(path);
@@ -220,13 +256,13 @@ async function claude(run, args) {
 }
 
 // ---------- entry points ----------
-export async function actOn({ home, item, action, trash, run } = {}) {
+export async function actOn({ home, item, action, trash, run, repos } = {}) {
   if (typeof home !== 'string' || !home || !isObj(item) || typeof item.id !== 'string' || typeof item.name !== 'string') return fail('failed', 'bad request');
   if (!ACTIONS.includes(action)) return fail('unsupported', 'action');
   const now = Date.now();
   try {
     if (action === 'restore') return await restore(home, item, run, now);
-    if (item.kind === 'skill') return action === 'remove' ? await skillRemove(home, item, trash, now) : skillMove(home, item, action);
+    if (item.kind === 'skill') return action === 'remove' ? await skillRemove(home, item, trash, now, repos) : skillMove(home, item, action);
     if (item.kind === 'plugin') {
       if (item.source === 'extension' || !(item.agents || []).includes('claude')) return fail('unsupported', 'plugin');
       const ref = pluginRef(item.name, item.plugin && item.plugin.marketplace);
@@ -276,7 +312,7 @@ async function restore(home, item, run, now) {
   } else if (e.kind === 'mcp') r = putBack(home, e);
   else return fail('unsupported', 'kind');
   if (!r.ok) return r;
-  writeStore(home, REMOVED, without(readStore(home, REMOVED), e.id), now); // re-read: the CLI call awaited
+  writeStore(home, REMOVED, without(readStore(home, REMOVED), keyOf(e)), now); // re-read: the CLI call awaited
   return r;
 }
 
@@ -285,5 +321,5 @@ export function listRemoved({ home, now = Date.now() } = {}) {
   try { store = readStore(home, REMOVED); } catch { return []; }
   return store.entries
     .filter(e => typeof e.at === 'number' && now - e.at <= KEEP_REMOVED_MS)
-    .map(e => ({ id: e.id, kind: e.kind, name: typeof e.name === 'string' ? e.name : '', removedAt: e.at, how: typeof e.how === 'string' ? e.how : '' }));
+    .map(e => ({ id: keyOf(e), kind: e.kind, name: typeof e.name === 'string' ? e.name : '', removedAt: e.at, how: typeof e.how === 'string' ? e.how : '' }));
 }

@@ -1,7 +1,7 @@
 // Skillbook actions: skillbook/actions.mjs over a temp home with fake trash / run (made-up names only).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync, rmSync, utimesSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync, rmSync, utimesSync, renameSync, symlinkSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { scanInventory } from '../skillbook/scan.mjs';
@@ -67,7 +67,7 @@ test('skill remove goes to the trash and restore points there', async () => {
   assert.deepEqual(await actOn({ home, item: it, action: 'remove', ...f }), { ok: true });
   assert.deepEqual(f.calls.trash, [it.path]);
   const [r] = listRemoved({ home, now: Date.now() });
-  assert.equal(r.id, it.id); assert.equal(r.how, 'trash'); assert.equal(r.kind, 'skill');
+  assert.ok(r.id.startsWith(`${it.id}@`)); // its own stored copy assert.equal(r.how, 'trash'); assert.equal(r.kind, 'skill');
   assert.deepEqual(await actOn({ home, item: r, action: 'restore', ...f }), { ok: false, error: 'unsupported', detail: 'trash' });
   // a skill that is already gone is not trashed
   assert.deepEqual(await actOn({ home, item: it, action: 'remove', ...f }), { ok: false, error: 'gone' });
@@ -96,7 +96,7 @@ test('mcp off parks and on restores byte-for-byte', async () => {
   assert.deepEqual(e.mcp, { transport: 'stdio', command: 'demo', envKeys: ['API_TOKEN'], scope: 'user' });
   assert.equal(e.agent, 'claude'); assert.equal(e.kind, 'mcp'); assert.equal(typeof e.at, 'number');
   // the scan shows it as off with the stored summary
-  const parked = item(home, repo, i => i.id === js.id);
+  const parked = item(home, repo, i => i.name === 'user-srv' && i.on === false);
   assert.equal(parked.on, false); assert.deepEqual(parked.mcp.envKeys, ['API_TOKEN']); assert.equal(parked.mcp.command, 'demo');
   assert.deepEqual(await actOn({ home, item: parked, action: 'on', ...f }), { ok: true });
   const after = json(cj);
@@ -114,7 +114,7 @@ test('mcp off parks and on restores byte-for-byte', async () => {
   const ce = json(parkedFile).entries.find(x => x.id === cx.id);
   assert.equal(ce.toml, '[mcp_servers.codex-srv]\ncommand = "/opt/bin/cx"\nargs = [\n  ["--key", "sk-SECRET2"],\n]\n[mcp_servers.codex-srv.env]\nCX_TOKEN = "sk-SECRET1"\n\n');
   assert.deepEqual(ce.mcp, { transport: 'stdio', command: 'cx', envKeys: ['CX_TOKEN'], scope: 'user' });
-  const cxOff = item(home, repo, i => i.id === cx.id);
+  const cxOff = item(home, repo, i => i.name === 'codex-srv' && i.on === false);
   assert.equal(cxOff.on, false);
   assert.deepEqual(await actOn({ home, item: cxOff, action: 'on', ...f }), { ok: true });
   assert.equal(readFileSync(cf, 'utf8'), CODEX);
@@ -130,11 +130,11 @@ test('mcp in project, .mcp.json and gemini: remove and restore', async () => {
     assert.deepEqual(await actOn({ home, item: it, action: 'remove', ...f }), { ok: true }, name);
     assert.ok(!JSON.stringify(json(file)).includes(`"${name}"`), name);
     assert.equal(item(home, repo, i => i.name === name), undefined, name);
-    const r = listRemoved({ home, now: Date.now() }).find(x => x.id === it.id);
+    const r = listRemoved({ home, now: Date.now() }).find(x => x.name === name);
     assert.equal(r.name, name); assert.equal(r.kind, 'mcp');
     assert.deepEqual(await actOn({ home, item: r, action: 'restore', ...f }), { ok: true }, name);
     assert.deepEqual(json(file), before, name);
-    assert.equal(listRemoved({ home, now: Date.now() }).find(x => x.id === it.id), undefined);
+    assert.equal(listRemoved({ home, now: Date.now() }).find(x => x.name === name), undefined);
   }
   assert.equal(mode(join(home, '.roca/skillbook-removed.json')), 0o600);
   // the removed list never carries config contents
@@ -149,11 +149,11 @@ test('a turned-off mcp can be removed from the parked list', async () => {
   const f = fakes();
   const it = item(home, repo, i => i.name === 'gem-srv');
   await actOn({ home, item: it, action: 'off', ...f });
-  const off = item(home, repo, i => i.id === it.id);
+  const off = item(home, repo, i => i.name === 'gem-srv' && i.on === false);
   assert.deepEqual(await actOn({ home, item: off, action: 'remove', ...f }), { ok: true });
   assert.deepEqual(json(join(home, '.roca/skillbook-parked.json')).entries, []);
-  assert.equal(item(home, repo, i => i.id === it.id), undefined);
-  const r = listRemoved({ home, now: Date.now() }).find(x => x.id === it.id);
+  assert.equal(item(home, repo, i => i.name === 'gem-srv'), undefined);
+  const r = listRemoved({ home, now: Date.now() }).find(x => x.name === 'gem-srv');
   assert.deepEqual(await actOn({ home, item: r, action: 'restore', ...f }), { ok: true });
   assert.deepEqual(json(join(home, '.gemini/settings.json')).mcpServers['gem-srv'], { command: 'gem' });
 });
@@ -164,7 +164,7 @@ test('on / restore never clobber an entry of the same name', async () => {
   const cj = join(home, '.claude.json');
   const it = item(home, repo, i => i.name === 'user-srv');
   await actOn({ home, item: it, action: 'off', ...f });
-  const off = item(home, repo, i => i.id === it.id);
+  const off = item(home, repo, i => i.name === 'user-srv' && i.on === false);
   const c = json(cj); c.mcpServers['user-srv'] = { command: 'someone-else' }; put(cj, c);
   const text = readFileSync(cj, 'utf8');
   assert.deepEqual(await actOn({ home, item: off, action: 'on', ...f }), { ok: false, error: 'failed', detail: 'exists' });
@@ -176,7 +176,7 @@ test('on / restore never clobber an entry of the same name', async () => {
   await actOn({ home, item: cx, action: 'remove', ...f });
   put(cf, readFileSync(cf, 'utf8') + '[mcp_servers.codex-srv]\ncommand = "new"\n');
   const ct = readFileSync(cf, 'utf8');
-  const r = listRemoved({ home, now: Date.now() }).find(x => x.id === cx.id);
+  const r = listRemoved({ home, now: Date.now() }).find(x => x.name === 'codex-srv');
   assert.deepEqual(await actOn({ home, item: r, action: 'restore', ...f }), { ok: false, error: 'failed', detail: 'exists' });
   assert.equal(readFileSync(cf, 'utf8'), ct);
 });
@@ -221,7 +221,7 @@ test('plugin actions call the CLI', async () => {
   assert.deepEqual(f.calls.run, [['claude', 'plugin', 'disable', 'demo@market']]);
   assert.deepEqual(await actOn({ home, item: it, action: 'on', ...f }), { ok: true });
   assert.deepEqual(await actOn({ home, item: it, action: 'remove', ...f }), { ok: true });
-  const r = listRemoved({ home, now: Date.now() }).find(x => x.id === it.id);
+  const r = listRemoved({ home, now: Date.now() }).find(x => x.name === 'demo');
   assert.equal(r.how, 'plugin'); assert.equal(r.kind, 'plugin'); assert.equal(r.name, 'demo');
   assert.deepEqual(await actOn({ home, item: r, action: 'restore', ...f }), { ok: true });
   assert.deepEqual(f.calls.run.slice(1), [['claude', 'plugin', 'enable', 'demo@market'], ['claude', 'plugin', 'uninstall', 'demo@market'], ['claude', 'plugin', 'install', 'demo@market']]);
@@ -256,4 +256,122 @@ test('removed list expires', () => {
     { id: 'new', kind: 'plugin', agent: 'claude', name: 'p', at: now - 29 * DAY, how: 'plugin', plugin: { name: 'p', marketplace: 'm' } }] });
   assert.deepEqual(listRemoved({ home, now }), [{ id: 'new', kind: 'plugin', name: 'p', removedAt: now - 29 * DAY, how: 'plugin' }]);
   assert.deepEqual(listRemoved({ home: join(home, 'nowhere'), now }), []);
+});
+
+// ---- fix round 1 ----
+test('stored entries never overwrite each other', async () => {
+  const { home, repo } = fixture();
+  const f = fakes();
+  const cj = join(home, '.claude.json');
+  const first = json(cj).mcpServers['user-srv'];
+  const it = item(home, repo, i => i.name === 'user-srv');
+  assert.deepEqual(await actOn({ home, item: it, action: 'off', ...f }), { ok: true });
+  // the user adds a server of the same name again and turns it off too
+  const c = json(cj); c.mcpServers['user-srv'] = { command: 'second' }; put(cj, c);
+  const again = item(home, repo, i => i.name === 'user-srv' && i.on === true);
+  assert.deepEqual(await actOn({ home, item: again, action: 'off', ...f }), { ok: true });
+  assert.equal(json(join(home, '.roca/skillbook-parked.json')).entries.length, 2);
+  const parked = scan(home, repo).filter(i => i.name === 'user-srv' && i.on === false);
+  assert.equal(parked.length, 2);
+  assert.equal(new Set(parked.map(i => i.id)).size, 2);
+  const [p1, p2] = parked;
+  assert.deepEqual(await actOn({ home, item: p1, action: 'on', ...f }), { ok: true });
+  assert.deepEqual(json(cj).mcpServers['user-srv'], first);
+  assert.deepEqual(await actOn({ home, item: p2, action: 'on', ...f }), { ok: false, error: 'failed', detail: 'exists' });
+  assert.equal(json(join(home, '.roca/skillbook-parked.json')).entries.length, 1);
+  // removed store: two removals of the same name both stay restorable
+  const live = item(home, repo, i => i.name === 'user-srv' && i.on === true);
+  await actOn({ home, item: live, action: 'remove', ...f });
+  const p2b = item(home, repo, i => i.name === 'user-srv' && i.on === false);
+  await actOn({ home, item: p2b, action: 'remove', ...f });
+  const rows = listRemoved({ home, now: Date.now() }).filter(r => r.name === 'user-srv');
+  assert.equal(rows.length, 2); assert.equal(new Set(rows.map(r => r.id)).size, 2);
+  assert.deepEqual(await actOn({ home, item: rows[0], action: 'restore', ...f }), { ok: true });
+  assert.deepEqual(await actOn({ home, item: rows[1], action: 'restore', ...f }), { ok: false, error: 'failed', detail: 'exists' });
+  assert.equal(listRemoved({ home, now: Date.now() }).length, 1);
+});
+
+test('toml restore keeps lines apart and refuses an unparsable target', async () => {
+  const { home } = fixture();
+  const f = fakes();
+  const cf = join(home, '.codex/config.toml');
+  const entry = (id, toml, before) => ({ id, sid: id, kind: 'mcp', agent: 'codex', name: 'x', loc: { file: cf, where: 'codex' }, at: Date.now(), toml, ...(before ? { before } : {}) });
+  put(cf, '[a]\r\nk = 1\r\n[b]\r\nm = 2');
+  put(join(home, '.roca/skillbook-parked.json'), { v: 1, entries: [entry('p1', '[mcp_servers.x]\r\ncommand = "c"', '[b]')] });
+  assert.deepEqual(await actOn({ home, item: { id: 'p1', kind: 'mcp', name: 'x', on: false }, action: 'on', ...f }), { ok: true });
+  assert.equal(readFileSync(cf, 'utf8'), '[a]\r\nk = 1\r\n[mcp_servers.x]\r\ncommand = "c"\r\n[b]\r\nm = 2');
+  // appended at the end of a file without a final newline
+  put(cf, '[a]\nk = 1');
+  put(join(home, '.roca/skillbook-parked.json'), { v: 1, entries: [entry('p2', '[mcp_servers.x]\ncommand = "c"\n')] });
+  assert.deepEqual(await actOn({ home, item: { id: 'p2', kind: 'mcp', name: 'x', on: false }, action: 'on', ...f }), { ok: true });
+  assert.equal(readFileSync(cf, 'utf8'), '[a]\nk = 1\n[mcp_servers.x]\ncommand = "c"\n');
+  // a target with a value that never closes is not touched
+  const open = '[a]\nargs = [\n  "q",\n[b]\n';
+  put(cf, open);
+  put(join(home, '.roca/skillbook-parked.json'), { v: 1, entries: [entry('p3', '[mcp_servers.x]\ncommand = "c"\n', '[b]')] });
+  assert.deepEqual(await actOn({ home, item: { id: 'p3', kind: 'mcp', name: 'x', on: false }, action: 'on', ...f }), { ok: false, error: 'failed', detail: 'unparsed' });
+  assert.equal(readFileSync(cf, 'utf8'), open);
+});
+
+test('on / restore into a missing or empty ~/.claude.json refuses', async () => {
+  const { home, repo } = fixture();
+  const f = fakes();
+  const cj = join(home, '.claude.json');
+  for (const name of ['user-srv', 'proj-srv']) {
+    const it = item(home, repo, i => i.name === name);
+    await actOn({ home, item: it, action: 'off', ...f });
+  }
+  const parked = scan(home, repo).filter(i => i.on === false);
+  assert.equal(parked.length, 2);
+  for (const content of [null, '', '  \n']) {
+    if (content === null) rmSync(cj); else writeFileSync(cj, content);
+    for (const p of parked) assert.deepEqual(await actOn({ home, item: p, action: 'on', ...f }), { ok: false, error: 'failed', detail: 'missing' });
+    if (content === null) assert.ok(!existsSync(cj)); else assert.equal(readFileSync(cj, 'utf8'), content);
+  }
+  assert.equal(json(join(home, '.roca/skillbook-parked.json')).entries.length, 2);
+});
+
+test('a symlinked config stays a symlink', async () => {
+  const { home, repo } = fixture();
+  const f = fakes();
+  const cj = join(home, '.claude.json');
+  const real = join(home, 'dotfiles', 'claude.json');
+  mkdirSync(join(home, 'dotfiles'), { recursive: true });
+  renameSync(cj, real); symlinkSync(real, cj);
+  const cf = join(home, '.codex/config.toml');
+  const realT = join(home, 'dotfiles', 'config.toml');
+  renameSync(cf, realT); symlinkSync(realT, cf);
+  const before = json(real);
+  for (const name of ['user-srv', 'codex-srv']) {
+    const it = item(home, repo, i => i.name === name);
+    assert.deepEqual(await actOn({ home, item: it, action: 'off', ...f }), { ok: true }, name);
+  }
+  assert.ok(lstatSync(cj).isSymbolicLink()); assert.ok(lstatSync(cf).isSymbolicLink());
+  assert.equal(json(real).mcpServers['user-srv'], undefined);
+  assert.ok(!readFileSync(realT, 'utf8').includes('codex-srv'));
+  assert.ok(backups(home).some(b => b.startsWith('claude.json.')));
+  for (const p of scan(home, repo).filter(i => i.on === false && i.kind === 'mcp')) assert.deepEqual(await actOn({ home, item: p, action: 'on', ...f }), { ok: true });
+  assert.ok(lstatSync(cj).isSymbolicLink()); assert.ok(lstatSync(cf).isSymbolicLink());
+  assert.deepEqual(json(real), before);
+  assert.equal(readFileSync(realT, 'utf8'), CODEX);
+});
+
+test('skill remove only takes folders the scan reads', async () => {
+  const { home, repo } = fixture();
+  const f = fakes();
+  const forged = join(home, 'x', 'skills', 'y');
+  put(join(forged, 'SKILL.md'), '---\nname: y\n---\n');
+  for (const it of [
+    { id: 'skill:user:claude::y', kind: 'skill', name: 'y', agents: ['claude'], path: forged },
+    { id: 'skill:project:claude:alpha:y', kind: 'skill', name: 'y', agents: ['claude'], repo: 'alpha', path: forged },
+    { id: 'skill:project:claude:x:y', kind: 'skill', name: 'y', agents: ['claude'], repo: 'x', path: join(home, 'x', '.claude', 'skills', 'y') }]) {
+    assert.deepEqual(await actOn({ home, item: it, action: 'remove', repos: [repo], ...f }), { ok: false, error: 'unsupported', detail: 'location' });
+  }
+  assert.ok(existsSync(forged));
+  assert.deepEqual(f.calls.trash, []);
+  // a repo skill (from the scan) and a Codex skill are accepted
+  put(join(repo, '.claude/skills/proj-skill/SKILL.md'), '---\nname: proj-skill\n---\n');
+  put(join(home, '.codex/skills/cx-skill/SKILL.md'), '---\nname: cx-skill\n---\n');
+  for (const name of ['proj-skill', 'cx-skill']) assert.deepEqual(await actOn({ home, item: item(home, repo, i => i.name === name), action: 'remove', repos: [repo], ...f }), { ok: true }, name);
+  assert.equal(f.calls.trash.length, 2);
 });
