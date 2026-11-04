@@ -3,18 +3,24 @@
 //
 //   deskArgs()                       → argv for `claude` (model AGENTDESK_QUEST_MODEL || haiku, JSON schema, no tools)
 //   askDesk({ issue, party, repos, run, signal, timeoutMs })
-//        → Promise<{ ok: true, choice, reason } | { ok: false, error: 'timeout'|'invalid'|'failed'|'cancelled' }>
+//        → Promise<{ ok: true, choice, reason } | { ok: false, error: 'timeout'|'invalid'|'failed'|'cancelled'|'busy' }>
 //        run(input, { signal }) → Promise<{ code, stdout }>; input = the masked front-desk prompt (stdin)
-//   createDesk({ run, now, timeoutMs }) → { ask({ key, issue, party, repos }), cancel(key), pending(key) }
+//   createDesk({ run, now, timeoutMs, maxInflight }) → { ask({ key, issue, party, repos }), cancel(key), pending(key) }
+//        at most maxInflight (2) calls across tickets; another ticket's ask then gets { ok: false, error: 'busy' }
 //        one call per ticket at a time (a second ask joins the first), ok proposals cached per ticket 10 minutes
 //        (re-checked against the current party / repos on a hit)
-//   spawnRun(opts) → a `run` that spawns `claude` with deskArgs(), stdin input, killed on abort
+//   spawnRun({ cmd, env, killGraceMs }) → a `run` that spawns `claude` with deskArgs(), stdin input; on abort SIGTERM, SIGKILL 3 s later
+//        env (when given) is used as is: the caller passes PATH and the hook-quiet variables
+//   killAllDesk() → kill every running desk child (app quit)
 import { spawn } from "node:child_process";
 import "../core/mask.js";    // globalThis.AgentDeskMask
 import "../core/quest.js";   // globalThis.AgentDeskQuest
 
 export const DESK_TIMEOUT_MS = 90000;
 export const DESK_CACHE_MS = 10 * 60000;
+export const DESK_MAX_INFLIGHT = 2;
+export const DESK_KILL_GRACE_MS = 3000;
+const HOOK_QUIET = { AGENTDESK_RECALL: "1", DISABLE_OMC: "1", OMC_SKIP_HOOKS: "all" };
 const REASON_MAX = 300;
 const OUT_MAX = 1024 * 1024;
 const Q = () => globalThis.AgentDeskQuest;
@@ -68,7 +74,7 @@ export async function askDesk({ issue, party, repos, run, signal, timeoutMs = DE
   }
 }
 
-export function createDesk({ run, now = Date.now, timeoutMs = DESK_TIMEOUT_MS } = {}) {
+export function createDesk({ run, now = Date.now, timeoutMs = DESK_TIMEOUT_MS, maxInflight = DESK_MAX_INFLIGHT } = {}) {
   const inflight = new Map();   // key → { promise, ac }
   const cache = new Map();      // key → { at, result }
   return {
@@ -78,6 +84,7 @@ export function createDesk({ run, now = Date.now, timeoutMs = DESK_TIMEOUT_MS } 
       if (hit) cache.delete(key);
       const cur = inflight.get(key);
       if (cur) return cur.promise;
+      if (inflight.size >= maxInflight) return Promise.resolve({ ok: false, error: "busy" });
       const ac = new AbortController();
       const promise = askDesk({ issue, party, repos, run, signal: ac.signal, timeoutMs }).then(res => {
         if (inflight.get(key) && inflight.get(key).ac === ac) inflight.delete(key);
@@ -98,19 +105,34 @@ export function createDesk({ run, now = Date.now, timeoutMs = DESK_TIMEOUT_MS } 
   };
 }
 
-export function spawnRun({ cmd = "claude", env = process.env } = {}) {
+const children = new Set();
+function killChild(child, graceMs = child.__deskGrace || DESK_KILL_GRACE_MS) {
+  try { child.kill("SIGTERM"); } catch {}
+  const t = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) { try { child.kill("SIGKILL"); } catch {} } }, graceMs);
+  if (t.unref) t.unref();
+}
+export function killAllDesk() { for (const c of children) killChild(c); }
+
+export function spawnRun({ cmd = "claude", env, killGraceMs = DESK_KILL_GRACE_MS } = {}) {
+  // headless run: our own hooks stay quiet (AGENTDESK_RECALL), OMC keyword triggers / hooks off
+  const runEnv = env || { ...process.env, ...HOOK_QUIET };
   return (input, { signal } = {}) => new Promise((resolve, reject) => {
     let child;
     try {
-      // headless run: our own hooks stay quiet (AGENTDESK_RECALL), OMC keyword triggers / hooks off
-      child = spawn(cmd, deskArgs(), { env: { ...env, AGENTDESK_RECALL: "1", DISABLE_OMC: "1", OMC_SKIP_HOOKS: "all" }, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
+      child = spawn(cmd, deskArgs(), { env: runEnv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
     } catch (e) { reject(e); return; }
+    child.__deskGrace = killGraceMs;
+    children.add(child);
     let out = "", done = false;
-    const kill = () => { try { child.kill("SIGTERM"); } catch {} };
+    const kill = () => killChild(child);
     if (signal) { if (signal.aborted) kill(); else signal.addEventListener("abort", kill, { once: true }); }
+    child.stdout.setEncoding("utf8");   // a Korean character split across chunks stays whole
+    child.stderr.setEncoding("utf8");
     child.stdout.on("data", d => { if (out.length < OUT_MAX) out += d; });
-    child.on("error", e => { if (!done) { done = true; reject(e); } });
-    child.on("close", code => { if (!done) { done = true; resolve({ code, stdout: out }); } });
+    child.stderr.on("data", () => {});   // drained, never shown (it may quote the prompt)
+    const finish = () => { children.delete(child); if (signal) signal.removeEventListener("abort", kill); };
+    child.on("error", e => { finish(); if (!done) { done = true; reject(e); } });
+    child.on("close", code => { finish(); if (!done) { done = true; resolve({ code, stdout: out }); } });
     child.stdin.on("error", () => {});
     child.stdin.end(input);
   });

@@ -2,12 +2,12 @@
 // and the main/preload/package wiring (source checks; Electron is never launched).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync, writeFileSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createQuestState } from '../quest/state.mjs';
-import { askDesk, createDesk, deskArgs, DESK_TIMEOUT_MS, DESK_CACHE_MS } from '../quest/desk.mjs';
+import { askDesk, createDesk, deskArgs, spawnRun, killAllDesk, DESK_TIMEOUT_MS, DESK_CACHE_MS, DESK_MAX_INFLIGHT, DESK_KILL_GRACE_MS } from '../quest/desk.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tmpFile = () => join(mkdtempSync(join(tmpdir(), 'quest-main-')), 'roca', 'quests.json');
@@ -81,6 +81,32 @@ test('state prune: listed keys and tickets done in Jira over 30 days ago go', ()
     { key: 'A-3', fields: { status: { statusCategory: { key: 'done' } }, resolutiondate: '2026-10-30T00:00:00Z' } },
   ]);
   assert.deepEqual(Object.keys(st.all().quests), ['A-3', 'A-4']);
+});
+
+test('state is 0600 from the first byte: no looser window, even over a leftover temp file', { skip: IS_WIN }, () => {
+  const src = readFileSync(join(ROOT, 'quest/state.mjs'), 'utf-8');
+  assert.ok(!/writeJsonAtomic/.test(src), 'no mode-keeping helper');
+  assert.match(src, /writeFileSync\(tmp, [^\n]*\{ mode: 0o600 \}\)/);
+  const file = tmpFile();
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.agentdesk-${process.pid}.tmp`;
+  writeFileSync(tmp, 'old', { mode: 0o644 }); chmodSync(tmp, 0o644);
+  const st = createQuestState({ file }); st.load();
+  st.set('ABC-1', { kind: 'worktree', repo: 'alpha' });
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.ok(!existsSync(tmp));
+});
+
+test('state: loaded keys are filtered by the ticket-key pattern; set refuses a non-ticket key', () => {
+  const file = tmpFile();
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, '{"v":1,"quests":{"__proto__":{"kind":"worktree","repo":"x","at":1},"constructor":{"kind":"worktree","repo":"x","at":1},"abc-1":{"kind":"worktree","repo":"x","at":1},"ABC-1":{"kind":"worktree","repo":"x","at":1},"AB_C2-7":{"kind":"session","sessionId":"s","at":2}}}');
+  const st = createQuestState({ file }); st.load();
+  assert.deepEqual(Object.keys(st.all().quests).sort(), ['ABC-1', 'AB_C2-7']);
+  assert.equal(st.get('__proto__'), undefined);
+  assert.equal(st.get('constructor'), undefined);
+  assert.equal(({}).polluted, undefined);
+  for (const k of ['__proto__', 'abc-1', 'ABC', '']) assert.throws(() => st.set(k, { kind: 'worktree', repo: 'x' }), k);
 });
 
 // ── front desk ──
@@ -186,18 +212,73 @@ test('desk proposals are cached per ticket for 10 minutes; failures are not cach
   assert.equal(bad.length, 2);
 });
 
+test('desk: at most 2 calls in flight across tickets; a third ticket gets busy', async () => {
+  assert.equal(DESK_MAX_INFLIGHT, 2);
+  const calls = [], releases = [];
+  const run = (input) => { calls.push(input); return new Promise(res => releases.push(() => res({ code: 0, stdout: envelope({ choice: { kind: 'session', id: 's-1' }, reason: 'r' }) }))); };
+  const desk = createDesk({ run });
+  const args = k => ({ key: k, issue: { ...ISSUE, key: k }, party: PARTY, repos: REPOS });
+  const a = desk.ask(args('ABC-1')), b = desk.ask(args('ABC-2'));
+  assert.deepEqual(await desk.ask(args('ABC-3')), { ok: false, error: 'busy' });
+  const a2 = desk.ask(args('ABC-1'));   // the same ticket still joins its call
+  assert.equal(calls.length, 2);
+  releases.forEach(f => f());
+  assert.equal((await a).ok, true); assert.equal((await b).ok, true); assert.deepEqual(await a2, await a);
+  const c = desk.ask(args('ABC-3'));   // a slot is free again
+  assert.equal(calls.length, 3);
+  releases[2]();
+  assert.equal((await c).ok, true);
+});
+
+// a stand-in for `claude` (POSIX shell script): ignores its arguments
+const fakeCli = body => { const d = mkdtempSync(join(tmpdir(), 'quest-cli-')); const f = join(d, 'claude'); writeFileSync(f, `#!/bin/sh\n${body}\n`, { mode: 0o700 }); return f; };
+
+test('spawnRun: Korean output split across chunks stays whole; stdin reaches the child', { skip: IS_WIN }, async () => {
+  const cli = fakeCli(`read line\nprintf '{"result":"\\355\\225'\nsleep 0.2\nprintf '\\234 %s"}' "$line"`);
+  const r = await spawnRun({ cmd: cli, env: { PATH: process.env.PATH } })('hello\n');
+  assert.equal(r.code, 0);
+  assert.equal(JSON.parse(r.stdout).result, '한 hello');
+});
+
+test('spawnRun: abort sends SIGTERM, then SIGKILL after the grace period; killAllDesk stops running children', { skip: IS_WIN }, async () => {
+  assert.equal(DESK_KILL_GRACE_MS, 3000);
+  // the stand-in writes a ready file once its SIGTERM handler is installed; abort only after that
+  const ready = join(mkdtempSync(join(tmpdir(), 'quest-ready-')), 'ready');
+  const stubborn = fakeCli(`exec "${process.execPath}" -e 'process.on("SIGTERM", () => {}); require("fs").writeFileSync(process.argv[1], "1"); setInterval(() => {}, 1000)' "${ready}"`);
+  const ac = new AbortController();
+  const p = spawnRun({ cmd: stubborn, env: { PATH: process.env.PATH }, killGraceMs: 150 })('x', { signal: ac.signal });
+  for (let i = 0; i < 200 && !existsSync(ready); i++) await new Promise(r => setTimeout(r, 25));
+  assert.ok(existsSync(ready), 'stand-in started');
+  const t0 = Date.now();
+  ac.abort();
+  const r = await p;
+  assert.equal(r.code, null);
+  assert.ok(Date.now() - t0 >= 140, 'survived SIGTERM until the SIGKILL');
+  const sleeper = fakeCli(`exec sleep 30`);
+  const q = spawnRun({ cmd: sleeper, env: { PATH: process.env.PATH } })('x');
+  setTimeout(() => killAllDesk(), 100);
+  assert.equal((await q).code, null);
+});
+
 // ── wiring ──
 test('main / preload / package wiring', () => {
   const main = readFileSync(join(ROOT, 'main.mjs'), 'utf-8');
   const preload = readFileSync(join(ROOT, 'preload.cjs'), 'utf-8');
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8'));
-  for (const ch of ['roca:quest-state', 'roca:quest-assign', 'roca:quest-report', 'roca:quest-desk', 'roca:quest-desk-cancel']) {
+  for (const ch of ['roca:quest-state', 'roca:quest-assign', 'roca:quest-report', 'roca:quest-desk', 'roca:quest-desk-cancel', 'roca:quest-prune']) {
     assert.ok(main.includes(`ipcMain.handle("${ch}"`), `main ${ch}`);
     assert.ok(preload.includes(`"${ch}"`), `preload ${ch}`);
   }
-  for (const n of ['questState', 'questAssign', 'questReport', 'questDesk', 'questDeskCancel']) assert.match(preload, new RegExp(`\\b${n}:`), n);
+  for (const n of ['questState', 'questAssign', 'questReport', 'questDesk', 'questDeskCancel', 'questPrune']) assert.match(preload, new RegExp(`\\b${n}:`), n);
   assert.ok(pkg.build.files.includes('quest/**/*'));
   assert.match(main, /join\(ROCA_DIR, "quests\.json"\)/);
   assert.match(main, /\^\[A-Z\]\[A-Z0-9_\]\*-\\d\+\$/);
+  // the packaged app has no login-shell PATH: the desk's claude gets EXEC_PATH plus the hook-quiet variables
+  const deskLine = main.split('\n').find(l => l.includes('createDesk({ run: spawnRun('));
+  assert.ok(deskLine, 'desk created in main');
+  for (const v of ['...process.env', 'PATH: EXEC_PATH', 'AGENTDESK_RECALL: "1"', 'DISABLE_OMC: "1"', 'OMC_SKIP_HOOKS: "all"']) assert.ok(deskLine.includes(v), v);
+  assert.match(main, /app\.on\("will-quit", \(\) => killAllDesk\(\)\)/);
+  // prune input is rebuilt from validated issues like the desk input
+  assert.match(main, /roca:quest-prune[\s\S]{0,200}questPruneIssuesIn\(o && o\.issues\)/);
   assert.ok(existsSync(join(ROOT, 'quest/state.mjs')) && existsSync(join(ROOT, 'quest/desk.mjs')));
 });

@@ -31,7 +31,7 @@ import { createGuardHandler, createGuardLog, writeGuardConfig, defaultGuardConfi
 import * as jiraOAuth from "./jira-oauth.mjs";
 import { diffStat, diffFile, insideRepo, setGitPath } from "./diff/git.mjs";   // also loads core/diff.js (globalThis.AgentDeskDiff)
 import { createQuestState } from "./quest/state.mjs";
-import { createDesk, spawnRun } from "./quest/desk.mjs";
+import { createDesk, spawnRun, killAllDesk } from "./quest/desk.mjs";
 
 const exec = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -306,7 +306,22 @@ function questState() {
   try { questStore.load(); } catch (e) { console.error("[quest] load", e && e.code); }
   return questStore;
 }
-const questDesk = () => questDeskSvc || (questDeskSvc = createDesk({ run: spawnRun() }));
+// PATH: EXEC_PATH so the packaged app (launched without a login shell) finds claude in ~/.local/bin or Homebrew
+const questDesk = () => questDeskSvc || (questDeskSvc = createDesk({ run: spawnRun({ env: { ...process.env, PATH: EXEC_PATH, AGENTDESK_RECALL: "1", DISABLE_OMC: "1", OMC_SKIP_HOOKS: "all" } }) }));
+app.on("will-quit", () => killAllDesk());
+// prune input: only what pruneState reads (key, status category, resolution / update dates), clipped
+function questPruneIssuesIn(issues) {
+  const out = [];
+  for (const i of Array.isArray(issues) ? issues.slice(0, 1000) : []) {
+    if (!i || typeof i !== "object" || !QUEST_KEY_RE.test(i.key || "")) continue;
+    const f = i.fields && typeof i.fields === "object" ? i.fields : {};
+    const st = f.status && typeof f.status === "object" ? f.status : i.status && typeof i.status === "object" ? i.status : {};
+    const sc = st.statusCategory;
+    const cat = questClip(sc && typeof sc === "object" ? sc.key : (i.cat && typeof i.cat === "object" ? i.cat.key : i.cat || i.statusCategory), 20);
+    out.push({ key: i.key, fields: { status: { statusCategory: { key: cat } }, resolutiondate: questClip(f.resolutiondate || i.resolutiondate, 40), updated: questClip(f.updated || i.updated, 40) } });
+  }
+  return out;
+}
 function questIssueIn(key, issue) {
   const i = issue && typeof issue === "object" ? issue : {};
   const f = i.fields && typeof i.fields === "object" ? i.fields : {};
@@ -340,6 +355,10 @@ ipcMain.handle("roca:quest-desk", (_e, o = {}) => {
   const key = o && o.key;
   if (!QUEST_KEY_RE.test(key || "")) return badArg("invalid Jira key");
   return questDesk().ask({ key, issue: questIssueIn(key, o.issue), party: questPartyIn(o.party), repos: questRepos(o.repos) }).catch(() => ({ ok: false, error: "failed" }));
+});
+ipcMain.handle("roca:quest-prune", (_e, o = {}) => {
+  const issues = questPruneIssuesIn(o && o.issues);
+  try { return { ok: true, left: questState().prune(issues) }; } catch (e) { return badArg(e.code || "save failed"); }
 });
 ipcMain.handle("roca:quest-desk-cancel", (_e, o = {}) => {
   const key = o && o.key;
