@@ -141,3 +141,80 @@ test('overlapping backfill calls share one run', async () => {
   await backfill(store, { roots: [root], cutoff }); // after finishing, a new run is allowed
   assert.equal(store.get('demo-skill').total, 1);
 });
+
+// live hook feed: every use counted exactly once (re-reads after the log is trimmed, restarts, same-second records)
+const hookUse = (atMs, skill, extra = {}) => ({ ts: atMs / 1000, agent: 'claude', ev: { hook_event_name: 'PreToolUse', session_id: 's1', tool_name: 'Skill', tool_input: { skill }, cwd: '/w/demo-app', ...extra } });
+const promptUse = (atMs, text) => ({ ts: atMs / 1000, agent: 'claude', ev: { hook_event_name: 'UserPromptSubmit', session_id: 's1', prompt: text, cwd: '/w/demo-app' } });
+const T0 = Date.UTC(2026, 10, 3, 12, 0, 0);
+
+test('feedRecord: replaying the same records counts them once', () => {
+  const store = createUsageStore({ file: join(tmp(), 'u.json'), now: () => T0 + HOUR });
+  const recs = [hookUse(T0, 'demo-skill', { tool_use_id: 'tu1' }), hookUse(T0 + 1000, 'demo-skill', { tool_use_id: 'tu2' }), promptUse(T0 + 2000, '/demo-skill go')];
+  assert.deepEqual(recs.map(r => store.feedRecord(r)), [true, true, true]);
+  assert.deepEqual(recs.map(r => store.feedRecord(r)), [false, false, false]);
+  assert.equal(store.get('demo-skill').total, 3);
+  assert.equal(store.feedRecord({ ts: T0 / 1000, ev: { hook_event_name: 'Stop', session_id: 's1' } }), false); // no use in it
+});
+
+test('feedRecord: a trimmed log re-read from the start counts once', () => {
+  const store = createUsageStore({ file: join(tmp(), 'u.json'), now: () => T0 + HOUR });
+  const log = [];
+  for (let i = 0; i < 10; i++) log.push(hookUse(T0 + i * 60e3, 'demo-skill', { tool_use_id: `tu${i}` }));
+  for (const r of log) store.feedRecord(r);
+  const kept = log.slice(6); // tail -n 4 && mv
+  kept.push(hookUse(T0 + 10 * 60e3, 'demo-skill', { tool_use_id: 'tu10' }));
+  for (const r of kept) store.feedRecord(r);
+  assert.equal(store.get('demo-skill').total, 11);
+});
+
+test('feedRecord: a restart from the saved file does not count again', () => {
+  const file = join(tmp(), 'u.json');
+  const recs = [hookUse(T0, 'demo-skill', { tool_use_id: 'tu1' }), promptUse(T0 + 500, '/other-skill'), hookUse(T0 + 500, 'demo-skill', { tool_use_id: 'tu2' })];
+  const a = createUsageStore({ file, now: () => T0 + HOUR });
+  for (const r of recs) a.feedRecord(r);
+  a.save();
+  const b = createUsageStore({ file, now: () => T0 + HOUR });
+  b.load();
+  assert.deepEqual(recs.map(r => b.feedRecord(r)), [false, false, false]);
+  assert.equal(b.get('demo-skill').total, 2);
+  assert.equal(b.get('other-skill').total, 1);
+  assert.equal(b.feedRecord(hookUse(T0 + 600, 'demo-skill', { tool_use_id: 'tu3' })), true);
+  assert.equal(b.get('demo-skill').total, 3);
+});
+
+test('feedRecord: two different records in the same second both count', () => {
+  const store = createUsageStore({ file: join(tmp(), 'u.json'), now: () => T0 + HOUR });
+  assert.equal(store.feedRecord(hookUse(T0, 'demo-skill', { tool_use_id: 'a' })), true);
+  assert.equal(store.feedRecord(hookUse(T0, 'demo-skill', { tool_use_id: 'b' })), true);
+  assert.equal(store.feedRecord(promptUse(T0, '/demo-skill one')), true);
+  assert.equal(store.feedRecord(promptUse(T0, '/demo-skill two')), true);
+  assert.equal(store.feedRecord(hookUse(T0 - 30e3, 'demo-skill', { tool_use_id: 'late' })), true); // appended a little out of order
+  assert.equal(store.feedRecord(hookUse(T0 - 10 * 60e3, 'demo-skill', { tool_use_id: 'old' })), false); // long before the mark: already fed once
+  assert.equal(store.get('demo-skill').total, 5);
+});
+
+test('repos are kept 30 days and survive a restart', () => {
+  const file = join(tmp(), 'u.json');
+  const DAY = 24 * HOUR;
+  const a = createUsageStore({ file, now: () => T0 });
+  a.noteRepo('/w/recent', T0 - DAY);
+  a.noteRepo('/w/edge', T0 - 29 * DAY);
+  a.noteRepo('/w/stale', T0 - 31 * DAY);
+  a.noteRepo('/w/recent', T0 - 5 * DAY); // older note never moves it back
+  a.noteRepo('', T0);
+  assert.deepEqual(a.repos(), ['/w/edge', '/w/recent']);
+  a.save();
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(file, 'utf8')).repos).sort(), ['/w/edge', '/w/recent']);
+  const b = createUsageStore({ file, now: () => T0 + 2 * DAY });
+  b.load();
+  assert.deepEqual(b.repos(), ['/w/recent']);
+});
+
+test('backfill notes each transcript folder as a repo', async () => {
+  const dir = tmp(); const cutoff = Date.now();
+  const root = projects(dir, { 'a.jsonl': [tline(cutoff - HOUR, 'demo-skill')] });
+  const store = createUsageStore({ file: join(dir, 'u.json') });
+  store.load();
+  await backfill(store, { roots: [root], cutoff });
+  assert.deepEqual(store.repos(), ['/w/demo-app']);
+});
