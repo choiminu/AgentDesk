@@ -109,6 +109,14 @@ function argWords(list, needs) {
   return out
 }
 
+// a secret package argument would put the typed value on the server's own command line (visible to `ps`):
+// such a package is never installed automatically (secrets may only go to entry.env / entry.headers)
+function secretArgs(p) {
+  const needs = []
+  argWords(p.packageArguments, needs)
+  return needs.length > 0
+}
+
 const needNames = (list) =>
   (list || []).filter((x) => x && x.name && (x.isRequired || x.isSecret)).map((x) => x.name)
 
@@ -122,7 +130,7 @@ function candidates(rec) {
     const r = remotes.find((x) => x && x.type === type && okUrl(x.url))
     if (r) out.push({ via: 'remote', remote: r })
   }
-  const pk = (rec.packages || []).filter((p) => okPkg(p) && !hasRuntimeArgs(p) && okPackageArgs(p.packageArguments))
+  const pk = (rec.packages || []).filter((p) => okPkg(p) && !hasRuntimeArgs(p) && okPackageArgs(p.packageArguments) && !secretArgs(p))
   const npm = pk.find((p) => p.registryType === 'npm')
   if (npm) out.push({ via: 'npm', pkg: npm })
   const py = pk.find((p) => p.registryType === 'pypi')
@@ -134,6 +142,7 @@ function manualShow(p) {
   if (!okPkg(p)) return CANNOT
   if (hasRuntimeArgs(p)) return RUNARGS
   if (!okPackageArgs(p.packageArguments)) return CANNOT
+  if (secretArgs(p)) return CANNOT
   const id = p.identifier
   const ver = p.version
   const needs = []

@@ -146,17 +146,27 @@ test('hostile values are rejected before any argv is built', () => {
   assert.equal(planInstall({ kind: 'plugin', name: 'p', marketplace: 'm', repo: '--upload-pack=x' }, { installed: EMPTY(), have: HAVE }).kind, 'manual')
 })
 
-test('secret arguments become placeholders and needs names', () => {
-  const rec = { packages: [{ registryType: 'npm', identifier: 'demo-pkg', version: '1.0.0', transport: { type: 'stdio' },
-    packageArguments: [
-      { type: 'named', name: '--api-key', value: 'LEAK-ONE', isSecret: true },
-      { type: 'named', name: '--url', value: 'https://h/{token}', variables: { token: { isSecret: true, default: 'LEAK-TWO' } } },
-    ] }] }
-  const p = planInstall(mcp(rec), { installed: EMPTY(), have: HAVE })
-  assert.equal(p.kind, 'mcp-write')
-  assert.deepEqual(p.needs, ['API_KEY', 'TOKEN'])
-  assert.deepEqual(p.entry.args, ['-y', 'demo-pkg@1.0.0', '--api-key', '${API_KEY}', '--url', 'https://h/${TOKEN}'])
-  assert.ok(!JSON.stringify(p).includes('LEAK'))
+test('secret arguments never reach a command line: the package is not installed automatically', () => {
+  const secretPkg = (registryType, identifier, pa) => ({ registryType, identifier, version: '1.0.0', transport: { type: 'stdio' }, packageArguments: pa })
+  const one = [{ type: 'named', name: '--api-key', value: 'LEAK-ONE', isSecret: true }]
+  const two = [{ type: 'named', name: '--url', value: 'https://h/{token}', variables: { token: { isSecret: true, default: 'LEAK-TWO' } } }]
+  for (const pa of [one, two, [...one, ...two]]) {
+    const p = planInstall(mcp({ packages: [secretPkg('npm', 'demo-pkg', pa)] }), { installed: EMPTY(), have: HAVE })
+    assert.equal(p.kind, 'manual')
+    assert.deepEqual(p.show, ['자동 설치 불가 — 레지스트리 정보를 확인하세요 (cannot be installed automatically)'])
+    assert.equal(p.entry, undefined); assert.equal(p.steps, undefined)
+    assert.ok(!JSON.stringify(p).includes('LEAK'))
+  }
+  // falls through to a clean pypi package, whose secrets go to env only
+  const f = planInstall(mcp({ packages: [secretPkg('npm', 'demo-pkg', one),
+    { registryType: 'pypi', identifier: 'demo-py', version: '1.0.0', transport: { type: 'stdio' }, environmentVariables: [{ name: 'TOKEN', isSecret: true }] }] }),
+    { installed: EMPTY(), have: HAVE })
+  assert.equal(f.kind, 'mcp-write')
+  assert.deepEqual(f.entry, { command: 'uvx', args: ['demo-py==1.0.0'], env: { TOKEN: '${TOKEN}' } })
+  // a non-secret {var} template stays as written
+  const plain = planInstall(mcp({ packages: [secretPkg('npm', 'demo-pkg', [{ type: 'named', name: '--url', value: 'https://h/{x}', variables: { x: {} } }])] }), { installed: EMPTY(), have: HAVE })
+  assert.equal(plain.kind, 'mcp-cli')
+  assert.ok(!JSON.stringify(plain.entry).includes('${'))
 })
 
 test('npx missing but uvx present falls through to pypi', () => {
