@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-57La3afKpOv940K42rZ6JHH5tz0quK++27I6zkuuTYE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-rtT1pEDhYjr+kOrCeDykNWlGfMU43jhBAlsaaOFoZ6M='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1034,6 +1034,65 @@
   .team-modal .jira-field { display: block; margin-top: 8px; color: var(--text2); font-size: var(--fs-xs); }
   .team-modal .jira-field select, .team-modal .jira-field input[type=text] { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; background: var(--bg-solid); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 6px; font: inherit; }
 
+  /* ── Skillbook page: a leather book with two parchment pages (fixed colors); the bar above follows the theme ── */
+  .sb-bar { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; padding: 6px 10px; flex-shrink: 0; font-size: var(--fs-xs); color: var(--text2); }
+  .sb-ag { appearance: none; border: 1px solid var(--border); background: var(--surface); color: var(--text2); font: inherit; padding: 2px 9px; border-radius: 6px; cursor: pointer; }
+  .sb-ag:hover { background: var(--surface-hover); color: var(--text); }
+  .sb-ag.on { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+  .sb-note { color: var(--text3); margin-left: 6px; }
+  .sb-note.err { color: var(--red-text, var(--red)); }
+  .sb-book { flex: 1; min-height: 0; display: flex; gap: 4px; margin: 0 10px 10px; padding: 10px; background: #3b2a1f; border-radius: 6px; box-shadow: inset 0 0 0 3px #22170f, 0 6px 16px rgba(0,0,0,.4); font-family: 'Galmuri9', var(--sans); }
+  .sb-book button { font: inherit; cursor: pointer; }
+  .sb-book button:disabled { cursor: default; opacity: .5; }
+  .sb-pg { flex: 1; min-width: 0; overflow-y: auto; background: #f3e6c8; color: #3a2a1a; padding: 12px 14px; box-shadow: inset 0 0 0 2px #d8c49a; font-size: 12px; }
+  .sb-pg h4 { display: flex; align-items: center; gap: 4px; margin: 0 0 8px; font-size: 13px; font-weight: 400; border-bottom: 2px dashed #c9b083; padding-bottom: 4px; overflow-wrap: anywhere; }
+  .sb-tab { appearance: none; padding: 2px 6px; margin: 0 3px 6px 0; background: #e6d3a8; color: #3a2a1a; border: 1px solid #b89c68; font-size: 11px; }
+  .sb-tab.on { background: #b8452f; color: #fff; border-color: #7d2a1b; }
+  .sb-tab.on.mcp { background: #2f6b8a; border-color: #1d4459; }
+  .sb-row { appearance: none; display: flex; align-items: center; gap: 6px; width: 100%; padding: 3px 2px; background: none; border: none; border-bottom: 1px dotted #d6c39c; color: inherit; text-align: left; font-size: 12px; }
+  .sb-row:hover { background: #efdfba; }
+  .sb-row.sel { background: #ead9b0; }
+  .sb-row.dim { opacity: .5; }
+  .sb-row.picked { background: #f0c9b8; opacity: 1; }
+  .sb-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb-repo { font-size: 10px; color: #8a6a3a; white-space: nowrap; }
+  .sb-ico { flex-shrink: 0; width: 18px; height: 18px; display: inline-grid; place-items: center; background: #2c3e66; color: #fff; font-size: 10px; border: 1px solid #1b2744; }
+  .sb-lv { margin-left: auto; flex-shrink: 0; font-size: 10px; color: #8a6a3a; }
+  .sb-stars { color: #c88a1a; letter-spacing: 1px; font-size: 11px; }
+  .sb-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: #3ecf8e; display: inline-block; margin-left: auto; }
+  .sb-dot.off { background: #b0a48a; }
+  .sb-use .sb-dot { margin-left: 0; }
+  .sb-spell { text-align: center; }
+  .sb-big { width: 56px; height: 56px; margin: 6px auto; display: grid; place-items: center; background: #2c3e66; color: #ffe9a0; font-size: 26px; border: 3px solid #1b2744; box-shadow: 0 0 0 3px #c88a1a; }
+  .sb-big.mcp { background: #5a4a2e; border-color: #3a2f1c; box-shadow: 0 0 0 3px #2f6b8a; }
+  .sb-use { font-size: 11px; color: #8a6a3a; }
+  .sb-kv { text-align: left; font-size: 11px; margin-top: 8px; line-height: 1.7; overflow-wrap: anywhere; }
+  .sb-kv b { font-weight: 400; color: #7d2a1b; margin-right: 4px; }
+  .sb-chip { display: inline-block; padding: 1px 5px; margin: 1px; background: #fff3d4; border: 1px solid #c9b083; font-size: 10px; }
+  .sb-btns { margin-top: 10px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+  .sb-btn { appearance: none; padding: 3px 8px; background: #6f8f3a; color: #fff; border: 2px solid #3f5520; font-size: 11px; }
+  .sb-btn.off { background: #9a8a6a; border-color: #5e5440; }
+  .sb-btn.red { background: #b8452f; border-color: #7d2a1b; }
+  .sb-ask { margin-top: 10px; padding: 6px 8px; background: #ead9b0; border: 1px dashed #b8452f; font-size: 11px; text-align: left; }
+  .sb-ask .sb-btns { justify-content: flex-end; margin-top: 6px; }
+  .sb-fold { appearance: none; display: block; margin-top: 10px; padding: 0; background: none; border: none; color: #8a6a3a; font-size: 11px; }
+  .sb-rem { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 11px; color: #6e5a3a; }
+  .sb-rem .sb-btn { margin-left: auto; padding: 1px 6px; font-size: 10px; }
+  .sb-empty { padding: 16px 0; text-align: center; color: #8a6a3a; font-size: 11px; }
+  .sb-hint { margin-top: 8px; font-size: 10px; color: #8a6a3a; line-height: 1.5; }
+  .sb-seg { display: inline-flex; gap: 2px; margin-left: auto; }
+  .sb-seg button { appearance: none; padding: 0 5px; border: 1px solid #b89c68; font-size: 10px; background: #e6d3a8; color: #3a2a1a; }
+  .sb-seg button.on { background: #2f6b8a; color: #fff; border-color: #1d4459; }
+  .sb-grow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 40px; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px dotted #d6c39c; font-size: 11px; }
+  .sb-grow .sb-n, .sb-row .sb-n { text-align: right; color: #8a6a3a; margin-left: auto; }
+  .sb-gauge { display: inline-flex; gap: 1px; }
+  .sb-gauge i { width: 5px; height: 8px; background: #e2d1aa; border: 1px solid #c9b083; }
+  .sb-gauge i.on { background: #3a6b3a; border-color: #284a28; }
+  .sb-gauge.mid i.on { background: #c88a1a; border-color: #8a5e10; }
+  .sb-gauge.low i.on { background: #9a8a6a; border-color: #6e6248; }
+  .sb-ribbon { display: inline-block; padding: 1px 6px; background: #b8452f; color: #fff; font-size: 10px; }
+  .sb-chk { flex-shrink: 0; width: 12px; height: 12px; display: inline-grid; place-items: center; border: 1px solid #b89c68; background: #f3e6c8; font-size: 9px; }
+
   /* ── Pomodoro page ── */
   .pomo-wrap {
     flex: 1;
@@ -1813,6 +1872,7 @@
     <button class="page-nav-btn" data-page="office">오피스<span class="nav-badge" id="badge-office" hidden>0</span></button>
     <button class="page-nav-btn" data-page="team">팀<span class="nav-badge" id="badge-team" hidden>0</span></button>
     <button class="page-nav-btn" data-page="jira">Jira<span class="nav-badge" id="badge-jira" hidden>0</span></button>
+    <button class="page-nav-btn" data-page="skillbook">스킬북</button>
     <button class="page-nav-btn" data-page="pomodoro">타이머</button>
   </div>
 
@@ -1886,6 +1946,12 @@
       <div class="jb-cols" id="jb-cols"></div>
       <div class="jb-drawer" id="jb-drawer" hidden></div>
     </div>
+  </div>
+
+  <!-- PAGE: Skillbook — skills, plugins and MCP servers of Claude Code · Codex CLI · Gemini CLI, with their use (skillbook/*.mjs) -->
+  <div class="page" id="page-skillbook">
+    <div class="sb-bar" id="sb-bar"></div>
+    <div class="sb-book" id="sb-book"></div>
   </div>
 
   <!-- PAGE: Pomodoro -->
@@ -2412,6 +2478,24 @@ Object.assign(I18N, {
   '훅 연결 상태': 'Hook connection', '마지막 훅 연결': 'Last hook connection',
   '아직 연결된 적 없음 — 훅이 실행되지 않으면 보호되지 않습니다(설정만 켜짐)': 'Never connected yet — without the hook running you are not protected (the setting is only switched on)',
 });
+// skillbook page
+Object.assign(I18N, {
+  '스킬북': 'Skillbook', '스킬': 'Skills', '플러그인': 'Plugins', '🧰 도구 주머니': '🧰 Tool pouch', '📊 사용 기록': '📊 Usage', '📖 목차': '📖 Index',
+  '7일': '7 days', '30일': '30 days', '이번 주': 'this week', '미사용': 'unused', '사용 기록 없음': 'no usage record', '프로젝트': 'project',
+  '하는 일': 'What it does', '이렇게 말하면 켜짐': 'Wakes up on', '출처': 'Source', '쓸 수 있는 에이전트': 'Agents', '범위': 'Scope', '실행': 'Runs as', '키 이름': 'Key names',
+  '모든 프로젝트 (사용자 설정)': 'all projects (user settings)', '(값은 표시하지 않음)': '(values never shown)',
+  '로컬 명령 (stdio)': 'local command (stdio)', '원격 (HTTP)': 'remote (HTTP)', '원격 (SSE)': 'remote (SSE)',
+  '누르면 끕니다': 'Click to turn off', '누르면 켭니다': 'Click to turn on', '폴더 열기': 'Open folder', '제거': 'Remove',
+  '최근 제거': 'Recently removed', '되살리기': 'Restore', '지운 스킬 폴더는 OS 휴지통에서 되살릴 수 있습니다': 'Deleted skill folders can be restored from the OS trash',
+  '왼쪽 목차에서 하나를 고르세요': 'Pick one in the index on the left', '아직 설치된 것이 없습니다': 'Nothing installed yet',
+  '이 기간에 쓴 것이 없습니다': 'Nothing used in this period', 'Codex·Gemini 전용 항목은 사용 기록을 셀 수 없어 빠졌습니다': 'Codex- and Gemini-only items are left out: their use cannot be counted',
+  '💤 안 쓰는 것': '💤 Not in use', '고른 것 끄기': 'Turn off picked', '휴지통으로': 'Move to trash',
+  '스킬북을 읽지 못했습니다': 'Could not read the skillbook', '이 설정 파일은 읽지 못해 빠졌습니다': 'These settings files could not be read and are left out',
+  '사용 기록을 읽는 중…': 'Reading usage history…', '처리 중…': 'Working…',
+  '이미 바뀌었거나 없어졌습니다': 'changed or gone in the meantime', '이 항목은 할 수 없는 동작입니다': 'not possible for this item', '처리하지 못했습니다': 'failed',
+  '껐습니다': 'turned off', '켰습니다': 'turned on', '제거했습니다': 'removed', '되살렸습니다': 'restored', '폴더를 열었습니다': 'folder opened',
+  '스킬 폴더는 OS 휴지통으로 갑니다.': 'The skill folder goes to the OS trash.', '최근 제거에서 되살릴 수 있습니다.': 'It can be restored from Recently removed.',
+});
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
   if (LANG === 'ko' || !str || !/[가-힣]/.test(str)) return str;
@@ -2537,6 +2621,7 @@ const PAGE_SIZES = {
   office:        { w: 640, h: 720, forceHeight: true },
   team:          { w: 320, h: 480 },
   jira:          { w: 380, h: 560 },
+  skillbook:     { w: 640, h: 560 },
   pomodoro:      { w: 320, h: 420 },
 };
 let currentPage = 'dashboard';
@@ -2555,6 +2640,7 @@ function showPage(name, opts) {
     if (currentPage === 'office') officeStart(); else officeStop();
     if (currentPage === 'team') teamPageTick();
     if (currentPage === 'jira') jiraLoad();
+    if (currentPage === 'skillbook') skillbookLoad();
     if (currentPage === 'settings') { settingsRender(); desktopLoad(); }
   }
 }
@@ -9944,6 +10030,190 @@ $('team-list').addEventListener('click', async (e) => {
     try { await window.orca.clipboardWrite(AgentDeskTeam.boardMarkdown(rows, LANG)); showInAppToast(t('팀 보드를 마크다운 표로 복사했습니다')); } catch (err) { showInAppToast(err.message, 'error'); }
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// SKILLBOOK PAGE — skills, plugins and MCP servers of Claude Code · Codex CLI · Gemini CLI as an open book (index on the
+// left, the picked entry on the right) plus a 📊 사용 기록 tab (gauges and the never-used list with bulk off / trash).
+// Data: window.orca.skillbook() (skillbook/payload.mjs: non-secret fields only); actions: window.orca.skillbookAct
+// ({ id, action }), offered only where item.can allows, and remove only after the in-page confirm row (sbConfirm).
+// Names, descriptions and paths come from users' files: esc() and data-verbatim (the page translator leaves them alone).
+// ═══════════════════════════════════════════════════════════════════
+let sbState = { agent: 'all', tab: 'skill', period: 30, picked: new Set(), sel: null, data: null, ask: null, busy: false, removedOpen: false };
+let sbPollTimer = 0;
+const SB_AGENTS = [['all', '전체'], ['claude', 'Claude'], ['codex', 'Codex'], ['gemini', 'Gemini']];
+const SB_TABS = [['skill', '스킬'], ['plugin', '플러그인'], ['mcp', '🧰 도구 주머니'], ['usage', '📊 사용 기록']];
+const SB_PERIODS = [[7, '7일'], [30, '30일'], [0, '전체']];
+const SB_ICON = { skill: '📜', plugin: '🧩', mcp: '🔌' };
+const SB_AGENT_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' };
+const SB_TRANSPORT = { stdio: '로컬 명령 (stdio)', http: '원격 (HTTP)', sse: '원격 (SSE)' };
+const SB_ERR = { gone: '이미 바뀌었거나 없어졌습니다', unsupported: '이 항목은 할 수 없는 동작입니다', failed: '처리하지 못했습니다' };
+const SB_DONE = { off: '껐습니다', on: '켰습니다', remove: '제거했습니다', restore: '되살렸습니다', reveal: '폴더를 열었습니다' };
+const sbTimes = n => LANG === 'en' ? `${n}×` : `${n}회`;
+const sbNum = n => LANG === 'en' ? String(n) : `${n}개`;
+const sbHome = p => String(p || '').replace(/^(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)[^/\\]+/, '~');
+const sbAll = () => (sbState.data && sbState.data.items) || [];
+const sbItems = () => sbAll().filter(it => sbState.agent === 'all' || (it.agents || []).includes(sbState.agent));
+const sbCount = (it, period) => { const u = it.uses || {}; return (period === 7 ? u.week : period === 30 ? u.month : u.total) || 0; };
+
+async function skillbookLoad() {
+  let r = null;
+  try { r = await window.orca.skillbook(); } catch {}
+  sbState.data = r && r.ok ? r : { ok: false, items: [], sources: [], removed: [], backfill: 'done' };
+  if (currentPage !== 'skillbook') return;
+  skillbookRender();
+  clearTimeout(sbPollTimer);   // usage still being read from the transcripts: ask again while the page stays open
+  if (sbState.data.backfill === 'running') sbPollTimer = setTimeout(() => currentPage === 'skillbook' && skillbookLoad(), 4000);
+}
+async function sbAct(id, action) {
+  try { return (await window.orca.skillbookAct({ id, action })) || { ok: false, error: 'failed' }; }
+  catch { return { ok: false, error: 'failed' }; }
+}
+// one or more items, one after another, then one summary toast (skipped: names picked that cannot take the action)
+async function sbRun(ids, action, skipped = []) {
+  if (sbState.busy) return;
+  sbState.busy = true; sbState.ask = null; skillbookRender();
+  const rem = (sbState.data && sbState.data.removed) || [];
+  const nameOf = id => { const x = sbAll().find(i => i.id === id) || rem.find(i => i.id === id); return x ? x.name : ''; };
+  let ok = 0; const fails = skipped.map(n => `${n} (${t(SB_ERR.unsupported)})`);
+  for (const id of ids) { const r = await sbAct(id, action); if (r && r.ok) ok++; else fails.push(`${nameOf(id)} (${t(SB_ERR[r && r.error] || SB_ERR.failed)})`); }
+  sbState.busy = false; sbState.picked.clear();
+  const one = ids.length + skipped.length === 1;
+  const msg = one ? (ok ? `${nameOf(ids[0])}: ${t(SB_DONE[action])}` : fails[0]) : `${sbNum(ok)} ${t(SB_DONE[action])}${fails.length ? ` · ${t('실패')} ${fails.length}: ${fails.join(', ')}` : ''}`;
+  if (action !== 'reveal' || fails.length) showInAppToast(msg, fails.length ? 'error' : undefined);
+  if (action === 'reveal') skillbookRender(); else await skillbookLoad();
+}
+function sbConfirm(text, okLabel, run) { sbState.ask = { text, okLabel, run }; skillbookRender(); }
+const sbAskHtml = () => sbState.ask ? `<div class="sb-ask" role="alertdialog"><div data-verbatim>${esc(sbState.ask.text)}</div><div class="sb-btns"><button type="button" class="sb-btn red" data-sb="ask-ok">${esc(sbState.ask.okLabel)}</button><button type="button" class="sb-btn off" data-sb="ask-no">${esc(t('취소'))}</button></div></div>` : '';
+
+function sbLevel(it) {
+  const u = it.uses || {};
+  if (!u.counted) return `<span class="sb-lv">${esc(t('사용 기록 없음'))}</span>`;
+  return u.mastery ? `<span class="sb-lv sb-stars">${'★'.repeat(u.mastery)}</span>` : `<span class="sb-lv">${esc(t('미사용'))}</span>`;
+}
+const sbRepo = it => it.repo ? `<span class="sb-repo">(<span data-verbatim>${esc(it.repo)}</span> ${esc(t('프로젝트'))})</span>` : '';
+function sbRow(it) {
+  const u = it.uses || {};
+  const cls = `${it.id === sbState.sel ? ' sel' : ''}${u.counted && !u.total ? ' dim' : ''}`;
+  const tail = it.kind === 'mcp' ? `<span class="sb-dot${it.on === false ? ' off' : ''}"></span>` : sbLevel(it);
+  return `<button type="button" class="sb-row${cls}" data-sb="sel" data-id="${esc(it.id)}"><span class="sb-ico">${SB_ICON[it.kind] || '·'}</span><span class="sb-name" data-verbatim>${esc(it.name)}</span>${sbRepo(it)}${tail}</button>`;
+}
+function sbRemovedHtml() {
+  const rows = ((sbState.data && sbState.data.removed) || []).filter(r => r.kind === sbState.tab);
+  if (!rows.length) return '';
+  const list = !sbState.removedOpen ? '' : rows.map(r => `<div class="sb-rem"><span class="sb-ico">${SB_ICON[r.kind] || '·'}</span><span class="sb-name" data-verbatim>${esc(r.name)}</span><span>${esc(timeAgo(r.removedAt))}</span>${r.can && r.can.restore ? `<button type="button" class="sb-btn" data-sb="restore" data-id="${esc(r.id)}">${esc(t('되살리기'))}</button>` : ''}</div>`).join('')
+    + (rows.some(r => !(r.can && r.can.restore)) ? `<div class="sb-hint">${esc(t('지운 스킬 폴더는 OS 휴지통에서 되살릴 수 있습니다'))}</div>` : '');
+  return `<button type="button" class="sb-fold" data-sb="removed">${sbState.removedOpen ? '▾' : '▸'} ${esc(t('최근 제거'))} ${rows.length}</button>${list}`;
+}
+function sbDetail(it) {
+  if (!it) return `<div class="sb-empty">${esc(t('왼쪽 목차에서 하나를 고르세요'))}</div>`;
+  const u = it.uses || {}, c = it.can || {}, m = it.mcp || null, id = esc(it.id);
+  const vb = s => `<span data-verbatim>${esc(s)}</span>`;
+  const kv = (k, v) => v ? `<div><b>${esc(t(k))}</b>${v}</div>` : '';
+  const use = u.counted ? `${esc(t('이번 주'))} ${esc(sbTimes(u.week || 0))}` : esc(t('사용 기록 없음'));
+  const head = it.kind === 'mcp'
+    ? `<div class="sb-use"><span class="sb-dot${it.on === false ? ' off' : ''}"></span> ${esc(t(it.on === false ? '꺼짐' : '켜짐'))} · ${use}</div>`
+    : `<div class="sb-use"><span class="sb-stars">${'★'.repeat(u.mastery || 0)}</span> ${use}</div>`;
+  const from = it.path ? sbHome(it.path.replace(/[\\/][^\\/]+$/, '')) : it.plugin && it.plugin.marketplace ? [it.name, it.plugin.marketplace].join('@') : '';   // plain text: vb() escapes it
+  const ver = it.plugin && it.plugin.version ? ` · v${it.plugin.version}` : '';
+  const keys = m ? [...(m.envKeys || []), ...(m.headerKeys || [])] : [];
+  const rows = m ? [
+      kv('범위', it.repo ? `${vb(it.repo)} ${esc(t('프로젝트'))}` : esc(t('모든 프로젝트 (사용자 설정)'))),
+      kv('실행', `${esc(t(SB_TRANSPORT[m.transport] || SB_TRANSPORT.stdio))}${m.command ? ` · ${vb(m.command)}` : ''}`),
+      kv('키 이름', keys.length ? `${keys.map(k => `<span class="sb-chip" data-verbatim>${esc(k)}</span>`).join('')} ${esc(t('(값은 표시하지 않음)'))}` : ''),
+    ] : [
+      kv('하는 일', it.description ? vb(it.description) : ''),
+      kv('이렇게 말하면 켜짐', (it.triggers || []).map(x => `<span class="sb-chip" data-verbatim>${esc(x)}</span>`).join('')),
+      kv('출처', from || ver ? `${vb(from)}${esc(ver)}` : ''),
+    ];
+  rows.push(kv('최근', u.lastAt ? `${esc(timeAgo(u.lastAt))}${u.lastRepo ? ` (${vb(u.lastRepo)})` : ''}` : ''));
+  rows.push(kv('쓸 수 있는 에이전트', esc((it.agents || []).map(a => SB_AGENT_NAME[a] || a).join(' · '))));
+  const btns = [];
+  if (c.off) btns.push(`<button type="button" class="sb-btn" data-sb="act" data-a="off" data-id="${id}" title="${esc(t('누르면 끕니다'))}">${esc(t('켜짐'))}</button>`);
+  else if (c.on) btns.push(`<button type="button" class="sb-btn off" data-sb="act" data-a="on" data-id="${id}" title="${esc(t('누르면 켭니다'))}">${esc(t('꺼짐'))}</button>`);
+  if (c.reveal) btns.push(`<button type="button" class="sb-btn off" data-sb="act" data-a="reveal" data-id="${id}">${esc(t('폴더 열기'))}</button>`);
+  if (c.remove) btns.push(`<button type="button" class="sb-btn red" data-sb="act" data-a="remove" data-id="${id}">${esc(t(it.kind === 'skill' ? '삭제' : '제거'))}</button>`);
+  const dis = sbState.busy ? ' disabled' : '';
+  return `<div class="sb-spell"><h4><span class="sb-name" data-verbatim>${esc(it.name)}</span></h4><div class="sb-big${it.kind === 'mcp' ? ' mcp' : ''}">${SB_ICON[it.kind] || '·'}</div>${head}<div class="sb-kv">${rows.join('')}</div>`
+    + (btns.length ? `<div class="sb-btns">${btns.join('').replace(/<button /g, `<button${dis} `)}</div>` : '') + `</div>${sbAskHtml()}`;
+}
+// 📊 사용 기록: left — what was used in the period, by count; right — what was not (pick, then off / trash)
+function sbUsagePages(items) {
+  const counted = items.filter(it => it.uses && it.uses.counted);
+  const used = counted.map(it => [it, sbCount(it, sbState.period)]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const max = used.length ? used[0][1] : 1;
+  const gauge = (it, n) => { const on = Math.round(10 * n / max), lv = (it.uses || {}).mastery || 0; return `<span class="sb-gauge${lv >= 3 ? '' : lv === 2 ? ' mid' : ' low'}">${Array.from({ length: 10 }, (_, i) => `<i${i < on ? ' class="on"' : ''}></i>`).join('')}</span>`; };
+  const seg = `<span class="sb-seg">${SB_PERIODS.map(([v, l]) => `<button type="button" class="${sbState.period === v ? 'on' : ''}" data-sb="period" data-v="${v}">${esc(t(l))}</button>`).join('')}</span>`;
+  const left = `<h4>${esc(t('📊 사용 기록'))}${seg}</h4>${sbTabsHtml(items)}`
+    + (used.length ? used.map(([it, n]) => `<div class="sb-grow"><span class="sb-ico">${SB_ICON[it.kind] || '·'}</span><span class="sb-name" data-verbatim>${esc(it.name)}</span>${gauge(it, n)}<span class="sb-n">${esc(sbTimes(n))}</span></div>`).join('')
+      : `<div class="sb-empty">${esc(t('이 기간에 쓴 것이 없습니다'))}</div>`)
+    + (counted.length < items.length ? `<div class="sb-hint">${esc(t('Codex·Gemini 전용 항목은 사용 기록을 셀 수 없어 빠졌습니다'))}</div>` : '');
+  const idle = counted.filter(it => !sbCount(it, sbState.period)).sort((a, b) => a.name.localeCompare(b.name));
+  const dis = sbState.busy || !sbState.picked.size ? ' disabled' : '';
+  const right = `<h4>${esc(t('💤 안 쓰는 것'))} <span class="sb-ribbon">${esc(sbNum(idle.length))}</span></h4>`
+    + idle.map(it => { const p = sbState.picked.has(it.id); return `<button type="button" class="sb-row dim${p ? ' picked' : ''}" data-sb="pick" data-id="${esc(it.id)}" aria-pressed="${p}"><span class="sb-chk">${p ? '✓' : ''}</span><span class="sb-ico">${SB_ICON[it.kind] || '·'}</span><span class="sb-name" data-verbatim>${esc(it.name)}</span>${sbRepo(it)}<span class="sb-n">${esc(sbTimes(0))}</span></button>`; }).join('')
+    + (idle.length ? `<div class="sb-btns"><button type="button" class="sb-btn" data-sb="bulk" data-a="off"${dis}>${esc(t('고른 것 끄기'))}</button><button type="button" class="sb-btn red" data-sb="bulk" data-a="remove"${dis}>${esc(t('휴지통으로'))}</button></div>` : '')
+    + sbAskHtml();
+  return [left, right];
+}
+function sbTabsHtml(items) {
+  return `<div>${SB_TABS.map(([v, l]) => `<button type="button" class="sb-tab${sbState.tab === v ? ' on' : ''}${v === 'mcp' ? ' mcp' : ''}" data-sb="tab" data-v="${v}">${esc(t(l))}${v === 'usage' ? '' : ` ${items.filter(it => it.kind === v).length}`}</button>`).join('')}</div>`;
+}
+function skillbookRender() {
+  const bar = $('sb-bar'), book = $('sb-book'); if (!bar || !book) return;
+  const d = sbState.data, items = sbItems();
+  const bad = d ? (d.sources || []).filter(s => s && s.ok === false) : [];
+  bar.innerHTML = SB_AGENTS.map(([v, l]) => `<button type="button" class="sb-ag${sbState.agent === v ? ' on' : ''}" data-sb="agent" data-v="${v}">${esc(t(l))}</button>`).join('')
+    + (d && !d.ok ? `<span class="sb-note err">${esc(t('스킬북을 읽지 못했습니다'))}</span>` : '')
+    + (bad.length ? `<span class="sb-note err" title="${esc(t('이 설정 파일은 읽지 못해 빠졌습니다'))}">⚠ <span data-verbatim>${esc(bad.map(s => s.label).join(', '))}</span></span>` : '')
+    + (d && d.backfill === 'running' ? `<span class="sb-note">${esc(t('사용 기록을 읽는 중…'))}</span>` : '')
+    + (sbState.busy ? `<span class="sb-note">${esc(t('처리 중…'))}</span>` : '');
+  const keep = [...book.querySelectorAll('.sb-pg')].map(p => p.scrollTop);
+  let left, right;
+  if (!d) { left = `<div class="sb-empty">${esc(t('불러오는 중…'))}</div>`; right = ''; }
+  else if (!items.length) { left = `<h4>${esc(t('📖 목차'))}</h4>${sbTabsHtml(items)}<div class="sb-empty">${esc(t('아직 설치된 것이 없습니다'))}</div>`; right = ''; }
+  else if (sbState.tab === 'usage') [left, right] = sbUsagePages(items);
+  else {
+    const list = items.filter(it => it.kind === sbState.tab).sort((a, b) => sbCount(b, 30) - sbCount(a, 30) || (b.uses && b.uses.total || 0) - (a.uses && a.uses.total || 0) || a.name.localeCompare(b.name));
+    if (!list.some(it => it.id === sbState.sel)) sbState.sel = list.length ? list[0].id : null;
+    left = `<h4>${esc(t('📖 목차'))}</h4>${sbTabsHtml(items)}${list.map(sbRow).join('') || `<div class="sb-empty">${esc(t('아직 설치된 것이 없습니다'))}</div>`}${sbRemovedHtml()}`;
+    right = sbDetail(list.find(it => it.id === sbState.sel));
+  }
+  book.innerHTML = `<div class="sb-pg">${left}</div><div class="sb-pg">${right}</div>`;
+  book.querySelectorAll('.sb-pg').forEach((p, i) => { p.scrollTop = keep[i] || 0; });
+}
+$('page-skillbook').addEventListener('click', e => {
+  const b = e.target.closest('[data-sb]'); if (!b || b.disabled) return;
+  const k = b.dataset.sb, id = b.dataset.id, it = id ? sbAll().find(x => x.id === id) : null;
+  if (k === 'ask-no') { sbState.ask = null; skillbookRender(); return; }
+  if (k === 'ask-ok') { const a = sbState.ask; sbState.ask = null; if (a) a.run(); return; }
+  if (sbState.busy) return;
+  if (k === 'agent') { sbState.agent = b.dataset.v; sbState.picked.clear(); sbState.ask = null; }
+  else if (k === 'tab') { sbState.tab = b.dataset.v; sbState.ask = null; }
+  else if (k === 'period') { sbState.period = Number(b.dataset.v); sbState.picked.clear(); sbState.ask = null; }
+  else if (k === 'sel') { sbState.sel = id; sbState.ask = null; }
+  else if (k === 'pick') { if (!sbState.picked.delete(id)) sbState.picked.add(id); sbState.ask = null; }
+  else if (k === 'removed') sbState.removedOpen = !sbState.removedOpen;
+  else if (k === 'restore') { sbRun([id], 'restore'); return; }
+  else if (k === 'act' && it) {
+    const a = b.dataset.a; if (!(it.can && it.can[a])) return;
+    const hint = t(it.kind === 'skill' ? '스킬 폴더는 OS 휴지통으로 갑니다.' : '최근 제거에서 되살릴 수 있습니다.');
+    const name = it.name, text = LANG === 'en' ? `Remove ${name}? ${hint}` : `${name} — 제거할까요? ${hint}`;
+    if (a === 'remove') sbConfirm(text, t(it.kind === 'skill' ? '삭제' : '제거'), () => sbRun([it.id], 'remove'));
+    else sbRun([it.id], a);
+    return;
+  }
+  else if (k === 'bulk') {
+    const a = b.dataset.a, picked = [...sbState.picked].map(x => sbAll().find(i => i.id === x)).filter(Boolean);
+    const ids = picked.filter(x => x.can && x.can[a]).map(x => x.id), skipped = picked.filter(x => !(x.can && x.can[a])).map(x => x.name);
+    if (!picked.length) return;
+    const text = LANG === 'en' ? `Move ${ids.length} to the trash? Skill folders go to the OS trash, plugins and MCP servers can be restored from Recently removed.` : `${ids.length}개를 휴지통으로 보낼까요? 스킬 폴더는 OS 휴지통으로 가고, 플러그인·MCP 서버는 최근 제거에서 되살릴 수 있습니다.`;
+    if (a === 'remove' && ids.length) sbConfirm(text, t('휴지통으로'), () => sbRun(ids, 'remove', skipped));
+    else sbRun(a === 'off' ? ids : [], a, skipped);   // nothing that can be removed: only the summary
+    return;
+  }
+  skillbookRender();
+});
+// ── end of SKILLBOOK PAGE ──
 
 // ═══════════════════════════════════════════════════════════════════
 // SETTINGS PAGE — language, theme, exact detection (hooks), chime, office zoom, onboarding
