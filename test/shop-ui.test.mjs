@@ -1,0 +1,57 @@
+// widget.html 🏪 상점 tab (source checks): tab, filters and sorts, password fields for needs, install only through the
+// in-page confirm, the link box, and that no env value reaches innerHTML, a toast or the console. Plus the I18N check.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+const a = html.indexOf('// ── 🏪 상점 tab'), b = html.indexOf('// ── end of SHOP TAB', a);
+const shop = a < 0 || b < 0 ? '' : html.slice(a, b);
+const fn = name => { const i = shop.indexOf(name); const j = shop.indexOf('\nfunction ', i + 1); const k = shop.indexOf('\nasync function ', i + 1); return shop.slice(i, Math.min(...[j, k, shop.length].filter(x => x > i))); };
+
+test('shop ui: tab, filters, sorts, state object', () => {
+  assert.ok(shop.length > 2000, 'shop section exists');
+  assert.match(html, /\['shop', '🏪 상점'\]\];/);
+  assert.match(shop, /const shopState = \{/);
+  assert.match(shop, /\['all', '전체'\], \['plugin', '플러그인'\], \['mcp', 'MCP'\], \['skill', '스킬'\]/);
+  assert.match(shop, /\['new', '새로 나온 순'\], \['pop', '인기순'\], \['name', '이름순'\]/);
+  assert.match(html, /if \(sbState\.tab === 'shop'\) \[left, right\] = shopPages\(\);/);
+  for (const s of ['불러오는 중…', '사용할 수 없는 출처', '설치하면', '설치 후 Claude에서 인증이 필요합니다', '실행 파일 포함', '자동 설치 불가', '모든 에이전트', '새 버전 있음', '설치됨'])
+    assert.ok(shop.includes(`'${s}'`) || html.includes(`'${s}'`), s);
+  assert.ok(shop.includes('플러그인은 Claude Code 안에서 훅·스크립트를 실행할 수 있습니다 — 출처를 확인하세요'));
+});
+
+test('shop ui: env fields are passwords, read at submit and cleared; no value reaches innerHTML, toast or console', () => {
+  assert.match(shop, /type="password"[^>]*data-shop-env/);
+  assert.match(shop, /el\.value = ''/);
+  const run = fn('async function shopInstallRun');
+  assert.match(run, /window\.orca\.shopInstall\(req\)/);
+  assert.match(run, /shopClearEnv\(\);[\s\S]*await window\.orca\.shopInstall/, 'cleared before the call too');
+  assert.match(run, /try \{ r = await window\.orca\.shopInstall\(req\); \} catch \{\}\s*env = null; req\.env = null;\s*shopClearEnv\(\);/, 'cleared after, also on failure');
+  assert.doesNotMatch(shop, /console\./);
+  assert.doesNotMatch(shop, /\.value\s*\)?\s*[`+][^\n]*innerHTML|innerHTML[^\n]*\.value/);
+  assert.doesNotMatch(shop, /showInAppToast\([^\n]*\benv\b/);
+  assert.doesNotMatch(shop, /shopState\.env|shopState\[.env/);
+  assert.doesNotMatch(shop, /value="\$\{[^}]*env/);
+});
+
+test('shop ui: install goes through the in-page confirm; update is display-only; link box', () => {
+  assert.match(fn('function shopInstallAsk'), /sbState\.ask = \{[^}]*run: \(\) => shopInstallRun\(/);
+  assert.equal((shop.match(/window\.orca\.shopInstall\(/g) || []).length, 1);
+  assert.doesNotMatch(shop, /window\.confirm|confirm\(/);
+  assert.doesNotMatch(shop, /data-sb="shop-update"|업데이트 하기/);
+  assert.match(shop, /window\.orca\.shopLink\(\{ text \}\)/);
+  assert.match(shop, /🔗 링크로 설치/);
+  assert.match(shop, /window\.orca\.shopList\(/);
+  assert.match(shop, /await Promise\.all\(\[skillbookLoad\(\), shopLoad\(false\)\]\)/);
+  assert.match(shop, /설치했습니다 \(로컬 마켓 경로\)/);
+  for (const d of ['conflict', 'exists', 'needs', 'missing', 'bad link', 'clone', 'empty']) assert.ok(shop.includes(d), d);
+  assert.match(shop, /p\.detail === 'conflict'/);
+});
+
+test('shop ui: i18n check passes', () => {
+  const r = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/i18n-check.mjs', import.meta.url))], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+});
