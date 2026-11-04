@@ -25,6 +25,15 @@ test('normalizeIssue reads a flat shape with plain strings and caps the descript
   assert.equal(J.normalizeIssue({ key: 'not a key' }), null); assert.equal(J.normalizeIssue(null), null);
 });
 
+test('normalizeIssue carries the status category when the item has one (list mode quest view)', () => {
+  assert.equal(J.normalizeIssue({ key: 'EP-1', fields: { status: { name: 'Doing', statusCategory: { key: 'indeterminate' } } } }).statusCategory, 'indeterminate');
+  assert.equal(J.normalizeIssue({ key: 'EP-2', status: { name: 'Done', statusCategory: { key: 'done' } } }).statusCategory, 'done');
+  assert.equal(J.normalizeIssue({ key: 'EP-3', status: 'To Do', statusCategory: 'new' }).statusCategory, 'new');
+  assert.equal(J.normalizeIssue({ key: 'EP-4', status: 'X', statusCategory: { key: 'done' } }).statusCategory, 'done');
+  assert.equal('statusCategory' in J.normalizeIssue({ key: 'EP-5', status: 'X' }), false);
+  assert.equal('statusCategory' in J.normalizeIssue({ key: 'EP-6', status: 'X', statusCategory: 'weird' }), false);
+});
+
 test('issuesFrom accepts several list envelopes and drops invalid rows', () => {
   const rows = [{ key: 'AB-1', summary: 'one' }, { key: 'bad' }, { key: 'BC-2', summary: 'two' }];
   for (const res of [{ ok: true, result: { issues: rows } }, { ok: true, result: { items: rows } }, { ok: true, result: rows }, { result: { data: { issues: rows } } }])

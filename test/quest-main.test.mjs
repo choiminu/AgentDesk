@@ -83,6 +83,29 @@ test('state prune: listed keys and tickets done in Jira over 30 days ago go', ()
   assert.deepEqual(Object.keys(st.all().quests), ['A-3', 'A-4']);
 });
 
+test('state prune: projects of a complete load drop their quiet entries the load did not return', () => {
+  let now = Date.parse('2026-10-01T00:00:00Z');
+  const file = tmpFile();
+  const st = createQuestState({ file, now: () => now }); st.load();
+  for (const k of ['EP-1', 'EP-2', 'OPS-1']) st.set(k, { kind: 'worktree', repo: 'r' });
+  now += 40 * 864e5;
+  st.set('EP-3', { kind: 'worktree', repo: 'r' });
+  st.prune([{ key: 'EP-2', fields: { status: { statusCategory: { key: 'indeterminate' } } } }]);   // no projects: nothing by absence
+  assert.deepEqual(Object.keys(st.all().quests), ['EP-1', 'EP-2', 'OPS-1', 'EP-3']);
+  st.prune([{ key: 'EP-2', fields: { status: { statusCategory: { key: 'indeterminate' } } } }], ['EP']);
+  assert.deepEqual(Object.keys(st.all().quests), ['EP-2', 'OPS-1', 'EP-3']);
+  const again = createQuestState({ file }); again.load();
+  assert.deepEqual(Object.keys(again.all().quests), ['EP-2', 'OPS-1', 'EP-3'], 'saved');
+  assert.equal(st.prune([], ['OPS']), 2, 'an empty complete load of OPS drops its quiet entry');
+});
+
+test('main: quest-prune passes validated project keys to the state', () => {
+  const main = readFileSync(join(ROOT, 'main.mjs'), 'utf-8');
+  assert.match(main, /questPruneProjectsIn = p => \(Array\.isArray\(p\) \? p\.slice\(0, 50\) : \[\]\)\.filter\(k => typeof k === "string" && \/\^\[A-Z\]\[A-Z0-9_\]\{0,49\}\$\/\.test\(k\)\)/);
+  assert.match(main, /questState\(\)\.prune\(issues, projects\)/);
+  assert.match(main, /description: questClip\(f\.description != null \? f\.description : i\.description, 20000\)/);
+});
+
 test('state is 0600 from the first byte: no looser window, even over a leftover temp file', { skip: IS_WIN }, () => {
   const src = readFileSync(join(ROOT, 'quest/state.mjs'), 'utf-8');
   assert.ok(!/writeJsonAtomic/.test(src), 'no mode-keeping helper');
@@ -118,6 +141,12 @@ test('desk args follow the constraints', () => {
   assert.equal(a[a.indexOf('--json-schema') + 1], globalThis.AgentDeskQuest.DESK_SCHEMA);
   assert.equal(a[a.indexOf('--system-prompt') + 1], globalThis.AgentDeskQuest.DESK_SYSTEM);
   assert.ok(a.includes('--disable-slash-commands'));
+  // isolation: no tools, no MCP servers, no user / project / local settings
+  assert.equal(a[a.indexOf('--tools') + 1], '');
+  assert.ok(a.includes('--strict-mcp-config'));
+  assert.ok(!a.includes('--mcp-config'));
+  assert.equal(a[a.indexOf('--setting-sources') + 1], '');
+  assert.ok(a.indexOf('--disallowedTools') > a.indexOf('--setting-sources'), 'the variadic --disallowedTools stays last');
   assert.deepEqual(a.slice(a.indexOf('--disallowedTools') + 1), ['Bash', 'Edit', 'Write', 'Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Agent', 'Task']);
   assert.equal(DESK_TIMEOUT_MS, 90000);
   assert.equal(DESK_CACHE_MS, 600000);
@@ -133,6 +162,19 @@ test('desk input is masked', async () => {
   assert.ok(input.includes('Fix login'));
   for (const s of ['sk-live-ABCDEFGHIJKLMNOPQRSTUV1234', 'ghp_abcdefghijklmnopqrstuvwxyz0123', 'hunter2hunter2']) assert.ok(!input.includes(s), s);
   assert.ok(input.includes('[MASKED'));
+});
+
+test('desk input: the full description is masked before the prompt cuts it', async () => {
+  const calls = [];
+  for (const issue of [
+    { key: 'ABC-12', fields: { summary: 'Fix login', description: 'y'.repeat(1490) + ' ghp_abcdefghijklmnopqrstuvwxyz0123 tail' } },
+    { key: 'ABC-12', summary: 'Fix login', description: 'y'.repeat(1490) + ' ghp_abcdefghijklmnopqrstuvwxyz0123 tail' },
+  ]) await askDesk({ issue, party: PARTY, repos: REPOS, run: okRun({ choice: { kind: 'session', id: 's-1' }, reason: 'r' }, calls) });
+  assert.equal(calls.length, 2);
+  for (const input of calls) {
+    assert.ok(!/ghp_/.test(input), 'no token fragment survives the cut');
+    assert.ok(input.includes('[MASKED'));
+  }
 });
 
 test('desk: worktree answer in the repo list is accepted; result envelope string is parsed too', async () => {

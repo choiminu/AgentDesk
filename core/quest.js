@@ -2,15 +2,28 @@
 // No DOM, no Electron, no I/O. Loaded as a classic <script> (global AgentDeskQuest) or required from main.
 //
 //   difficulty(priorityName)             → 0 | 1 | 2 | 3   Highest/High 3, Medium 2, Low/Lowest 1, none 0, unknown 2
-//   groupOf(issue, state, liveIds)       → 'new' | 'doing' | 'report' | 'done'   state = this ticket's entry; AgentDesk state wins
-//   questView(issues, stateFile, liveIds)→ [{ key, title, difficulty, group, status, due?, assignee?, quest?: { kind, sessionId?, repo?, at, reportAt?, ended? } }]
+//   groupOf(issue, state, liveIds, wtEnded) → 'new' | 'doing' | 'report' | 'done'   state = this ticket's entry; AgentDesk state wins
+//                                        (a worktree entry is 'doing' until reportAt unless wtEnded: its dispatch timed out / was
+//                                        discarded / is gone, or its mapped session is no longer live)
+//   questView(issues, stateFile, liveIds, worktrees)
+//                                        → [{ key, title, difficulty, group, status, due?, assignee?, quest?: { kind, sessionId?, repo?, at, reportAt?, ended? } }]
+//        worktrees (optional): { [key]: { sessionId?, ended? } } what the renderer knows of a worktree dispatch. When given, a
+//        worktree entry with no record, ended: true, or a sessionId that is not in liveIds counts as ended. Left out: worktree
+//        entries never end (they stay 진행 중 until reportAt)
 //   partyOf(sessions, handles)           → [{ id, name, repo, branch, status, eligible, doing, skills[] }]  my live interactive sessions
-//   deskPrompt(issue, party, repos)      → string (the front-desk input; the caller masks it before sending)
+//   deskPrompt(issue, party, repos)      → string (the front-desk input; the caller masks the full description BEFORE this
+//                                          cuts it to 1500 chars, and the whole prompt again before sending)
 //   DESK_SYSTEM                          → system prompt for the front-desk call
 //   DESK_SCHEMA                          → JSON schema string for { choice, reason }
 //   acceptProposal(answer, party, repos) → { kind: 'session', id } | { kind: 'worktree', repo } | null
-//   markerFor(stateFile, sessionId, live)→ boolean   office marker: assigned (kind 'session'), no reportAt, session live
-//   pruneState(stateFile, issues, now)   → new state file without tickets done in Jira more than 30 days ago
+//   markerFor(stateFile, sessionId, live, wtSessions)
+//                                        → boolean   office marker: assigned, no reportAt, session live. kind 'session' bound to
+//                                          this id, or kind 'worktree' whose dispatch maps to it (wtSessions: { [key]: sessionId })
+//   pruneState(stateFile, issues, now, projects)
+//                                        → new state file without tickets done in Jira more than 30 days ago, and (projects:
+//                                          the project keys a SUCCESSFUL, complete load covered) without entries of those
+//                                          projects that the load did not return and whose latest of at / reportAt is over
+//                                          30 days old. The caller passes projects only for a complete load.
 (function (root) {
 'use strict';
 const PRUNE_MS = 30 * 864e5;
@@ -36,18 +49,26 @@ function categoryOf(issue) {
   return k === 'indeterminate' || k === 'done' ? k : 'new';
 }
 
-function groupOf(issue, state, liveIds) {
+function groupOf(issue, state, liveIds, wtEnded) {
   const live = liveIds && typeof liveIds.has === 'function' ? liveIds : new Set();
   if (state && typeof state === 'object') {
     if (state.reportAt) return 'report';
-    // a worktree entry has no session id: it stays 진행 중 until reportAt (by design)
-    if (state.sessionId ? live.has(state.sessionId) : state.kind === 'worktree') return 'doing';
+    // a worktree entry has no session id: it stays 진행 중 until reportAt, unless the caller knows its dispatch ended
+    if (state.sessionId ? live.has(state.sessionId) : state.kind === 'worktree' && !wtEnded) return 'doing';
   }
   const c = categoryOf(issue || {});
   return c === 'indeterminate' ? 'doing' : c;
 }
 
-function questView(issues, stateFile, liveIds) {
+const own = (o, k) => !!o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
+function worktreeEnded(entry, key, worktrees, live) {
+  if (!entry || entry.kind !== 'worktree' || entry.sessionId || entry.reportAt || !worktrees || typeof worktrees !== 'object') return false;
+  const w = own(worktrees, key) ? worktrees[key] : null;
+  if (!w || typeof w !== 'object' || w.ended) return true;
+  return !!w.sessionId && !live.has(w.sessionId);
+}
+
+function questView(issues, stateFile, liveIds, worktrees) {
   const quests = stateFile && typeof stateFile === 'object' && stateFile.quests && typeof stateFile.quests === 'object' ? stateFile.quests : {};
   const live = liveIds && typeof liveIds.has === 'function' ? liveIds : new Set();
   const out = [];
@@ -55,11 +76,12 @@ function questView(issues, stateFile, liveIds) {
     if (!issue || typeof issue !== 'object' || !issue.key) continue;
     const f = fieldsOf(issue);
     const entry = Object.prototype.hasOwnProperty.call(quests, issue.key) ? quests[issue.key] : undefined;
+    const wtEnded = worktreeEnded(entry, issue.key, worktrees, live);
     const card = {
       key: str(issue.key),
       title: str(f.summary != null ? f.summary : issue.summary),
       difficulty: difficulty(nameOf(f.priority || issue.priority)),
-      group: groupOf(issue, entry, live),
+      group: groupOf(issue, entry, live, wtEnded),
       status: nameOf(f.status || issue.status),
     };
     const due = str(f.duedate || issue.due || issue.duedate);
@@ -71,7 +93,7 @@ function questView(issues, stateFile, liveIds) {
       if (entry.sessionId) q.sessionId = entry.sessionId;
       if (entry.repo) q.repo = entry.repo;
       if (entry.reportAt) q.reportAt = entry.reportAt;
-      if (entry.sessionId && !entry.reportAt && !live.has(entry.sessionId)) q.ended = true;
+      if ((entry.sessionId && !entry.reportAt && !live.has(entry.sessionId)) || wtEnded) q.ended = true;
       card.quest = q;
     }
     out.push(card);
@@ -168,27 +190,43 @@ function acceptProposal(answer, party, repos) {
   return null;
 }
 
-function pruneState(stateFile, issues, now) {
+const PROJECT_RE = /^[A-Z][A-Z0-9_]*$/;
+function pruneState(stateFile, issues, now, projects) {
   const src = stateFile && typeof stateFile === 'object' && stateFile.quests && typeof stateFile.quests === 'object' ? stateFile.quests : {};
-  const old = new Set();
+  const old = new Set(), seen = new Set();
   for (const issue of Array.isArray(issues) ? issues : []) {
+    if (issue && issue.key) seen.add(String(issue.key));
     if (!issue || !issue.key || categoryOf(issue) !== 'done') continue;
     const f = fieldsOf(issue);
     const t = Date.parse(str(f.resolutiondate || issue.resolutiondate || f.updated || issue.updated));
     if (Number.isFinite(t) && now - t > PRUNE_MS) old.add(issue.key);
+  }
+  // the board JQL never returns tickets done over 30 days ago: an entry of a loaded project that the load did not return
+  // goes when it has been quiet (latest of at / reportAt) for over 30 days
+  const prefixes = new Set((Array.isArray(projects) ? projects : []).filter(p => typeof p === 'string' && PROJECT_RE.test(p)));
+  if (prefixes.size) {
+    for (const k of Object.keys(src)) {
+      const e = src[k], dash = k.lastIndexOf('-');
+      if (dash < 1 || !prefixes.has(k.slice(0, dash)) || seen.has(k) || !e || typeof e !== 'object') continue;
+      const last = Math.max(Number.isFinite(e.at) ? e.at : 0, Number.isFinite(e.reportAt) ? e.reportAt : 0);
+      if (now - last > PRUNE_MS) old.add(k);
+    }
   }
   const quests = {};
   for (const k of Object.keys(src)) if (!old.has(k)) quests[k] = src[k];
   return { v: 1, quests };
 }
 
-// office marker: a session sitting on an assigned, not-yet-reported quest (kind 'session' bound to this session id)
-function markerFor(stateFile, sessionId, live) {
+// office marker: a session sitting on an assigned, not-yet-reported quest (kind 'session' bound to this session id, or a
+// worktree quest whose dispatch the renderer mapped to this session)
+function markerFor(stateFile, sessionId, live, wtSessions) {
   if (!live || !sessionId) return false;
   const quests = stateFile && typeof stateFile === 'object' && stateFile.quests && typeof stateFile.quests === 'object' ? stateFile.quests : {};
   for (const k of Object.keys(quests)) {
     const e = quests[k];
-    if (e && typeof e === 'object' && e.kind === 'session' && e.sessionId === sessionId && !e.reportAt) return true;
+    if (!e || typeof e !== 'object' || e.reportAt) continue;
+    if (e.kind === 'session' && e.sessionId === sessionId) return true;
+    if (e.kind === 'worktree' && own(wtSessions, k) && wtSessions[k] === sessionId) return true;   // the dispatch's mapped session
   }
   return false;
 }
