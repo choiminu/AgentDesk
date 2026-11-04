@@ -64,6 +64,24 @@ function tomlDetails(text, name) {
   return out;
 }
 
+// does a Claude plugin hold anything whose use is recorded (payload.mjs pluginEntry sums "<plugin>:<skill|command>" and
+// "plugin_<plugin>_<server>")? A skills/ or commands/ folder with an entry, or MCP servers in its .mcp.json (wrapped in
+// mcpServers or flat) or its manifest (.claude-plugin/plugin.json mcpServers: an object, or a path / list of paths).
+// Output styles, LSP servers, hooks or agents only, or an install folder that is gone: false — the payload marks such a
+// plugin not counted, so it never shows 미사용 or lands in 💤 (where the bulk trash would uninstall a plugin in use).
+function pluginCountable(path) {
+  if (!path) return false;
+  const filled = d => { try { return readdirSync(join(path, d)).some(n => !n.startsWith('.')); } catch { return false; } };
+  if (filled('skills') || filled('commands')) return true;
+  const servers = v => isObj(v) && Object.values(v).some(isObj);
+  try { const j = readJson(join(path, '.mcp.json')); if (servers(isObj(j) && isObj(j.mcpServers) ? j.mcpServers : j)) return true; } catch { /* none or unreadable */ }
+  try {
+    const m = readJson(join(path, '.claude-plugin', 'plugin.json')).mcpServers;
+    if (servers(m) || (typeof m === 'string' && m.trim()) || (Array.isArray(m) && m.length)) return true;
+  } catch { /* no manifest */ }
+  return false;
+}
+
 export function scanInventory({ home, repos = [] } = {}) {
   const items = [];
   const sources = [];
@@ -135,8 +153,8 @@ export function scanInventory({ home, repos = [] } = {}) {
       const rec = list.find(isObj);
       if (!rec) continue;
       const on = enabled[key] === true;
-      const plugin = { marketplace, ...(rec.version ? { version: String(rec.version) } : {}) };
       const path = typeof rec.installPath === 'string' ? rec.installPath : undefined;
+      const plugin = { marketplace, ...(rec.version ? { version: String(rec.version) } : {}), countable: pluginCountable(path) };
       add({ kind: 'plugin', name: pname, agents: ['claude'], source: 'plugin', ...(path ? { path } : {}), description: '', triggers: [], on, usageKey: pname, plugin });
       if (path) { try { skillsIn(join(path, 'skills'), { src: 'plugin', agents: ['claude'], on, plugin, pluginName: pname }); } catch { /* plugin without skills */ } }
     }

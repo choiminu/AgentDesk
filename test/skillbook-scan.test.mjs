@@ -205,3 +205,39 @@ test('.mcp.json servers: exact projects key, and off when listed in disabledMcpj
   const g = find(scanInventory({ home, repos: [repo] }), i => i.name === 'file-srv');
   assert.equal(g.on, true); assert.equal(g.loc.project, undefined);
 });
+
+// ---- plugins with nothing countable (output styles, LSP, hooks only) ----
+function pluginHome(plugins) {
+  const home = mkdtempSync(join(tmpdir(), 'sb-scan-pl-'));
+  const rec = {}, on = {};
+  for (const [name, make] of Object.entries(plugins)) {
+    const dir = join(home, '.claude/plugins/cache/mkt', name, '1.0.0');
+    mkdirSync(dir, { recursive: true });
+    make(dir);
+    rec[`${name}@mkt`] = [{ scope: 'user', installPath: dir, version: '1.0.0' }];
+    on[`${name}@mkt`] = true;
+  }
+  rec['ghostplug@mkt'] = [{ scope: 'user', installPath: join(home, 'nowhere'), version: '1.0.0' }];   // install folder gone
+  put(join(home, '.claude/plugins/installed_plugins.json'), { version: 2, plugins: rec });
+  put(join(home, '.claude/settings.json'), { enabledPlugins: on });
+  return home;
+}
+
+test('a plugin records whether it has anything countable (skills, commands, MCP servers)', () => {
+  const home = pluginHome({
+    'style-plug': d => { put(join(d, '.claude-plugin/plugin.json'), { name: 'style-plug' }); put(join(d, 'output-styles/fluent.md'), '---\nname: fluent\n---\n'); },
+    'lsp-plug': d => put(join(d, '.claude-plugin/plugin.json'), { name: 'lsp-plug', lspServers: { java: { command: 'jdtls' } } }),
+    'hook-plug': d => { put(join(d, 'hooks/hooks.json'), { hooks: {} }); mkdirSync(join(d, 'skills')); mkdirSync(join(d, 'commands')); },   // empty folders count as nothing
+    'skill-plug': d => skill(join(d, 'skills'), 'a-skill', 'One.'),
+    'cmd-plug': d => put(join(d, 'commands/do-it.md'), '# do it'),
+    'mcpfile-plug': d => put(join(d, '.mcp.json'), { mcpServers: { srv: { command: 'node' } } }),
+    'mcpflat-plug': d => put(join(d, '.mcp.json'), { srv: { command: 'node' } }),
+    'manifest-plug': d => put(join(d, '.claude-plugin/plugin.json'), { name: 'manifest-plug', mcpServers: { srv: { command: 'node' } } }),
+    'manifest-path-plug': d => put(join(d, '.claude-plugin/plugin.json'), { name: 'manifest-path-plug', mcpServers: './servers.json' }),
+    'emptymcp-plug': d => put(join(d, '.mcp.json'), { mcpServers: {} }),
+  });
+  const r = scanInventory({ home });
+  const c = n => { const it = find(r, i => i.kind === 'plugin' && i.name === n); assert.ok(it, n); return it.plugin.countable; };
+  for (const n of ['style-plug', 'lsp-plug', 'hook-plug', 'emptymcp-plug', 'ghostplug']) assert.equal(c(n), false, n);
+  for (const n of ['skill-plug', 'cmd-plug', 'mcpfile-plug', 'mcpflat-plug', 'manifest-plug', 'manifest-path-plug']) assert.equal(c(n), true, n);
+});

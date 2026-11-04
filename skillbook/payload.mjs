@@ -43,6 +43,8 @@ function usesOf(item, store, now) {
   const agents = Array.isArray(item.agents) ? item.agents : [];
   let counted = agents.some(a => !UNCOUNTED.includes(a));
   let e = null;
+  // a plugin with no skills, commands or MCP servers (scan.mjs pluginCountable): its use is never recorded
+  if (item.kind === 'plugin' && item.plugin && item.plugin.countable === false) counted = false;
   if (counted && store && item.kind === 'plugin' && item.source === 'plugin') {
     e = pluginEntry(item.name, store);
     if (e === undefined) { counted = false; e = null; }
