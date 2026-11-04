@@ -80,3 +80,14 @@ test('an installed item shows 스킬북에서 보기 instead of the install butt
   const src = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
   assert.match(src, /const btn = done \? view : !manual \? /);
 });
+
+test('shop ui: install-result missing names the file; gone keeps reload / find-again; registry note', () => {
+  const errs = shop.slice(shop.indexOf('const SHOP_ERR = {'), shop.indexOf('const shopCmdLine'));
+  const shopErrText = new Function('t', errs.replace(/const /g, 'var ') + '; return shopErrText;')(s => s);
+  assert.equal(shopErrText({ ok: false, error: 'failed', detail: 'missing' }), '필요한 파일을 찾지 못했습니다 (~/.claude.json 또는 SKILL.md)');
+  assert.equal(shopErrText({ ok: false, error: 'failed', detail: 'missing' }, true), '필요한 파일을 찾지 못했습니다 (~/.claude.json 또는 SKILL.md)');
+  assert.equal(shopErrText({ ok: false, error: 'gone', detail: 'missing' }), '목록을 다시 불러오세요');
+  assert.equal(shopErrText({ ok: false, error: 'gone', detail: 'missing' }, true), '링크를 다시 찾으세요');
+  assert.equal(shopErrText({ ok: false, error: 'failed', detail: 'clone' }), '저장소를 가져오지 못했습니다');
+  assert.match(fn('function shopPages'), /s\.id === 'registry' && s\.ok\) \? `<div class="sb-hint">\$\{esc\(t\('MCP 레지스트리는 최신 500개까지만 보입니다/);
+});

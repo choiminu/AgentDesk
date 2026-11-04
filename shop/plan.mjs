@@ -1,5 +1,6 @@
 // Install plans (pure, no I/O): what would be installed and which commands run.
 // `show` lines never contain user-typed values; `needs` lists env/header NAMES only.
+import { isAbsolute } from 'node:path'
 
 const SEMVER = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/
 
@@ -227,8 +228,13 @@ function planPlugin(item, installed) {
   if (has(installed?.plugins, key)) return { kind: 'installed', show: [key], needs: [] }
   const steps = []
   if (!has(installed?.marketplaces, item.marketplace)) {
-    const source = item.marketplaceSource || item.repo
-    if (source) {
+    // a pasted /tree/<ref>/<path> link: the previewed folder (inside ~/.roca/shop; install.mjs checks) is added as a
+    // local-path marketplace, so what installs is what was shown — not the default branch root of owner/repo
+    const local = typeof item.marketplacePath === 'string' && isAbsolute(item.marketplacePath) && !/[\u0000-\u001f\u007f]/.test(item.marketplacePath)
+      ? item.marketplacePath : null
+    const source = local || item.marketplaceSource || item.repo
+    if (local) steps.push({ cmd: 'claude', args: ['plugin', 'marketplace', 'add', local] })
+    else if (source) {
       if (!okSource(source)) return { kind: 'manual', show: CANNOT, needs: [] }
       steps.push({ cmd: 'claude', args: ['plugin', 'marketplace', 'add', source] })
     }

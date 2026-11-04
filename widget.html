@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tT4A60Sg+cUysrXKJLczyxVJOEuslaTbP1LO8IMqO5I='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-4oXTSjHqAD0/OKehMhLpwBNxNa5SsqB/TZC64tfTzUk='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2576,7 +2576,8 @@ Object.assign(I18N, {
   '설치했습니다': 'Installed', '링크를 다시 찾으세요': 'Find the link again', '스킬북에서 보기': 'View in Skillbook', '플러그인 마켓': 'Plugin marketplace', '~/.claude.json 을 읽지 못했습니다 — 파일을 확인하세요': 'Could not read ~/.claude.json — check the file', '설치했습니다 (로컬 마켓 경로)': 'Installed (local marketplace route)', '설치했습니다 (설정 파일에 추가)': 'Installed (added to the settings file)', '설치했습니다 (Claude CLI)': 'Installed (Claude CLI)',
   '설치했습니다 (마켓 경로)': 'Installed (marketplace route)', '설치했습니다 (Claude 경로)': 'Installed (Claude route)', '설치했습니다 (에이전트 공용 폴더)': 'Installed (shared agents folder)', '설치하지 못했습니다': 'Could not install',
   '같은 이름의 마켓이 다른 출처로 이미 있어 자동 설치할 수 없습니다': 'A marketplace with the same name already exists from another source, so it cannot be installed automatically', '이미 있습니다': 'Already exists',
-  '필요한 값을 모두 입력하세요': 'Fill in every required value', '목록을 다시 불러오세요': 'Reload the list', '지원하지 않는 링크입니다 (GitHub 저장소 링크만 됩니다)': 'Unsupported link (only GitHub repository links work)',
+  '필요한 값을 모두 입력하세요': 'Fill in every required value', '목록을 다시 불러오세요': 'Reload the list', '필요한 파일을 찾지 못했습니다 (~/.claude.json 또는 SKILL.md)': 'A needed file was not found (~/.claude.json or SKILL.md)',
+  'MCP 레지스트리는 최신 500개까지만 보입니다 — Smithery에만 있는 항목은 직접 설정하세요': 'Only the newest part of the MCP registry is listed (up to 500) — items only on Smithery need manual setup', '지원하지 않는 링크입니다 (GitHub 저장소 링크만 됩니다)': 'Unsupported link (only GitHub repository links work)',
   '저장소를 가져오지 못했습니다': 'Could not fetch the repository', '이 링크에서 설치할 항목을 찾지 못했습니다': 'Nothing installable found at this link', 'Claude CLI를 실행하지 못했습니다': 'Could not run the Claude CLI',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
@@ -10497,11 +10498,13 @@ const SHOP_SRC = { marketplace: '플러그인 마켓', registry: 'MCP 레지스�
 const SHOP_ROUTE = { local: '설치했습니다 (로컬 마켓 경로)', config: '설치했습니다 (설정 파일에 추가)', cli: '설치했습니다 (Claude CLI)', marketplace: '설치했습니다 (마켓 경로)', claude: '설치했습니다 (Claude 경로)', agents: '설치했습니다 (에이전트 공용 폴더)' };
 const SHOP_ERR = {
   conflict: '같은 이름의 마켓이 다른 출처로 이미 있어 자동 설치할 수 없습니다', exists: '이미 있습니다', needs: '필요한 값을 모두 입력하세요',
-  missing: '목록을 다시 불러오세요', 'bad link': '지원하지 않는 링크입니다 (GitHub 저장소 링크만 됩니다)', clone: '저장소를 가져오지 못했습니다',
+  missing: '필요한 파일을 찾지 못했습니다 (~/.claude.json 또는 SKILL.md)', 'bad link': '지원하지 않는 링크입니다 (GitHub 저장소 링크만 됩니다)', clone: '저장소를 가져오지 못했습니다',
   empty: '이 링크에서 설치할 항목을 찾지 못했습니다', io: '처리하지 못했습니다', 'invalid JSON': '~/.claude.json 을 읽지 못했습니다 — 파일을 확인하세요', manual: '자동 설치 불가', cli: 'Claude CLI를 실행하지 못했습니다',
 };
 const SHOP_ERR_TOP = { gone: '목록을 다시 불러오세요', unsupported: '자동 설치 불가' };
-const shopErrText = (r, link) => t(link && r && (r.detail === 'missing' || r.error === 'gone') ? '링크를 다시 찾으세요' : SHOP_ERR[r && r.detail] || SHOP_ERR_TOP[r && r.error] || '설치하지 못했습니다');
+// `gone` = the catalog item or link choice expired/unknown (its detail is also 'missing'): reload / find again; a plain
+// `missing` detail is an install result — ~/.claude.json absent/empty or the skill's SKILL.md gone
+const shopErrText = (r, link) => t(r && r.error === 'gone' ? (link ? '링크를 다시 찾으세요' : SHOP_ERR_TOP.gone) : SHOP_ERR[r && r.detail] || SHOP_ERR_TOP[r && r.error] || '설치하지 못했습니다');
 const shopCmdLine = s => !/[가-힣]/.test(s);   // only real commands get a copy button
 function shopUrl(it) {   // only github.com opens (main's open-external allow-list); others stay plain text
   const v = String(it.repo || it.homepage || '');
@@ -10558,7 +10561,7 @@ function shopLinkHtml() {
   const l = shopState.link;
   const found = (l.found || []).map(f => shopRow({ ...f, id: 'link:' + f.choiceId })).join('');
   return `<div class="shop-link"><div class="shop-linkrow"><input type="text" class="shop-in" data-shop-link placeholder="${esc(t('🔗 링크로 설치'))}: github.com/owner/repo" value="${esc(shopState.linkText)}" aria-label="${esc(t('🔗 링크로 설치'))}" spellcheck="false" autocomplete="off"><button type="button" class="sb-btn" data-sb="shop-link"${l.busy ? ' disabled' : ''}>${esc(t(l.busy ? '찾는 중…' : '찾기'))}</button></div>`
-    + (l.err ? `<div class="sb-note err">${esc(shopErrText(l.errR))}</div>` : '')
+    + (l.err ? `<div class="sb-note err">${esc(shopErrText(l.errR, true))}</div>` : '')
     + (l.found ? `<div class="sb-hint">${esc(t(l.found.length > 1 ? '여러 개를 찾았습니다 — 하나를 고르세요' : '찾았습니다'))}</div>${found}` : '') + `</div>`;
 }
 const shopAskBox = () => `<div id="shop-ask">${sbAskHtml()}</div>`;
@@ -10598,6 +10601,7 @@ function shopPages() {
   const left = `<h4>${esc(t('🏪 상점'))}<button type="button" class="sb-btn off shop-refresh" data-sb="shop-refresh"${shopState.loading ? ' disabled' : ''}>${esc(t('새로고침'))}</button></h4>${sbTabsHtml(sbItems())}${shopLinkHtml()}`
     + `<input type="search" class="shop-in" data-shop-q placeholder="${esc(t('검색'))}" aria-label="${esc(t('검색'))}" value="${esc(shopState.q)}" autocomplete="off">`
     + `<div class="shop-ctl">${seg('filter', shopState.filter, SHOP_FILTERS)}${seg('sort', shopState.sort, SHOP_SORTS)}</div>`
+    + ((d && d.sources || []).some(s => s && s.id === 'registry' && s.ok) ? `<div class="sb-hint">${esc(t('MCP 레지스트리는 최신 500개까지만 보입니다 — Smithery에만 있는 항목은 직접 설정하세요'))}</div>` : '')
     + (bad.length ? `<div class="sb-hint">${esc(t('사용할 수 없는 출처'))}: <span data-verbatim>${esc(bad.map(s => t(SHOP_SRC[s.id] || s.id || '')).filter(Boolean).join(', '))}</span></div>` : '')
     + `<div class="shop-rows">${shopRowsHtml()}</div>`;
   return [left, shopDetail(shopCur())];
