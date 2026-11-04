@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-rtT1pEDhYjr+kOrCeDykNWlGfMU43jhBAlsaaOFoZ6M='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-Zc45OPHmRdcQVvxzcQP32tqWRJ824gtcqZXF6aqhxmI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2495,6 +2495,7 @@ Object.assign(I18N, {
   '이미 바뀌었거나 없어졌습니다': 'changed or gone in the meantime', '이 항목은 할 수 없는 동작입니다': 'not possible for this item', '처리하지 못했습니다': 'failed',
   '껐습니다': 'turned off', '켰습니다': 'turned on', '제거했습니다': 'removed', '되살렸습니다': 'restored', '폴더를 열었습니다': 'folder opened',
   '스킬 폴더는 OS 휴지통으로 갑니다.': 'The skill folder goes to the OS trash.', '최근 제거에서 되살릴 수 있습니다.': 'It can be restored from Recently removed.',
+  '사용자 설정': 'user settings', '공유 스킬': 'shared skills', '확장': 'extension', '에이전트별': 'By agent', '사용한 도구': 'Tools used',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -10054,11 +10055,16 @@ const sbHome = p => String(p || '').replace(/^(?:\/Users\/|\/home\/|[A-Za-z]:\\U
 const sbAll = () => (sbState.data && sbState.data.items) || [];
 const sbItems = () => sbAll().filter(it => sbState.agent === 'all' || (it.agents || []).includes(sbState.agent));
 const sbCount = (it, period) => { const u = it.uses || {}; return (period === 7 ? u.week : period === 30 ? u.month : u.total) || 0; };
+const sbReading = () => !!(sbState.data && sbState.data.backfill === 'running');   // usage still being read from the transcripts
+const SB_SRC = { user: '사용자 설정', shared: '공유 스킬', plugin: '플러그인', extension: '확장', project: '프로젝트' };
+const sbPlaces = n => LANG === 'en' ? `×${n} places` : `×${n} 곳`;
 
 async function skillbookLoad() {
   let r = null;
   try { r = await window.orca.skillbook(); } catch {}
-  sbState.data = r && r.ok ? r : { ok: false, items: [], sources: [], removed: [], backfill: 'done' };
+  // a failed poll keeps what is shown (and keeps polling while usage was still being read)
+  if (r && r.ok) sbState.data = r;
+  else if (!sbState.data || !sbState.data.ok) sbState.data = { ok: false, items: [], sources: [], removed: [], backfill: 'done' };
   if (currentPage !== 'skillbook') return;
   skillbookRender();
   clearTimeout(sbPollTimer);   // usage still being read from the transcripts: ask again while the page stays open
@@ -10091,6 +10097,8 @@ function sbLevel(it) {
   return u.mastery ? `<span class="sb-lv sb-stars">${'★'.repeat(u.mastery)}</span>` : `<span class="sb-lv">${esc(t('미사용'))}</span>`;
 }
 const sbRepo = it => it.repo ? `<span class="sb-repo">(<span data-verbatim>${esc(it.repo)}</span> ${esc(t('프로젝트'))})</span>` : '';
+// where an item lives (💤 rows: the same name in two places stays two rows, told apart by this)
+const sbWhere = it => it.repo ? sbRepo(it) : `<span class="sb-repo">(${esc(t(SB_SRC[it.source] || '사용자 설정'))} · ${esc((it.agents || []).map(a => SB_AGENT_NAME[a] || a).join('·'))})</span>`;
 function sbRow(it) {
   const u = it.uses || {};
   const cls = `${it.id === sbState.sel ? ' sel' : ''}${u.counted && !u.total ? ' dim' : ''}`;
@@ -10120,6 +10128,7 @@ function sbDetail(it) {
       kv('범위', it.repo ? `${vb(it.repo)} ${esc(t('프로젝트'))}` : esc(t('모든 프로젝트 (사용자 설정)'))),
       kv('실행', `${esc(t(SB_TRANSPORT[m.transport] || SB_TRANSPORT.stdio))}${m.command ? ` · ${vb(m.command)}` : ''}`),
       kv('키 이름', keys.length ? `${keys.map(k => `<span class="sb-chip" data-verbatim>${esc(k)}</span>`).join('')} ${esc(t('(값은 표시하지 않음)'))}` : ''),
+      kv('사용한 도구', (u.tools || []).map(x => `<span class="sb-chip" data-verbatim>${esc(x)}</span>`).join('')),
     ] : [
       kv('하는 일', it.description ? vb(it.description) : ''),
       kv('이렇게 말하면 켜짐', (it.triggers || []).map(x => `<span class="sb-chip" data-verbatim>${esc(x)}</span>`).join('')),
@@ -10127,6 +10136,8 @@ function sbDetail(it) {
     ];
   rows.push(kv('최근', u.lastAt ? `${esc(timeAgo(u.lastAt))}${u.lastRepo ? ` (${vb(u.lastRepo)})` : ''}` : ''));
   rows.push(kv('쓸 수 있는 에이전트', esc((it.agents || []).map(a => SB_AGENT_NAME[a] || a).join(' · '))));
+  const split = Object.entries(u.byAgent || {}).sort((a, b) => b[1] - a[1]);   // shared items: who used it how often
+  rows.push(kv('에이전트별', (it.agents || []).length > 1 || split.length > 1 ? esc(split.map(([a, n]) => `${SB_AGENT_NAME[a] || a} ${n}`).join(' · ')) : ''));
   const btns = [];
   if (c.off) btns.push(`<button type="button" class="sb-btn" data-sb="act" data-a="off" data-id="${id}" title="${esc(t('누르면 끕니다'))}">${esc(t('켜짐'))}</button>`);
   else if (c.on) btns.push(`<button type="button" class="sb-btn off" data-sb="act" data-a="on" data-id="${id}" title="${esc(t('누르면 켭니다'))}">${esc(t('꺼짐'))}</button>`);
@@ -10139,19 +10150,29 @@ function sbDetail(it) {
 // 📊 사용 기록: left — what was used in the period, by count; right — what was not (pick, then off / trash)
 function sbUsagePages(items) {
   const counted = items.filter(it => it.uses && it.uses.counted);
-  const used = counted.map(it => [it, sbCount(it, sbState.period)]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
-  const max = used.length ? used[0][1] : 1;
-  const gauge = (it, n) => { const on = Math.round(10 * n / max), lv = (it.uses || {}).mastery || 0; return `<span class="sb-gauge${lv >= 3 ? '' : lv === 2 ? ' mid' : ' low'}">${Array.from({ length: 10 }, (_, i) => `<i${i < on ? ' class="on"' : ''}></i>`).join('')}</span>`; };
+  // one row per kind + usageKey: items that share the recorded name share the count (×N 곳 when several)
+  const groups = new Map();
+  for (const it of counted) {
+    const n = sbCount(it, sbState.period); if (!n) continue;
+    const k = `${it.kind}\u0000${it.usageKey || it.id}`, g = groups.get(k);
+    if (g) g.places++; else groups.set(k, { it, n, places: 1 });
+  }
+  const used = [...groups.values()].sort((a, b) => b.n - a.n);
+  const max = used.length ? used[0].n : 1;
+  const gauge = n => { const on = n ? Math.max(1, Math.ceil(10 * Math.log1p(n) / Math.log1p(max))) : 0; return `<span class="sb-gauge${n >= 20 ? '' : n >= 5 ? ' mid' : ' low'}">${Array.from({ length: 10 }, (_, i) => `<i${i < on ? ' class="on"' : ''}></i>`).join('')}</span>`; };
   const seg = `<span class="sb-seg">${SB_PERIODS.map(([v, l]) => `<button type="button" class="${sbState.period === v ? 'on' : ''}" data-sb="period" data-v="${v}">${esc(t(l))}</button>`).join('')}</span>`;
   const left = `<h4>${esc(t('📊 사용 기록'))}${seg}</h4>${sbTabsHtml(items)}`
-    + (used.length ? used.map(([it, n]) => `<div class="sb-grow"><span class="sb-ico">${SB_ICON[it.kind] || '·'}</span><span class="sb-name" data-verbatim>${esc(it.name)}</span>${gauge(it, n)}<span class="sb-n">${esc(sbTimes(n))}</span></div>`).join('')
+    + (used.length ? used.map(({ it, n, places }) => `<div class="sb-grow"><span class="sb-ico">${SB_ICON[it.kind] || '·'}</span><span class="sb-name" data-verbatim>${esc(it.name)}</span>${places > 1 ? `<span class="sb-repo">${esc(sbPlaces(places))}</span>` : ''}${gauge(n)}<span class="sb-n">${esc(sbTimes(n))}</span></div>`).join('')
       : `<div class="sb-empty">${esc(t('이 기간에 쓴 것이 없습니다'))}</div>`)
     + (counted.length < items.length ? `<div class="sb-hint">${esc(t('Codex·Gemini 전용 항목은 사용 기록을 셀 수 없어 빠졌습니다'))}</div>` : '');
-  const idle = counted.filter(it => !sbCount(it, sbState.period)).sort((a, b) => a.name.localeCompare(b.name));
-  const dis = sbState.busy || !sbState.picked.size ? ' disabled' : '';
-  const right = `<h4>${esc(t('💤 안 쓰는 것'))} <span class="sb-ribbon">${esc(sbNum(idle.length))}</span></h4>`
-    + idle.map(it => { const p = sbState.picked.has(it.id); return `<button type="button" class="sb-row dim${p ? ' picked' : ''}" data-sb="pick" data-id="${esc(it.id)}" aria-pressed="${p}"><span class="sb-chk">${p ? '✓' : ''}</span><span class="sb-ico">${SB_ICON[it.kind] || '·'}</span><span class="sb-name" data-verbatim>${esc(it.name)}</span>${sbRepo(it)}<span class="sb-n">${esc(sbTimes(0))}</span></button>`; }).join('')
-    + (idle.length ? `<div class="sb-btns"><button type="button" class="sb-btn" data-sb="bulk" data-a="off"${dis}>${esc(t('고른 것 끄기'))}</button><button type="button" class="sb-btn red" data-sb="bulk" data-a="remove"${dis}>${esc(t('휴지통으로'))}</button></div>` : '')
+  // 💤: what is on and was not used; while usage is still being read nothing can be picked
+  const reading = !!sbState.data && sbState.data.backfill === 'running';
+  const idle = counted.filter(it => it.on !== false && !sbCount(it, sbState.period)).sort((a, b) => a.name.localeCompare(b.name));
+  const dis = reading || sbState.busy || !sbState.picked.size ? ' disabled' : '';
+  const rows = reading ? `<div class="sb-empty">${esc(t('사용 기록을 읽는 중…'))}</div>`
+    : idle.map(it => { const p = sbState.picked.has(it.id); return `<button type="button" class="sb-row dim${p ? ' picked' : ''}" data-sb="pick" data-id="${esc(it.id)}" aria-pressed="${p}"><span class="sb-chk">${p ? '✓' : ''}</span><span class="sb-ico">${SB_ICON[it.kind] || '·'}</span><span class="sb-name" data-verbatim>${esc(it.name)}</span>${sbWhere(it)}<span class="sb-n">${esc(sbTimes(0))}</span></button>`; }).join('');
+  const right = `<h4>${esc(t('💤 안 쓰는 것'))}${reading ? '' : ` <span class="sb-ribbon">${esc(sbNum(idle.length))}</span>`}</h4>` + rows
+    + (reading || idle.length ? `<div class="sb-btns"><button type="button" class="sb-btn" data-sb="bulk" data-a="off"${dis}>${esc(t('고른 것 끄기'))}</button><button type="button" class="sb-btn red" data-sb="bulk" data-a="remove"${dis}>${esc(t('휴지통으로'))}</button></div>` : '')
     + sbAskHtml();
   return [left, right];
 }
@@ -10187,6 +10208,7 @@ $('page-skillbook').addEventListener('click', e => {
   if (k === 'ask-no') { sbState.ask = null; skillbookRender(); return; }
   if (k === 'ask-ok') { const a = sbState.ask; sbState.ask = null; if (a) a.run(); return; }
   if (sbState.busy) return;
+  if ((k === 'pick' || k === 'bulk') && sbReading()) return;   // the 💤 list is not final yet
   if (k === 'agent') { sbState.agent = b.dataset.v; sbState.picked.clear(); sbState.ask = null; }
   else if (k === 'tab') { sbState.tab = b.dataset.v; sbState.ask = null; }
   else if (k === 'period') { sbState.period = Number(b.dataset.v); sbState.picked.clear(); sbState.ask = null; }
@@ -10206,9 +10228,11 @@ $('page-skillbook').addEventListener('click', e => {
     const a = b.dataset.a, picked = [...sbState.picked].map(x => sbAll().find(i => i.id === x)).filter(Boolean);
     const ids = picked.filter(x => x.can && x.can[a]).map(x => x.id), skipped = picked.filter(x => !(x.can && x.can[a])).map(x => x.name);
     if (!picked.length) return;
-    const text = LANG === 'en' ? `Move ${ids.length} to the trash? Skill folders go to the OS trash, plugins and MCP servers can be restored from Recently removed.` : `${ids.length}개를 휴지통으로 보낼까요? 스킬 폴더는 OS 휴지통으로 가고, 플러그인·MCP 서버는 최근 제거에서 되살릴 수 있습니다.`;
-    if (a === 'remove' && ids.length) sbConfirm(text, t('휴지통으로'), () => sbRun(ids, 'remove', skipped));
-    else sbRun(a === 'off' ? ids : [], a, skipped);   // nothing that can be removed: only the summary
+    if (!ids.length) { sbRun([], a, skipped); return; }   // nothing picked can take the action: only the summary
+    const text = a === 'remove'
+      ? (LANG === 'en' ? `Move ${ids.length} to the trash? Skill folders go to the OS trash, plugins and MCP servers can be restored from Recently removed.` : `${ids.length}개를 휴지통으로 보낼까요? 스킬 폴더는 OS 휴지통으로 가고, 플러그인·MCP 서버는 최근 제거에서 되살릴 수 있습니다.`)
+      : (LANG === 'en' ? `Turn off ${ids.length}? They can be turned on again from the index.` : `${ids.length}개를 끌까요? 목차에서 다시 켤 수 있습니다.`);
+    sbConfirm(text, t(a === 'remove' ? '휴지통으로' : '고른 것 끄기'), () => sbRun(ids, a, skipped));   // one confirm per batch
     return;
   }
   skillbookRender();
