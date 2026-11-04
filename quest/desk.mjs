@@ -1,0 +1,117 @@
+// AgentDesk Quest board: the front desk. One headless `claude -p` call proposes who takes a ticket (an idle session of
+// mine or a new worktree in a known repo). The proposal is only a suggestion: nothing dispatches without the owner's click.
+//
+//   deskArgs()                       → argv for `claude` (model AGENTDESK_QUEST_MODEL || haiku, JSON schema, no tools)
+//   askDesk({ issue, party, repos, run, signal, timeoutMs })
+//        → Promise<{ ok: true, choice, reason } | { ok: false, error: 'timeout'|'invalid'|'failed'|'cancelled' }>
+//        run(input, { signal }) → Promise<{ code, stdout }>; input = the masked front-desk prompt (stdin)
+//   createDesk({ run, now, timeoutMs }) → { ask({ key, issue, party, repos }), cancel(key), pending(key) }
+//        one call per ticket at a time (a second ask joins the first), ok proposals cached per ticket 10 minutes
+//        (re-checked against the current party / repos on a hit)
+//   spawnRun(opts) → a `run` that spawns `claude` with deskArgs(), stdin input, killed on abort
+import { spawn } from "node:child_process";
+import "../core/mask.js";    // globalThis.AgentDeskMask
+import "../core/quest.js";   // globalThis.AgentDeskQuest
+
+export const DESK_TIMEOUT_MS = 90000;
+export const DESK_CACHE_MS = 10 * 60000;
+const REASON_MAX = 300;
+const OUT_MAX = 1024 * 1024;
+const Q = () => globalThis.AgentDeskQuest;
+const mask = s => globalThis.AgentDeskMask.mask(String(s ?? ""));
+
+export function deskArgs() {
+  return ["-p", "--model", process.env.AGENTDESK_QUEST_MODEL || "haiku", "--output-format", "json", "--json-schema", Q().DESK_SCHEMA,
+    "--system-prompt", Q().DESK_SYSTEM, "--disable-slash-commands",
+    "--disallowedTools", "Bash", "Edit", "Write", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "Agent", "Task"];
+}
+
+// the `--output-format json` envelope: structured_output (with --json-schema), else `result` as a JSON string / object
+function answerOf(stdout) {
+  let env;
+  try { env = JSON.parse(String(stdout || "")); } catch { return null; }
+  if (!env || typeof env !== "object") return null;
+  if (env.structured_output && typeof env.structured_output === "object") return env.structured_output;
+  if (typeof env.result === "string") { try { return JSON.parse(env.result); } catch { return null; } }
+  return env.result && typeof env.result === "object" ? env.result : null;
+}
+
+export async function askDesk({ issue, party, repos, run, signal, timeoutMs = DESK_TIMEOUT_MS } = {}) {
+  if (typeof run !== "function") return { ok: false, error: "failed" };
+  if (signal && signal.aborted) return { ok: false, error: "cancelled" };
+  // everything that leaves the machine (ticket, session names, repos, branches, summaries) is masked as one text
+  const input = mask(Q().deskPrompt(issue, party, repos));
+  const ac = new AbortController();
+  let why = null;
+  const onAbort = () => { why = why || "cancelled"; ac.abort(); };
+  if (signal) signal.addEventListener("abort", onAbort, { once: true });
+  let timer;
+  const stop = new Promise(res => {
+    timer = setTimeout(() => { why = why || "timeout"; ac.abort(); res(); }, timeoutMs);
+    ac.signal.addEventListener("abort", () => res(), { once: true });
+  });
+  try {
+    let started;
+    try { started = Promise.resolve(run(input, { signal: ac.signal })); } catch (e) { started = Promise.reject(e); }
+    const r = await Promise.race([started.then(v => ({ v }), e => ({ e })), stop.then(() => null)]);
+    if (why) return { ok: false, error: why };
+    if (!r || r.e || !r.v || r.v.code !== 0) return { ok: false, error: "failed" };
+    const ans = answerOf(r.v.stdout);
+    const choice = ans ? Q().acceptProposal(ans, party, repos) : null;
+    if (!choice) return { ok: false, error: "invalid" };
+    const reason = mask(typeof ans.reason === "string" ? ans.reason : "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, REASON_MAX);
+    return { ok: true, choice, reason };
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
+    if (!ac.signal.aborted) ac.abort();   // let the run clean up (kill the child) whatever happened
+  }
+}
+
+export function createDesk({ run, now = Date.now, timeoutMs = DESK_TIMEOUT_MS } = {}) {
+  const inflight = new Map();   // key → { promise, ac }
+  const cache = new Map();      // key → { at, result }
+  return {
+    ask({ key, issue, party, repos }) {
+      const hit = cache.get(key);
+      if (hit && now() - hit.at < DESK_CACHE_MS && Q().acceptProposal({ choice: hit.result.choice }, party, repos)) return Promise.resolve({ ...hit.result });
+      if (hit) cache.delete(key);
+      const cur = inflight.get(key);
+      if (cur) return cur.promise;
+      const ac = new AbortController();
+      const promise = askDesk({ issue, party, repos, run, signal: ac.signal, timeoutMs }).then(res => {
+        if (inflight.get(key) && inflight.get(key).ac === ac) inflight.delete(key);
+        if (res.ok) cache.set(key, { at: now(), result: res });
+        return res;
+      });
+      inflight.set(key, { promise, ac });
+      return promise;
+    },
+    cancel(key) {
+      const cur = inflight.get(key);
+      if (!cur) return false;
+      inflight.delete(key);
+      cur.ac.abort();
+      return true;
+    },
+    pending(key) { return inflight.has(key); },
+  };
+}
+
+export function spawnRun({ cmd = "claude", env = process.env } = {}) {
+  return (input, { signal } = {}) => new Promise((resolve, reject) => {
+    let child;
+    try {
+      // headless run: our own hooks stay quiet (AGENTDESK_RECALL), OMC keyword triggers / hooks off
+      child = spawn(cmd, deskArgs(), { env: { ...env, AGENTDESK_RECALL: "1", DISABLE_OMC: "1", OMC_SKIP_HOOKS: "all" }, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
+    } catch (e) { reject(e); return; }
+    let out = "", done = false;
+    const kill = () => { try { child.kill("SIGTERM"); } catch {} };
+    if (signal) { if (signal.aborted) kill(); else signal.addEventListener("abort", kill, { once: true }); }
+    child.stdout.on("data", d => { if (out.length < OUT_MAX) out += d; });
+    child.on("error", e => { if (!done) { done = true; reject(e); } });
+    child.on("close", code => { if (!done) { done = true; resolve({ code, stdout: out }); } });
+    child.stdin.on("error", () => {});
+    child.stdin.end(input);
+  });
+}
