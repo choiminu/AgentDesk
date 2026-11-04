@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, statSync, openSync, readSync, closeSync } fr
 import { join, basename, resolve } from 'node:path';
 import '../core/skillbook.js'; // classic script: sets globalThis.AgentDeskSkillbook (package is type:module, so no module.exports)
 
-const { parseSkillMd, tomlMcpServers } = globalThis.AgentDeskSkillbook;
+const { parseSkillMd, tomlLines, tomlMcpServers } = globalThis.AgentDeskSkillbook;
 const SKILL_READ_MAX = 64 * 1024;
 const ALL = ['claude', 'codex', 'gemini'];
 const WHERES = ['claude-user', 'claude-project', 'mcpjson', 'codex', 'gemini'];
@@ -34,17 +34,29 @@ function mcpFromJson(def, gemini = false) {
   return out;
 }
 
+// the non-secret summary stored with a parked entry (actions.mjs copies it from the scanned item); anything odd is dropped
+const KEY_NAME = /^[\w.-]{1,128}$/;
+function parkedSummary(m, scope) {
+  const d = isObj(m) ? m : {};
+  const keys = v => (Array.isArray(v) ? v.filter(k => typeof k === 'string' && KEY_NAME.test(k)) : []);
+  const out = { transport: ['stdio', 'http', 'sse'].includes(d.transport) ? d.transport : 'stdio' };
+  if (typeof d.command === 'string' && KEY_NAME.test(d.command)) out.command = d.command;
+  out.envKeys = keys(d.envKeys);
+  const headerKeys = keys(d.headerKeys);
+  if (headerKeys.length) out.headerKeys = headerKeys;
+  out.scope = scope;
+  return out;
+}
+
 // light TOML reads of one [mcp_servers.<name>] section: command basename and env key names only
 function tomlDetails(text, name) {
   let sec = null; const out = { envKeys: [] };
-  for (const line of text.split(/\r?\n/)) {
-    const h = /^\s*\[([^\[\]]+)\]\s*(?:#.*)?$/.exec(line);
-    if (h) {
-      const p = h[1].split('.').map(s => s.trim().replace(/^(["'])(.*)\1$/, '$2'));
-      sec = p[0] === 'mcp_servers' && p[1] === name ? (p.length === 2 ? 'main' : p.length === 3 && p[2] === 'env' ? 'env' : null) : null;
+  for (const { line, header, path: p, cont } of tomlLines(text.split(/\r?\n/))) {
+    if (header) {
+      sec = p && p[0] === 'mcp_servers' && p[1] === name ? (p.length === 2 ? 'main' : p.length === 3 && p[2] === 'env' ? 'env' : null) : null;
       continue;
     }
-    const kv = /^\s*("[^"]*"|'[^']*'|[A-Za-z0-9_-]+)\s*=\s*(.*)$/.exec(line);
+    const kv = !cont && /^\s*("[^"]*"|'[^']*'|[A-Za-z0-9_-]+)\s*=\s*(.*)$/.exec(line);
     if (!kv || !sec) continue;
     if (sec === 'env') out.envKeys.push(kv[1].replace(/^(["'])(.*)\1$/, '$2'));
     else if (kv[1] === 'command') { const m = /^(["'])(.*?)\1/.exec(kv[2].trim()); const b = m && baseOf(m[2]); if (b) out.command = b; }
@@ -88,10 +100,10 @@ export function scanInventory({ home, repos = [] } = {}) {
     }
   }
 
-  function mcpItems(servers, { src, agents, where, file, scope, repo, repoKey }) {
+  function mcpItems(servers, { src, agents, where, file, scope, repo, repoKey, project }) {
     for (const name of names(servers)) {
       add({ kind: 'mcp', name, agents: agents.slice(), source: src, ...(repo ? { repo, repoKey } : {}), description: '', triggers: [], on: true, usageKey: name,
-        mcp: { ...mcpFromJson(servers[name], where === 'gemini'), scope }, loc: { file, where, ...(repo ? { repo } : {}) } });
+        mcp: { ...mcpFromJson(servers[name], where === 'gemini'), scope }, loc: { file, where, ...(repo ? { repo } : {}), ...(project ? { project } : {}) } });
     }
   }
 
@@ -133,7 +145,7 @@ export function scanInventory({ home, repos = [] } = {}) {
     if (isObj(j.projects)) {
       for (const p of Object.keys(j.projects)) {
         if (!repoPaths.includes(norm(p))) continue;
-        mcpItems(j.projects[p] && j.projects[p].mcpServers, { src: 'project', agents: ['claude'], where: 'claude-project', file, scope: 'project', repo: basename(norm(p)), repoKey: norm(p) });
+        mcpItems(j.projects[p] && j.projects[p].mcpServers, { src: 'project', agents: ['claude'], where: 'claude-project', file, scope: 'project', repo: basename(norm(p)), repoKey: norm(p), project: p });
       }
     }
   });
@@ -175,7 +187,7 @@ export function scanInventory({ home, repos = [] } = {}) {
     }, { optional: true });
   }
 
-  // parked (turned-off) MCP entries: id/name/agent/loc only, never json/toml
+  // parked (turned-off) MCP entries: id/name/agent/loc and the stored non-secret summary only, never json/toml
   source('parked', '~/.roca/skillbook-parked.json', () => {
     const p = readJson(join(home, '.roca', 'skillbook-parked.json'));
     for (const e of Array.isArray(p.entries) ? p.entries : []) {
@@ -184,11 +196,11 @@ export function scanInventory({ home, repos = [] } = {}) {
       const where = e.loc && e.loc.where;
       if (!WHERES.includes(where) || typeof e.loc.file !== 'string' || !e.loc.file) continue;
       const project = where === 'claude-project' || where === 'mcpjson';
-      const loc = { file: e.loc.file, where, ...(typeof e.loc.repo === 'string' ? { repo: e.loc.repo } : {}) };
+      const loc = { file: e.loc.file, where, ...(typeof e.loc.repo === 'string' ? { repo: e.loc.repo } : {}), ...(where === 'claude-project' && typeof e.loc.project === 'string' ? { project: e.loc.project } : {}) };
       if (seen.has(e.id)) continue;
       seen.add(e.id);
       items.push({ id: e.id, kind: 'mcp', name: e.name, agents: [agent], source: project ? 'project' : 'user', ...(loc.repo ? { repo: loc.repo } : {}),
-        description: '', triggers: [], on: false, usageKey: e.name, mcp: { transport: 'stdio', envKeys: [], scope: project ? 'project' : 'user' }, loc });
+        description: '', triggers: [], on: false, usageKey: e.name, mcp: parkedSummary(e.mcp, project ? 'project' : 'user'), loc });
     }
   }, { optional: true });
 

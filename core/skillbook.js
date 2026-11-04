@@ -4,6 +4,8 @@
 //   parseSkillMd(text)                   → { name|null, description, triggers[] }  front matter; triggers = quoted phrases (≤ 6, ≤ 40 chars)
 //   tomlMcpServers(text)                 → [{ name, keys[], transport: 'stdio'|'http' }]  from [mcp_servers.<name>] sections
 //   tomlRemoveSection(text, name)        → { text, removed|null }  drops one [mcp_servers.<name>] section (and its sub-tables); removed = exact text
+//                                          (null too when a multi-line value never closes: the section end cannot be trusted)
+//   tomlLines(lines)                     → [{ line, header, path, cont }] (+ .open)  header = a real [x]/[[x]] line, not one inside a multi-line value
 //   usageFromRecord(rec)                 → [{ key, kind: 'skill'|'mcp', agent, at(ms), repo }]  from a hook record { ts, agent?, ev }
 //   usageFromTranscriptLine(line, agent) → same shape, from one Claude Code transcript JSON line
 //   mastery(n)                           → 0 | 1 | 2 | 3  for uses in the last 30 days (0 / 1-4 / 5-19 / ≥ 20)
@@ -59,14 +61,53 @@ function headerOf(line) {
   const m = /^\s*\[([^\[\]]+)\]\s*(?:#.*)?$/.exec(line);
   return m ? tomlPath(m[1]) : null;
 }
-const isAnyHeader = line => /^\s*\[/.test(line);
+const isAnyHeader = line => /^\s*\[\[?[^\[\]]+\]\]?\s*(?:#.*)?$/.test(line);
+
+// classify each line: a table header ([x] / [[x]]) only when it is not inside a multi-line array,
+// inline table or multi-line string opened by an earlier value
+//   → [{ line, header: bool, path: string[]|null (for [x] headers), cont: bool (continuation of an earlier value) }]
+function tomlLines(lines) {
+  const out = [];
+  let depth = 0;     // open [ / { in values
+  let ml = null;     // open multi-line string delimiter: '"""' or "'''"
+  for (const line of lines) {
+    const cont = depth > 0 || ml !== null;
+    if (!cont && isAnyHeader(line)) { out.push({ line, header: true, path: headerOf(line), cont: false }); continue; }
+    let i = 0;
+    const n = line.length;
+    while (i < n) {
+      if (ml) {
+        if (ml[0] === '"' && line[i] === '\\') { i += 2; continue; }
+        if (!line.startsWith(ml, i)) { i++; continue; }
+        i += 3;
+        while (line[i] === ml[0]) i++; // a closing delimiter may carry up to two extra quotes
+        ml = null;
+        continue;
+      }
+      const c = line[i];
+      if (c === '#') break;
+      if (c === '"' || c === "'") {
+        if (line.startsWith(c.repeat(3), i)) { ml = c.repeat(3); i += 3; continue; }
+        i++;
+        while (i < n && line[i] !== c) { if (c === '"' && line[i] === '\\') i++; i++; }
+        i++;
+        continue;
+      }
+      if (c === '[' || c === '{') depth++;
+      else if ((c === ']' || c === '}') && depth > 0) depth--;
+      i++;
+    }
+    out.push({ line, header: false, path: null, cont });
+  }
+  out.open = depth > 0 || ml !== null; // a value never closed: section ends cannot be trusted
+  return out;
+}
 
 function tomlMcpServers(text) {
   const servers = new Map();
   let cur = null;
-  for (const line of String(text || '').split(/\r?\n/)) {
-    if (isAnyHeader(line)) {
-      const h = headerOf(line);
+  for (const { line, header, path: h, cont } of tomlLines(String(text || '').split(/\r?\n/))) {
+    if (header) {
       cur = null;
       if (h && h[0] === 'mcp_servers' && h.length >= 2) {
         let s = servers.get(h[1]);
@@ -76,7 +117,7 @@ function tomlMcpServers(text) {
       }
       continue;
     }
-    if (!cur) continue;
+    if (!cur || cont) continue;
     const kv = /^\s*("[^"]*"|'[^']*'|[A-Za-z0-9_-]+)\s*=/.exec(line);
     if (kv) {
       const k = unquote(kv[1]);
@@ -89,15 +130,13 @@ function tomlMcpServers(text) {
 
 function tomlRemoveSection(text, name) {
   const src = String(text || '');
-  const lines = src.split(/(?<=\n)/);
+  const lines = tomlLines(src.split(/(?<=\n)/));
+  if (lines.open) return { text: src, removed: null }; // unterminated value: refuse rather than guess where the section ends
   const kept = [];
   const gone = [];
   let drop = false;
-  for (const line of lines) {
-    if (isAnyHeader(line)) {
-      const h = headerOf(line);
-      drop = !!h && h[0] === 'mcp_servers' && h[1] === name;
-    }
+  for (const { line, header, path: h } of lines) {
+    if (header) drop = !!h && h[0] === 'mcp_servers' && h[1] === name;
     (drop ? gone : kept).push(line);
   }
   if (!gone.length) return { text: src, removed: null };
@@ -170,7 +209,7 @@ function weekCount(byDay, now) {
   return sum;
 }
 
-const AgentDeskSkillbook = { parseSkillMd, tomlMcpServers, tomlRemoveSection, usageFromRecord, usageFromTranscriptLine, mastery, weekCount };
+const AgentDeskSkillbook = { parseSkillMd, tomlLines, tomlMcpServers, tomlRemoveSection, usageFromRecord, usageFromTranscriptLine, mastery, weekCount };
 root.AgentDeskSkillbook = AgentDeskSkillbook;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskSkillbook;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -107,6 +107,26 @@ test('command shows only the first token basename', () => {
   assert.ok(!JSON.stringify(r.items.filter(i => i.name === 'a' || i.name === 'b')).includes('token'));
 });
 
+test('parked entries show their stored mcp summary, never json/toml', () => {
+  const { home, repo } = fixture();
+  const e = (id, mcp, extra = {}) => ({ id, kind: 'mcp', agent: 'codex', name: id, loc: { file: '/x', where: 'codex' }, at: 1, ...(mcp ? { mcp } : {}), ...extra });
+  put(join(home, '.roca/skillbook-parked.json'), { v: 1, entries: [
+    e('full', { transport: 'http', command: 'cx', envKeys: ['A_TOKEN'], headerKeys: ['Authorization'], scope: 'user' }, { toml: '[mcp_servers.full]\nurl = "https://h/?token=sk-SECRET7"\n' }),
+    e('odd', { transport: 'ftp', command: 42, envKeys: ['OK', 7, 'sk-SECRET8 x'], headerKeys: 'nope', scope: 'weird' }),
+    e('none')] });
+  const r = scanInventory({ home, repos: [repo] });
+  const get = id => find(r, i => i.id === id).mcp;
+  assert.deepEqual(get('full'), { transport: 'http', command: 'cx', envKeys: ['A_TOKEN'], headerKeys: ['Authorization'], scope: 'user' });
+  assert.deepEqual(get('odd'), { transport: 'stdio', envKeys: ['OK'], scope: 'user' });
+  assert.deepEqual(get('none'), { transport: 'stdio', envKeys: [], scope: 'user' });
+  assert.ok(!JSON.stringify(r).includes('sk-SECRET'));
+});
+
+test('claude project mcp items carry the exact projects key', () => {
+  const { home, repo } = fixture();
+  assert.equal(find(scanInventory({ home, repos: [repo] }), i => i.name === 'proj-srv').loc.project, repo);
+});
+
 test('parked entries with an invalid loc are dropped', () => {
   const { home, repo } = fixture();
   const e = (id, loc) => ({ id, kind: 'mcp', agent: 'claude', name: id, loc, at: 1 });
