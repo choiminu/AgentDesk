@@ -25,10 +25,7 @@ import { createUsageStore, backfill as skillbookBackfill } from "./skillbook/usa
 import { actOn as skillbookActOn, listRemoved as skillbookRemoved } from "./skillbook/actions.mjs";
 import { skillbookPayload } from "./skillbook/payload.mjs";
 import { loadCatalog } from "./shop/catalog.mjs";
-import { mcpEntryName } from "./shop/plan.mjs";
-import { parseRepoLink, fetchRepo, detectRepo } from "./shop/repo.mjs";
-import { runInstall } from "./shop/install.mjs";
-import { shopPayload, linkItems, linkFound, shopInstallJob } from "./shop/payload.mjs";
+import { makeShopHandlers } from "./shop/ipc.mjs";
 import { randomUUID, createHash } from "node:crypto";
 import { openPermEndpoint, ensurePrivateDir, writePrivate, permHookScript as permHookSh, guardHookScript, nodeHookScript, winHookCmd, winHookCommand, winHookRunner, PERM_TIMEOUT_DEFAULT, PERM_TOKEN, PERM_SOCK, PERM_ADDR } from "./perm/server.mjs";
 import { readJsonStrict, writeJsonAtomic, backupPrivate, isOurPermHook, isOurGuardHook, permHookPresent, installPermHookAt, uninstallPermHookAt, guardHookPresent, installGuardHookAt, uninstallGuardHookAt } from "./perm/settings.mjs";
@@ -2466,24 +2463,13 @@ ipcMain.handle("roca:skillbook-act", (_e, req) => {
   sbQueue = job;
   return job;
 });
-// ── Shop: catalog list, pasted links, installs (shop/*.mjs). Raw registry records, plan entries/steps, clone paths and
-// typed env values stay here; the renderer sends ids only (catalog id or a link choiceId) plus the env values for
-// plan.needs, which go to runInstall and are dropped. Errors are logged by code only and never with the request.
+// ── Shop: catalog list, pasted links, installs — handlers in shop/ipc.mjs (env values never logged or returned)
 async function shopFetchJson(url) {
   const r = await fetch(url, { signal: AbortSignal.timeout(10000), headers: { accept: "application/json" } });
   if (!r.ok) throw Object.assign(new Error("http"), { status: r.status });
   try { return await r.json(); } catch { throw Object.assign(new Error("invalid"), { code: "invalid" }); }
 }
-let shopCatalog = null, shopCatalogJob = null, shopHave = null;
-function shopLoad(refresh) {
-  if (!shopCatalogJob) {
-    shopCatalogJob = loadCatalog({ home: homedir(), fetchJson: shopFetchJson, refresh: !!refresh })
-      .then(c => { shopCatalog = c; return c; })
-      .finally(() => { shopCatalogJob = null; });
-  }
-  return shopCatalogJob;
-}
-// npx / uvx on EXEC_PATH, looked up once (and again on a refresh)
+let shopHave = null;   // npx / uvx on EXEC_PATH, looked up once (and again on a refresh)
 async function shopHaveRunners(refresh) {
   if (!shopHave || refresh) {
     const [npx, uvx] = await Promise.all([whichCmd("npx"), whichCmd("uvx")]);
@@ -2491,67 +2477,16 @@ async function shopHaveRunners(refresh) {
   }
   return shopHave;
 }
-const shopInventory = () => scanInventory({ home: homedir(), repos: skillbookRepos() });
-ipcMain.handle("roca:shop-list", async (_e, req) => {
-  const refresh = !!(req && req.refresh === true);
-  try {
-    const [catalog, have] = await Promise.all([shopLoad(refresh), shopHaveRunners(refresh)]);
-    return shopPayload({ catalog, inventory: shopInventory(), have });
-  } catch (e) { console.error("[shop] list", sbErrCode(e)); return { ok: false, error: "shop failed" }; }
+// installs and link clones share the Skillbook action queue
+function shopEnqueue(fn) { const job = sbQueue.then(fn); sbQueue = job.catch(() => {}); return job; }
+const shop = makeShopHandlers({
+  home: homedir(), run: sbRun, enqueue: shopEnqueue, have: shopHaveRunners,
+  loadCatalog: ({ refresh }) => loadCatalog({ home: homedir(), fetchJson: shopFetchJson, refresh }),
+  inventory: () => scanInventory({ home: homedir(), repos: skillbookRepos() }),
 });
-// link choices: kept 30 minutes under a random id; only main's own detection results can be installed
-const SHOP_CHOICE_MS = 30 * 60e3;
-const shopChoices = new Map();
-function shopPrune() {
-  const now = Date.now();
-  for (const [k, v] of shopChoices) if (now - v.at > SHOP_CHOICE_MS) shopChoices.delete(k);
-  while (shopChoices.size > 200) shopChoices.delete(shopChoices.keys().next().value);
-}
-ipcMain.handle("roca:shop-link", async (_e, req) => {
-  const text = req && req.text;
-  const link = typeof text === "string" ? parseRepoLink(text) : null;
-  if (!link) return { ok: false, error: "bad link" };
-  try {
-    const home = homedir();
-    // the clone shares the install queue: an install may be copying out of the folder this would replace
-    const got = await (sbQueue = sbQueue.then(() => fetchRepo({ home, link: text, run: sbRun })).catch(() => ({ ok: false, error: "clone failed" })));
-    if (!got.ok) return { ok: false, error: got.error === "bad link" ? "bad link" : "clone failed" };
-    const entries = linkItems(detectRepo(got.dir, link.path), link);
-    if (!entries.length) return { ok: false, error: "nothing found" };
-    shopPrune();
-    const at = Date.now();
-    for (const e of entries) { e.choiceId = randomUUID(); e.at = at; shopChoices.set(e.choiceId, e); }
-    const have = await shopHaveRunners(false);
-    return { ok: true, found: linkFound(entries, { inventory: shopInventory(), have, catalogItems: shopCatalog && shopCatalog.items }) };
-  } catch (e) { console.error("[shop] link", sbErrCode(e)); return { ok: false, error: "clone failed" }; }
-});
-const SHOP_ID_OK = v => typeof v === "string" && v.length > 0 && v.length <= 300 && !/[\u0000-\u001f\u007f]/.test(v);
-ipcMain.handle("roca:shop-install", (_e, req) => {
-  const id = req && req.id, choiceId = req && req.choiceId;
-  if (!!id === !!choiceId || (id && !SHOP_ID_OK(id)) || (choiceId && !SHOP_ID_OK(choiceId))) return { ok: false, error: "failed", detail: "bad request" };
-  let env = req.env;   // checked against the plan's needs in shopInstallJob; never logged, never returned
-  const allAgents = req.allAgents === true;
-  const job = sbQueue.then(async () => {
-    try {
-      let item, choice;
-      if (choiceId) {
-        shopPrune();
-        const c = shopChoices.get(choiceId);
-        if (!c) return { ok: false, error: "gone" };
-        item = c.item; choice = c.choice;
-      } else {
-        const catalog = shopCatalog || await shopLoad(false);
-        item = catalog.items.find(i => i && i.id === id);
-        if (!item) return { ok: false, error: "gone" };
-        choice = item.kind === "mcp" ? { name: mcpEntryName(item.name) } : {};
-      }
-      return await shopInstallJob({ home: homedir(), item, choice, env, allAgents, inventory: shopInventory(), catalogItems: shopCatalog && shopCatalog.items,
-        have: await shopHaveRunners(false), run: sbRun, runInstall });
-    } finally { env = null; }
-  }).catch(e => { console.error("[shop] install", sbErrCode(e)); return { ok: false, error: "failed", detail: "io" }; });
-  sbQueue = job;
-  return job;
-});
+ipcMain.handle("roca:shop-list", (_e, req) => shop.list(req));
+ipcMain.handle("roca:shop-link", (_e, req) => shop.link(req));
+ipcMain.handle("roca:shop-install", (_e, req) => shop.install(req));
 // ── Shop end
 ipcMain.handle("roca:diff-stat", async (_e, req = {}) => {
   const sessionId = req && typeof req.sessionId === "string" ? req.sessionId : "", scope = req && req.scope === "branch" ? "branch" : "working";

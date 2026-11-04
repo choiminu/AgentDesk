@@ -1,10 +1,13 @@
 // Shop IPC: the payload / link / install helpers (shop/payload.mjs) and the main/preload/package wiring.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { shopPayload, installedOf, linkItems, checkEnv, shopInstallJob } from '../shop/payload.mjs';
+import { makeShopHandlers } from '../shop/ipc.mjs';
+const put = (f, t) => { mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, t); };
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const src = f => readFileSync(join(ROOT, f), 'utf8');
@@ -140,33 +143,166 @@ test('install result carries no env values', async () => {
   assert.deepEqual(calls[calls.length - 1].choice, { path: '/home/x/.roca/shop/a-b/sk', allAgents: true });
 });
 
+// ---- handlers (shop/ipc.mjs) over a temp home ----
+function harness({ files = {}, known, catalog = CATALOG, runInstall, loadCatalog } = {}) {
+  const home = mkdtempSync(join(tmpdir(), 'shop-ipc-'));
+  if (known) put(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify(known));
+  const calls = { run: [], load: [], enqueue: 0 };
+  const repo = { files };
+  const run = async (cmd, args, opts) => {
+    calls.run.push([cmd, args]);
+    if (cmd === 'git') { const dir = args[args.length - 1]; for (const [f, t] of Object.entries(repo.files)) put(join(dir, f), t); }
+    return { code: 0, stdout: '', stderr: '' };
+  };
+  let q = Promise.resolve();
+  const enqueue = fn => { calls.enqueue++; const j = q.then(fn); q = j.catch(() => {}); return j; };
+  const h = makeShopHandlers({
+    home, run, enqueue, have: async () => ({ npx: true, uvx: false }), inventory: () => INVENTORY,
+    loadCatalog: loadCatalog || (async ({ refresh }) => { calls.load.push(refresh); return catalog; }),
+    ...(runInstall ? { runInstall } : {}),
+  });
+  return { home, h, calls, repo };
+}
+const SKILL = (n, body = 'x') => `---\nname: ${n}\ndescription: ${n} one.\n---\n${body}\n`;
+
+test('second clone invalidates earlier choices', async () => {
+  const { home, h, repo } = harness({ files: { 'skills/sk/SKILL.md': SKILL('sk', 'first') } });
+  const a = await h.link({ text: 'acme/kit' });
+  assert.equal(a.ok, true);
+  const first = a.found.find(f => f.kind === 'skill');
+  assert.equal(first.hasScripts, false);
+  assert.ok(!JSON.stringify(a).includes(home), 'no clone path sent');
+  repo.files = { 'skills/sk/SKILL.md': SKILL('sk', 'second') };
+  const b = await h.link({ text: 'https://github.com/acme/kit/tree/v2' });
+  const second = b.found.find(f => f.kind === 'skill');
+  assert.deepEqual(await h.install({ choiceId: first.choiceId }), { ok: false, error: 'gone', detail: 'missing' });
+  const r = await h.install({ choiceId: second.choiceId });
+  assert.deepEqual(r, { ok: true, route: 'claude' });
+  assert.match(readFileSync(join(home, '.claude', 'skills', 'sk', 'SKILL.md'), 'utf8'), /second/);
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('a fallback clone in an install invalidates choices from that folder', async () => {
+  let home0;
+  // install.mjs's plugin fallback clones through the runner it is given: here a fake runInstall does the same
+  const { home, h, calls } = harness({ files: { 'skills/sk/SKILL.md': SKILL('sk') },
+    runInstall: async ({ run }) => { await run('git', ['clone', '--', 'https://github.com/acme/kit.git', join(home0, '.roca', 'shop', '.tmp-acme-kit')]); return { ok: true, route: 'local' }; } });
+  home0 = home;
+  const sk = (await h.link({ text: 'acme/kit' })).found[0];
+  assert.equal(h.choices.size, 1);
+  assert.deepEqual(await h.install({ id: 'marketplace:mkt:beta' }), { ok: true, route: 'local' });
+  assert.equal(calls.run.filter(([c]) => c === 'git').length, 2);
+  assert.equal(h.choices.size, 0);
+  assert.deepEqual(await h.install({ choiceId: sk.choiceId }), { ok: false, error: 'gone', detail: 'missing' });
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('a link marketplace named like a known one from elsewhere is a conflict', async () => {
+  const files = { '.claude-plugin/marketplace.json': JSON.stringify({ name: 'kit-market', plugins: [{ name: 'p1', description: 'P1' }] }) };
+  for (const known of [{ 'kit-market': { source: { source: 'github', repo: 'other/x' } } }, { 'kit-market': { source: { source: 'directory', path: '/x' } } }, { 'kit-market': {} }]) {
+    const { home, h, calls } = harness({ files, known });
+    const a = await h.link({ text: 'acme/kit' });
+    const p = a.found.find(f => f.name === 'p1');
+    assert.equal(p.plan.kind, 'manual');
+    assert.equal(p.plan.detail, 'conflict');
+    assert.deepEqual(await h.install({ choiceId: p.choiceId }), { ok: false, error: 'unsupported', detail: 'conflict' });
+    assert.ok(!calls.run.some(([c]) => c === 'claude'), 'nothing installed');
+    rmSync(home, { recursive: true, force: true });
+  }
+  // same repo recorded → installs from the known marketplace (no re-add)
+  for (const src of [{ source: 'github', repo: 'Acme/Kit' }, { source: 'git', url: 'https://github.com/acme/kit.git' }]) {
+    const { home, h } = harness({ files, known: { 'kit-market': { source: src } } });
+    const p = (await h.link({ text: 'acme/kit' })).found.find(f => f.name === 'p1');
+    assert.equal(p.plan.kind, 'plugin');
+    assert.deepEqual(p.plan.show, ['claude plugin install p1@kit-market']);
+    rmSync(home, { recursive: true, force: true });
+  }
+  // unknown marketplace → added from the link
+  const { home, h } = harness({ files });
+  const p = (await h.link({ text: 'acme/kit' })).found.find(f => f.name === 'p1');
+  assert.deepEqual(p.plan.show, ['claude plugin marketplace add acme/kit', 'claude plugin install p1@kit-market']);
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('install requests are checked', async () => {
+  const seen = [];
+  const { home, h, calls } = harness({ files: { 'skills/sk/SKILL.md': SKILL('sk') }, runInstall: async a => { seen.push(a); return { ok: true, route: 'claude' }; } });
+  const BAD = { ok: false, error: 'failed', detail: 'bad request' };
+  assert.deepEqual(await h.install({ id: 'marketplace:mkt:beta', choiceId: 'x' }), BAD);
+  assert.deepEqual(await h.install({}), BAD);
+  assert.deepEqual(await h.install(null), BAD);
+  assert.deepEqual(await h.install({ id: 'x'.repeat(301) }), BAD);
+  assert.deepEqual(await h.install({ id: 'a\nb' }), BAD);
+  assert.deepEqual(await h.install({ choiceId: 'nope' }), { ok: false, error: 'gone', detail: 'missing' });
+  assert.deepEqual(await h.install({ id: 'marketplace:mkt:nope' }), { ok: false, error: 'gone', detail: 'missing' });
+  const sk = (await h.link({ text: 'acme/kit' })).found[0];
+  for (const v of ['true', 1, {}]) await h.install({ choiceId: sk.choiceId, allAgents: v });
+  assert.ok(seen.every(a => a.choice.allAgents === undefined), 'allAgents only when exactly true');
+  await h.install({ choiceId: sk.choiceId, allAgents: true });
+  assert.equal(seen[seen.length - 1].choice.allAgents, true);
+  await h.install({ id: 'registry::io.example/have-srv' });
+  assert.equal(calls.load.length, 1);
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('handlers never log or return env values', async () => {
+  const SECRET = 'sk-test-SECRET-987';
+  const logs = [];
+  const orig = {};
+  for (const k of ['log', 'error', 'warn', 'info', 'debug']) { orig[k] = console[k]; console[k] = (...a) => logs.push(a.map(String).join(' ')); }
+  try {
+    const { home, h } = harness({ runInstall: async ({ env }) => { const e = new Error(SECRET + JSON.stringify(env)); e.code = SECRET; throw e; } });
+    const r1 = await h.install({ id: 'registry::io.example/demo-srv', env: { DEMO_TOKEN: SECRET } });
+    assert.deepEqual(r1, { ok: false, error: 'failed', detail: 'io' });
+    const h2 = makeShopHandlers({ home, enqueue: fn => fn(), have: async () => ({ npx: true }), loadCatalog: async () => CATALOG, run: async () => ({ code: 0 }),
+      inventory: () => { throw Object.assign(new Error(SECRET), { code: SECRET }); } });
+    const r2 = await h2.install({ id: 'registry::io.example/demo-srv', env: { DEMO_TOKEN: SECRET } });
+    assert.deepEqual(r2, { ok: false, error: 'failed', detail: 'io' });
+    const r3 = await h.install({ id: 'registry::io.example/demo-srv', env: { DEMO_TOKEN: SECRET, EXTRA: SECRET } });
+    assert.deepEqual(r3, { ok: false, error: 'failed', detail: 'needs' });
+    for (const r of [r1, r2, r3]) assert.ok(!JSON.stringify(r).includes(SECRET));
+    assert.ok(logs.length > 0, 'errors were logged');
+    assert.ok(!logs.some(l => l.includes(SECRET)), logs.join('\n'));
+    rmSync(home, { recursive: true, force: true });
+  } finally { Object.assign(console, orig); }
+});
+
+test('catalog: refresh during a load runs after it; install loads before the queue', async () => {
+  let release;
+  const log = [];
+  const { home, h, calls } = harness({ loadCatalog: ({ refresh }) => { log.push(refresh); return log.length === 1 ? new Promise(r => { release = () => r(CATALOG); }) : Promise.resolve(CATALOG); } });
+  const a = h.list({});
+  const b = h.list({ refresh: true });
+  await new Promise(r => setTimeout(r, 10));
+  release();
+  await Promise.all([a, b]);
+  assert.deepEqual(log, [false, true]);
+  rmSync(home, { recursive: true, force: true });
+  // a failing load: install answers gone without taking the queue
+  const f = harness({ loadCatalog: async () => { throw new Error('offline'); } });
+  assert.deepEqual(await f.h.install({ id: 'marketplace:mkt:beta' }), { ok: false, error: 'gone', detail: 'missing' });
+  assert.equal(f.calls.enqueue, 0);
+  assert.deepEqual(await f.h.list({}), { ok: false, error: 'failed', detail: 'io' });
+  assert.deepEqual(await f.h.link({ text: 'https://evil.com/x' }), { ok: false, error: 'failed', detail: 'bad link' });
+  void calls;
+  rmSync(f.home, { recursive: true, force: true });
+});
+
 // ---- wiring (source checks) ----
 function handlerBody(main, channel) {
   const at = main.indexOf(`ipcMain.handle("${channel}"`);
   assert.ok(at >= 0, `${channel} registered`);
-  const next = main.indexOf('ipcMain.handle(', at + 10);
-  return main.slice(at, next < 0 ? undefined : next);
+  return main.slice(at, main.indexOf('\n', at));
 }
 
 test('main registers the three shop handlers', () => {
   const main = src('main.mjs');
-  for (const ch of ['roca:shop-list', 'roca:shop-link', 'roca:shop-install']) handlerBody(main, ch);
-  assert.match(main, /from "\.\/shop\/catalog\.mjs"/);
-  assert.match(main, /from "\.\/shop\/payload\.mjs"/);
+  assert.match(handlerBody(main, 'roca:shop-list'), /shop\.list\(req\)/);
+  assert.match(handlerBody(main, 'roca:shop-link'), /shop\.link\(req\)/);
+  assert.match(handlerBody(main, 'roca:shop-install'), /shop\.install\(req\)/);
+  assert.match(main, /from "\.\/shop\/ipc\.mjs"/);
   assert.match(main, /AbortSignal\.timeout\(10000\)/);
-  const inst = handlerBody(main, 'roca:shop-install');
-  assert.match(inst, /sbQueue/, 'installs share the skillbook queue');
-});
-
-test('shop install never logs env', () => {
-  const main = src('main.mjs');
-  const start = main.indexOf('// ── Shop');
-  const end = main.indexOf('// ── Shop end');
-  assert.ok(start > 0 && end > start, 'shop block is marked');
-  const block = main.slice(start, end);
-  for (const m of block.matchAll(/console\.\w+\(([^;]*)\)/g)) assert.ok(!/\benv\b|req\b/.test(m[1]), `console call without env: ${m[0]}`);
-  const inst = handlerBody(main, 'roca:shop-install');
-  assert.ok(!/console\./.test(inst) || !/env/.test(inst.match(/console\.[^;]*/g)?.join('') || ''));
+  assert.match(main, /function shopEnqueue\(fn\) \{ const job = sbQueue\.then\(fn\); sbQueue = /, 'installs share the skillbook queue');
 });
 
 test('sbRun accepts env and timeout', () => {
