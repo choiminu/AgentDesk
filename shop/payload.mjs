@@ -4,7 +4,9 @@
 //   installedOf(inventory, catalogItems) → { plugins, mcp, skills, marketplaces: Set, versions: Map<'name@market', version> }
 //   linkItems(detected, { owner, repo }) → [{ item, choice, hasScripts }]   (detectRepo results → installable items)
 //   checkEnv(env, needs) → a copy holding exactly `needs` | null
-//   shopInstallJob({ home, item, choice, env, allAgents, inventory, have, run, runInstall }) → fixed-code result
+//   shopInstallJob({ home, item, choice, env, allAgents, inventory, catalogItems, known, have, run, runInstall }) → fixed-code result
+//   known = ~/.claude/plugins/known_marketplaces.json (parsed): a link plugin whose marketplace name is already known
+//   but recorded with another source (or none we can read) gets a manual plan with detail 'conflict' and never installs
 import { planInstall, hasUpdate, mcpEntryName } from './plan.mjs';
 import { parseMarketplace } from './catalog.mjs';
 
@@ -12,7 +14,7 @@ const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const str = v => (typeof v === 'string' ? v : '');
 const list = v => (Array.isArray(v) ? v : []);
 
-export function installedOf(inventory, catalogItems = []) {
+export function installedOf(inventory, catalogItems = [], known = null) {
   const out = { plugins: new Set(), mcp: new Set(), skills: new Set(), marketplaces: new Set(), versions: new Map() };
   for (const it of list(inventory && inventory.items)) {
     if (!isObj(it) || !str(it.name)) continue;
@@ -28,13 +30,35 @@ export function installedOf(inventory, catalogItems = []) {
       out.skills.add(it.name);
     }
   }
+  if (isObj(known)) for (const k of Object.keys(known)) out.marketplaces.add(k);
   for (const it of list(catalogItems)) if (isObj(it) && it.source === 'marketplace' && str(it.marketplace)) out.marketplaces.add(it.marketplace);
   return out;
 }
 
-const publicPlan = p => ({ kind: p.kind, show: list(p.show).map(String), needs: list(p.needs).map(String), ...(p.oauth ? { oauth: true } : {}) });
+const publicPlan = p => ({ kind: p.kind, show: list(p.show).map(String), needs: list(p.needs).map(String), ...(p.oauth ? { oauth: true } : {}),
+  ...(p.detail === 'conflict' ? { detail: 'conflict' } : {}) });
 
-function planOf(item, installed, have) {
+const lc = v => str(v).toLowerCase();
+// does the known marketplace `name` come from this link's repo? (github repo, or a git URL on github.com)
+function sameSource(rec, ownerRepo) {
+  const src = isObj(rec) && isObj(rec.source) ? rec.source : null;
+  if (!src || !ownerRepo) return false;
+  const want = lc(ownerRepo);
+  if (src.source === 'github') return lc(src.repo) === want;
+  if (src.source === 'git' || src.source === 'url') {
+    const m = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/i.exec(str(src.url));
+    return !!m && lc(m[1]) === want;
+  }
+  return false;
+}
+const CONFLICT = { kind: 'manual', show: ['같은 이름의 마켓이 이미 다른 출처로 등록되어 있습니다 (marketplace name conflict)'], needs: [], detail: 'conflict' };
+
+function planOf(item, installed, have, known) {
+  if (item.source === 'link' && item.kind === 'plugin' && str(item.marketplace)) {
+    const name = item.marketplace;
+    const kn = isObj(known) && Object.prototype.hasOwnProperty.call(known, name);
+    if ((kn || installed.marketplaces.has(name)) && !(kn && sameSource(known[name], item.marketplaceSource))) return { ...CONFLICT, show: CONFLICT.show.slice() };
+  }
   try { return planInstall(item, { installed, have: isObj(have) ? have : {} }); } catch { return { kind: 'manual', show: [], needs: [] }; }
 }
 
@@ -81,11 +105,11 @@ export function linkItems(detected, { owner, repo } = {}) {
 }
 
 // what the renderer may send for a link choice: no manifest, no path
-export function linkFound(entries, { inventory, have, catalogItems } = {}) {
-  const installed = installedOf(inventory, catalogItems);
+export function linkFound(entries, { inventory, have, catalogItems, known } = {}) {
+  const installed = installedOf(inventory, catalogItems, known);
   return list(entries).map(e => ({
     choiceId: e.choiceId, kind: e.item.kind, name: e.item.name, description: str(e.item.description), hasScripts: !!e.hasScripts,
-    plan: publicPlan(planOf(e.item, installed, have)),
+    plan: publicPlan(planOf(e.item, installed, have, known)),
   }));
 }
 
@@ -107,17 +131,19 @@ export function checkEnv(env, needs) {
 
 const ROUTES = new Set(['config', 'cli', 'marketplace', 'local', 'claude', 'agents']);
 const ERRORS = new Set(['failed', 'unsupported', 'gone']);
-const DETAILS = new Set(['bad request', 'needs', 'exists', 'missing', 'invalid JSON', 'unparsed', 'io', 'cli', 'manual', 'kind']);
+const DETAILS = new Set(['bad request', 'needs', 'exists', 'missing', 'invalid JSON', 'unparsed', 'io', 'cli', 'manual', 'kind',
+  'conflict', 'bad link', 'clone', 'empty']);
 // only known fields with known values: whatever an installer returns, no output or value text gets through
-function fixed(r) {
+export function fixed(r) {
   if (isObj(r) && r.ok === true) return { ok: true, ...(ROUTES.has(r.route) ? { route: r.route } : {}), ...(r.oauth === true ? { oauth: true } : {}) };
   return { ok: false, error: isObj(r) && ERRORS.has(r.error) ? r.error : 'failed', detail: isObj(r) && DETAILS.has(r.detail) ? r.detail : 'io' };
 }
 
 // the plan is made again here from a fresh inventory (an earlier install in the queue may have changed it)
-export async function shopInstallJob({ home, item, choice, env, allAgents, inventory, catalogItems, have, run, runInstall } = {}) {
+export async function shopInstallJob({ home, item, choice, env, allAgents, inventory, catalogItems, known, have, run, runInstall } = {}) {
   if (!isObj(item) || typeof runInstall !== 'function') return fixed({ ok: false, error: 'failed', detail: 'bad request' });
-  const plan = planOf(item, installedOf(inventory, catalogItems), have);
+  const plan = planOf(item, installedOf(inventory, catalogItems, known), have, known);
+  if (plan.detail === 'conflict') return fixed({ ok: false, error: 'unsupported', detail: 'conflict' });
   const vals = checkEnv(env, plan.needs);
   if (!vals) return fixed({ ok: false, error: 'failed', detail: 'needs' });
   const ch = { ...(isObj(choice) ? choice : {}) };
