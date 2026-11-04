@@ -1212,18 +1212,16 @@ function uninstallHooks(agents) {
   return { ok: true, agents: list };
 }
 
-// ── Skillbook usage: one store (~/.roca/skillbook-usage.json) fed with every new hook record, plus a one-time
+// ── Skillbook usage: one store (~/.roca/skillbook-usage.json) fed with every hook record main reads, plus a one-time
 // transcript backfill over ~/.claude/projects (skillbook/usage.mjs). The events log is re-read from the start on every
-// launch, so records at or before the store file's last save time (sbFeedFrom) were already counted and are skipped.
+// launch and after the hook trims it, so the store de-duplicates (feedRecord: newest-fed mark + record keys, saved with
+// it). The store also keeps each record's cwd with its time (noteRepo, 30 days): the skillbook's project folders.
 const SKILLBOOK_USAGE = join(ROCA_DIR, "skillbook-usage.json");
-let skillbookStore = null, sbFeedFrom = 0, sbSaveTimer = null, sbBackfillStarted = false;
-// session cwd → newest hook record time (ms); the skillbook's project sources come from here (skillbookRepos)
-const sbCwds = new Map();
+let skillbookStore = null, sbSaveTimer = null, sbBackfillStarted = false;
 function sbStore() {
   if (skillbookStore) return skillbookStore;
   skillbookStore = createUsageStore({ file: SKILLBOOK_USAGE });
   skillbookStore.load();
-  try { sbFeedFrom = statSync(SKILLBOOK_USAGE).mtimeMs; } catch { sbFeedFrom = 0; }
   return skillbookStore;
 }
 function sbSave() { clearTimeout(sbSaveTimer); sbSaveTimer = null; if (skillbookStore) { try { skillbookStore.save(); } catch (e) { console.error("[skillbook] save", e && e.message); } } }
@@ -1232,12 +1230,11 @@ function sbFeed(o) {
   const at = o && typeof o.ts === "number" ? o.ts * 1000 : NaN;
   const ev = o && o.ev;
   if (!ev || !Number.isFinite(at)) return;
-  if (typeof ev.cwd === "string" && ev.cwd && at > (sbCwds.get(ev.cwd) || 0)) { if (sbCwds.size > 2000) sbCwds.clear(); sbCwds.set(ev.cwd, at); }
-  if (ev.hook_event_name !== "PreToolUse" && ev.hook_event_name !== "UserPromptSubmit") return;   // the only records that can hold a use
   const store = sbStore();
-  if (at <= sbFeedFrom) return;
-  store.addRecord(o);
-  sbSaveSoon();
+  let changed = false;
+  for (const c of [ev.cwd, ev.new_cwd]) if (typeof c === "string" && isAbsolute(c)) { store.noteRepo(c, at); changed = true; }
+  if ((ev.hook_event_name === "PreToolUse" || ev.hook_event_name === "UserPromptSubmit") && store.feedRecord(o)) changed = true;
+  if (changed) sbSaveSoon();
 }
 function startSkillbookBackfill() {
   if (sbBackfillStarted || !SINGLE_INSTANCE) return;
@@ -2394,13 +2391,15 @@ ipcMain.handle("roca:timeline", (_e, req = {}) => {
 });
 
 // ── Skillbook (skills, plugins, MCP servers per agent): inventory + usage, and off / on / remove / restore / reveal ──
-// repos (project-level sources): the cwds of hook sessions seen in the last 30 days. An open session sends hook records,
-// so it is in there too; sessions without hooks are not. Each cwd is widened to its git root by looking for a .git
-// entry in the parent folders (no git process); the home folder itself is never a repo (its skills are the user's).
-const SB_REPO_MS = 30 * 24 * 60 * 60 * 1000;
-const sbRootCache = new Map();
+// repos (project-level sources): session folders from the last 30 days, kept in the usage store (hook record cwds as they
+// are read, transcript cwds from the backfill), plus the folders of agent processes running now (procInfoCache, filled
+// by roca:tty-targets). Each folder is widened to its git root by looking for a .git entry in the parent folders (no git
+// process; cached 10 minutes); the home folder itself is never a repo (its skills are the user's).
+const SB_ROOT_TTL = 10 * 60 * 1000;
+const sbRootCache = new Map();   // cwd → { root, at }
 function sbRepoRoot(cwd) {
-  if (sbRootCache.has(cwd)) return sbRootCache.get(cwd);
+  const hit = sbRootCache.get(cwd);
+  if (hit && Date.now() - hit.at < SB_ROOT_TTL) return hit.root;
   let root = cwd;
   for (let d = cwd, i = 0; i < 30; i++) {
     if (existsSync(join(d, ".git"))) { root = d; break; }
@@ -2409,13 +2408,14 @@ function sbRepoRoot(cwd) {
     d = up;
   }
   if (sbRootCache.size > 2000) sbRootCache.clear();
-  sbRootCache.set(cwd, root);
+  sbRootCache.set(cwd, { root, at: Date.now() });
   return root;
 }
 function skillbookRepos() {
-  const since = Date.now() - SB_REPO_MS, home = homedir(), out = new Set();
-  for (const [cwd, at] of sbCwds) {
-    if (at < since || !isAbsolute(cwd) || !existsSync(cwd)) continue;
+  const home = homedir(), out = new Set();
+  const open = [...procInfoCache.values()].map(i => i && i.cwd).filter(c => typeof c === "string" && c);
+  for (const cwd of [...sbStore().repos(), ...open]) {
+    if (!isAbsolute(cwd) || !existsSync(cwd)) continue;
     const r = sbRepoRoot(cwd);
     if (r !== home) out.add(r);
   }
@@ -2592,7 +2592,7 @@ ipcMain.handle("orca:hooks-recent", () => {
     const cutoff = Math.floor(Date.now() / 1000) - 24 * 3600;
     const out = [];
     timelineIndex.clear();   // the whole file is read here: rebuild the timeline index from it (no duplicates)
-    for (const l of lines) { try { const o = JSON.parse(l.replace(/^\uFEFF/, "")); timelineIndex.add(o); if (o.ts >= cutoff) { noteKnownSession(o); out.push(o); } } catch {} }
+    for (const l of lines) { try { const o = JSON.parse(l.replace(/^\uFEFF/, "")); timelineIndex.add(o); sbFeed(o); if (o.ts >= cutoff) { noteKnownSession(o); out.push(o); } } catch {} }   // skillbook: de-duplicated
     return out;
   } catch { return []; }
 });

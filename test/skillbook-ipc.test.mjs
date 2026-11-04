@@ -105,7 +105,6 @@ test('each item says which actions it supports', () => {
   assert.deepEqual(can('user-srv'), { off: true, on: false, remove: true, restore: false, reveal: false });
   assert.deepEqual(can('parked-srv'), { off: false, on: true, remove: true, restore: false, reveal: false });
   assert.equal(byName(p, 'parked-srv').id, 'mcp:user:claude::claude-user:parked-srv@1'); // the stored id, as is
-  assert.deepEqual(p.removed.map(r => r.can.restore), [false, true]);
   assert.equal(p.backfill, 'running');
 });
 
@@ -115,7 +114,10 @@ test('main, preload and package wire the skillbook IPC', () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   assert.match(main, /ipcMain\.handle\("roca:skillbook"/);
   assert.match(main, /ipcMain\.handle\("roca:skillbook-act"/);
-  assert.match(main, /skillbook\.addRecord\(o\)|sbFeed\(o\)/);
+  assert.match(main, /timelineIndex\.add\(o\); sbFeed\(o\);/); // readNewEvents and orca:hooks-recent both feed
+  assert.equal((main.match(/timelineIndex\.add\(o\); sbFeed\(o\);/g) || []).length, 2);
+  assert.match(main, /store\.feedRecord\(o\)/);
+  assert.doesNotMatch(main, /store\.addRecord\(/);
   assert.match(main, /shell\.trashItem/);
   assert.match(main, /shell\.showItemInFolder\(item\.path\)/);
   assert.match(main, /skillbook-usage\.json/);
@@ -123,4 +125,22 @@ test('main, preload and package wire the skillbook IPC', () => {
   assert.match(preload, /skillbook:\s*\(\)\s*=>\s*ipcRenderer\.invoke\("roca:skillbook"\)/);
   assert.match(preload, /skillbookAct:\s*\(req\)\s*=>\s*ipcRenderer\.invoke\("roca:skillbook-act",\s*req\)/);
   assert.ok(pkg.build.files.includes('skillbook/**/*'));
+});
+
+test('removed rows can be restored only where actOn can (MCP, plugin; not a trashed skill)', async () => {
+  const { home } = fixture();
+  const removed = [
+    { id: 'skill:user:claude::gone@5', kind: 'skill', name: 'gone', removedAt: 5, how: 'trash' },
+    { id: 'plugin:plugin:claude::demoplug@6', kind: 'plugin', name: 'demoplug', removedAt: 6, how: 'plugin' },
+    { id: 'mcp:user:claude::claude-user:x@7', kind: 'mcp', name: 'x', removedAt: 7, how: 'config' },
+    { id: 'odd@8', kind: 'other', name: 'odd', removedAt: 8, how: '' },
+  ];
+  const p = skillbookPayload({ inventory: { items: [], sources: [] }, store: null, removed, now: NOW });
+  assert.deepEqual(p.removed.map(r => [r.kind, r.can.restore]), [['skill', false], ['plugin', true], ['mcp', true], ['other', false]]);
+  // the skill row really is refused by actOn
+  const { actOn } = await import('../skillbook/actions.mjs');
+  const { mkdirSync: mk, writeFileSync: wf } = await import('node:fs');
+  mk(join(home, '.roca'), { recursive: true });
+  wf(join(home, '.roca/skillbook-removed.json'), JSON.stringify({ v: 1, entries: [{ id: 'skill:user:claude::gone', sid: 'skill:user:claude::gone@5', kind: 'skill', agent: 'claude', name: 'gone', path: join(home, 'x'), at: Date.now(), how: 'trash' }] }));
+  assert.deepEqual(await actOn({ home, item: { id: 'skill:user:claude::gone@5', name: 'gone', kind: 'skill' }, action: 'restore', trash: async () => {}, run: async () => ({ code: 0 }) }), { ok: false, error: 'unsupported', detail: 'trash' });
 });

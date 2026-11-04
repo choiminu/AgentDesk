@@ -60,7 +60,8 @@ function canOf(item) {
 export function skillbookPayload({ inventory, store, removed, now = Date.now() } = {}) {
   const inv = inventory && typeof inventory === 'object' ? inventory : {};
   const items = (Array.isArray(inv.items) ? inv.items : []).map(it => ({ ...it, uses: usesOf(it, store, now), can: canOf(it) }));
-  const rows = (Array.isArray(removed) ? removed : []).map(r => ({ ...r, can: { restore: r.kind !== 'skill' } })); // trashed skills come back from the OS trash
+  // actOn restores MCP entries (written back) and plugins (claude plugin install); trashed skills come back from the OS trash
+  const rows = (Array.isArray(removed) ? removed : []).map(r => ({ ...r, can: { restore: r.kind === 'mcp' || r.kind === 'plugin' } }));
   return {
     ok: true,
     items,

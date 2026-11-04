@@ -2,11 +2,16 @@
 import { existsSync, readFileSync, readdirSync, statSync, createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { writeJsonAtomic } from '../perm/settings.mjs';
 import '../core/skillbook.js'; // classic script: sets globalThis.AgentDeskSkillbook
 
 const { usageFromRecord, usageFromTranscriptLine } = globalThis.AgentDeskSkillbook;
 const KEEP_DAYS = 60;
+const REPO_KEEP_MS = 30 * 86400e3;  // repos: sessions seen in the last 30 days
+const REPO_MAX = 500;
+const FEED_WINDOW_MS = 120e3;       // hook records may be appended a little out of order: keys are kept this long behind the mark
+const FEED_KEYS_MAX = 5000;
 const pad = n => String(n).padStart(2, '0');
 const dayKey = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
@@ -40,6 +45,34 @@ function merge(keys, add) {
   }
 }
 // repair one loaded entry; null when nothing usable is left
+// one hook record's identity: the same record read twice (re-read after the log was trimmed, or after a restart) has the same key
+function recordKey(rec) {
+  const ev = rec.ev;
+  const sid = typeof ev.session_id === 'string' ? ev.session_id : '';
+  const ext = typeof ev.tool_use_id === 'string' && ev.tool_use_id ? ev.tool_use_id
+    : createHash('sha256').update(JSON.stringify([ev.tool_name ?? null, ev.tool_input ?? null, ev.prompt ?? null])).digest('hex').slice(0, 16);
+  return `${rec.ts}|${String(rec.agent || 'claude')}|${sid}|${ev.hook_event_name}|${ext}`;
+}
+function emptyFed() { return { at: 0, keys: nullo() }; }
+function sanitizeFed(f) {
+  const out = emptyFed();
+  if (!isObj(f)) return out;
+  out.at = num(f.at);
+  if (isObj(f.keys)) for (const [k, at] of Object.entries(f.keys)) if (num(at) > out.at - FEED_WINDOW_MS) out.keys[k] = num(at);
+  return out;
+}
+function sanitizeRepos(r) {
+  const out = nullo();
+  if (isObj(r)) for (const [p, at] of Object.entries(r)) if (p && num(at) > 0) out[p] = num(at);
+  return out;
+}
+function pruneRepos(repos, nowMs) {
+  const live = Object.entries(repos).filter(([, at]) => at >= nowMs - REPO_KEEP_MS).sort((a, b) => b[1] - a[1]).slice(0, REPO_MAX);
+  const out = nullo();
+  for (const [p, at] of live) out[p] = at;
+  return out;
+}
+
 function sanitize(e) {
   if (!isObj(e)) return null;
   const out = { total: num(e.total), byDay: nullo(), lastAt: num(e.lastAt), lastRepo: typeof e.lastRepo === 'string' ? e.lastRepo : '', byAgent: nullo() };
@@ -48,18 +81,20 @@ function sanitize(e) {
   return out.total > 0 ? out : null;
 }
 
+const freshState = () => ({ v: 1, cutoff: null, backfilled: false, keys: nullo(), fed: emptyFed(), repos: nullo() });
+
 export function createUsageStore({ file, now = Date.now }) {
-  let st = { v: 1, cutoff: null, backfilled: false, keys: nullo() };
+  let st = freshState();
   const store = {
     load() {
-      st = { v: 1, cutoff: null, backfilled: false, keys: nullo() };
+      st = freshState();
       if (!existsSync(file)) return;
       try {
         const o = JSON.parse(readFileSync(file, 'utf8'));
         if (!isObj(o) || !isObj(o.keys)) return;
         const keys = nullo();
         for (const [k, e] of Object.entries(o.keys)) { const c = sanitize(e); if (c) keys[k] = c; }
-        st = { v: 1, cutoff: Number.isFinite(o.cutoff) ? o.cutoff : null, backfilled: o.backfilled === true, keys };
+        st = { v: 1, cutoff: Number.isFinite(o.cutoff) ? o.cutoff : null, backfilled: o.backfilled === true, keys, fed: sanitizeFed(o.fed), repos: sanitizeRepos(o.repos) };
       } catch { /* unreadable store: start empty */ }
     },
     add(u) { if (u && u.key) bump(st.keys, u, minDayOf(now())); },
@@ -69,11 +104,33 @@ export function createUsageStore({ file, now = Date.now }) {
       const minDay = minDayOf(now());
       for (const u of us) if (st.cutoff == null || u.at > st.cutoff) bump(st.keys, u, minDay);
     },
-    save() { prune(st.keys, minDayOf(now())); writeJsonAtomic(file, st); },
+    // live hook feed, counted exactly once: a record is taken when it is newer than the newest fed record minus a short
+    // window and its key was not fed before (keys inside the window are saved with the store). → true when counted
+    feedRecord(rec) {
+      const us = usageFromRecord(rec);
+      if (!us.length) return false;
+      const at = us[0].at, f = st.fed, key = recordKey(rec);
+      if (at <= f.at - FEED_WINDOW_MS || f.keys[key] != null) return false;
+      f.keys[key] = at;
+      if (at > f.at) f.at = at;
+      const keys = Object.keys(f.keys);
+      if (at === f.at || keys.length > FEED_KEYS_MAX) for (const k of keys) if (f.keys[k] <= f.at - FEED_WINDOW_MS) delete f.keys[k];
+      const minDay = minDayOf(now());
+      for (const u of us) if (st.cutoff == null || u.at > st.cutoff) bump(st.keys, u, minDay);
+      return true;
+    },
+    // repo folders of recent sessions (hook record cwds, transcript cwds); kept 30 days
+    noteRepo(path, at) {
+      if (typeof path !== 'string' || !path || path.length > 4096 || !(num(at) > 0)) return;
+      if (!(st.repos[path] >= at)) st.repos[path] = at;
+    },
+    repos() { return Object.keys(pruneRepos(st.repos, now())).sort(); },
+    save() { prune(st.keys, minDayOf(now())); st.repos = pruneRepos(st.repos, now()); writeJsonAtomic(file, st); },
     get(key) { return st.keys[key] || null; },
     cutoff: () => st.cutoff,
     backfillDone: () => st.backfilled === true,
     // internals for backfill()
+    // fed marks and repos stay: they are not counts
     _begin(cutoff) { st.keys = nullo(); st.cutoff = cutoff; st.backfilled = false; store.save(); },
     _finish(fresh, complete) { merge(st.keys, fresh); st.backfilled = complete; store.save(); },
     _now: now,
@@ -100,6 +157,8 @@ export function backfill(store, opts) {
   return p;
 }
 
+const CWD_RE = /"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/;
+
 async function runBackfill(store, { roots, cutoff, onProgress }) {
   store._begin(cutoff); // fresh keys + fixed cutoff; backfilled stays false until the end
   const fresh = nullo();
@@ -107,12 +166,15 @@ async function runBackfill(store, { roots, cutoff, onProgress }) {
   const files = roots.flatMap(jsonlFiles);
   let uses = 0, done = 0, skipped = 0;
   for (const f of files) {
+    let cwd = '';
     try {
       const rl = createInterface({ input: createReadStream(f, { encoding: 'utf8' }), crlfDelay: Infinity });
       for await (const line of rl) {
         if (!line) continue;
+        if (!cwd) { const m = CWD_RE.exec(line); if (m) { try { cwd = JSON.parse(`"${m[1]}"`); } catch { /* odd escape: try the next line */ } } }
         for (const u of usageFromTranscriptLine(line)) if (u.at <= cutoff) { bump(fresh, u, minDay); uses++; }
       }
+      if (cwd) store.noteRepo(cwd, statSync(f).mtimeMs); // the session's folder, as of its last write
     } catch (e) { if (!e || e.code !== 'ENOENT') skipped++; } // vanished file is fine; anything else leaves the backfill unfinished
     done++;
     if (onProgress) { try { onProgress({ files: done, total: files.length, uses }); } catch {} }
