@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld("orca", {
   questAssign: (o) => ipcRenderer.invoke("roca:quest-assign", o),
   questReport: (o) => ipcRenderer.invoke("roca:quest-report", o),
   questDesk: (o) => ipcRenderer.invoke("roca:quest-desk", o),
+  questPrune: (o) => ipcRenderer.invoke("roca:quest-prune", o),
   questDeskCancel: (o) => ipcRenderer.invoke("roca:quest-desk-cancel", o),
   notify: (title, body) => ipcRenderer.invoke("orca:notify", title, body),
   version: () => ipcRenderer.invoke("orca:version"),
