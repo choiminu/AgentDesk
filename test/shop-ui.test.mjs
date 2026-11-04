@@ -75,3 +75,8 @@ test('shop ui: i18n check passes', () => {
   const r = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/i18n-check.mjs', import.meta.url))], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });
+
+test('an installed item shows 스킬북에서 보기 instead of the install button', () => {
+  const src = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+  assert.match(src, /const btn = done \? view : !manual \? /);
+});
