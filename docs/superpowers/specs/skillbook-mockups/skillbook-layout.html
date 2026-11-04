@@ -1,0 +1,113 @@
+<style>
+  .px { font-family: 'Galmuri9', ui-monospace, monospace; }
+  .book { display:flex; background:#3b2a1f; padding:10px; border-radius:6px; box-shadow: inset 0 0 0 3px #22170f, 0 6px 16px rgba(0,0,0,.4); gap:4px; }
+  .page { flex:1; background:#f3e6c8; color:#3a2a1a; padding:12px 14px; min-height:300px; box-shadow: inset 0 0 0 2px #d8c49a; font-size:12px; }
+  .page h4 { margin:0 0 8px; font-size:13px; border-bottom:2px dashed #c9b083; padding-bottom:4px; }
+  .tab { display:inline-block; padding:2px 6px; margin:0 3px 6px 0; background:#e6d3a8; border:1px solid #b89c68; font-size:11px; }
+  .tab.on { background:#b8452f; color:#fff; border-color:#7d2a1b; }
+  .row { display:flex; align-items:center; gap:6px; padding:3px 0; border-bottom:1px dotted #d6c39c; }
+  .row.sel { background:#ead9b0; }
+  .ico { width:18px; height:18px; display:inline-grid; place-items:center; background:#2c3e66; color:#fff; font-size:10px; border:1px solid #1b2744; }
+  .lv { margin-left:auto; font-size:10px; color:#8a6a3a; }
+  .stars { color:#c88a1a; letter-spacing:1px; }
+  .spell { text-align:center; }
+  .spell .big { width:56px; height:56px; margin:6px auto; display:grid; place-items:center; background:#2c3e66; color:#ffe9a0; font-size:26px; border:3px solid #1b2744; box-shadow: 0 0 0 3px #c88a1a; }
+  .kv { text-align:left; font-size:11px; margin-top:8px; line-height:1.6; }
+  .chip { display:inline-block; padding:1px 5px; margin:1px; background:#fff3d4; border:1px solid #c9b083; font-size:10px; }
+  .btns { margin-top:10px; display:flex; gap:6px; justify-content:center; }
+  .pbtn { padding:3px 8px; background:#6f8f3a; color:#fff; border:2px solid #3f5520; font-size:11px; }
+  .pbtn.off { background:#9a8a6a; border-color:#5e5440; }
+  /* B: collection */
+  .grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; }
+  .card2 { background:#1c2030; border:2px solid #3a4260; padding:8px 6px; text-align:center; color:#dfe4f2; font-size:11px; border-radius:4px; }
+  .card2 .ic { font-size:22px; margin:4px 0; }
+  .r-gold { border-color:#d8a531; box-shadow:0 0 8px rgba(216,165,49,.5); }
+  .r-blue { border-color:#4f86d8; }
+  .r-grey { border-color:#4a4f60; opacity:.7; }
+  .equip { display:flex; gap:8px; margin-top:10px; }
+  .slot { flex:1; background:#151826; border:2px dashed #4a5272; color:#b8c0d8; font-size:11px; padding:8px; text-align:center; border-radius:4px; }
+  .slot.on { border-style:solid; border-color:#3ecf8e; }
+  /* C: table */
+  table.t { width:100%; border-collapse:collapse; font-size:12px; }
+  table.t th, table.t td { border-bottom:1px solid #2c3244; padding:5px 6px; text-align:left; color:#d8dde9; }
+  table.t th { color:#8b95a8; font-weight:600; }
+  .tg { display:inline-block; width:26px; height:14px; border-radius:7px; background:#3ecf8e; position:relative; }
+  .tg::after { content:''; position:absolute; right:2px; top:2px; width:10px; height:10px; border-radius:50%; background:#fff; }
+  .tg.off { background:#555c70; } .tg.off::after { right:auto; left:2px; }
+</style>
+
+<h2>AI 관리: 어떤 모습이 "열어 보고 싶은" 화면인가요?</h2>
+<p class="subtitle">이 PC에 실제로 설치된 것(스킬 38개+플러그인 스킬, 플러그인 6개, MCP 서버 4개+프로젝트별)으로 채운 시안입니다. 마음에 드는 쪽을 눌러 주세요(여러 개 가능).</p>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>펼친 스킬북</h3>
+      <p>왼쪽 페이지는 출처별 목차, 오른쪽 페이지는 고른 스킬의 "주문서". 많이 쓸수록 별(숙련도)이 오릅니다.</p>
+      <div class="book px" style="margin-top:8px">
+        <div class="page">
+          <h4>📖 목차</h4>
+          <span class="tab on">내 스킬 38</span><span class="tab">플러그인 6</span><span class="tab">프로젝트 1</span>
+          <div class="row sel"><span class="ico">🗂</span>orca-cli<span class="lv stars">★★★</span></div>
+          <div class="row"><span class="ico">🎨</span>pixelfx<span class="lv stars">★★</span></div>
+          <div class="row"><span class="ico">🧭</span>agent-picker<span class="lv stars">★★</span></div>
+          <div class="row"><span class="ico">🎙</span>obsidian-meeting-notes<span class="lv stars">★</span></div>
+          <div class="row"><span class="ico">📐</span>how<span class="lv">미사용</span></div>
+          <div class="row"><span class="ico">🧹</span>unslop<span class="lv">미사용</span></div>
+        </div>
+        <div class="page spell">
+          <h4>orca-cli</h4>
+          <div class="big">🗂</div>
+          <div class="stars">★★★ <span style="color:#8a6a3a;font-size:10px">이번 주 23회</span></div>
+          <div class="kv">
+            <b>하는 일</b> Orca 워크트리·터미널을 CLI로 다룹니다<br>
+            <b>이렇게 말하면 켜짐</b> <span class="chip">하위 세션</span><span class="chip">worktree</span><span class="chip">handoff</span><br>
+            <b>출처</b> ~/.claude/skills · <b>최근</b> 2시간 전 (roca)
+          </div>
+          <div class="btns"><span class="pbtn">켜짐</span><span class="pbtn off">폴더 열기</span><span class="pbtn off">삭제</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>카드 도감 + MCP 장비 슬롯</h3>
+      <p>스킬은 수집 카드(자주 쓸수록 테두리가 금색), MCP 서버는 캐릭터가 차고 있는 "장비"로 연결 상태를 보여 줍니다.</p>
+      <div style="background:#0f1220;padding:10px;border-radius:6px;margin-top:8px" class="px">
+        <div class="grid">
+          <div class="card2 r-gold"><div class="ic">🗂</div>orca-cli<br><span style="color:#d8a531">23회</span></div>
+          <div class="card2 r-blue"><div class="ic">🎨</div>pixelfx<br><span style="color:#7fb0ff">6회</span></div>
+          <div class="card2 r-blue"><div class="ic">🧭</div>agent-picker<br><span style="color:#7fb0ff">4회</span></div>
+          <div class="card2 r-grey"><div class="ic">📐</div>how<br>0회</div>
+        </div>
+        <div class="equip">
+          <div class="slot on">🗄 mysql-test<br>연결됨 · 도구 1</div>
+          <div class="slot on">🎙 whisper-local<br>연결됨 · 도구 2</div>
+          <div class="slot">🔍 elasticsearch<br>꺼짐</div>
+          <div class="slot">＋ MCP 추가</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>깔끔한 관리 표</h3>
+      <p>게임 느낌 없이, 이름·출처·사용 횟수·켜기/끄기를 한 표에서. 빠르고 실용적이지만 "보는 재미"는 적습니다.</p>
+      <div style="background:#141824;padding:8px;border-radius:6px;margin-top:8px">
+        <table class="t">
+          <tr><th>이름</th><th>종류</th><th>출처</th><th>이번 주</th><th>켜짐</th></tr>
+          <tr><td>orca-cli</td><td>스킬</td><td>내 스킬</td><td>23</td><td><span class="tg"></span></td></tr>
+          <tr><td>pixelfx</td><td>스킬</td><td>플러그인</td><td>6</td><td><span class="tg"></span></td></tr>
+          <tr><td>mysql-test</td><td>MCP</td><td>사용자</td><td>12</td><td><span class="tg"></span></td></tr>
+          <tr><td>elasticsearch</td><td>MCP</td><td>사용자</td><td>0</td><td><span class="tg off"></span></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="subtitle" style="margin-top:10px">※ 사용 횟수·별은 예시 값입니다. 실제로는 훅 기록(Skill 호출, MCP 도구 호출)으로 셀 수 있습니다.</p>
