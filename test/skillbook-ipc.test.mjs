@@ -190,3 +190,22 @@ test('.mcp.json servers offer off / on but never remove', () => {
   assert.equal(it.loc.where, 'mcpjson');
   assert.deepEqual(it.can, { off: true, on: false, remove: false, restore: false, reveal: false });
 });
+
+// ---- plugins with nothing countable: never 미사용, never in 💤 ----
+test('a plugin with no skills, commands or MCP servers (an output style) is not counted', () => {
+  const fx = fixture();
+  const dir = join(fx.home, '.claude/plugins/cache/mkt/fluent-style/1.0.0');
+  put(join(dir, '.claude-plugin/plugin.json'), { name: 'fluent-style', description: 'Answers in fluent Korean.' });
+  put(join(dir, 'output-styles/fluent.md'), '---\nname: fluent\n---\nbody\n');
+  const inst = JSON.parse(readFileSync(join(fx.home, '.claude/plugins/installed_plugins.json'), 'utf8'));
+  inst.plugins['fluent-style@mkt'] = [{ scope: 'user', installPath: dir, version: '1.0.0' }];
+  put(join(fx.home, '.claude/plugins/installed_plugins.json'), inst);
+  put(join(fx.home, '.claude/settings.json'), { enabledPlugins: { 'demoplug@mkt': true, 'fluent-style@mkt': true } });
+  const p = build(fx);
+  const st = byName(p, 'fluent-style', 'plugin');
+  assert.equal(st.uses.counted, false, 'shows 사용 기록 없음, stays out of 💤 and the bulk');
+  assert.equal(st.uses.total, 0);
+  assert.equal(st.can.remove, true, 'still removable one by one from its page');
+  // a plugin with a skill is still counted (and lands in 💤 when unused)
+  assert.equal(byName(p, 'demoplug', 'plugin').uses.counted, true);
+});

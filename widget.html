@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-DdTTcr5ZQEXW3OtPue1vyjeuXgAcAQIiRuc+1fJgoW4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-O0BJdE2nRFq2tMm7EZF5Nvt0CwA+kVWv86lQlJxzbxU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2506,6 +2506,7 @@ Object.assign(I18N, {
   '최근 제거': 'Recently removed', '되살리기': 'Restore', '지운 스킬 폴더는 OS 휴지통에서 되살릴 수 있습니다': 'Deleted skill folders can be restored from the OS trash',
   '왼쪽 목차에서 하나를 고르세요': 'Pick one in the index on the left', '아직 설치된 것이 없습니다': 'Nothing installed yet',
   '이 기간에 쓴 것이 없습니다': 'Nothing used in this period', 'Codex·Gemini 전용 항목은 사용 기록을 셀 수 없어 빠졌습니다': 'Codex- and Gemini-only items are left out: their use cannot be counted',
+  '스킬·명령·MCP 서버가 없는 플러그인(출력 스타일·LSP·훅)은 사용 기록을 셀 수 없어 빠졌습니다': 'Plugins without skills, commands or MCP servers (output styles, LSP, hooks) are left out: their use cannot be counted',
   '💤 안 쓰는 것': '💤 Not in use', '고른 것 끄기': 'Turn off picked', '휴지통으로': 'Move to trash',
   '스킬북을 읽지 못했습니다': 'Could not read the skillbook', '이 설정 파일은 읽지 못해 빠졌습니다': 'These settings files could not be read and are left out',
   '사용 기록을 읽는 중…': 'Reading usage history…', '처리 중…': 'Working…',
@@ -10180,6 +10181,7 @@ function sbDetail(it) {
 // 📊 사용 기록: left — what was used in the period, by count; right — what was not (pick, then off / trash)
 function sbUsagePages(items) {
   const counted = items.filter(it => it.uses && it.uses.counted);
+  const uncounted = items.filter(it => !(it.uses && it.uses.counted));   // left out of both pages, said why in a hint
   // one row per kind + usageKey: items that share the recorded name share the count (×N 곳 when several)
   const groups = new Map();
   for (const it of counted) {
@@ -10194,7 +10196,8 @@ function sbUsagePages(items) {
   const left = `<h4>${esc(t('📊 사용 기록'))}${seg}</h4>${sbTabsHtml(items)}`
     + (used.length ? used.map(({ it, n, places }) => `<div class="sb-grow"><span class="sb-ico">${SB_ICON[it.kind] || '·'}</span><span class="sb-name" data-verbatim>${esc(it.name)}</span>${places > 1 ? `<span class="sb-repo">${esc(sbPlaces(places))}</span>` : ''}${gauge(n)}<span class="sb-n">${esc(sbTimes(n))}</span></div>`).join('')
       : `<div class="sb-empty">${esc(t('이 기간에 쓴 것이 없습니다'))}</div>`)
-    + (counted.length < items.length ? `<div class="sb-hint">${esc(t('Codex·Gemini 전용 항목은 사용 기록을 셀 수 없어 빠졌습니다'))}</div>` : '');
+    + (uncounted.some(it => !(it.agents || []).includes('claude')) ? `<div class="sb-hint">${esc(t('Codex·Gemini 전용 항목은 사용 기록을 셀 수 없어 빠졌습니다'))}</div>` : '')
+    + (uncounted.some(it => it.kind === 'plugin' && it.plugin && it.plugin.countable === false) ? `<div class="sb-hint">${esc(t('스킬·명령·MCP 서버가 없는 플러그인(출력 스타일·LSP·훅)은 사용 기록을 셀 수 없어 빠졌습니다'))}</div>` : '');
   // 💤: what is on and was not used; while usage is still being read nothing can be picked
   const reading = !!sbState.data && sbState.data.backfill === 'running';
   const idle = counted.filter(it => it.on !== false && !sbCount(it, sbState.period)).sort((a, b) => a.name.localeCompare(b.name));

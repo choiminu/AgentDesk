@@ -175,3 +175,13 @@ test('skillbook ui (dock): polling while usage is read covers the dock panel', (
   assert.match(load, /if \(currentPage !== 'skillbook' && !sbDockOpen\) return;/);
   assert.match(load, /setTimeout\(\(\) => \(currentPage === 'skillbook' \|\| sbDockOpen\) && skillbookLoad\(\), 4000\)/);
 });
+
+test('skillbook ui: plugins with nothing countable are named in the 📊 hint, Codex·Gemini only when there are some', () => {
+  const pages = fn('sbUsagePages');
+  assert.match(pages, /it\.kind === 'plugin' && it\.plugin && it\.plugin\.countable === false/);
+  assert.ok(sb.includes("'스킬·명령·MCP 서버가 없는 플러그인(출력 스타일·LSP·훅)은 사용 기록을 셀 수 없어 빠졌습니다'"));
+  assert.match(pages, /uncounted\.some\(it => !\(it\.agents \|\| \[\]\)\.includes\('claude'\)\)/);
+  // 💤 and the bulk only ever see counted items
+  assert.match(pages, /const counted = items\.filter\(it => it\.uses && it\.uses\.counted\);/);
+  assert.match(pages, /const idle = counted\.filter\(/);
+});
