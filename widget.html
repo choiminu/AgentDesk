@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-k3ev9JmrrQ4vKCHxt3HyyAaBr12jq5XZQirl21t9CBI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-3OT22gAUDjOd+HOYeSFnYCIy0ym+OiHKRFic6h+HM8s='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1112,6 +1112,18 @@
   .sb-gauge.low i.on { background: #9a8a6a; border-color: #6e6248; }
   .sb-ribbon { display: inline-block; padding: 1px 6px; background: #b8452f; color: #fff; font-size: 10px; }
   /* dock mode: the book in the panel above the bar (#sb-dock, DOCK_SB_H), compact type */
+  .shop-in { width: 100%; box-sizing: border-box; padding: 3px 6px; margin: 4px 0; background: #fff8e6; color: #3a2a1a; border: 1px solid #b89c68; font: inherit; font-size: 11px; }
+  .shop-linkrow { display: flex; gap: 4px; align-items: center; } .shop-linkrow .shop-in { margin: 0; }
+  .shop-link { margin-bottom: 6px; padding: 4px 6px; border: 1px dashed #b89c68; }
+  .shop-ctl { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 6px; } .shop-ctl .sb-seg { margin-left: 0; }
+  .shop-refresh { margin-left: auto; padding: 0 6px; font-size: 10px; }
+  .shop-mark { flex-shrink: 0; margin-left: auto; padding: 0 5px; font-size: 10px; color: #fff; background: #6f8f3a; } .shop-mark.up { background: #c88a1a; margin-left: 4px; } .shop-mark ~ .sb-n { margin-left: 4px; }
+  .shop-box { margin-top: 8px; padding: 6px 8px; text-align: left; font-size: 11px; background: #fff3d4; border: 2px solid #b89c68; } .shop-box b { font-weight: 400; color: #7d2a1b; display: block; }
+  .shop-show, .shop-cmd code { display: block; margin: 2px 0; font: 10px/1.5 ui-monospace, Menlo, monospace; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .shop-cmd { display: flex; gap: 6px; align-items: flex-start; } .shop-cmd code { flex: 1; min-width: 0; } .shop-cmd .sb-btn { padding: 1px 6px; font-size: 10px; }
+  .shop-need { display: block; margin-top: 4px; } .shop-all { display: block; margin-top: 6px; }
+  .shop-warn { margin-top: 8px; padding: 4px 6px; text-align: left; font-size: 10px; color: #7d2a1b; background: #f6d9c8; border: 1px solid #b8452f; }
+  .shop-ext { appearance: none; background: none; border: none; padding: 0; color: #2f6b8a; text-decoration: underline; font-size: inherit; text-align: left; }
   .sb-dock { display: flex; flex-direction: column; overflow: hidden; }
   .sb-dock[hidden] { display: none; }
   .sb-dock .sb-bar { padding: 4px 8px; }
@@ -2541,6 +2553,20 @@ Object.assign(I18N, {
   '껐습니다': 'turned off', '켰습니다': 'turned on', '제거했습니다': 'removed', '되살렸습니다': 'restored', '폴더를 열었습니다': 'folder opened',
   '스킬 폴더는 OS 휴지통으로 갑니다.': 'The skill folder goes to the OS trash.', '최근 제거에서 되살릴 수 있습니다.': 'It can be restored from Recently removed.',
   '사용자 설정': 'user settings', '공유 스킬': 'shared skills', '확장': 'extension', '에이전트별': 'By agent', '사용한 도구': 'Tools used',
+});
+Object.assign(I18N, {
+  '🏪 상점': '🏪 Shop', '설치됨': 'Installed', '새 버전 있음': 'Update available', '사용': 'Used', '전체': 'All', 'MCP': 'MCP', '새로 나온 순': 'Newest', '인기순': 'Popular', '이름순': 'By name',
+  '🔗 링크로 설치': '🔗 Install from a link', '찾기': 'Find', '찾는 중…': 'Looking…', '검색': 'Search', '새로고침': 'Refresh', '찾는 항목이 없습니다': 'Nothing found', '검색으로 좁혀 보세요': 'Narrow it down with search',
+  '여러 개를 찾았습니다 — 하나를 고르세요': 'Several found — pick one', '찾았습니다': 'Found', '왼쪽 목록에서 하나를 고르세요': 'Pick one in the list on the left',
+  '(마켓)': '(marketplace)', 'MCP 레지스트리': 'MCP registry', '붙여넣은 링크': 'Pasted link', '저장소': 'Repository', '버전': 'Version', '업데이트': 'Updated', '인기': 'Popularity',
+  '플러그인은 Claude Code 안에서 훅·스크립트를 실행할 수 있습니다 — 출처를 확인하세요': 'Plugins can run hooks and scripts inside Claude Code — check the source', '실행 파일 포함': 'Contains executable files',
+  '설치하면': 'Installing will', '설치 후 Claude에서 인증이 필요합니다': 'Needs sign-in from Claude after installing', '모든 에이전트': 'All agents', '자동 설치 불가': 'Cannot be installed automatically',
+  '복사': 'Copy', '복사했습니다': 'Copied', '설치': 'Install', '설치 중…': 'Installing…', '사용할 수 없는 출처': 'Sources not available', '목록을 불러오지 못했습니다': 'Could not load the list',
+  '설치했습니다': 'Installed', '링크를 다시 찾으세요': 'Find the link again', '스킬북에서 보기': 'View in Skillbook', '플러그인 마켓': 'Plugin marketplace', '~/.claude.json 을 읽지 못했습니다 — 파일을 확인하세요': 'Could not read ~/.claude.json — check the file', '설치했습니다 (로컬 마켓 경로)': 'Installed (local marketplace route)', '설치했습니다 (설정 파일에 추가)': 'Installed (added to the settings file)', '설치했습니다 (Claude CLI)': 'Installed (Claude CLI)',
+  '설치했습니다 (마켓 경로)': 'Installed (marketplace route)', '설치했습니다 (Claude 경로)': 'Installed (Claude route)', '설치했습니다 (에이전트 공용 폴더)': 'Installed (shared agents folder)', '설치하지 못했습니다': 'Could not install',
+  '같은 이름의 마켓이 다른 출처로 이미 있어 자동 설치할 수 없습니다': 'A marketplace with the same name already exists from another source, so it cannot be installed automatically', '이미 있습니다': 'Already exists',
+  '필요한 값을 모두 입력하세요': 'Fill in every required value', '목록을 다시 불러오세요': 'Reload the list', '지원하지 않는 링크입니다 (GitHub 저장소 링크만 됩니다)': 'Unsupported link (only GitHub repository links work)',
+  '저장소를 가져오지 못했습니다': 'Could not fetch the repository', '이 링크에서 설치할 항목을 찾지 못했습니다': 'Nothing installable found at this link', 'Claude CLI를 실행하지 못했습니다': 'Could not run the Claude CLI',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
 function t(str) {
@@ -10201,8 +10227,9 @@ $('team-list').addEventListener('click', async (e) => {
 // ═══════════════════════════════════════════════════════════════════
 let sbState = { agent: 'all', tab: 'skill', period: 30, picked: new Set(), sel: null, data: null, ask: null, busy: false, removedOpen: false };
 let sbPollTimer = 0;
+let sbBarOnly = false;   // set while a poll redraws: the bar only
 const SB_AGENTS = [['all', '전체'], ['claude', 'Claude'], ['codex', 'Codex'], ['gemini', 'Gemini']];
-const SB_TABS = [['skill', '스킬'], ['plugin', '플러그인'], ['mcp', '🧰 도구 주머니'], ['usage', '📊 사용 기록']];
+const SB_TABS = [['skill', '스킬'], ['plugin', '플러그인'], ['mcp', '🧰 도구 주머니'], ['usage', '📊 사용 기록'], ['shop', '🏪 상점']];
 const SB_PERIODS = [[7, '7일'], [30, '30일'], [0, '전체']];
 const SB_ICON = { skill: '📜', plugin: '🧩', mcp: '🔌' };
 const SB_AGENT_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' };
@@ -10226,7 +10253,8 @@ async function skillbookLoad() {
   if (r && r.ok) sbState.data = r;
   else if (!sbState.data || !sbState.data.ok) sbState.data = { ok: false, items: [], sources: [], removed: [], backfill: 'done' };
   if (currentPage !== 'skillbook' && !sbDockOpen) return;
-  skillbookRender();
+  sbBarOnly = sbState.tab === 'shop' && !shopState.loading;
+  try { skillbookRender(); } finally { sbBarOnly = false; }
   clearTimeout(sbPollTimer);   // usage still being read from the transcripts: ask again while the page / the dock panel stays open
   if (sbState.data.backfill === 'running') sbPollTimer = setTimeout(() => (currentPage === 'skillbook' || sbDockOpen) && skillbookLoad(), 4000);
 }
@@ -10339,7 +10367,7 @@ function sbUsagePages(items) {
   return [left, right];
 }
 function sbTabsHtml(items) {
-  return `<div>${SB_TABS.map(([v, l]) => `<button type="button" class="sb-tab${sbState.tab === v ? ' on' : ''}${v === 'mcp' ? ' mcp' : ''}" data-sb="tab" data-v="${v}">${esc(t(l))}${v === 'usage' ? '' : ` ${items.filter(it => it.kind === v).length}`}</button>`).join('')}</div>`;
+  return `<div>${SB_TABS.map(([v, l]) => `<button type="button" class="sb-tab${sbState.tab === v ? ' on' : ''}${v === 'mcp' ? ' mcp' : ''}" data-sb="tab" data-v="${v}">${esc(t(l))}${v === 'usage' || v === 'shop' ? '' : ` ${items.filter(it => it.kind === v).length}`}</button>`).join('')}</div>`;
 }
 // the book is drawn into one container: the page, or the dock panel while it is open (dock mode hides the page)
 const sbRoot = () => $(sbDockOpen ? 'sb-dock' : 'page-skillbook');
@@ -10352,9 +10380,11 @@ function skillbookRender(root = sbRoot()) {
     + (bad.length ? `<span class="sb-note err" title="${esc(t('이 설정 파일은 읽지 못해 빠졌습니다'))}">⚠ <span data-verbatim>${esc(bad.map(s => s.label).join(', '))}</span></span>` : '')
     + (d && d.backfill === 'running' ? `<span class="sb-note">${esc(t('사용 기록을 읽는 중…'))}</span>` : '')
     + (sbState.busy ? `<span class="sb-note">${esc(t('처리 중…'))}</span>` : '');
+  if (sbBarOnly) return;   // the shop tab: a poll must not rebuild the book (typed password fields, focus)
   const keep = [...book.querySelectorAll('.sb-pg')].map(p => p.scrollTop);
   let left, right;
-  if (!d) { left = `<div class="sb-empty">${esc(t('불러오는 중…'))}</div>`; right = ''; }
+  if (sbState.tab === 'shop') [left, right] = shopPages();
+  else if (!d) { left = `<div class="sb-empty">${esc(t('불러오는 중…'))}</div>`; right = ''; }
   else if (!items.length) { left = `<h4>${esc(t('📖 목차'))}</h4>${sbTabsHtml(items)}<div class="sb-empty">${esc(t('아직 설치된 것이 없습니다'))}</div>`; right = ''; }
   else if (sbState.tab === 'usage') [left, right] = sbUsagePages(items);
   else {
@@ -10369,12 +10399,13 @@ function skillbookRender(root = sbRoot()) {
 function sbClick(e) {
   const b = e.target.closest('[data-sb]'); if (!b || b.disabled) return;
   const k = b.dataset.sb, id = b.dataset.id, it = id ? sbAll().find(x => x.id === id) : null;
-  if (k === 'ask-no') { sbState.ask = null; skillbookRender(); return; }
-  if (k === 'ask-ok') { const a = sbState.ask; sbState.ask = null; if (a) a.run(); return; }
+  if (k === 'ask-no') { sbState.ask = null; if (sbState.tab === 'shop') shopShowAsk(); else skillbookRender(); return; }   // shop: the typed fields stay
+  if (k === 'ask-ok') { const a = sbState.ask; sbState.ask = null; if (sbState.tab === 'shop') shopShowAsk(); if (a) a.run(); return; }
   if (sbState.busy) return;
+  if (k.startsWith('shop-')) { shopClick(k, b); return; }
   if ((k === 'pick' || k === 'bulk') && sbReading()) return;   // the 💤 list is not final yet
   if (k === 'agent') { sbState.agent = b.dataset.v; sbState.picked.clear(); sbState.ask = null; }
-  else if (k === 'tab') { sbState.tab = b.dataset.v; sbState.ask = null; }
+  else if (k === 'tab') { sbState.tab = b.dataset.v; sbState.ask = null; if (sbState.tab === 'shop') shopEnsure(); }
   else if (k === 'period') { sbState.period = Number(b.dataset.v); sbState.picked.clear(); sbState.ask = null; }
   else if (k === 'sel') { sbState.sel = id; sbState.ask = null; }
   else if (k === 'pick') { if (!sbState.picked.delete(id)) sbState.picked.add(id); sbState.ask = null; }
@@ -10403,6 +10434,7 @@ function sbClick(e) {
 }
 $('page-skillbook').addEventListener('click', sbClick);
 $('sb-dock').addEventListener('click', sbClick);
+for (const el of [$('page-skillbook'), $('sb-dock')]) { el.addEventListener('input', shopInput); el.addEventListener('change', shopInput); el.addEventListener('keydown', shopKey); }
 // dock mode (📖 on the bar): the same book in a panel above the bar, like the review queue (📥) — one of the two at a
 // time; Esc, the button again, a click outside it or leaving the dock closes it (dockLeave)
 function sbDockToggle(open) {
@@ -10429,6 +10461,208 @@ $('sb-dock').addEventListener('keydown', e => {
 // a click outside closes it (composedPath: a click inside re-renders the book, so its target may be gone from the DOM)
 document.addEventListener('click', e => { if (sbDockOpen && !e.composedPath().some(n => n.id === 'sb-dock' || n.id === 'dock-sb')) sbDockToggle(false); });
 // ── end of SKILLBOOK PAGE ──
+// ── 🏪 상점 tab: browse and install Claude Code plugins, MCP servers and skills (shop/*.mjs through window.orca.shopList /
+// shopLink / shopInstall). The shop's UI state lives in shopState (not in the DOM: the book is drawn into the page and the dock
+// panel). Env values for plan.needs are read from the password fields at submit, passed to shopInstall only and the fields
+// are cleared at once (also on failure); a value never reaches innerHTML, a toast, the console or any state.
+const shopState = { data: null, loading: false, err: '', seq: 0, filter: 'all', sort: 'new', q: '', sel: null, linkText: '', link: { busy: false, err: '', found: null }, all: false, busy: false };
+const SHOP_FILTERS = [['all', '전체'], ['plugin', '플러그인'], ['mcp', 'MCP'], ['skill', '스킬']];
+const SHOP_SORTS = [['new', '새로 나온 순'], ['pop', '인기순'], ['name', '이름순']];
+const SHOP_SRC = { marketplace: '플러그인 마켓', registry: 'MCP 레지스트리', smithery: 'Smithery', link: '붙여넣은 링크' };
+const SHOP_ROUTE = { local: '설치했습니다 (로컬 마켓 경로)', config: '설치했습니다 (설정 파일에 추가)', cli: '설치했습니다 (Claude CLI)', marketplace: '설치했습니다 (마켓 경로)', claude: '설치했습니다 (Claude 경로)', agents: '설치했습니다 (에이전트 공용 폴더)' };
+const SHOP_ERR = {
+  conflict: '같은 이름의 마켓이 다른 출처로 이미 있어 자동 설치할 수 없습니다', exists: '이미 있습니다', needs: '필요한 값을 모두 입력하세요',
+  missing: '목록을 다시 불러오세요', 'bad link': '지원하지 않는 링크입니다 (GitHub 저장소 링크만 됩니다)', clone: '저장소를 가져오지 못했습니다',
+  empty: '이 링크에서 설치할 항목을 찾지 못했습니다', io: '처리하지 못했습니다', 'invalid JSON': '~/.claude.json 을 읽지 못했습니다 — 파일을 확인하세요', manual: '자동 설치 불가', cli: 'Claude CLI를 실행하지 못했습니다',
+};
+const SHOP_ERR_TOP = { gone: '목록을 다시 불러오세요', unsupported: '자동 설치 불가' };
+const shopErrText = (r, link) => t(link && r && (r.detail === 'missing' || r.error === 'gone') ? '링크를 다시 찾으세요' : SHOP_ERR[r && r.detail] || SHOP_ERR_TOP[r && r.error] || '설치하지 못했습니다');
+const shopCmdLine = s => !/[가-힣]/.test(s);   // only real commands get a copy button
+function shopUrl(it) {   // only github.com opens (main's open-external allow-list); others stay plain text
+  const v = String(it.repo || it.homepage || '');
+  if (/^https:\/\/github\.com\/[^\s]+$/.test(v)) return v;
+  return /^[\w.-]+\/[\w.-]+$/.test(v) ? `https://github.com/${v}` : '';
+}
+async function shopLoad(refresh) {
+  if (shopState.loading) return;
+  shopState.loading = true; shopState.err = '';
+  const seq = ++shopState.seq;
+  skillbookRender();
+  let r = null;
+  try { r = await window.orca.shopList(refresh ? { refresh: true } : {}); } catch {}
+  if (seq !== shopState.seq) return;
+  shopState.loading = false;
+  if (r && r.ok && Array.isArray(r.items)) shopState.data = r; else shopState.err = '목록을 불러오지 못했습니다';
+  if (currentPage === 'skillbook' || sbDockOpen) skillbookRender();
+}
+const shopEnsure = () => { if (!shopState.data && !shopState.loading) shopLoad(false); };
+const shopItems = () => (shopState.data && shopState.data.items) || [];
+// the picked entry: a catalog item (id) or a pasted-link result (link:<choiceId>)
+function shopCur() {
+  const s = shopState.sel; if (!s) return null;
+  if (s.startsWith('link:')) { const f = (shopState.link.found || []).find(x => 'link:' + x.choiceId === s); return f ? { ...f, id: s, source: 'link' } : null; }
+  return shopItems().find(x => x.id === s) || null;
+}
+function shopVisible() {
+  const q = shopState.q.trim().toLowerCase();
+  const list = shopItems().filter(it => (shopState.filter === 'all' || it.kind === shopState.filter)
+    && (!q || `${it.name} ${it.title || ''} ${it.description || ''}`.toLowerCase().includes(q)));
+  const nm = (a, b) => String(a.title || a.name).localeCompare(String(b.title || b.name));
+  if (shopState.sort === 'name') list.sort(nm);
+  else if (shopState.sort === 'pop') list.sort((a, b) => (b.popularity || 0) - (a.popularity || 0) || nm(a, b));
+  else list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0) || nm(a, b));
+  return list;
+}
+const SHOP_MAX_ROWS = 150;
+function shopMarks(it) {
+  return (it.installed || it.done || (it.plan && it.plan.kind === 'installed') ? `<span class="shop-mark ok">${esc(t('설치됨'))}</span>` : '') + (it.update ? `<span class="shop-mark up">${esc(t('새 버전 있음'))}</span>` : '')
+    + (it.popularity ? `<span class="sb-n">${esc(t('사용'))} ${esc(Number(it.popularity).toLocaleString())}</span>` : '');
+}
+function shopRow(it) {
+  return `<button type="button" class="sb-row${it.id === shopState.sel ? ' sel' : ''}" data-sb="shop-sel" data-id="${esc(it.id)}"><span class="sb-ico">${SB_ICON[it.kind] || '·'}</span><span class="sb-name" data-verbatim>${esc(it.title || it.name)}</span>${shopMarks(it)}</button>`;
+}
+function shopRowsHtml() {
+  if (shopState.loading && !shopState.data) return `<div class="sb-empty">${esc(t('불러오는 중…'))}</div>`;
+  if (!shopState.data) return shopState.err ? `<div class="sb-empty">${esc(t(shopState.err))}</div>` : '';
+  const list = shopVisible();
+  if (!list.length) return `<div class="sb-empty">${esc(t('찾는 항목이 없습니다'))}</div>`;
+  return list.slice(0, SHOP_MAX_ROWS).map(shopRow).join('')
+    + (list.length > SHOP_MAX_ROWS ? `<div class="sb-hint">${esc(t('검색으로 좁혀 보세요'))} (${list.length - SHOP_MAX_ROWS}+)</div>` : '');
+}
+function shopLinkHtml() {
+  const l = shopState.link;
+  const found = (l.found || []).map(f => shopRow({ ...f, id: 'link:' + f.choiceId })).join('');
+  return `<div class="shop-link"><div class="shop-linkrow"><input type="text" class="shop-in" data-shop-link placeholder="${esc(t('🔗 링크로 설치'))}: github.com/owner/repo" value="${esc(shopState.linkText)}" aria-label="${esc(t('🔗 링크로 설치'))}" spellcheck="false" autocomplete="off"><button type="button" class="sb-btn" data-sb="shop-link"${l.busy ? ' disabled' : ''}>${esc(t(l.busy ? '찾는 중…' : '찾기'))}</button></div>`
+    + (l.err ? `<div class="sb-note err">${esc(shopErrText(l.errR))}</div>` : '')
+    + (l.found ? `<div class="sb-hint">${esc(t(l.found.length > 1 ? '여러 개를 찾았습니다 — 하나를 고르세요' : '찾았습니다'))}</div>${found}` : '') + `</div>`;
+}
+const shopAskBox = () => `<div id="shop-ask">${sbAskHtml()}</div>`;
+function shopDetail(it) {
+  if (!it) return `<div class="sb-empty">${esc(t('왼쪽 목록에서 하나를 고르세요'))}</div>${shopAskBox()}`;
+  const p = it.plan || { kind: 'manual', show: [], needs: [] }, vb = s => `<span data-verbatim>${esc(s)}</span>`;
+  const kv = (k, v) => v ? `<div><b>${esc(t(k))}</b>${v}</div>` : '';
+  const src = it.source === 'marketplace' ? `${vb(it.marketplace || '')} ${esc(t('(마켓)'))}` : esc(t(SHOP_SRC[it.source] || ''));
+  const url = shopUrl(it), repoTxt = String(it.repo || it.homepage || '');
+  const link = url ? `<button type="button" class="shop-ext" data-sb="shop-ext" data-url="${esc(url)}">${vb(url.replace(/^https:\/\//, ''))}</button>` : (repoTxt ? vb(repoTxt) : '');
+  const upd = it.updatedAt ? esc(timeAgo(it.updatedAt)) : '';
+  const rows = [kv('출처', src), kv('저장소', link), kv('버전', it.version ? vb('v' + it.version) : ''), kv('업데이트', upd),
+    kv('인기', it.popularity ? `${esc(t('사용'))} ${esc(Number(it.popularity).toLocaleString())}` : ''),
+    kv('하는 일', it.description ? vb(it.description) : '')];
+  const warn = [];
+  if (it.kind === 'plugin') warn.push(t('플러그인은 Claude Code 안에서 훅·스크립트를 실행할 수 있습니다 — 출처를 확인하세요'));
+  if (it.kind === 'skill' && it.hasScripts) warn.push(t('실행 파일 포함'));
+  const conflict = p.detail === 'conflict', manual = p.kind === 'manual' || conflict, done = p.kind === 'installed' || it.done;
+  let box = '';
+  if (done) box = `<div class="shop-box"><b>${esc(t('설치됨'))}</b>${it.update ? ` · ${esc(t('새 버전 있음'))}` : ''}</div>`;   // a new version is shown only: nothing runs an update
+  else if (conflict) box = `<div class="shop-box"><b>${esc(t('자동 설치 불가'))}</b><div>${esc(t(SHOP_ERR.conflict))}</div></div>`;
+  else if (manual) box = `<div class="shop-box"><b>${esc(t('자동 설치 불가'))}</b>${(p.show || []).map((s, i) => `<div class="shop-cmd"><code data-verbatim>${esc(s)}</code>${shopCmdLine(s) ? `<button type="button" class="sb-btn off" data-sb="shop-copy" data-i="${i}">${esc(t('복사'))}</button>` : ''}</div>`).join('')}</div>`;
+  else {
+    box = `<div class="shop-box"><b>${esc(t('설치하면'))}</b>${(p.show || []).map(s => `<div class="shop-show" data-verbatim>${esc(s)}</div>`).join('')}`
+      + (p.needs || []).map((n, i) => `<label class="shop-need"><span data-verbatim>${esc(n)}</span><input type="password" class="shop-in" data-shop-env="${i}" autocomplete="off" spellcheck="false"></label>`).join('')
+      + (p.oauth ? `<div class="sb-hint">${esc(t('설치 후 Claude에서 인증이 필요합니다'))}</div>` : '')
+      + (it.kind === 'skill' ? `<label class="shop-all"><input type="checkbox" data-shop-all${shopState.all ? ' checked' : ''}> ${esc(t('모든 에이전트'))}</label>` : '') + `</div>`;
+  }
+  const view = done ? `<div class="sb-btns"><button type="button" class="sb-btn off" data-sb="shop-view" data-id="${esc(it.id)}">${esc(t('스킬북에서 보기'))}</button></div>` : '';
+  const btn = done ? view : !manual ? `<div class="sb-btns"><button type="button" class="sb-btn" data-sb="shop-install" data-id="${esc(it.id)}"${shopState.busy ? ' disabled' : ''}>${esc(t(shopState.busy ? '설치 중…' : '설치'))}</button></div>` : '';
+  return `<div class="sb-spell"><h4><span class="sb-name" data-verbatim>${esc(it.title || it.name)}</span></h4><div class="sb-big${it.kind === 'mcp' ? ' mcp' : ''}">${SB_ICON[it.kind] || '·'}</div><div class="sb-use">${shopMarks(it)}</div>`
+    + `<div class="sb-kv">${rows.join('')}</div>${warn.map(w => `<div class="shop-warn">⚠ ${esc(w)}</div>`).join('')}${box}${btn}${shopAskBox()}</div>`;
+}
+function shopPages() {
+  const d = shopState.data, bad = d ? (d.sources || []).filter(s => s && s.ok === false) : [];
+  const seg = (name, cur, opts) => `<span class="sb-seg">${opts.map(([v, l]) => `<button type="button" class="${cur === v ? 'on' : ''}" data-sb="shop-${name}" data-v="${v}">${esc(t(l))}</button>`).join('')}</span>`;
+  const left = `<h4>${esc(t('🏪 상점'))}<button type="button" class="sb-btn off shop-refresh" data-sb="shop-refresh"${shopState.loading ? ' disabled' : ''}>${esc(t('새로고침'))}</button></h4>${sbTabsHtml(sbItems())}${shopLinkHtml()}`
+    + `<input type="search" class="shop-in" data-shop-q placeholder="${esc(t('검색'))}" aria-label="${esc(t('검색'))}" value="${esc(shopState.q)}" autocomplete="off">`
+    + `<div class="shop-ctl">${seg('filter', shopState.filter, SHOP_FILTERS)}${seg('sort', shopState.sort, SHOP_SORTS)}</div>`
+    + (bad.length ? `<div class="sb-hint">${esc(t('사용할 수 없는 출처'))}: <span data-verbatim>${esc(bad.map(s => t(SHOP_SRC[s.id] || s.id || '')).filter(Boolean).join(', '))}</span></div>` : '')
+    + `<div class="shop-rows">${shopRowsHtml()}</div>`;
+  return [left, shopDetail(shopCur())];
+}
+const shopRoots = () => [$('page-skillbook'), $('sb-dock')].filter(Boolean);
+// the confirm row is drawn in place (no full re-render): the typed password fields stay where they are
+const shopShowAsk = () => shopRoots().forEach(r => { const a = r.querySelector('#shop-ask'); if (a) a.innerHTML = sbAskHtml(); });
+function shopReadEnv(root, needs) {   // → { NAME: value } | null when a field is empty; the values are held by the caller only
+  const els = [...root.querySelectorAll('[data-shop-env]')];
+  if (els.length !== needs.length) return null;
+  const env = {}; let ok = true;
+  for (const el of els) { const n = needs[Number(el.dataset.shopEnv)]; if (typeof n !== 'string' || !el.value) ok = false; else env[n] = el.value; }
+  return ok ? env : null;
+}
+const shopClearEnv = () => shopRoots().forEach(r => r.querySelectorAll('[data-shop-env]').forEach(el => { el.value = ''; }));
+async function shopLinkRun() {
+  const l = shopState.link, text = shopState.linkText.trim();
+  if (l.busy || !text) return;
+  l.busy = true; l.err = ''; l.errR = null; l.found = null; if (shopState.sel && shopState.sel.startsWith('link:')) shopState.sel = null;
+  skillbookRender();
+  let r = null;
+  try { r = await window.orca.shopLink({ text }); } catch {}
+  l.busy = false;
+  if (r && r.ok && Array.isArray(r.found)) { l.found = r.found; if (r.found.length === 1) shopState.sel = 'link:' + r.found[0].choiceId; }
+  else l.err = (r && r.detail) || (r && r.error) || 'io'; l.errR = r || { detail: 'io' };
+  skillbookRender();
+}
+function shopInstallAsk(it, root) {
+  const p = it.plan || {};
+  if (shopState.busy || p.kind === 'manual' || p.kind === 'installed' || p.detail === 'conflict') return;
+  const needs = p.needs || [];
+  if (needs.length && !shopReadEnv(root, needs)) { showInAppToast(t(SHOP_ERR.needs), 'error', undefined, undefined, { user: true }); return; }
+  const warnPlug = it.kind === 'plugin' ? ` ${t('플러그인은 Claude Code 안에서 훅·스크립트를 실행할 수 있습니다 — 출처를 확인하세요')}` : '';
+  const text = LANG === 'en' ? `Install ${it.title || it.name}?${warnPlug}` : `${it.title || it.name} — 설치할까요?${warnPlug}`;
+  sbState.ask = { text, okLabel: t('설치'), run: () => shopInstallRun(it.id, root) };
+  shopShowAsk();
+}
+async function shopInstallRun(id, root) {
+  const it = shopCur(); if (!it || it.id !== id || shopState.busy) return;
+  const needs = (it.plan && it.plan.needs) || [];
+  let env = needs.length ? shopReadEnv(root, needs) : null;
+  shopClearEnv();
+  if (needs.length && !env) { showInAppToast(t(SHOP_ERR.needs), 'error', undefined, undefined, { user: true }); skillbookRender(); return; }
+  const req = id.startsWith('link:') ? { choiceId: id.slice(5) } : { id };
+  if (needs.length) req.env = env;
+  if (it.kind === 'skill' && shopState.all) req.allAgents = true;
+  shopState.busy = true; sbState.busy = true; skillbookRender();
+  let r = null;
+  try { r = await window.orca.shopInstall(req); } catch {}
+  env = null; req.env = null;
+  shopClearEnv();
+  shopState.busy = false; sbState.busy = false;
+  if (r && r.ok) {
+    if (id.startsWith('link:')) { const f = (shopState.link.found || []).find(x => 'link:' + x.choiceId === id); if (f) f.done = true; }
+    showInAppToast(t(SHOP_ROUTE[r.route] || '설치했습니다') + (r.oauth ? ` · ${t('설치 후 Claude에서 인증이 필요합니다')}` : ''), undefined, undefined, undefined, { user: true });
+    await Promise.all([skillbookLoad(), shopLoad(false)]);   // installed marks in both
+  } else {
+    showInAppToast(`${it.title || it.name}: ${shopErrText(r, id.startsWith('link:'))}`, 'error', undefined, undefined, { user: true });
+    skillbookRender();
+  }
+}
+function shopClick(k, b) {
+  const root = b.closest('#sb-dock, #page-skillbook') || sbRoot();
+  if (k === 'shop-sel') { shopState.sel = b.dataset.id; sbState.ask = null; }
+  else if (k === 'shop-filter') shopState.filter = b.dataset.v;
+  else if (k === 'shop-sort') shopState.sort = b.dataset.v;
+  else if (k === 'shop-refresh') { shopLoad(true); return; }
+  else if (k === 'shop-link') { shopLinkRun(); return; }
+  else if (k === 'shop-ext') { const u = String(b.dataset.url || ''); if (/^https:\/\/github\.com\//.test(u)) window.orca.openExternal(u); return; }
+  else if (k === 'shop-copy') {
+    const it = shopCur(), s = it && it.plan && it.plan.show && it.plan.show[Number(b.dataset.i)];
+    if (s) window.orca.clipboardWrite(s).then(() => showInAppToast(t('복사했습니다'), undefined, undefined, undefined, { user: true })).catch(() => {});
+    return;
+  }
+  else if (k === 'shop-view') {
+    const it = shopCur(), m = it && sbAll().find(x => x.kind === it.kind && x.name === it.name);
+    if (it && SB_TABS.some(([v]) => v === it.kind)) { sbState.tab = it.kind; sbState.agent = 'all'; sbState.ask = null; if (m) sbState.sel = m.id; }
+  }
+  else if (k === 'shop-install') { const it = shopCur(); if (it) shopInstallAsk(it, root); return; }
+  skillbookRender();
+}
+// typing re-draws only the rows (the input keeps focus); the search and link text are kept in shopState
+function shopInput(e) {
+  const el = e.target; if (!el || !el.matches) return;
+  if (el.matches('[data-shop-q]')) { shopState.q = el.value; shopRoots().forEach(r => { const x = r.querySelector('.shop-rows'); if (x) x.innerHTML = shopRowsHtml(); }); }
+  else if (el.matches('[data-shop-link]')) shopState.linkText = el.value;
+  else if (el.matches('[data-shop-all]')) shopState.all = el.checked;
+}
+function shopKey(e) { if (e.key === 'Enter' && e.target.matches && e.target.matches('[data-shop-link]')) { e.preventDefault(); shopLinkRun(); } }
+// ── end of SHOP TAB ──
 
 // ═══════════════════════════════════════════════════════════════════
 // SETTINGS PAGE — language, theme, exact detection (hooks), chime, office zoom, onboarding
