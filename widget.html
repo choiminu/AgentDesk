@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-eHBXCaEnaj0+BZK8N7JDxvTVb3/UyGPT9L0quI/V24M='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-yVxXteYURrCLT3tSXd6z6chOnAeXuHnCRs2pUrZ3IAM='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -10537,7 +10537,7 @@ function shopDetail(it) {
       + (it.kind === 'skill' ? `<label class="shop-all"><input type="checkbox" data-shop-all${shopState.all ? ' checked' : ''}> ${esc(t('모든 에이전트'))}</label>` : '') + `</div>`;
   }
   const view = done ? `<div class="sb-btns"><button type="button" class="sb-btn off" data-sb="shop-view" data-id="${esc(it.id)}">${esc(t('스킬북에서 보기'))}</button></div>` : '';
-  const btn = view || !manual && !done ? `<div class="sb-btns"><button type="button" class="sb-btn" data-sb="shop-install" data-id="${esc(it.id)}"${shopState.busy ? ' disabled' : ''}>${esc(t(shopState.busy ? '설치 중…' : '설치'))}</button></div>` : '';
+  const btn = done ? view : !manual ? `<div class="sb-btns"><button type="button" class="sb-btn" data-sb="shop-install" data-id="${esc(it.id)}"${shopState.busy ? ' disabled' : ''}>${esc(t(shopState.busy ? '설치 중…' : '설치'))}</button></div>` : '';
   return `<div class="sb-spell"><h4><span class="sb-name" data-verbatim>${esc(it.title || it.name)}</span></h4><div class="sb-big${it.kind === 'mcp' ? ' mcp' : ''}">${SB_ICON[it.kind] || '·'}</div><div class="sb-use">${shopMarks(it)}</div>`
     + `<div class="sb-kv">${rows.join('')}</div>${warn.map(w => `<div class="shop-warn">⚠ ${esc(w)}</div>`).join('')}${box}${btn}${shopAskBox()}</div>`;
 }
