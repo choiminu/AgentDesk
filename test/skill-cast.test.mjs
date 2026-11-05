@@ -73,3 +73,18 @@ test('skill cast: dock plays it on the tile behind the animation setting, and sh
   assert.match(hint, /classList\.contains\('err'\)/);   // an error on the pill stays
   assert.match(html, /\.dock-msg\.info \{/);
 });
+
+test('skill cast: the dock tile itself shows who cast it (glow and a name tag), kept across tile redraws', () => {
+  const play = fn('skillCastPlay');
+  assert.match(play, /dockCastMark\(`me:\$\{s\.id\}`, /);   // outside the animation gate: the tag is information
+  const sync = fn('dockCastSync');
+  assert.match(sync, /classList\.toggle\('cast'/);
+  assert.match(sync, /dock-cast-tag/);
+  assert.match(sync, /textContent/);   // the name as text, never HTML
+  assert.match(html, /const DOCK_CAST_MS = 2500;/);
+  assert.match(fn('dockFxSync'), /^function dockFxSync\(changes\) \{\n  dockCastSync\(\);/);   // before the animation gate
+  assert.match(html, /\.dock-tile\.cast \{/);
+  assert.match(html, /\.dock-tile\.cast \.dock-spr \{ opacity: 1;/);   // a resting agent lights up while casting
+  assert.match(html, /\.dock-tiles\.s40 \.dock-cast-tag \{ display: none; \}/);
+  assert.match(html, /prefers-reduced-motion: no-preference\) \{[^}]*\.dock-tiles\.fx \.dock-tile\.cast \{ animation: dockCast/);
+});

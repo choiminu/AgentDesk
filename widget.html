@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-eegZLm0h+JOMUsSk4mhbxMvF3F7CI6dQvepsRodot2I='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-/I6DM2tTHx9WcMwLfEG9I7ElTzp9MeTiNf4lPr7jF7M='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1706,6 +1706,18 @@
   /* the office's pixelfx sheets on a tile (dockFx*): clipped to the tile, feet on the sprite's baseline */
   .dock-fxc { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; z-index: 2; }
   .dock-fx { position: absolute; background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; }
+  /* a skill in use (dockCastSync): the tile glows purple and a tag over it names the skill for DOCK_CAST_MS */
+  .dock-tile.cast { border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple), 0 0 10px color-mix(in srgb, var(--purple) 60%, transparent); }
+  .dock-tile.cast .dock-spr { opacity: 1; filter: drop-shadow(0 0 2px var(--purple)); }
+  .dock-cast-tag { position: absolute; top: 2px; left: 2px; right: 2px; z-index: 3; padding: 0 3px; border-radius: 6px; background: var(--purple); color: #fff; font: 600 9px/12px var(--sans); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+  .dock-tiles.s40 .dock-cast-tag { display: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .dock-tiles.fx .dock-tile.cast { animation: dockCast 0.6s ease-in-out 4 alternate; }
+  }
+  @keyframes dockCast {
+    from { box-shadow: 0 0 0 1px var(--purple), 0 0 3px color-mix(in srgb, var(--purple) 30%, transparent); }
+    to { box-shadow: 0 0 0 1px var(--purple), 0 0 14px color-mix(in srgb, var(--purple) 85%, transparent); }
+  }
   /* an agent in error flickers: red and cyan split off for a moment every 2.4 s (dockCfg.anim, reduced motion off) */
   @media (prefers-reduced-motion: no-preference) {
     .dock-tiles.fx .dock-tile.st-err .dock-spr { animation: dockGlitch 2.4s steps(1) infinite; }
@@ -3146,9 +3158,9 @@ async function skillCastFrom(rec) {
   skillCastLast.set(k, now);
   if (skillCastLast.size > 200) for (const [kk, at] of skillCastLast) if (now - at >= SKILL_CAST_GAP_MS) skillCastLast.delete(kk);
   const s = sessions.find(x => x.sessionId === sid) || sessions.find(x => { const hk = hookStateFor(x.id); return hk && hk.sid === sid; });
-  if (s) skillCastPlay(s, skillCastLabel(u.key));
+  if (s) skillCastPlay(s, skillCastLabel(u.key), String(u.key).split(':').pop());
 }
-function skillCastPlay(s, text) {
+function skillCastPlay(s, text, name) {
   const ch = officeChars.get(s.id);
   if (ch && ch.alpha > 0 && currentPage === 'office') {
     officeFxPlay('skillCast', ...officeFeet(ch), ch);
@@ -3156,6 +3168,7 @@ function skillCastPlay(s, text) {
   }
   if (dockOn) {
     if (dockFxAllowed()) { dockFxPlay(`me:${s.id}`, 'skillCast'); dockFxSync(); }
+    dockCastMark(`me:${s.id}`, name || text);
     dockSkillHint(text);
   }
 }
@@ -4896,6 +4909,7 @@ function dockFxEl(b, kind, loop, t0 = performance.now()) {
   return el;
 }
 function dockFxSync(changes) {
+  dockCastSync();
   const tiles = $('dock-tiles');
   if (!dockFxAllowed()) { for (const c of tiles.querySelectorAll('.dock-fxc')) c.remove(); dockFxSeen.clear(); dockFxPlaying.clear(); dockFxPrimed = false; return; }
   for (const c of changes || []) if (c.key.startsWith('me:') && c.from === 'run' && (c.to === 'input' || c.to === 'done')) dockFxPlay(c.key, 'collect');
@@ -4914,6 +4928,30 @@ function dockFxSync(changes) {
   }
   dockFxPrimed = true;
   dockFxStep();
+}
+// which tile is using a skill: glow + name tag for DOCK_CAST_MS (not an animation: shown with the dock animation off too,
+// only the glow's pulse follows it); re-applied whenever the tiles are redrawn (dockFxSync)
+const DOCK_CAST_MS = 2500;
+const dockCasts = new Map();   // tile key → { name, until }
+let dockCastT = 0;
+function dockCastMark(key, name) {
+  dockCasts.set(key, { name: String(name || ''), until: Date.now() + DOCK_CAST_MS });
+  dockCastSync();
+}
+function dockCastSync() {
+  clearTimeout(dockCastT); dockCastT = 0;
+  const now = Date.now(), tiles = $('dock-tiles');
+  for (const [k, c] of dockCasts) if (c.until <= now) dockCasts.delete(k);
+  if (!tiles) return;
+  for (const b of tiles.querySelectorAll('.dock-tile[data-key^="me:"]')) {
+    const c = dockCasts.get(b.dataset.key);
+    b.classList.toggle('cast', !!c);
+    let tag = b.querySelector('.dock-cast-tag');
+    if (!c) { if (tag) tag.remove(); continue; }
+    if (!tag) { tag = document.createElement('span'); tag.className = 'dock-cast-tag'; tag.setAttribute('aria-hidden', 'true'); b.appendChild(tag); }
+    if (tag.textContent !== c.name) { tag.textContent = c.name; tag.title = c.name; }
+  }
+  if (dockCasts.size) dockCastT = setTimeout(dockCastSync, Math.max(50, Math.min(...[...dockCasts.values()].map(c => c.until)) - now));
 }
 function dockFxStep() {
   clearTimeout(dockFxT); dockFxT = 0;
