@@ -1270,3 +1270,30 @@ test('dockIdleSplit: junk input', () => {
   const r = D.dockIdleSplit([null, 5, { id: 'x', status: 'waiting', time: 1 }], { now: 'n', idleMs: 'x', hidden: [] });
   assert.deepEqual(r.shown.map(s => s.id), ['x']);
 });
+
+test('dock limits as hearts: 10 hearts for the 5-hour limit (half steps), a ring for the weekly one, 3 per tile for context', async () => {
+  const { readFileSync } = await import('node:fs');
+  const vmm = await import('node:vm');
+  const src = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+  const cut = (a, b) => src.slice(src.indexOf(a), src.indexOf(b, src.indexOf(a)));
+  const code = cut('function dockHeartRow(', '// 🔕: lit while on');
+  const sb = { dockCfg: { usage: 'hearts' }, dockLocal: x => ({ s1: { ctxPct: 34 }, s2: { ctxPct: null }, s3: { ctxPct: 100 } })[x.id] || null, Math, Number, Array };
+  vmm.createContext(sb); vmm.runInContext(code + ';globalThis.r = { dockHeartRow, dockHeartsHtml, dockRingHtml, dockCtxHearts };', sb);
+  const kinds = h => [...h.matchAll(/class="dk-([fhe])"/g)].map(m => m[1]).join("");
+  assert.equal(kinds(sb.r.dockHeartRow(79, 10)), 'fffffffhee', '79 left → 7½ hearts');
+  assert.equal(kinds(sb.r.dockHeartRow(100, 10)), 'ffffffffff');
+  assert.equal(kinds(sb.r.dockHeartRow(0, 10)), 'eeeeeeeeee');
+  assert.match(sb.r.dockHeartsHtml(5, 'red'), /class="dk-hearts low"/, 'red band: the hearts pulse');
+  assert.match(sb.r.dockRingHtml(71, 'green'), /class="fg green"[^>]*stroke-dasharray="44\.61 62\.83"/);
+  assert.equal(sb.r.dockCtxHearts({ id: 's1' }), 2, '66 left of the context → 2 hearts');
+  assert.equal(sb.r.dockCtxHearts({ id: 's2' }), null, 'unknown context: no column');
+  assert.equal(sb.r.dockCtxHearts({ id: 's3' }), 0);
+  assert.equal(sb.r.dockCtxHearts({ id: 's1', peer: true }), null, 'teammates: none');
+  sb.dockCfg.usage = 'bars';
+  assert.equal(sb.r.dockCtxHearts({ id: 's1' }), null, 'bars chosen: no tile hearts');
+  // the setting, the saved value and the redraw signature
+  assert.match(src, /dockCfg\.usage = c\.usage === 'bars' \? 'bars' : 'hearts';/);
+  assert.match(src, /seg\('dock-usage', dockCfg\.usage, \[\['hearts', t\('하트'\)\], \['bars', t\('막대'\)\]\]\)/);
+  assert.match(src, /name === 'dock-usage' && \(v === 'hearts' \|\| v === 'bars'\)\) \{ dockCfg\.usage = v; dockSave\(\); dockSig = ''; dockRender\(\);/);
+  assert.match(src, /const sig = JSON\.stringify\(\[LANG, m\.size, dockIdleN, dockIdleOpen, dockCfg\.usage, m\.mine\.map\(dockCtxHearts\),/);
+});
