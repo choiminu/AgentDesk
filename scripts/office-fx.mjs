@@ -35,6 +35,13 @@ const EFFECTS = [
   { key: "skyDay", id: "office/sky", file: "sky-day", options: {} },
   { key: "skyDusk", id: "office/sky", file: "sky-dusk", options: { palette: ["#e8a07a", "#ffd0a8", "#fff0dc"], seed: 9 } },
   { key: "skyNight", id: "office/sky", file: "sky-night", options: { palette: ["#7d86b8", "#d8defa", "#ffffff"], night: true } },
+  { key: "act_code", id: "office/activity", file: "act-code", options: { kind: "code" } },
+  { key: "act_docs", id: "office/activity", file: "act-docs", options: { kind: "docs" } },
+  { key: "act_read", id: "office/activity", file: "act-read", options: { kind: "read" } },
+  { key: "act_web", id: "office/activity", file: "act-web", options: { kind: "web" } },
+  { key: "act_shell", id: "office/activity", file: "act-shell", options: { kind: "shell" } },
+  { key: "act_agents", id: "office/activity", file: "act-agents", options: { kind: "agents" } },
+  { key: "act_think", id: "office/activity", file: "act-think", options: { kind: "think" } },
 ];
 mkdirSync(join(PFX, "src", "fx", "office"), { recursive: true });
 for (const f of readdirSync(join(ROOT, "scripts", "office-fx"))) if (f.endsWith(".js")) copyFileSync(join(ROOT, "scripts", "office-fx", f), join(PFX, "src", "fx", "office", f));
