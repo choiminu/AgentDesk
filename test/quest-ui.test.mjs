@@ -375,3 +375,9 @@ test('quest final: a worktree quest marks the seat of its mapped live session', 
   sb.jiraDispatch.A.sid = ''; sb.quest.file = { quests: { ...sb.quest.file.quests } }; assert.equal(sb.m('w1', true), false);
   sb.jiraDispatch.A.sid = 'w4'; vm.runInContext('questMarkAt = 0;', sb); assert.equal(sb.m('w4', true), true);
 });
+
+test('quest mode hides the board columns and styles the card buttons', () => {
+  const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+  assert.match(html, /\.jb-cols\[hidden\][^{]*\{ display: none; \}/);
+  assert.match(html, /\.qb-card button \{ appearance: none;/);
+});
