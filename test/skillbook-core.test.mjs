@@ -100,3 +100,15 @@ test('mastery and week', () => {
   const day = off => { const d = new Date(2026, 10, 4 - off); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   assert.equal(S.weekCount({ [day(0)]: 2, [day(6)]: 1, [day(7)]: 9 }, now), 3);
 });
+
+test('trigger phrases and MCP tool names stay linear on crafted input (no regex backtracking)', () => {
+  let t = performance.now();
+  const r = S.parseSkillMd('---\nname: a\ndescription: ' + ' ‘x'.repeat(200000) + ' "ok" "two words"\n---\n');
+  assert.ok(performance.now() - t < 1500, 'quotes: ' + (performance.now() - t));
+  assert.deepEqual(r.triggers, ['ok', 'two words'], 'unclosed curly quotes swallow nothing');
+  assert.deepEqual(S.parseSkillMd('---\nname: a\ndescription: Use for "deploy app", \'ship it\', “배포해줘” and x"no"\n---\n').triggers, ['deploy app', 'ship it', '배포해줘']);
+  t = performance.now();
+  assert.deepEqual(S.usageFromRecord({ ts: 1, ev: { hook_event_name: 'PreToolUse', tool_name: 'mcp__' + '_'.repeat(200000) + '\n', tool_input: {} } }), []);
+  assert.ok(performance.now() - t < 500, 'tool name: ' + (performance.now() - t));
+  assert.deepEqual(S.usageFromRecord({ ts: 1, ev: { hook_event_name: 'PreToolUse', tool_name: 'mcp__git_hub__create_issue', tool_input: {} } }).map(u => [u.key, u.tool]), [['git_hub', 'create_issue']]);
+});
