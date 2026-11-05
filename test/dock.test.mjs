@@ -275,7 +275,7 @@ test('widget dock permission line: whitelist from core, arming and answers throu
   assert.match(f, /dataset\.truncated = cut \? '1' : '0'/);
   assert.match(f, /permArm\(el\)/);
   assert.match(f, /permDecide\(r\.id, b\.dataset\.perm, '', el\)/);
-  assert.match(f, /inboxGo\(\{ kind: 'perm'/, '[패널에서 보기] goes to the request in the panel');
+  assert.match(f, /permGo\(r\.id\)/, '[패널에서 보기] goes to the request in the panel');
   assert.doesNotMatch(f, /window\.orca\.perm/, 'no permission IPC of its own');
   // permArm keeps [허용] off while data-truncated is 1 (the dock relies on it)
   assert.match(between(html, 'function permArm(el)', '\n}'), /b\.dataset\.perm === 'allow' && el\.dataset\.truncated === '1'/);
@@ -1189,8 +1189,8 @@ test('widget: the global perm-open shortcut re-arms the approval panel it opens 
   const m = /else if \(action === 'perm-open'\) \{([\s\S]*?)\n  \}/.exec(html);
   assert.ok(m, 'perm-open handler found');
   const body = m[1];
-  assert.match(body, /inboxGo\(\{ kind: 'perm', target: \{ permId: r\.id \} \}\)/);
-  assert.ok(body.indexOf('permArm(el)') > body.indexOf('inboxGo('), 'permArm runs after the panel is opened');
+  assert.match(body, /permGo\(r\.id\)/);
+  assert.ok(body.indexOf('permArm(el)') > body.indexOf('permGo('), 'permArm runs after the panel is opened');
   assert.match(body, /permEls\.get\(r\.id\)/);
   assert.match(body, /requestAnimationFrame\(rearm\)/, 're-armed again after the page has rendered');
 });
