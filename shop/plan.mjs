@@ -199,11 +199,15 @@ function planMcp(item, installed, have) {
     cliTail = [name, '--', command, ...args]
   }
   needs = uniq(needs)
+  // a registry value holding "$" in the URL, command or arguments could make Claude Code expand a variable of this
+  // machine (a token) into where the server connects or what it runs: not installed automatically
+  if (JSON.stringify([entry.url, entry.command, entry.args]).includes('$')) return { kind: 'manual', show: CANNOT, needs: [] }
 
   if (needs.length) {
     return {
       kind: 'mcp-write',
-      show: [`~/.claude.json mcpServers.${name}`, ...needs.map((n) => `  ${n}`)],
+      // where the typed values go (the remote URL, or the package that receives them), then their names
+      show: [`~/.claude.json mcpServers.${name}`, `  → ${entry.url || cmdLine([entry.command, ...entry.args])}`, ...needs.map((n) => `  ${n}`)],
       needs,
       entry,
       ...(oauth ? { oauth } : {}),
