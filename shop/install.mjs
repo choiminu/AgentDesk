@@ -76,7 +76,8 @@ function mcpWrite(home, plan, env, choice) {
   // secrets go to env / headers only: a needed placeholder anywhere else (args, command, url) would put the value on
   // the server's command line or in a URL — refused
   const { env: e0, headers: h0, ...rest } = plan.entry;
-  if (needs.some(n => JSON.stringify(rest).includes('${' + n + '}'))) return fail('failed', 'bad request');
+  // and no "$" at all outside env / headers: Claude Code would expand a ${VAR} of this machine into the URL or argv
+  if (JSON.stringify(rest).includes('$')) return fail('failed', 'bad request');
   const entry = { ...plan.entry };
   if (e0 !== undefined) entry.env = fill(e0, needs, env);
   if (h0 !== undefined) entry.headers = fill(h0, needs, env);
