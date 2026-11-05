@@ -9,7 +9,7 @@ const FX = JSON.parse(html.match(/^const OFFICE_FX = (\{.*\});$/m)[1]);
 const pngSize = file => { const b = readFileSync(file); return [b.readUInt32BE(16), b.readUInt32BE(20)]; };
 
 test('office fx: every sheet exists and its size matches the table', () => {
-  assert.deepEqual(Object.keys(FX).sort(), ['blinkIn', 'blinkOut', 'collect', 'exclaim', 'rackA', 'rackB', 'skillCast', 'skyDay', 'skyDusk', 'skyNight', 'sleep', 'steam']);
+  assert.deepEqual(Object.keys(FX).sort(), ['blinkIn', 'blinkOut', 'collect', 'exclaim', 'rackA', 'rackB', 'skillCast', 'skillCastDock', 'skyDay', 'skyDusk', 'skyNight', 'sleep', 'steam']);
   for (const [key, f] of Object.entries(FX)) {
     const file = new URL(`../assets/pixel/${f.src}.png`, import.meta.url);
     assert.ok(existsSync(file), `${key}: ${f.src}.png missing`);
