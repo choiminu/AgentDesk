@@ -10,6 +10,37 @@ const NAME_RE = /^[A-Za-z0-9_.-]{1,100}$/;
 const REF_RE = /^[A-Za-z0-9_./-]{1,100}$/;
 const SEG_RE = /^[A-Za-z0-9_.@+-]{1,100}$/;
 const bareName = s => NAME_RE.test(s) && !s.startsWith('.') && !s.startsWith('-'); // no '.', '..', hidden names or options
+// GitHub account names are letters, digits and single hyphens (no '_'): that is what keeps clone folder names apart
+const OWNER_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,98}[A-Za-z0-9])?$/;
+
+// a link's clone folder: ~/.roca/shop/<owner>__<repo>[@<ref>]. '__' cannot occur in an owner and '@' in neither name nor
+// ref, so two different links never share a folder (the old '<owner>-<repo>' made acme-tools/kit and acme/tools-kit one).
+export const cloneName = (owner, repo, ref) => `${owner}__${repo}${ref ? '@' + ref : ''}`;
+export function cloneDir(home, owner, repo, ref) { return join(home, '.roca', 'shop', cloneName(owner, repo, ref)); }
+// is p this repo's clone folder (any ref) or inside it
+export function inCloneOf(p, home, owner, repo) {
+  const base = cloneDir(home, owner, repo);
+  if (p === base || p.startsWith(base + sep)) return true;
+  if (!p.startsWith(base + '@')) return false;
+  const rest = p.slice(base.length + 1), cut = rest.indexOf(sep), ref = cut < 0 ? rest : rest.slice(0, cut);
+  return REF_RE.test(ref) && !ref.includes('/') && !ref.includes('..') && !ref.startsWith('-');
+}
+// a folder Claude Code has registered as a marketplace (known_marketplaces.json: source.path / installLocation) is not
+// replaced by a later preview of the same link: the plugins installed from it keep their files
+function registered(home, dir) {
+  let known;
+  try { known = JSON.parse(readFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), 'utf8')); } catch { return false; }
+  if (!known || typeof known !== 'object') return false;
+  for (const rec of Object.values(known)) {
+    if (!rec || typeof rec !== 'object') continue;
+    for (const v of [rec.installLocation, rec.source && rec.source.path]) {
+      if (typeof v !== 'string' || !v) continue;
+      const p = resolve(v);
+      if (p === dir || p.startsWith(dir + sep)) return true;
+    }
+  }
+  return false;
+}
 
 // → { owner, repo, ref?, path? } | null. A ref is the first segment after /tree/ (a branch name with a slash is not supported).
 export function parseRepoLink(text) {
@@ -28,7 +59,7 @@ export function parseRepoLink(text) {
   }
   const owner = parts[0];
   const repo = parts[1].replace(/\.git$/, '');
-  if (!bareName(owner) || !bareName(repo)) return null;
+  if (!OWNER_RE.test(owner) || !bareName(repo)) return null;
   const out = { owner, repo };
   if (parts.length > 2) {
     const ref = parts[3];
@@ -52,10 +83,11 @@ export async function fetchRepo({ home, link, run }) {
   const p = parseRepoLink(link);
   if (!p) return { ok: false, error: 'bad link' };
   const root = join(home, '.roca', 'shop');
-  const dir = join(root, `${p.owner}-${p.repo}`);
-  const tmp = join(root, `.tmp-${p.owner}-${p.repo}`);
+  const dir = cloneDir(home, p.owner, p.repo, p.ref);
+  const tmp = join(root, `.tmp-${cloneName(p.owner, p.repo, p.ref)}`);
   try {
     mkdirSync(root, { recursive: true, mode: 0o700 });
+    if (registered(home, dir)) { lstatSync(dir); return { ok: true, dir, kept: true }; }   // keep a registered marketplace's files
     rmSync(tmp, { recursive: true, force: true });
     const args = [...CLONE_OPTS, 'clone', '--depth', '1', '--no-tags', ...(p.ref ? ['--branch', p.ref] : []), '--', `https://github.com/${p.owner}/${p.repo}.git`, tmp];
     const r = await run('git', args, { env: { ...CLONE_ENV }, timeout: 60000 });

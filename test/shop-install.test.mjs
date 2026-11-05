@@ -191,7 +191,7 @@ test('plugin falls back to a local marketplace', async () => {
   });
   const r = await runInstall({ home, plan, run });
   assert.deepEqual(r, { ok: true, route: 'local' });
-  const dir = join(home, '.roca', 'shop', 'someone-market-repo');
+  const dir = join(home, '.roca', 'shop', 'someone__market-repo');
   assert.ok(existsSync(join(dir, '.claude-plugin', 'marketplace.json')));
   assert.deepEqual(calls.map(c => c[0] === 'git' ? 'git' : c.join(' ')), [
     'claude plugin marketplace add someone/market-repo',
@@ -238,7 +238,7 @@ test('plugin fallback runs only when the marketplace add step failed, not when o
 
 test('a local-path marketplace installs from inside ~/.roca/shop only, with no clone fallback', async () => {
   const home = home0();
-  const dir = join(home, '.roca', 'shop', 'acme-kit', 'sub');
+  const dir = join(home, '.roca', 'shop', 'acme__kit', 'sub');
   mkdirSync(dir, { recursive: true });
   const plan = planInstall({ kind: 'plugin', name: 'demo', marketplace: 'market', marketplaceSource: 'acme/kit', marketplacePath: dir });
   assert.deepEqual(plan.show, [`claude plugin marketplace add ${dir}`, 'claude plugin install demo@market']);
@@ -297,7 +297,7 @@ test('plugin ref must be exactly name@marketplace', async () => {
   assert.equal(calls.length, 0);
 });
 
-// a skill folder inside a link clone (~/.roca/shop/<owner>-<repo>/...)
+// a skill folder inside a link clone (~/.roca/shop/<owner>__<repo>/...)
 let srcN = 0;
 function skillSrc(home, name = 'demo-skill', folder = 'demo-folder', md) {
   const src = join(home, '.roca', 'shop', `own-repo${++srcN}`, 'skills', folder);
