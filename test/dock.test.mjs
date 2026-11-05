@@ -743,8 +743,8 @@ test('usageRows / popExtra("usage"): the limit card rows and its room', () => {
     [{ k: 's', pct: 42, resetsAt: 1700000000000 }, { k: 'w', pct: 100, resetsAt: 0 }]);
   assert.deepEqual(D.usageRows({ session: { usedPercent: 'x' }, weekly: null }), []);
   assert.deepEqual(D.usageRows(undefined), []);
-  assert.equal(D.popExtra('usage'), D.popExtra('tipSmall'));
-  assert.equal(D.popWidth('usage', 2000), D.popWidth('tipSmall', 2000));
+  assert.ok(D.popExtra('usage') > D.popExtra('tipSmall'), 'the limit card has room for what the marks mean');
+  assert.ok(D.popWidth('usage', 2000) >= D.popWidth('tipSmall', 2000));
   assert.ok(D.popExtra('bubblesDone') > 0);
 });
 
@@ -833,9 +833,11 @@ test('renderer: do not disturb stops bubbles, pills and desktop alerts while doc
   // L4: still on after a restart — said once when the bar opens
   assert.match(between(html, 'function dockEnter()', '\n}\n'), /if \(dockCfg\.dnd\) dockHint\(dockT\('도크: 방해 금지 켬'\), '', true\);/);
   assert.match(between(html, 'function dockAskSync()', '\n}\n'), /if \(dockCfg\.ask === 'off' \|\| dockCfg\.dnd\)/);
-  const btn = between(html, "$('dock-dnd').addEventListener('click'", '\n});');
-  assert.match(btn, /dockSave\(\)/); assert.match(btn, /dockAskSync\(\)/, 'off: the waiting bubbles come back at once');
-  assert.match(html, /<button class="dock-btn" id="dock-dnd" aria-pressed="false">🔕<\/button>/);
+  // the switch lives in Settings (the bar's 🔕 button is gone)
+  const sw = between(html, "else if (name === 'dock-dnd') {", '\n  }\n');
+  assert.match(sw, /dockSave\(\)/); assert.match(sw, /dockAskSync\(\)/, 'off: the waiting bubbles come back at once');
+  assert.match(html, /\$\{row\(t\('방해 금지'\), [^\n]*sw\('dock-dnd', dockCfg\.dnd\)\)\}/);
+  assert.ok(!html.includes('id="dock-dnd"'), 'no 🔕 on the bar');
 });
 
 // ── choice bubbles with many options: the height grows with them, the box never spills ──
@@ -1276,7 +1278,7 @@ test('dock limits as hearts: 10 hearts for the 5-hour limit (half steps), a ring
   const vmm = await import('node:vm');
   const src = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
   const cut = (a, b) => src.slice(src.indexOf(a), src.indexOf(b, src.indexOf(a)));
-  const code = cut('function dockHeartRow(', '// 🔕: lit while on');
+  const code = cut('function dockHeartRow(', '// the limit card (hover over');
   const sb = { dockCfg: { usage: 'hearts' }, dockLocal: x => ({ s1: { ctxPct: 34 }, s2: { ctxPct: null }, s3: { ctxPct: 100 } })[x.id] || null, Math, Number, Array };
   vmm.createContext(sb); vmm.runInContext(code + ';globalThis.r = { dockHeartRow, dockHeartsHtml, dockRingHtml, dockCtxHearts };', sb);
   const kinds = h => [...h.matchAll(/class="dk-([fhe])"/g)].map(m => m[1]).join("");
@@ -1296,4 +1298,12 @@ test('dock limits as hearts: 10 hearts for the 5-hour limit (half steps), a ring
   assert.match(src, /seg\('dock-usage', dockCfg\.usage, \[\['hearts', t\('하트'\)\], \['bars', t\('막대'\)\]\]\)/);
   assert.match(src, /name === 'dock-usage' && \(v === 'hearts' \|\| v === 'bars'\)\) \{ dockCfg\.usage = v; dockSave\(\); dockSig = ''; dockRender\(\);/);
   assert.match(src, /const sig = JSON\.stringify\(\[LANG, m\.size, dockIdleN, dockIdleOpen, dockCfg\.usage, m\.mine\.map\(dockCtxHearts\),/);
+});
+
+test('dock limit card: says what the hearts / ring (or the bars) mean, then used, left and the reset time', () => {
+  const f = between(html, 'function dockUsageHtml() {', '\n}\n');
+  assert.match(f, /hearts \? \{ s: '도크: ❤ 하트 = 5시간 한도의 남은 양 \(하트 하나 10%, 반 칸 5%\)', w: '도크: ◯ 링 = 주간 한도의 남은 양' \}/);
+  assert.match(f, /: \{ s: '도크: 위 막대 = 5시간 한도를 쓴 양', w: '도크: 아래 막대 = 주간 한도를 쓴 양' \}/);
+  assert.match(f, /\$\{esc\(dockT\('도크: 남음'\)\)\} \$\{100 - r\.pct\}%/);
+  assert.ok(D.popExtra('usage') >= 200, 'room for the explanation');
 });

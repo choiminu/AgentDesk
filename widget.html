@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-1t7dAl96aRb6SpvWEw8UC/+YTjTuY+gPnphViHA4GUE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+9qDNOOT2RUM1CbepjU+sKO0UeHOwyTzew1wAi22JbU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1865,8 +1865,6 @@
   #page-dock.dock-narrow .dock-timer .tr-t { display: none; }
   .dock-strip.flash { animation: dockFlash 1.2s ease-out 1; }
   @keyframes dockFlash { 30% { box-shadow: 0 0 0 2px var(--accent), 0 6px 18px rgba(0,0,0,0.18); } }
-  #dock-dnd { opacity: 0.6; }
-  #dock-dnd.on { opacity: 1; color: var(--yellow-text); background: var(--yellow-dim); }
   .dock-usage { display: flex; flex-direction: column; gap: 4px; width: 24px; margin: 0 4px; }
   .dock-usage:not(.hearts) > span { display: block; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }   /* the plain bars only */
   .dock-usage b { display: block; height: 100%; }
@@ -1925,6 +1923,9 @@
   .dock-tip .tp-now { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dock-tip .tp-msg { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; overflow-wrap: anywhere; }
   .dock-tip .tp-meta { color: var(--text3); font-family: var(--mono); }
+  .dock-tip .tp-ex { margin-top: 4px; color: var(--text2); white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }   /* the limit card: what a mark means */
+  .dock-tip .tp-ex.tp-dim { margin-top: 6px; color: var(--text3); }
+  #dock-utip > * { flex-shrink: 0; }   /* the limit card's lines keep their height (.tp-now's overflow:hidden would let flex squeeze it to 0) */
   /* the terminal window (remote terminal view markup) docked in the room above / below the bar */
   .peer-term-bg.docked { inset: auto; display: block; background: none; z-index: 170; }
   .peer-term-bg.docked .peer-term { width: 100%; height: 100%; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.35); }
@@ -2134,7 +2135,6 @@
         <button class="dock-btn" id="dock-q" aria-haspopup="true" aria-expanded="false">🗡</button>
         <div class="dock-usage" id="dock-usage" role="img" hidden></div>
         <button class="dock-btn dock-timer" id="dock-timer" hidden><svg viewBox="0 0 22 22" aria-hidden="true"><circle class="tr-bg" cx="11" cy="11" r="9" fill="none" stroke-width="3"/><circle class="tr-fg" id="dock-timer-fg" cx="11" cy="11" r="9" fill="none" stroke-width="3" stroke-dasharray="56.55" stroke-dashoffset="0"/></svg><span class="tr-t" id="dock-timer-t"></span></button>
-        <button class="dock-btn" id="dock-dnd" aria-pressed="false">🔕</button>
         <button class="dock-btn" id="dock-settings">⚙</button>
         <button class="dock-btn" id="dock-expand">▣</button>
       </div>
@@ -2230,7 +2230,7 @@ let LANG = 'en';
 try { LANG = localStorage.getItem('roca-lang') || 'en'; } catch {}
 const I18N = {
   '퀘스트': 'Quests', '선택하세요': 'Choose one', '미리 고른 대상을 찾을 수 없습니다. 직접 고르세요': 'The preselected target is gone. Please pick one yourself', 'Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다': 'View Jira tickets as quests and hand them to an agent', '맡기기': 'Assign', '새 워크트리에서 시작': 'Start in a new worktree',
-  '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', 'AI 제안': 'AI suggestion', '한도 표시': 'Limits as', '하트': 'Hearts', '막대': 'Bars', '도크의 5시간·주간 한도와 세션별 컨텍스트를 하트(5시간)·스태미나 링(주간)·타일 옆 하트 3개(컨텍스트)로 보여 줍니다. 막대를 고르면 예전의 가는 막대 두 개로 돌아갑니다.': 'Shows the 5-hour and weekly limits and each session\'s context as hearts (5-hour), a stamina ring (weekly) and 3 hearts beside each tile (context). Bars brings back the two thin bars.', '퀘스트 게시판': 'Quest board', '보드': 'Board', '담당자': 'Assignee', '나': 'Me', '붙어 있는 의뢰가 없습니다': 'No quests pinned here', '퀘스트 검색': 'Search quests', '칸반 보드로 돌아갑니다': 'Back to the Kanban board', '티켓 내용을 읽고 AI가 고른 제안입니다. 티켓에 적힌 지시에 영향을 받을 수 있으니 확인하고 맡기세요': 'An AI picked this after reading the ticket. Instructions written in the ticket can sway it: check before you assign', '자동 제안에서 열려 autopilot을 꺼 두었습니다': 'Opened from an auto suggestion: autopilot is off', '직접 고르세요': 'Please pick one yourself', 'claude CLI를 실행하지 못했습니다': 'Could not run the claude CLI', '응답이 늦어 중단했습니다': 'Stopped: the answer took too long', '다른 제안이 진행 중입니다': 'Another proposal is in progress', '제안이 목록에 없습니다': 'The proposal was not in the list', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
+  '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', 'AI 제안': 'AI suggestion', '방해 금지': 'Do not disturb', '도크에서 말풍선·알림 알약·데스크톱 알림을 띄우지 않습니다. 타일 색과 !는 그대로 보입니다. 끄면 기다리던 선택 말풍선이 바로 다시 뜹니다.': 'The dock shows no bubbles, pills or desktop alerts. Tile colours and ! stay. Turning it off brings the waiting choice bubbles straight back.', '도크: ❤ 하트 = 5시간 한도의 남은 양 (하트 하나 10%, 반 칸 5%)': '❤ Hearts = what is left of the 5-hour limit (a heart is 10%, half a heart 5%)', '도크: ◯ 링 = 주간 한도의 남은 양': '◯ Ring = what is left of the weekly limit', '도크: 위 막대 = 5시간 한도를 쓴 양': 'Top bar = how much of the 5-hour limit is used', '도크: 아래 막대 = 주간 한도를 쓴 양': 'Bottom bar = how much of the weekly limit is used', '도크: 사용': 'used', '도크: 남음': 'left', '도크: 다 떨어지면 초기화 시각까지 Claude를 쓸 수 없습니다. 캐릭터 옆 작은 하트 3개는 그 세션의 컨텍스트(대화 기억 공간) 남은 양입니다.': 'When they run out, Claude stops until the reset time. The 3 small hearts beside a character are what is left of that session\'s context window.', '도크: 다 차면 초기화 시각까지 Claude를 쓸 수 없습니다.': 'When a bar is full, Claude stops until the reset time.', '한도 표시': 'Limits as', '하트': 'Hearts', '막대': 'Bars', '도크의 5시간·주간 한도와 세션별 컨텍스트를 하트(5시간)·스태미나 링(주간)·타일 옆 하트 3개(컨텍스트)로 보여 줍니다. 막대를 고르면 예전의 가는 막대 두 개로 돌아갑니다.': 'Shows the 5-hour and weekly limits and each session\'s context as hearts (5-hour), a stamina ring (weekly) and 3 hearts beside each tile (context). Bars brings back the two thin bars.', '퀘스트 게시판': 'Quest board', '보드': 'Board', '담당자': 'Assignee', '나': 'Me', '붙어 있는 의뢰가 없습니다': 'No quests pinned here', '퀘스트 검색': 'Search quests', '칸반 보드로 돌아갑니다': 'Back to the Kanban board', '티켓 내용을 읽고 AI가 고른 제안입니다. 티켓에 적힌 지시에 영향을 받을 수 있으니 확인하고 맡기세요': 'An AI picked this after reading the ticket. Instructions written in the ticket can sway it: check before you assign', '자동 제안에서 열려 autopilot을 꺼 두었습니다': 'Opened from an auto suggestion: autopilot is off', '직접 고르세요': 'Please pick one yourself', 'claude CLI를 실행하지 못했습니다': 'Could not run the claude CLI', '응답이 늦어 중단했습니다': 'Stopped: the answer took too long', '다른 제안이 진행 중입니다': 'Another proposal is in progress', '제안이 목록에 없습니다': 'The proposal was not in the list', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
   '설정': 'Settings', '표시': 'Appearance', '언어': 'Language', 'UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.': 'UI language. Also applies to office text and team prompts.',
   '테마': 'Theme', '시스템 설정을 따르거나 라이트/다크로 고정합니다.': 'Follow the system or force light / dark.', '시스템': 'System', '라이트': 'Light', '다크': 'Dark',
   '감지와 알림': 'Detection & alerts', '정확 감지 (Claude Code 훅)': 'Exact detection (Claude Code hooks)',
@@ -3693,7 +3693,6 @@ function dockRightDraw() {
   } else u.innerHTML = bars.map(([, w]) => `<span><b class="${usageColor(pct(w))}" style="width:${pct(w)}%"></b></span>`).join('');
   u.title = `${dockT('도크: 한도')} · ${bars.map(([k, w]) => `${usageLabel(k)} ${pct(w)}%`).join(' · ')}`; u.setAttribute('aria-label', u.title);
   if (dockUsageOn) { if (u.hidden) dockUsageHide(); else dockUsageFill(); }
-  dockDndDraw();
 }
 // what is left as hearts: n hearts for 0..100, half hearts in between (e.g. 79 left of 100 in 10 hearts → 7½)
 function dockHeartRow(left, n) {
@@ -3711,13 +3710,7 @@ function dockCtxHearts(x) {
   const s = dockLocal(x), c = s && Number(s.ctxPct);
   return s && s.ctxPct != null && Number.isFinite(c) ? Math.round((100 - Math.max(0, Math.min(100, c))) / 100 * 6) / 2 : null;
 }
-// 🔕: lit while on, its title says so
-function dockDndDraw() {
-  const b = $('dock-dnd'), on = !!dockCfg.dnd, k = on ? '도크: 방해 금지 켬' : '도크: 방해 금지';
-  b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
-  if (b.title !== dockT(k)) { b.title = dockT(k); b.setAttribute('aria-label', b.title); }
-}
-// the plan-limit card over the limit bars (hover): "세션 n% · 초기화 HH:MM" / "주간 n% · 초기화 요일 HH:MM"
+// the limit card (hover over the hearts / ring / bars): what each mark means, then "사용 n% · 남음 m% · 초기화 HH:MM"
 let dockUsageOn = false;
 function dockUsageHtml() {
   const loc = LANG === 'ko' ? 'ko-KR' : 'en-US';
@@ -3725,8 +3718,13 @@ function dockUsageHtml() {
     const d = new Date(at), hm = d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit', hour12: false });
     return k === 'w' ? `${d.toLocaleDateString(loc, { weekday: 'short' })} ${hm}` : hm;
   };
-  const rows = AgentDeskDock.usageRows(lastRateLimits && lastRateLimits.claude);
-  return `<div class="tp-head"><b>${esc(dockT('도크: 한도'))}</b></div>` + rows.map(r => `<div class="tp-now">${esc(dockT(r.k === 's' ? '도크: 세션 한도' : '도크: 주간 한도'))} ${r.pct}%${r.resetsAt ? ` · ${esc(dockT('도크: 초기화'))} ${esc(when(r.k, r.resetsAt))}` : ''}</div>`).join('');
+  const rows = AgentDeskDock.usageRows(lastRateLimits && lastRateLimits.claude), hearts = dockCfg.usage !== 'bars';
+  // what each mark means (hearts / ring, or the two bars), then its numbers: used, left, when it fills up again
+  const MEANS = hearts ? { s: '도크: ❤ 하트 = 5시간 한도의 남은 양 (하트 하나 10%, 반 칸 5%)', w: '도크: ◯ 링 = 주간 한도의 남은 양' }
+    : { s: '도크: 위 막대 = 5시간 한도를 쓴 양', w: '도크: 아래 막대 = 주간 한도를 쓴 양' };
+  const nums = r => `<div class="tp-now">${esc(dockT('도크: 사용'))} ${r.pct}% · ${esc(dockT('도크: 남음'))} ${100 - r.pct}%${r.resetsAt ? ` · ${esc(dockT('도크: 초기화'))} ${esc(when(r.k, r.resetsAt))}` : ''}</div>`;
+  return `<div class="tp-head"><b>${esc(dockT('도크: 한도'))}</b></div>` + rows.map(r => `<div class="tp-ex">${esc(dockT(MEANS[r.k]))}</div>${nums(r)}`).join('')
+    + `<div class="tp-ex tp-dim">${esc(dockT(hearts ? '도크: 다 떨어지면 초기화 시각까지 Claude를 쓸 수 없습니다. 캐릭터 옆 작은 하트 3개는 그 세션의 컨텍스트(대화 기억 공간) 남은 양입니다.' : '도크: 다 차면 초기화 시각까지 Claude를 쓸 수 없습니다.'))}</div>`;
 }
 function dockUsageFill() { const el = $('dock-utip'), html = dockUsageHtml(); if (el.innerHTML !== html) el.innerHTML = html; }
 function dockUsageShow() {
@@ -3796,7 +3794,7 @@ function dockPopGeom(kind) {
   const tile = kind === 'usage' ? (!$('dock-usage').hidden && $('dock-usage')) : key && $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(key)}"]`);
   if (tile) { const r = tile.getBoundingClientRect(); anchor = r.left + r.width / 2; }
   else if (kind !== 'term') return null;   // the terminal window falls back to the bar's centre (its tile folded into "+N")
-  const P = AgentDeskDock.POP, height = kind === 'term' ? P.termH : kind === 'add' || kind === 'drop' ? 2 * P.tipSmallH : P.tipSmallH;
+  const P = AgentDeskDock.POP, height = kind === 'term' ? P.termH : kind === 'add' || kind === 'drop' ? 2 * P.tipSmallH : kind === 'usage' ? P.usageH : P.tipSmallH;
   const room = w && w.extra > 0 ? w.extra : AgentDeskDock.popExtra(kind);
   return { want, ...AgentDeskDock.popRect({ winWidth, width: want, anchor, dir: dockDir, stripHeight: DOCK_H, height, room }) };
 }
@@ -5006,13 +5004,6 @@ $('dock-settings').addEventListener('click', () => dockLeave('settings'));
 $('dock-sb').addEventListener('click', e => { e.stopPropagation(); sbDockToggle(); });
 $('dock-q').addEventListener('click', e => { e.stopPropagation(); questDockToggle(); });
 $('dock-timer').addEventListener('click', e => { e.stopPropagation(); dockLeave('pomodoro'); });
-// 🔕 do not disturb: bubbles, pills and desktop alerts stop; off → the waiting choice bubbles come straight back
-$('dock-dnd').addEventListener('click', e => {
-  e.stopPropagation();
-  dockCfg.dnd = !dockCfg.dnd; dockSave(); dockDndDraw();
-  if (dockCfg.dnd) { clearTimeout(dockHintT); $('dock-msg').hidden = true; }
-  dockDoneSync(); dockAskSync();
-});
 $('dock-usage').addEventListener('mouseenter', dockUsageShow);
 $('dock-usage').addEventListener('mouseleave', dockUsageHide);
 $('dock-tiles').addEventListener('click', e => {
@@ -10743,6 +10734,7 @@ function settingsRender() {
     ${row(t('Orca 사용 중엔 말풍선 접기'), t('Orca가 앞에 있으면 질문이 이미 터미널에 보이므로 선택 말풍선을 띄우지 않고 타일의 !만 표시합니다. 타일에 마우스를 올리거나 다른 앱으로 넘어가면 말풍선이 펼쳐집니다. macOS 전용입니다.'), sw('dock-yield-orca', dockCfg.yieldOrca))}
     ${row(t('완료 말풍선'), t('내 세션이 작업을 마치면(작업 중 → 입력 대기·완료) 그 타일 위에 마지막 응답의 첫 줄을 8초 동안 띄웁니다. 누르면 터미널로 갑니다.'), sw('dock-done', dockCfg.done))}
     ${row(t('한도 표시'), t('도크의 5시간·주간 한도와 세션별 컨텍스트를 하트(5시간)·스태미나 링(주간)·타일 옆 하트 3개(컨텍스트)로 보여 줍니다. 막대를 고르면 예전의 가는 막대 두 개로 돌아갑니다.'), seg('dock-usage', dockCfg.usage, [['hearts', t('하트')], ['bars', t('막대')]]))}
+    ${row(t('방해 금지'), t('도크에서 말풍선·알림 알약·데스크톱 알림을 띄우지 않습니다. 타일 색과 !는 그대로 보입니다. 끄면 기다리던 선택 말풍선이 바로 다시 뜹니다.'), sw('dock-dnd', dockCfg.dnd))}
     ${row(t('도크 애니메이션'), t('작업 중인 캐릭터의 움직임, 활동 바, 대기·승인 표시의 깜박임을 켭니다. 꺼도 상태 색은 그대로입니다.'), sw('dock-anim', dockCfg.anim))}
     ${row(t('호버 시 터미널 창 열기'), t('도크 타일에 마우스를 올리면 그 세션의 터미널 창(화면·입력 줄·[허용][거부])을 바로 띄웁니다. 끄면 이름·상태·지금 하는 일만 작은 카드로 보여 줍니다.'), sw('dock-hover-term', dockCfg.hoverTerm))}
     ${row(t('도크 흐리게'), t('마우스가 띠를 떠나고 1.5초 뒤 이 불투명도로 흐려집니다. 띠에 마우스를 올리면 다시 선명해집니다.'), seg('dock-opacity', String(dockCfg.opacity), [['1', '100%'], ['0.85', '85%'], ['0.7', '70%'], ['0.5', '50%']]))}
@@ -10833,6 +10825,12 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'dock-done') { dockCfg.done = !dockCfg.done; dockSave(); if (dockOn) dockDoneSync(); settingsRender(); }
   else if (name === 'dock-anim') { dockCfg.anim = !dockCfg.anim; dockSave(); settingsRender(); }
   else if (name === 'dock-hover-term') { dockCfg.hoverTerm = !dockCfg.hoverTerm; dockSave(); settingsRender(); }
+  else if (name === 'dock-dnd') {   // do not disturb: bubbles, pills and desktop alerts stop; off → the waiting choice bubbles come straight back
+    dockCfg.dnd = !dockCfg.dnd; dockSave();
+    if (dockCfg.dnd) { clearTimeout(dockHintT); $('dock-msg').hidden = true; }
+    if (dockOn) { dockDoneSync(); dockAskSync(); }
+    settingsRender();
+  }
   else if (name === 'dock-usage' && (v === 'hearts' || v === 'bars')) { dockCfg.usage = v; dockSave(); dockSig = ''; dockRender(); settingsRender(); }
   else if (name === 'dock-opacity' && v) { const o = Number(v); if (o >= 0.3 && o <= 1) { dockCfg.opacity = o; dockSave(); } settingsRender(); }
   else if (name === 'hooks') { $('hooks-toggle').click(); setTimeout(settingsRender, 600); }
