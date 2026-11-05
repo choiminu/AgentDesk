@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-mqGxLNQmjQWTim1CsLnasncsbkA2o942oVoPXLvgSq8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-1t7dAl96aRb6SpvWEw8UC/+YTjTuY+gPnphViHA4GUE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1868,9 +1868,24 @@
   #dock-dnd { opacity: 0.6; }
   #dock-dnd.on { opacity: 1; color: var(--yellow-text); background: var(--yellow-dim); }
   .dock-usage { display: flex; flex-direction: column; gap: 4px; width: 24px; margin: 0 4px; }
-  .dock-usage span { display: block; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+  .dock-usage:not(.hearts) > span { display: block; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }   /* the plain bars only */
   .dock-usage b { display: block; height: 100%; }
   .dock-usage b.green { background: var(--green); } .dock-usage b.yellow { background: var(--yellow); } .dock-usage b.red { background: var(--red); }
+  /* limits as hearts (dockCfg.usage 'hearts', the default): 10 hearts = what is left of the 5-hour limit (½ a heart = 5%),
+     a stamina ring = what is left of the weekly one; the tile's own column of 3 = what is left of its context window */
+  .dock-usage.hearts { width: auto; flex-direction: row; align-items: center; gap: 6px; margin: 0 6px; }
+  .dk-hearts { display: grid; grid-template-columns: repeat(5, 9px); gap: 2px 2px; }
+  .dk-hearts i, .dock-hp i { display: block; width: 9px; height: 8px; background-repeat: no-repeat; background-position: center; background-size: contain; image-rendering: pixelated; }   /* longhands: a `background` shorthand here would reset .dk-f's image */
+  .dk-f { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 6' shape-rendering='crispEdges'%3E%3Cpath fill='%23d9535f' d='M1 0h2v1h1V0h2v1h1v2H6v1H5v1H4v1H3V5H2V4H1V3H0V1h1z'/%3E%3Cpath fill='%23f3b1b7' d='M1 1h1v1H1z'/%3E%3C/svg%3E"); } .dk-h { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 6' shape-rendering='crispEdges'%3E%3Cpath fill='%238b8698' fill-opacity='.45' d='M1 0h2v1h1V0h2v1h1v2H6v1H5v1H4v1H3V5H2V4H1V3H0V1h1z'/%3E%3Cpath fill='%23d9535f' d='M1 0h2v1h.5v5H3V5H2V4H1V3H0V1h1z'/%3E%3C/svg%3E"); } .dk-e { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 6' shape-rendering='crispEdges'%3E%3Cpath fill='%238b8698' fill-opacity='.45' d='M1 0h2v1h1V0h2v1h1v2H6v1H5v1H4v1H3V5H2V4H1V3H0V1h1z'/%3E%3C/svg%3E"); }
+  .dk-hearts.low { animation: dkLow 1.6s ease-in-out infinite; }   /* the 5-hour limit is in its red band; off with the dock animation setting / reduced motion (#page-dock.dock-still) */
+  @keyframes dkLow { 50% { opacity: 0.45; } }
+  .dk-ring { position: relative; width: 26px; height: 26px; flex-shrink: 0; }
+  .dk-ring svg { width: 26px; height: 26px; transform: rotate(-90deg); }
+  .dk-ring .bg { stroke: var(--border); } .dk-ring .fg.green { stroke: var(--green); } .dk-ring .fg.yellow { stroke: var(--yellow); } .dk-ring .fg.red { stroke: var(--red); }
+  .dk-ring span { position: absolute; inset: 0; display: grid; place-items: center; font: 700 8px/1 var(--mono); color: var(--text2); }
+  .dock-hp { position: absolute; left: 4px; top: 23px; display: flex; flex-direction: column; gap: 1px; pointer-events: none; }
+  .dock-hp i { width: 6px; height: 5px; }
+  .dock-tiles.s40 .dock-hp { display: none; }
   /* the narrowest bar (≤ 420 px of its own width, whatever the window's): tighter spacing, no limit bars, smaller
      icons, so a tile and the input line both fit */
   #page-dock.dock-narrow .dock-strip { gap: 4px; padding: 0 6px; }
@@ -2215,7 +2230,7 @@ let LANG = 'en';
 try { LANG = localStorage.getItem('roca-lang') || 'en'; } catch {}
 const I18N = {
   '퀘스트': 'Quests', '선택하세요': 'Choose one', '미리 고른 대상을 찾을 수 없습니다. 직접 고르세요': 'The preselected target is gone. Please pick one yourself', 'Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다': 'View Jira tickets as quests and hand them to an agent', '맡기기': 'Assign', '새 워크트리에서 시작': 'Start in a new worktree',
-  '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', 'AI 제안': 'AI suggestion', '퀘스트 게시판': 'Quest board', '보드': 'Board', '담당자': 'Assignee', '나': 'Me', '붙어 있는 의뢰가 없습니다': 'No quests pinned here', '퀘스트 검색': 'Search quests', '칸반 보드로 돌아갑니다': 'Back to the Kanban board', '티켓 내용을 읽고 AI가 고른 제안입니다. 티켓에 적힌 지시에 영향을 받을 수 있으니 확인하고 맡기세요': 'An AI picked this after reading the ticket. Instructions written in the ticket can sway it: check before you assign', '자동 제안에서 열려 autopilot을 꺼 두었습니다': 'Opened from an auto suggestion: autopilot is off', '직접 고르세요': 'Please pick one yourself', 'claude CLI를 실행하지 못했습니다': 'Could not run the claude CLI', '응답이 늦어 중단했습니다': 'Stopped: the answer took too long', '다른 제안이 진행 중입니다': 'Another proposal is in progress', '제안이 목록에 없습니다': 'The proposal was not in the list', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
+  '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', 'AI 제안': 'AI suggestion', '한도 표시': 'Limits as', '하트': 'Hearts', '막대': 'Bars', '도크의 5시간·주간 한도와 세션별 컨텍스트를 하트(5시간)·스태미나 링(주간)·타일 옆 하트 3개(컨텍스트)로 보여 줍니다. 막대를 고르면 예전의 가는 막대 두 개로 돌아갑니다.': 'Shows the 5-hour and weekly limits and each session\'s context as hearts (5-hour), a stamina ring (weekly) and 3 hearts beside each tile (context). Bars brings back the two thin bars.', '퀘스트 게시판': 'Quest board', '보드': 'Board', '담당자': 'Assignee', '나': 'Me', '붙어 있는 의뢰가 없습니다': 'No quests pinned here', '퀘스트 검색': 'Search quests', '칸반 보드로 돌아갑니다': 'Back to the Kanban board', '티켓 내용을 읽고 AI가 고른 제안입니다. 티켓에 적힌 지시에 영향을 받을 수 있으니 확인하고 맡기세요': 'An AI picked this after reading the ticket. Instructions written in the ticket can sway it: check before you assign', '자동 제안에서 열려 autopilot을 꺼 두었습니다': 'Opened from an auto suggestion: autopilot is off', '직접 고르세요': 'Please pick one yourself', 'claude CLI를 실행하지 못했습니다': 'Could not run the claude CLI', '응답이 늦어 중단했습니다': 'Stopped: the answer took too long', '다른 제안이 진행 중입니다': 'Another proposal is in progress', '제안이 목록에 없습니다': 'The proposal was not in the list', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
   '설정': 'Settings', '표시': 'Appearance', '언어': 'Language', 'UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.': 'UI language. Also applies to office text and team prompts.',
   '테마': 'Theme', '시스템 설정을 따르거나 라이트/다크로 고정합니다.': 'Follow the system or force light / dark.', '시스템': 'System', '라이트': 'Light', '다크': 'Dark',
   '감지와 알림': 'Detection & alerts', '정확 감지 (Claude Code 훅)': 'Exact detection (Claude Code hooks)',
@@ -3388,10 +3403,11 @@ const dockFullPop = k => k === 'skillbook' || k === 'quest';
 const dockSheetOpen = () => sbDockOpen || questDockOpen;
 let DOCK_H = 72;   // the bar's height: AgentDeskDock.stripHeight(size) (dockSizeApply)
 // localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, size, autoHide, yieldOrca, idleMin, hidden }
-let dockCfg = { start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, yieldOrca: true, idleMin: 60, hidden: {}, order: [], addRepo: '' };   // order: my session ids in the user's drag order
+let dockCfg = { usage: 'hearts', start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, yieldOrca: true, idleMin: 60, hidden: {}, order: [], addRepo: '' };   // order: my session ids in the user's drag order
 try {
   const c = JSON.parse(localStorage.getItem('roca-dock') || '{}') || {};
   dockCfg.start = c.start === true;
+  dockCfg.usage = c.usage === 'bars' ? 'bars' : 'hearts';   // the limits as hearts and a stamina ring, or the plain bars
   dockCfg.hoverTerm = c.hoverTerm !== false;   // hovering a tile opens its terminal window (off: the compact card)
   dockCfg.anim = c.anim !== false;             // working characters move, waiting rings breathe
   dockCfg.ask = ['on', 'options', 'off'].includes(c.ask) ? c.ask : 'on';   // choice bubbles: on / options only / off
@@ -3550,7 +3566,7 @@ function dockDraw() {
   }
   for (const { key, n } of AgentDeskDock.numberedTiles(m.mine)) { const x = m.mine.find(y => y.key === key); if (x) x.num = n; }
   // a new selection alone only moves the highlight: the clicked tile stays the same node (its double-click still lands)
-  const sig = JSON.stringify([LANG, m.size, dockIdleN, dockIdleOpen, [...m.mine, ...m.peers].map(({ age, ageWarn, ...x }) => ({ ...x, selected: false }))]);   // minutes: dockTileDeco
+  const sig = JSON.stringify([LANG, m.size, dockIdleN, dockIdleOpen, dockCfg.usage, m.mine.map(dockCtxHearts), [...m.mine, ...m.peers].map(({ age, ageWarn, ...x }) => ({ ...x, selected: false }))]);   // minutes: dockTileDeco
   if (sig !== dockSig && !(dockDrag && dockDrag.on)) { dockSig = sig; dockTilesDraw(m); }   // dragging: redrawn when it ends
   else for (const b of $('dock-tiles').querySelectorAll('.dock-tile:not(.more):not(.add):not(.idle)')) { const on = b.dataset.key === dockSel; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   dockTileDeco();
@@ -3588,7 +3604,8 @@ function dockTileHtml(x) {
   const skin = officeSkin(x.peer ? `${x.peer}/${x.id}` : x.id);
   const subs = x.subs ? `<span class="dock-subs" aria-hidden="true">${'<i></i>'.repeat(Math.min(4, Number(x.subs) || 0))}</span>` : '';
   const num = Number(x.num) || 0, age = `<span class="dock-age${x.ageWarn ? ' warn' : ''}" aria-hidden="true">${esc(x.age || '')}</span>`;
-  return `<button class="dock-tile st-${st}${x.peer ? ' peer' : ''}${x.selected ? ' sel' : ''}${num ? ' numd' : ''}" data-key="${esc(x.key)}" aria-label="${esc(lab)}" aria-pressed="${x.selected ? 'true' : 'false'}" tabindex="-1"><span class="dock-spr k${Number(skin) || 0}"></span><span class="dock-dot"></span>${num ? `<span class="dock-num" aria-hidden="true">${num}</span>` : ''}<span class="dock-name" aria-hidden="true">${esc(x.name)}</span><span class="dock-ask" aria-hidden="true">!</span><span class="dock-tool" aria-hidden="true"></span><span class="dock-act" aria-hidden="true">${'<i></i>'.repeat(6)}</span>${x.delegated ? '<span class="dock-key" aria-hidden="true">🔑</span>' : ''}${badge}${age}${subs}</button>`;
+  const hp = dockCtxHearts(x), hpHtml = hp == null ? '' : `<span class="dock-hp" aria-hidden="true">${dockHeartRow(hp / 3 * 100, 3)}</span>`;
+  return `<button class="dock-tile st-${st}${x.peer ? ' peer' : ''}${x.selected ? ' sel' : ''}${num ? ' numd' : ''}" data-key="${esc(x.key)}" aria-label="${esc(lab)}" aria-pressed="${x.selected ? 'true' : 'false'}" tabindex="-1"><span class="dock-spr k${Number(skin) || 0}"></span><span class="dock-dot"></span>${num ? `<span class="dock-num" aria-hidden="true">${num}</span>` : ''}<span class="dock-name" aria-hidden="true">${esc(x.name)}</span><span class="dock-ask" aria-hidden="true">!</span><span class="dock-tool" aria-hidden="true"></span><span class="dock-act" aria-hidden="true">${'<i></i>'.repeat(6)}</span>${x.delegated ? '<span class="dock-key" aria-hidden="true">🔑</span>' : ''}${badge}${age}${subs}${hpHtml}</button>`;
 }
 function dockTilesDraw(m) {
   const el = $('dock-tiles'), a = document.activeElement, fKey = a && el.contains(a) ? a.dataset.key : '';
@@ -3668,10 +3685,31 @@ function dockRightDraw() {
   const bars = c ? [['s', c.session], ['w', c.weekly]].filter(([, w]) => w && Number.isFinite(Number(w.usedPercent))) : [];
   u.hidden = !bars.length;
   const pct = w => Math.max(0, Math.min(100, Math.round(Number(w.usedPercent))));
-  u.innerHTML = bars.map(([, w]) => `<span><b class="${usageColor(pct(w))}" style="width:${pct(w)}%"></b></span>`).join('');
+  const hearts = dockCfg.usage !== 'bars' && bars.length > 0;
+  u.classList.toggle('hearts', hearts);
+  if (hearts) {
+    const s = bars.find(([k]) => k === 's'), w = bars.find(([k]) => k === 'w');
+    u.innerHTML = (s ? dockHeartsHtml(100 - pct(s[1]), usageColor(pct(s[1]))) : '') + (w ? dockRingHtml(100 - pct(w[1]), usageColor(pct(w[1]))) : '');
+  } else u.innerHTML = bars.map(([, w]) => `<span><b class="${usageColor(pct(w))}" style="width:${pct(w)}%"></b></span>`).join('');
   u.title = `${dockT('도크: 한도')} · ${bars.map(([k, w]) => `${usageLabel(k)} ${pct(w)}%`).join(' · ')}`; u.setAttribute('aria-label', u.title);
   if (dockUsageOn) { if (u.hidden) dockUsageHide(); else dockUsageFill(); }
   dockDndDraw();
+}
+// what is left as hearts: n hearts for 0..100, half hearts in between (e.g. 79 left of 100 in 10 hearts → 7½)
+function dockHeartRow(left, n) {
+  const v = Math.max(0, Math.min(100, Number(left) || 0)) / 100 * n;
+  return Array.from({ length: n }, (_, i) => `<i class="${v - i >= 1 ? 'dk-f' : v - i >= 0.5 ? 'dk-h' : 'dk-e'}"></i>`).join('');
+}
+const dockHeartsHtml = (left, color) => `<span class="dk-hearts${color === 'red' ? ' low' : ''}">${dockHeartRow(left, 10)}</span>`;
+function dockRingHtml(left, color) {
+  const r = 10, c = 2 * Math.PI * r, l = Math.max(0, Math.min(100, Number(left) || 0));
+  return `<span class="dk-ring"><svg viewBox="0 0 26 26" aria-hidden="true"><circle class="bg" cx="13" cy="13" r="${r}" fill="none" stroke-width="4"/><circle class="fg ${color}" cx="13" cy="13" r="${r}" fill="none" stroke-width="4" stroke-dasharray="${(c * l / 100).toFixed(2)} ${c.toFixed(2)}"/></svg><span>${l}</span></span>`;
+}
+// a tile's context window as 3 hearts (half steps), my own sessions only; null when unknown or the plain bars are chosen
+function dockCtxHearts(x) {
+  if (dockCfg.usage === 'bars' || !x || x.bundle || x.group || x.peer) return null;
+  const s = dockLocal(x), c = s && Number(s.ctxPct);
+  return s && s.ctxPct != null && Number.isFinite(c) ? Math.round((100 - Math.max(0, Math.min(100, c))) / 100 * 6) / 2 : null;
 }
 // 🔕: lit while on, its title says so
 function dockDndDraw() {
@@ -10704,6 +10742,7 @@ function settingsRender() {
     ${row(t('쉬는 세션 모으기'), t('입력 대기·완료 상태로 이 시간 동안 활동이 없는 세션은 띠 오른쪽의 💤 타일로 모읍니다. 질문·승인 대기, 오류, 고정한 세션은 항상 띠에 남습니다. 💤를 누르면 펼쳐지고, 타일 메뉴(길게 누르기)의 "도크에서 숨기기"로 직접 보낼 수도 있습니다.'), seg('dock-idle', String(dockCfg.idleMin), [['30', t('30분')], ['60', t('1시간')], ['240', t('4시간')], ['0', t('끔')]]))}
     ${row(t('Orca 사용 중엔 말풍선 접기'), t('Orca가 앞에 있으면 질문이 이미 터미널에 보이므로 선택 말풍선을 띄우지 않고 타일의 !만 표시합니다. 타일에 마우스를 올리거나 다른 앱으로 넘어가면 말풍선이 펼쳐집니다. macOS 전용입니다.'), sw('dock-yield-orca', dockCfg.yieldOrca))}
     ${row(t('완료 말풍선'), t('내 세션이 작업을 마치면(작업 중 → 입력 대기·완료) 그 타일 위에 마지막 응답의 첫 줄을 8초 동안 띄웁니다. 누르면 터미널로 갑니다.'), sw('dock-done', dockCfg.done))}
+    ${row(t('한도 표시'), t('도크의 5시간·주간 한도와 세션별 컨텍스트를 하트(5시간)·스태미나 링(주간)·타일 옆 하트 3개(컨텍스트)로 보여 줍니다. 막대를 고르면 예전의 가는 막대 두 개로 돌아갑니다.'), seg('dock-usage', dockCfg.usage, [['hearts', t('하트')], ['bars', t('막대')]]))}
     ${row(t('도크 애니메이션'), t('작업 중인 캐릭터의 움직임, 활동 바, 대기·승인 표시의 깜박임을 켭니다. 꺼도 상태 색은 그대로입니다.'), sw('dock-anim', dockCfg.anim))}
     ${row(t('호버 시 터미널 창 열기'), t('도크 타일에 마우스를 올리면 그 세션의 터미널 창(화면·입력 줄·[허용][거부])을 바로 띄웁니다. 끄면 이름·상태·지금 하는 일만 작은 카드로 보여 줍니다.'), sw('dock-hover-term', dockCfg.hoverTerm))}
     ${row(t('도크 흐리게'), t('마우스가 띠를 떠나고 1.5초 뒤 이 불투명도로 흐려집니다. 띠에 마우스를 올리면 다시 선명해집니다.'), seg('dock-opacity', String(dockCfg.opacity), [['1', '100%'], ['0.85', '85%'], ['0.7', '70%'], ['0.5', '50%']]))}
@@ -10794,6 +10833,7 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'dock-done') { dockCfg.done = !dockCfg.done; dockSave(); if (dockOn) dockDoneSync(); settingsRender(); }
   else if (name === 'dock-anim') { dockCfg.anim = !dockCfg.anim; dockSave(); settingsRender(); }
   else if (name === 'dock-hover-term') { dockCfg.hoverTerm = !dockCfg.hoverTerm; dockSave(); settingsRender(); }
+  else if (name === 'dock-usage' && (v === 'hearts' || v === 'bars')) { dockCfg.usage = v; dockSave(); dockSig = ''; dockRender(); settingsRender(); }
   else if (name === 'dock-opacity' && v) { const o = Number(v); if (o >= 0.3 && o <= 1) { dockCfg.opacity = o; dockSave(); } settingsRender(); }
   else if (name === 'hooks') { $('hooks-toggle').click(); setTimeout(settingsRender, 600); }
   else if (name === 'statusline') {
