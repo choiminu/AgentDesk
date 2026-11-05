@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-h5e7xTPlJGNAC5aUIg0tSTIT5wKA/P1vqiFU8u2wu5A='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+wAqGisSL0kaWb7YdYWknIf9hLWC1ZTCo5kIyWy5BDQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1031,65 +1031,50 @@
   .qb-card button:disabled { cursor: default; opacity: 0.7; }
   .qb-card button[data-q="auto"], .qb-card button[data-q="accept"] { border-color: var(--accent); color: var(--text); }
   .qb-pick > button { align-self: flex-start; }
-  /* ── the quest board as a wooden notice board (questRender adds .qb-wood): planks with grain and seams, a carved
-     header sign, column signs nailed on, quest notes as pinned parchment that sits a little crooked. One look in both
-     themes (wood and paper are their own colours). */
-  .qb-wood { --wood-hi: #a06a35; --wood: #855528; --wood-lo: #6b421d; --wood-edge: #4a2c12; --seam: rgba(40, 20, 6, 0.45);
-    --paper: #f4e7c5; --paper-lo: #e8d5a6; --paper-edge: #c9ad72; --ink: #3a2814; --ink2: #6a5032; --seal: #9b2a1f;
-    flex-direction: column !important; gap: 10px !important; padding: 10px 12px 12px !important;
-    background:
-      repeating-linear-gradient(180deg, transparent 0 44px, var(--seam) 44px 46px, rgba(255, 220, 160, 0.08) 46px 47px),
-      repeating-linear-gradient(90deg, rgba(255, 230, 190, 0.035) 0 2px, transparent 2px 9px, rgba(0, 0, 0, 0.05) 9px 11px, transparent 11px 23px),
-      linear-gradient(180deg, var(--wood-hi), var(--wood) 45%, var(--wood-lo));
-    border: 7px solid var(--wood-edge); border-radius: 10px;
-    box-shadow: inset 0 0 0 2px rgba(255, 210, 150, 0.18), inset 0 0 28px rgba(20, 8, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3); }
-  .qb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-  .qb-sign { position: relative; padding: 4px 16px; border-radius: 4px; background: linear-gradient(180deg, #c18b4d, #9a6430); color: #fff4dc;
-    font-weight: 800; letter-spacing: 0.06em; text-shadow: 0 1px 0 rgba(60, 25, 0, 0.7); box-shadow: 0 2px 0 var(--wood-edge), inset 0 1px 0 rgba(255, 240, 210, 0.4); }
-  .qb-sign::before, .qb-sign::after, .qb-wood .qb-colh::before, .qb-wood .qb-colh::after { content: ''; position: absolute; top: 50%; width: 4px; height: 4px;
-    margin-top: -2px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #e6d2b0, #6d6252 70%); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4); }
-  .qb-sign::before, .qb-wood .qb-colh::before { left: 5px; }
-  .qb-sign::after, .qb-wood .qb-colh::after { right: 5px; }
-  .qb-field { display: inline-flex; align-items: center; gap: 6px; color: #fbe9c8; font-size: var(--fs-xs); font-weight: 700; text-shadow: 0 1px 0 rgba(40, 15, 0, 0.6); }
-  .qb-field select { appearance: none; font: inherit; font-weight: 600; text-shadow: none; color: var(--ink); background: var(--paper);
-    border: 1px solid var(--paper-edge); border-radius: 3px; padding: 3px 22px 3px 8px; max-width: 220px; cursor: pointer;
-    background-image: linear-gradient(45deg, transparent 50%, var(--ink2) 50%), linear-gradient(135deg, var(--ink2) 50%, transparent 50%);
-    background-position: right 10px center, right 6px center; background-size: 4px 4px; background-repeat: no-repeat; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
-  .qb-field select:focus-visible { outline: 2px solid #ffd27a; outline-offset: 1px; }
-  .qb-cols { flex: 1; min-height: 0; display: flex; gap: 12px; overflow-x: auto; align-items: stretch; }
-  .qb-none { flex: 1; display: grid; place-items: center; color: #f6e2bd; font-weight: 700; text-shadow: 0 1px 0 rgba(40, 15, 0, 0.6); min-height: 80px; }
-  .qb-wood .qb-col { background: rgba(30, 12, 0, 0.12); border: none; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(255, 210, 150, 0.07); }
-  .qb-wood .qb-colh { position: relative; align-self: center; margin: 6px 0 4px; padding: 3px 16px; border-radius: 3px; color: #fff1d6;
-    background: linear-gradient(180deg, #b47f45, #8c5a2a); box-shadow: 0 2px 0 var(--wood-edge); text-shadow: 0 1px 0 rgba(60, 25, 0, 0.7); font-weight: 800; }
-  .qb-cnt { min-width: 18px; padding: 0 5px; border-radius: 8px; background: rgba(40, 15, 0, 0.35); color: #ffe9c2; font-size: var(--fs-xs); text-align: center; }
-  .qb-wood .qb-colb { padding: 10px 8px 10px; gap: 14px; }
-  .qb-wood .qb-card { position: relative; padding: 12px 10px 9px; color: var(--ink); border: 1px solid var(--paper-edge); border-radius: 2px;
-    background: radial-gradient(ellipse at 20% 0%, rgba(255, 255, 255, 0.45), transparent 60%), linear-gradient(180deg, var(--paper), var(--paper-lo));
-    box-shadow: 0 4px 7px rgba(20, 8, 0, 0.45), inset 0 0 14px rgba(150, 110, 40, 0.18); transform: rotate(-0.8deg); transition: transform 140ms ease, box-shadow 140ms ease; }
-  .qb-wood .qb-card:nth-child(3n+2) { transform: rotate(0.9deg); }
-  .qb-wood .qb-card:nth-child(3n) { transform: rotate(-0.3deg); }
-  .qb-wood .qb-card:hover, .qb-wood .qb-card:focus-within { transform: rotate(0deg) translateY(-2px); box-shadow: 0 8px 12px rgba(20, 8, 0, 0.5), inset 0 0 14px rgba(150, 110, 40, 0.18); z-index: 1; }
-  .qb-wood .qb-card::before { content: ''; position: absolute; top: -6px; left: 50%; width: 11px; height: 11px; margin-left: -5px; border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #ff9b8a, #c8372a 55%, #74170f); box-shadow: 0 2px 2px rgba(0, 0, 0, 0.45); }
-  .qb-wood .qb-col[data-group="done"] .qb-card { filter: saturate(0.6); opacity: 0.85; }
-  .qb-wood .qb-col[data-group="done"] .qb-card::after { content: '✓'; position: absolute; right: 8px; top: 8px; width: 22px; height: 22px; display: grid; place-items: center;
-    border: 2px solid var(--seal); border-radius: 50%; color: var(--seal); font-weight: 900; transform: rotate(-12deg); opacity: 0.8; }
-  .qb-wood .qb-top, .qb-wood .qb-who, .qb-wood .qb-due { color: var(--ink2); }
-  .qb-wood .jb-key { color: var(--ink2); }
-  .qb-wood .qb-title { color: var(--ink); font-weight: 600; }
-  .qb-wood .qb-stars { color: #b87800; text-shadow: 0 1px 0 rgba(255, 240, 200, 0.8); }
-  .qb-wood .qb-due.over, .qb-wood .qb-err { color: var(--seal); }
-  .qb-wood .qb-why { color: var(--ink2); }
-  .qb-wood .qb-card button { background: rgba(255, 250, 235, 0.6); border: 1.5px solid var(--ink2); color: var(--ink); font-weight: 700; border-radius: 3px; }
-  .qb-wood .qb-card button:hover:not(:disabled) { background: rgba(255, 250, 235, 0.95); color: var(--ink); }
-  .qb-wood .qb-card button[data-q="auto"], .qb-wood .qb-card button[data-q="accept"] { border-color: var(--seal); color: var(--seal); }
-  .qb-wood .qb-row { border-color: var(--paper-edge); background: rgba(255, 252, 240, 0.5); color: var(--ink); }
-  .qb-wood .qb-row .qb-sk span { background: rgba(106, 80, 50, 0.15); color: var(--ink2); }
-  .qb-wood .qb-prop { border-color: var(--seal); color: var(--ink); background: rgba(255, 252, 240, 0.4); }
-  .qb-wood .qb-ai { background: rgba(155, 42, 31, 0.12); color: var(--seal); }
-  .qb-wood .qb-spin { border-color: var(--paper-edge); border-top-color: var(--seal); }
-  .qb-wood .empty-text { color: #f6e2bd; }
-  @media (prefers-reduced-motion: reduce) { .qb-wood .qb-card { transition: none; } }
+  /* ── the quest board in the Skillbook's look (questRender adds .qb-book): a dark brown book frame, one parchment page
+     per group with a dashed heading, quests as dotted-ruled entries, square pixel buttons, Galmuri9. One look in both
+     themes, like the Skillbook. */
+  .qb-book { flex-direction: column !important; gap: 6px !important; padding: 8px !important; background: #3b2a1f; border-radius: 6px;
+    box-shadow: inset 0 0 0 3px #22170f, 0 6px 16px rgba(0, 0, 0, 0.4); font-family: 'Galmuri9', var(--sans); color: #3a2a1a; }
+  .qb-book button, .qb-book select { font: inherit; }
+  .qb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 2px 2px 0; }
+  .qb-sign { padding: 2px 8px; background: #b8452f; color: #fff; border: 1px solid #7d2a1b; font-size: 11px; }
+  .qb-field { display: inline-flex; align-items: center; gap: 5px; color: #e6d3a8; font-size: 11px; }
+  .qb-field select { appearance: none; color: #3a2a1a; background: #e6d3a8; border: 1px solid #b89c68; border-radius: 0; padding: 2px 20px 2px 6px; font-size: 11px; max-width: 220px; cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, #7d2a1b 50%), linear-gradient(135deg, #7d2a1b 50%, transparent 50%);
+    background-position: right 9px center, right 5px center; background-size: 4px 4px; background-repeat: no-repeat; }
+  .qb-field select:focus-visible { outline: 2px solid #c88a1a; outline-offset: 1px; }
+  .qb-cols { flex: 1; min-height: 0; display: flex; gap: 4px; overflow-x: auto; align-items: stretch; }
+  .qb-none { flex: 1; display: grid; place-items: center; min-height: 80px; background: #f3e6c8; box-shadow: inset 0 0 0 2px #d8c49a; color: #8a6a3a; font-size: 12px; }
+  .qb-book .qb-col { flex: 1 1 220px; min-width: 200px; background: #f3e6c8; border: none; border-radius: 0; box-shadow: inset 0 0 0 2px #d8c49a; padding: 8px 10px; }
+  .qb-book .qb-colh { display: flex; align-items: center; gap: 4px; margin: 0 0 4px; padding: 0 0 4px; color: #3a2a1a; font-size: 13px; font-weight: 400; border-bottom: 2px dashed #c9b083; }
+  .qb-cnt { margin-left: auto; font-size: 10px; color: #8a6a3a; }
+  .qb-book .qb-colb { padding: 0; gap: 0; }
+  .qb-book .qb-card { padding: 5px 3px 6px; background: none; border: none; border-bottom: 1px dotted #d6c39c; border-radius: 0; box-shadow: none; color: #3a2a1a; font-size: 12px; }
+  .qb-book .qb-card:hover { background: #efdfba; }
+  .qb-book .qb-card:focus-within { background: #ead9b0; }
+  .qb-book .qb-col[data-group="done"] .qb-card { opacity: 0.55; }
+  .qb-book .qb-top { color: #8a6a3a; font-size: 10px; }
+  .qb-book .jb-key { color: #8a6a3a; font-family: inherit; }
+  .qb-book .qb-stars { color: #c88a1a; font-size: 11px; }
+  .qb-book .qb-title { margin-top: 2px; font-size: 12px; font-weight: 400; color: #3a2a1a; }
+  .qb-book .qb-who, .qb-book .qb-due { margin-top: 2px; font-size: 10px; color: #8a6a3a; }
+  .qb-book .qb-due.over, .qb-book .qb-err { color: #b8452f; }
+  .qb-book .qb-why { color: #8a6a3a; }
+  .qb-book .qb-acts { gap: 4px; margin-top: 4px; }
+  .qb-book .qb-card button { appearance: none; padding: 2px 7px; background: #6f8f3a; color: #fff; border: 2px solid #3f5520; border-radius: 0; font-size: 11px; font-weight: 400; cursor: pointer; }
+  .qb-book .qb-card button:hover:not(:disabled) { filter: brightness(1.1); background: #6f8f3a; color: #fff; }
+  .qb-book .qb-card button[data-q="auto"] { background: #2f6b8a; border-color: #1d4459; }
+  .qb-book .qb-card button[data-q="cancel"], .qb-book .qb-card button[data-q="other"], .qb-book .qb-card button:disabled { background: #9a8a6a; border-color: #5e5440; }
+  .qb-book .qb-card button[data-q="accept"] { background: #6f8f3a; border-color: #3f5520; }
+  .qb-book .qb-pick { gap: 0; margin-top: 4px; }
+  .qb-book .qb-row { padding: 3px 2px; border: none; border-bottom: 1px dotted #d6c39c; border-radius: 0; background: none; color: #3a2a1a; font-size: 11px; }
+  .qb-book .qb-row .qb-sk span { background: #e6d3a8; color: #3a2a1a; border-radius: 0; }
+  .qb-book .qb-pick > button { margin-top: 4px; }
+  .qb-book .qb-prop { margin-top: 4px; padding: 4px 6px; border: 1px dashed #c9b083; border-radius: 0; background: #faf0d8; color: #3a2a1a; }
+  .qb-book .qb-ai { background: #2f6b8a; color: #fff; border-radius: 0; font-weight: 400; }
+  .qb-book .qb-spin { border-color: #d6c39c; border-top-color: #b8452f; }
+  .qb-book .empty-text { color: #e6d3a8; }
   .jb-card { background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 9px; cursor: pointer; box-shadow: var(--shadow-card); }
   .jb-card:hover { background: var(--surface-hover); }
   .jb-card.sel { border-color: var(--accent); }
@@ -1206,8 +1191,9 @@
   .q-dock .q-dock-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
   .q-dock .qb-col { flex: 0 0 auto; min-width: 0; }
   .q-dock .qb-colb { overflow: visible; }
-  .q-dock .qb-wood { border-width: 5px; padding: 8px !important; flex: 1 0 auto; }
+  .q-dock .qb-book { padding: 6px !important; flex: 1 0 auto; }
   .q-dock .qb-cols { flex-direction: column; overflow: visible; }
+  .q-dock .qb-book .qb-col { flex: 0 0 auto; min-width: 0; padding: 6px 8px; }
   .q-dock .qb-field select { max-width: 150px; }
   .sb-chk { flex-shrink: 0; width: 12px; height: 12px; display: inline-grid; place-items: center; border: 1px solid #b89c68; background: #f3e6c8; font-size: 9px; }
 
@@ -5217,6 +5203,13 @@ document.addEventListener('mousedown', e => {
   dockTermClose(true);
 }, true);
 window.addEventListener('blur', () => { if (dockOn && dockTermBg() && !$('team-modal')) dockTermClose(true); });
+// the 🗡 quest and 📖 skillbook panels close the same way when you click outside AgentDesk (another app, the terminal):
+// clicks inside the window already close them (their document click handlers); not while a modal opened from them is up
+window.addEventListener('blur', () => {
+  if (!dockOn || $('team-modal')) return;
+  if (questDockOpen) questDockToggle(false);
+  if (sbDockOpen) sbDockToggle(false);
+});
 document.addEventListener('visibilitychange', () => {
   if (document.hidden || !dockOn) return;
   if (dockTerm) dockTermPoll(dockTerm);
@@ -11818,7 +11811,7 @@ function questRender(root) {
   if (err) { root.innerHTML = questEmptyHtml(err); return; }
   const live = new Set(sessions.filter(s => s.connected && s.ended !== true).map(s => s.id));
   const cards = AgentDeskQuest.questView(questIssues(), quest.file, live, questWorktrees());
-  root.classList.add('qb-wood');
+  root.classList.add('qb-book');
   // the header stays even with no cards, so 담당자 / 보드 can still be changed
   const body = !cards.length ? `<div class="qb-none">${esc(t('붙어 있는 의뢰가 없습니다'))}</div>` : `<div class="qb-cols">${QUEST_GROUPS.map(([g, label]) => {
     const list = cards.filter(c => c.group === g);

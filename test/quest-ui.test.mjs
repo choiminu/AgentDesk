@@ -411,10 +411,22 @@ test('quest board header: 보드 and 담당자 pickers, 담당자 defaults to me
   assert.deepEqual(pick('me'), ['PROJ-1', 'PROJ-2', 'PROJ-3'], 'no profile yet: everything');
 });
 
-test('quest board header: changes are wired, the choice is remembered, the wooden look is on', () => {
+test('quest board header: changes are wired, the choice is remembered, the Skillbook look is on', () => {
   const src = html.slice(html.indexOf('function questWire('), html.indexOf('// the tickets the view shows'));
   assert.match(src, /f\.dataset\.qf === 'who'\) \{ questWhoPref = f\.value; try \{ localStorage\.setItem\('roca-quest-who', f\.value\)/);
   assert.match(src, /f\.dataset\.qf === 'project' && jb\.projects\.some\(p => p\.key === f\.value\)\) \{[^}]*jbSavePrefs\(\);[^}]*jiraLoad\(\);/);
-  assert.match(html, /root\.classList\.add\('qb-wood'\);/);
-  assert.match(html, /\.qb-wood \.qb-card::before \{ content: '';/);   // the pin
+  assert.match(html, /root\.classList\.add\('qb-book'\);/);
+  assert.match(html, /\.qb-book \{[^}]*background: #3b2a1f;[^}]*font-family: 'Galmuri9'/);   // the Skillbook's frame and font
+  assert.match(html, /\.qb-book \.qb-col \{[^}]*background: #f3e6c8;/);   // a parchment page per group
+  assert.ok(!html.includes('qb-wood'), 'the wooden board is gone');
+});
+
+test('dock panels: a click outside AgentDesk (window blur) closes 🗡 and 📖, not under a modal', () => {
+  const i = html.indexOf("// the 🗡 quest and 📖 skillbook panels close the same way");
+  assert.ok(i > 0);
+  const src = html.slice(i, html.indexOf('});', i) + 3);
+  assert.match(src, /window\.addEventListener\('blur', \(\) => \{\n  if \(!dockOn \|\| \$\('team-modal'\)\) return;\n  if \(questDockOpen\) questDockToggle\(false\);\n  if \(sbDockOpen\) sbDockToggle\(false\);/);
+  // inside the window, both already close on any click outside them
+  assert.match(html, /document\.addEventListener\('click', e => \{ if \(sbDockOpen && !e\.composedPath\(\)\.some\(n => n\.id === 'sb-dock' \|\| n\.id === 'dock-sb'\)\) sbDockToggle\(false\); \}\);/);
+  assert.match(html, /document\.addEventListener\('click', e => \{ if \(questDockOpen && /);
 });
