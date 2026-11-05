@@ -92,13 +92,13 @@ test('ticketCosts: sums per ticket, counts sessions without cost as unknown', ()
     { id: 'e', cost: 2, projectWorktree: '/w/other', timeUpdated: NOW },
     { id: 'f', cost: 0.3, projectWorktree: '/w/ep-2', timeUpdated: NOW },
   ];
-  const r = U.ticketCosts(sessions, { 'EP-1': { path: '/w/ep-1', sentAt: NOW - 60 * MIN }, 'EP-2': { cwd: '/w/ep-2', since: NOW - MIN }, 'EP-3': { path: '', sentAt: NOW } });
-  assert.equal(r['EP-1'].cost, 1.75);
-  assert.deepEqual(r['EP-1'].sessions, ['a', 'b']);
-  assert.equal(r['EP-1'].unknown, 1);
-  assert.equal(r['EP-1'].since, NOW - 60 * MIN);
-  assert.equal(r['EP-2'].cost, 0.3);
-  assert.equal(r['EP-3'], undefined);
+  const r = U.ticketCosts(sessions, { 'PROJ-1': { path: '/w/ep-1', sentAt: NOW - 60 * MIN }, 'PROJ-2': { cwd: '/w/ep-2', since: NOW - MIN }, 'PROJ-3': { path: '', sentAt: NOW } });
+  assert.equal(r['PROJ-1'].cost, 1.75);
+  assert.deepEqual(r['PROJ-1'].sessions, ['a', 'b']);
+  assert.equal(r['PROJ-1'].unknown, 1);
+  assert.equal(r['PROJ-1'].since, NOW - 60 * MIN);
+  assert.equal(r['PROJ-2'].cost, 0.3);
+  assert.equal(r['PROJ-3'], undefined);
 });
 
 test('ticketCosts: two tickets on one session directory → the later dispatch takes newer sessions', () => {
@@ -106,9 +106,9 @@ test('ticketCosts: two tickets on one session directory → the later dispatch t
     { id: 'old', cost: 1, projectWorktree: '/w/s', timeUpdated: NOW - 50 * MIN },
     { id: 'new', cost: 2, projectWorktree: '/w/s', timeUpdated: NOW },
   ];
-  const r = U.ticketCosts(sessions, { 'EP-1': { cwd: '/w/s', since: NOW - 60 * MIN }, 'EP-2': { cwd: '/w/s', since: NOW - 10 * MIN } });
-  assert.deepEqual(r['EP-1'], { cost: 1, sessions: ['old'], since: NOW - 60 * MIN, unknown: 0 });
-  assert.deepEqual(r['EP-2'].sessions, ['new']);
+  const r = U.ticketCosts(sessions, { 'PROJ-1': { cwd: '/w/s', since: NOW - 60 * MIN }, 'PROJ-2': { cwd: '/w/s', since: NOW - 10 * MIN } });
+  assert.deepEqual(r['PROJ-1'], { cost: 1, sessions: ['old'], since: NOW - 60 * MIN, unknown: 0 });
+  assert.deepEqual(r['PROJ-2'].sessions, ['new']);
   assert.deepEqual(U.ticketCosts(null, null), {});
 });
 

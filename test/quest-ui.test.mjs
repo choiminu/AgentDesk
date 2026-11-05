@@ -124,9 +124,9 @@ const tick = () => new Promise(r => setTimeout(r, 5));
 
 test('quest behavior: 자동 never calls a modal, send, worktree create or questAssign', async () => {
   const { sb, calls, q: Q } = boot({ questDesk: async () => ({ ok: true, choice: { kind: 'session', id: 's1' }, reason: 'idle in api' }) });
-  sb.sessions = [sess('s1', 'waiting')]; sb.handles.set('s1', 'h1'); sb.jb.issues = [{ key: 'EP-1', summary: 'x', priority: 'High', labels: [] }];
-  await Q.questAuto('EP-1');
-  assert.equal(Q.quest.proposals.get('EP-1').id, 's1');
+  sb.sessions = [sess('s1', 'waiting')]; sb.handles.set('s1', 'h1'); sb.jb.issues = [{ key: 'PROJ-1', summary: 'x', priority: 'High', labels: [] }];
+  await Q.questAuto('PROJ-1');
+  assert.equal(Q.quest.proposals.get('PROJ-1').id, 's1');
   assert.deepEqual(calls.map(c => c[0]).filter(n => n !== 'questDesk'), []);
 });
 
@@ -134,27 +134,27 @@ test('quest behavior: accepting a stale proposal is blocked (busy, permission-wa
   for (const mutate of [s => { s.status = 'running'; }, s => { s.needsInput = true; }, s => { s.connected = false; }, null]) {
     const { sb, calls, q: Q } = boot();
     const s = sess('s1', 'waiting'); sb.sessions = [s]; sb.handles.set('s1', 'h1');
-    Q.quest.proposals.set('EP-1', { kind: 'session', id: 's1', label: 's1', reason: 'r', at: mutate ? Date.now() : Date.now() - Q.QUEST_PROPOSAL_MS - 1000 });
+    Q.quest.proposals.set('PROJ-1', { kind: 'session', id: 's1', label: 's1', reason: 'r', at: mutate ? Date.now() : Date.now() - Q.QUEST_PROPOSAL_MS - 1000 });
     if (mutate) mutate(s);
-    await Q.questAccept('EP-1');
+    await Q.questAccept('PROJ-1');
     assert.equal(calls.filter(c => /Modal/.test(c[0])).length, 0);
-    assert.equal(Q.quest.proposals.has('EP-1'), false);
-    assert.ok(Q.quest.errors.has('EP-1'));
+    assert.equal(Q.quest.proposals.has('PROJ-1'), false);
+    assert.ok(Q.quest.errors.has('PROJ-1'));
   }
   const { sb, calls, q: Q } = boot();
   sb.sessions = [sess('s1', 'waiting')]; sb.handles.set('s1', 'h1');
-  Q.quest.proposals.set('EP-1', { kind: 'session', id: 's1', label: 's1', reason: 'r', at: Date.now() });
-  await Q.questAccept('EP-1');
-  assert.deepEqual(calls.filter(c => /Modal/.test(c[0])), [['jiraSessionModal', 'EP-1', 's1']]);
-  Q.quest.proposals.set('EP-1', { kind: 'worktree', repo: 'gone', label: 'gone', reason: 'r', at: Date.now() });
-  await Q.questAccept('EP-1');
+  Q.quest.proposals.set('PROJ-1', { kind: 'session', id: 's1', label: 's1', reason: 'r', at: Date.now() });
+  await Q.questAccept('PROJ-1');
+  assert.deepEqual(calls.filter(c => /Modal/.test(c[0])), [['jiraSessionModal', 'PROJ-1', 's1']]);
+  Q.quest.proposals.set('PROJ-1', { kind: 'worktree', repo: 'gone', label: 'gone', reason: 'r', at: Date.now() });
+  await Q.questAccept('PROJ-1');
   assert.equal(calls.filter(c => /Modal/.test(c[0])).length, 1);
 });
 
 test('quest behavior: picking a busy session does not open the modal', () => {
   const { sb, calls, q: Q } = boot();
   sb.sessions = [sess('s1', 'running')]; sb.handles.set('s1', 'h1');
-  Q.questPick('EP-1', 's1');
+  Q.questPick('PROJ-1', 's1');
   assert.equal(calls.length, 0);
 });
 
@@ -162,14 +162,14 @@ test('quest behavior: a cancelled ask cannot overwrite a newer one', async () =>
   let n = 0; const resolvers = [];
   const { sb, q: Q } = boot({ questDesk: () => new Promise(r => resolvers.push(r)) });
   sb.sessions = [sess('s1', 'waiting')]; sb.handles.set('s1', 'h1');
-  const first = Q.questAuto('EP-1'); await tick();
-  Q.questCancel('EP-1');
-  const second = Q.questAuto('EP-1'); await tick();
+  const first = Q.questAuto('PROJ-1'); await tick();
+  Q.questCancel('PROJ-1');
+  const second = Q.questAuto('PROJ-1'); await tick();
   resolvers[0]({ ok: true, choice: { kind: 'session', id: 's1' }, reason: 'old' }); await first;
-  assert.equal(Q.quest.proposals.has('EP-1'), false);
-  assert.ok(Q.quest.pending.has('EP-1'));
+  assert.equal(Q.quest.proposals.has('PROJ-1'), false);
+  assert.ok(Q.quest.pending.has('PROJ-1'));
   resolvers[1]({ ok: true, choice: { kind: 'session', id: 's1' }, reason: 'new' }); await second;
-  assert.equal(Q.quest.proposals.get('EP-1').reason, 'new');
+  assert.equal(Q.quest.proposals.get('PROJ-1').reason, 'new');
   void n;
 });
 
@@ -186,9 +186,9 @@ test('quest behavior: card and picker escape Jira and session text', () => {
   const evil = '<img src=x onerror=alert(1)>';
   const { sb, q: Q } = boot();
   sb.sessions = [sess('s1', 'waiting', { name: evil, repo: evil, cwd: '/none', branch: evil })]; sb.handles.set('s1', 'h1'); sb.nowSummaries.set('s1', evil);
-  const card = Q.questCardHtml({ key: 'EP-1', title: evil, difficulty: 2, group: 'new', status: '', assignee: evil });
-  Q.quest.picker = 'EP-1';
-  const html2 = Q.questCardHtml({ key: 'EP-1', title: evil, difficulty: 2, group: 'new', status: '' }) + Q.questPickerHtml('EP-1');
+  const card = Q.questCardHtml({ key: 'PROJ-1', title: evil, difficulty: 2, group: 'new', status: '', assignee: evil });
+  Q.quest.picker = 'PROJ-1';
+  const html2 = Q.questCardHtml({ key: 'PROJ-1', title: evil, difficulty: 2, group: 'new', status: '' }) + Q.questPickerHtml('PROJ-1');
   for (const h of [card, html2]) assert.ok(!/<img/.test(h), 'raw tag leaked');
   assert.ok(html2.includes('&lt;img'));
 });
@@ -200,7 +200,7 @@ test('quest behavior: render shows load / error / not-connected states', () => {
   sb.jiraBusy = false; sb.jb.err = 'boom'; Q.questRender(root); assert.match(root.innerHTML, /boom/);
   sb.jb.err = ''; sb.jiraConn = { connected: false, error: 'sign in' }; Q.questRender(root); assert.match(root.innerHTML, /sign in/);
   sb.jiraConn = null; Q.questRender(root); assert.match(root.innerHTML, /표시할 티켓이 없습니다/);
-  sb.jiraBoardMode = false; sb.jiraIssues = [{ key: 'EP-2', summary: 'list mode', status: 'To Do', priority: 'Low', labels: [] }]; Q.questRender(root); assert.match(root.innerHTML, /list mode/);
+  sb.jiraBoardMode = false; sb.jiraIssues = [{ key: 'PROJ-2', summary: 'list mode', status: 'To Do', priority: 'Low', labels: [] }]; Q.questRender(root); assert.match(root.innerHTML, /list mode/);
 });
 
 test('quest ui: a missed preselect adds a disabled "선택하세요" placeholder and re-enables submit on change', () => {
@@ -258,7 +258,7 @@ test('quest dock: disconnected shows the sign-in text, never throws', () => {
 
 test('quest marker: AgentDeskQuest.markerFor conditions', () => {
   const M = globalThis.AgentDeskQuest.markerFor;
-  const st = { quests: { 'EP-1': { kind: 'session', sessionId: 's1', at: 1 }, 'EP-2': { kind: 'session', sessionId: 's2', at: 1, reportAt: 5 }, 'EP-3': { kind: 'worktree', repo: 'api', at: 1 } } };
+  const st = { quests: { 'PROJ-1': { kind: 'session', sessionId: 's1', at: 1 }, 'PROJ-2': { kind: 'session', sessionId: 's2', at: 1, reportAt: 5 }, 'PROJ-3': { kind: 'worktree', repo: 'api', at: 1 } } };
   assert.equal(M(st, 's1', true), true);
   assert.equal(M(st, 's1', false), false, 'not live');
   assert.equal(M(st, 's2', true), false, 'reported');
@@ -310,29 +310,29 @@ test('quest final: ended or stuck quests can be reassigned (Jira 진행 중, end
   const root = { isConnected: true, innerHTML: '', addEventListener() {} };
   sb.sessions = [sess('s1', 'running')]; sb.handles.set('s1', 'h1');
   const ip = k => ({ key: k, summary: k, status: 'Doing', cat: 'indeterminate', priority: 'High', labels: [] });
-  sb.jb.issues = [ip('EP-1'), ip('EP-2'), ip('EP-3'), ip('EP-4'), ip('EP-5'), ip('EP-6'), ip('EP-7')];
+  sb.jb.issues = [ip('PROJ-1'), ip('PROJ-2'), ip('PROJ-3'), ip('PROJ-4'), ip('PROJ-5'), ip('PROJ-6'), ip('PROJ-7')];
   Q.quest.file = { quests: {
-    'EP-2': { kind: 'session', sessionId: 'gone', at: 1 },     // ended session
-    'EP-3': { kind: 'session', sessionId: 's1', at: 1 },       // live session → no 맡기기
-    'EP-4': { kind: 'worktree', repo: 'api', at: 1 },          // dispatch timed out
-    'EP-5': { kind: 'worktree', repo: 'api', at: 1 },          // mapped session gone
-    'EP-6': { kind: 'worktree', repo: 'api', at: 1 },          // mapped to a live session → no 맡기기
-    'EP-7': { kind: 'worktree', repo: 'api', at: 1 },          // still starting (not mapped yet) → no 맡기기
+    'PROJ-2': { kind: 'session', sessionId: 'gone', at: 1 },     // ended session
+    'PROJ-3': { kind: 'session', sessionId: 's1', at: 1 },       // live session → no 맡기기
+    'PROJ-4': { kind: 'worktree', repo: 'api', at: 1 },          // dispatch timed out
+    'PROJ-5': { kind: 'worktree', repo: 'api', at: 1 },          // mapped session gone
+    'PROJ-6': { kind: 'worktree', repo: 'api', at: 1 },          // mapped to a live session → no 맡기기
+    'PROJ-7': { kind: 'worktree', repo: 'api', at: 1 },          // still starting (not mapped yet) → no 맡기기
   } };
-  sb.jiraDispatch = { 'EP-4': { key: 'EP-4', state: 'timeout' }, 'EP-5': { key: 'EP-5', state: 'sent', sid: 'dead' }, 'EP-6': { key: 'EP-6', state: 'sent', sid: 's1' }, 'EP-7': { key: 'EP-7', state: 'sent', sid: '' } };
+  sb.jiraDispatch = { 'PROJ-4': { key: 'PROJ-4', state: 'timeout' }, 'PROJ-5': { key: 'PROJ-5', state: 'sent', sid: 'dead' }, 'PROJ-6': { key: 'PROJ-6', state: 'sent', sid: 's1' }, 'PROJ-7': { key: 'PROJ-7', state: 'sent', sid: '' } };
   Q.questRender(root);
-  for (const k of ['EP-1', 'EP-2', 'EP-4', 'EP-5']) { assert.match(cardOf(root, k), /data-q="open"/, k); assert.match(cardOf(root, k), /data-q="auto"/, k); }
-  for (const k of ['EP-3', 'EP-6', 'EP-7']) assert.doesNotMatch(cardOf(root, k), /data-q="open"/, k);
-  assert.match(cardOf(root, 'EP-4'), /종료됨/); assert.match(cardOf(root, 'EP-5'), /종료됨/);
-  for (const k of ['EP-1', 'EP-2', 'EP-4', 'EP-5', 'EP-6']) assert.equal(colOf(root, k), 'doing', k);   // Jira says 진행 중
+  for (const k of ['PROJ-1', 'PROJ-2', 'PROJ-4', 'PROJ-5']) { assert.match(cardOf(root, k), /data-q="open"/, k); assert.match(cardOf(root, k), /data-q="auto"/, k); }
+  for (const k of ['PROJ-3', 'PROJ-6', 'PROJ-7']) assert.doesNotMatch(cardOf(root, k), /data-q="open"/, k);
+  assert.match(cardOf(root, 'PROJ-4'), /종료됨/); assert.match(cardOf(root, 'PROJ-5'), /종료됨/);
+  for (const k of ['PROJ-1', 'PROJ-2', 'PROJ-4', 'PROJ-5', 'PROJ-6']) assert.equal(colOf(root, k), 'doing', k);   // Jira says 진행 중
   // the picker opens on such a card too
-  Q.quest.picker = 'EP-4'; Q.questRender(root); assert.match(cardOf(root, 'EP-4'), /qb-pick/);
+  Q.quest.picker = 'PROJ-4'; Q.questRender(root); assert.match(cardOf(root, 'PROJ-4'), /qb-pick/);
   // a discarded dispatch or a missing record also ends a worktree quest; a Jira 'new' ticket goes back to 새 퀘스트
-  sb.jb.issues = [{ key: 'EP-8', summary: 'x', cat: 'new', labels: [] }, { key: 'EP-9', summary: 'x', cat: 'new', labels: [] }];
-  Q.quest.file = { quests: { 'EP-8': { kind: 'worktree', repo: 'api', at: 1 }, 'EP-9': { kind: 'worktree', repo: 'api', at: 1 } } };
-  sb.jiraDispatch = { 'EP-8': { key: 'EP-8', state: 'discarded' } };
+  sb.jb.issues = [{ key: 'PROJ-8', summary: 'x', cat: 'new', labels: [] }, { key: 'PROJ-9', summary: 'x', cat: 'new', labels: [] }];
+  Q.quest.file = { quests: { 'PROJ-8': { kind: 'worktree', repo: 'api', at: 1 }, 'PROJ-9': { kind: 'worktree', repo: 'api', at: 1 } } };
+  sb.jiraDispatch = { 'PROJ-8': { key: 'PROJ-8', state: 'discarded' } };
   Q.questRender(root);
-  for (const k of ['EP-8', 'EP-9']) { assert.equal(colOf(root, k), 'new', k); assert.match(cardOf(root, k), /data-q="open"/, k); }
+  for (const k of ['PROJ-8', 'PROJ-9']) { assert.equal(colOf(root, k), 'new', k); assert.match(cardOf(root, k), /data-q="open"/, k); }
   match(fn('questRender'), /AgentDeskQuest\.questView\(questIssues\(\), quest\.file, live, questWorktrees\(\)\)/);
 });
 
@@ -340,13 +340,13 @@ test('quest final: desk errors show a short fixed reason under 직접 고르세�
   const { q: Q } = boot();
   const why = { failed: 'claude CLI를 실행하지 못했습니다', timeout: '응답이 늦어 중단했습니다', busy: '다른 제안이 진행 중입니다', invalid: '제안이 목록에 없습니다' };
   for (const [code, text] of Object.entries(why)) {
-    Q.quest.errors.set('EP-1', code);
-    const h = Q.questCardHtml({ key: 'EP-1', title: 't', difficulty: 1, group: 'new', status: '' });
+    Q.quest.errors.set('PROJ-1', code);
+    const h = Q.questCardHtml({ key: 'PROJ-1', title: 't', difficulty: 1, group: 'new', status: '' });
     assert.match(h, /직접 고르세요/); assert.ok(h.includes(`<span class="qb-why">${text}</span>`), code);
   }
   for (const code of ['stale', 'ENOENT: spawn claude', '__proto__']) {
-    Q.quest.errors.set('EP-1', code);
-    const h = Q.questCardHtml({ key: 'EP-1', title: 't', difficulty: 1, group: 'new', status: '' });
+    Q.quest.errors.set('PROJ-1', code);
+    const h = Q.questCardHtml({ key: 'PROJ-1', title: 't', difficulty: 1, group: 'new', status: '' });
     assert.match(h, /직접 고르세요/); assert.doesNotMatch(h, /qb-why/, code); assert.ok(!h.includes('ENOENT'));
   }
   for (const text of Object.values(why)) match(html, new RegExp(`'${text}': '[A-Za-z]`));
@@ -354,8 +354,8 @@ test('quest final: desk errors show a short fixed reason under 직접 고르세�
 
 test('quest final: prune sends project keys only after a complete, successful load', () => {
   const { q: Q } = boot();
-  assert.deepEqual([...Q.questPruneProjects([{ key: 'EP-1' }, { key: 'EP-2' }, { key: 'OPS-3' }, { key: 'bad' }, null], true)], ['EP', 'OPS']);
-  assert.deepEqual([...Q.questPruneProjects([{ key: 'EP-1' }], false)], []);
+  assert.deepEqual([...Q.questPruneProjects([{ key: 'PROJ-1' }, { key: 'PROJ-2' }, { key: 'OPS-3' }, { key: 'bad' }, null], true)], ['PROJ', 'OPS']);
+  assert.deepEqual([...Q.questPruneProjects([{ key: 'PROJ-1' }], false)], []);
   match(html, /window\.orca\.questPrune\(\{ issues: jb\.issues, projects: jb\.truncated \? \[\] : \[jb\.project\] \}\)/);
   match(html, /if \(r && r\.ok !== false && window\.orca\.questPrune\) Promise\.resolve\(window\.orca\.questPrune\(\{ issues: jiraIssues, projects: questPruneProjects\(jiraIssues, jiraIssues\.length < 50\) \}\)\)/);
   match(html, /window\.orca\.jiraList\(\{ filter: jiraFilter, limit: 50 \}\)/);

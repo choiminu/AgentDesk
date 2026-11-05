@@ -465,7 +465,7 @@ test('bubbleLayout: centred on their tiles, pushed apart, kept inside, the oldes
 test('promptContext: the prompt box above a numbered choice (the command a permission prompt asks about)', () => {
   const box = ['earlier output', '╭────────╮', '│ Bash command             │', '│                          │', '│   rm -rf ~/              │', '│   Remove the home folder │', '│                          │', '│ Do you want to proceed?  │', '│ ❯ 1. Yes                 │', "│   2. Yes, and don't ask  │", '│   3. No                  │', '╰────────╯'];
   assert.equal(D.promptContext(box), 'Bash command\n\nrm -rf ~/\nRemove the home folder\n\nDo you want to proceed?');
-  const ask = ['old', '────────────', '☐ 범위', '', '어디까지?', '', '❯ 1. 결제만', '     설명', '  2. 둘 다', 'Enter to select'];
+  const ask = ['old', '────────────', '☐ 범위', '', '어디까지?', '', '❯ 1. 화면만', '     설명', '  2. 둘 다', 'Enter to select'];
   assert.equal(D.promptContext(ask), '☐ 범위\n\n어디까지?', 'stops at a rule; option descriptions are not context');
   assert.equal(D.promptContext(['  2. x', '❯ 3. y']), ''); assert.equal(D.promptContext(['plain']), ''); assert.equal(D.promptContext(null), '');
   assert.equal(D.promptContext(Array.from({ length: 30 }, (_, i) => 'line ' + i).concat(['❯ 1. ok'])).split('\n').length, 14, 'at most 14 rows');
@@ -580,7 +580,7 @@ test('permPrompt: Claude Code permission prompts, and when the bar may say yes (
   const fetchp = D.permPrompt([' Fetch', ' https://example.com', ' Do you want to allow Claude to fetch this content?', ' ❯ 1. Yes', '   2. No'], [{ label: 'Yes' }, { label: 'No' }]);
   assert.deepEqual([fetchp.perm, fetchp.kind, fetchp.allowable], [true, 'other', false]);
   assert.equal(D.permPrompt(['Pick one', '❯ 1. a', '  2. b'], [{ label: 'a' }, { label: "b, don't ask again" }]).perm, true, 'a "don\'t ask again" option alone marks it');
-  const q = D.permPrompt(['☐ 범위', '어디까지?', '❯ 1. 결제만', '  2. 둘 다'], [{ label: '결제만' }, { label: '둘 다' }]);
+  const q = D.permPrompt(['☐ 범위', '어디까지?', '❯ 1. 화면만', '  2. 둘 다'], [{ label: '화면만' }, { label: '둘 다' }]);
   assert.deepEqual([q.perm, q.allowable], [false, true], 'an AskUserQuestion is not a permission prompt');
   for (const l of ["Yes, and don't ask again", 'Yes, and don’t ask again for git', 'yes, DONT ASK AGAIN']) assert.match(l, D.PERM_NEVER_RE);
   assert.doesNotMatch('Yes', D.PERM_NEVER_RE);
@@ -690,9 +690,9 @@ test('officeParseChoice: a plan\'s numbered steps above the question stay in the
 });
 
 test('officeParseChoice: prompts it already read stay the same; a list without the ❯ cursor is not a prompt', () => {
-  const ask = ['⏺ 범위를 정해야 합니다.', '', '어디까지?', '', '❯ 1. 결제만', '     정산은 그대로', '  2. 둘 다', '  3. Type something.', '', 'Enter to select'];
+  const ask = ['⏺ 범위를 정해야 합니다.', '', '어디까지?', '', '❯ 1. 화면만', '     서버는 그대로', '  2. 둘 다', '  3. Type something.', '', 'Enter to select'];
   const p = officeParseChoice(ask);
-  assert.deepEqual(p.options.map(o => [o.n, o.label, o.desc]), [[1, '결제만', '정산은 그대로'], [2, '둘 다', ''], [3, 'Type something.', '']]);
+  assert.deepEqual(p.options.map(o => [o.n, o.label, o.desc]), [[1, '화면만', '서버는 그대로'], [2, '둘 다', ''], [3, 'Type something.', '']]);
   assert.equal(p.question, '어디까지?');
   const box = ['╭────╮', '│ Do you want to proceed? │', '│ ❯ 1. Yes │', "│   2. Yes, and don't ask again │", '│   3. No │', '╰────╯'];
   assert.deepEqual(officeParseChoice(box).options.map(o => o.n), [1, 2, 3]);

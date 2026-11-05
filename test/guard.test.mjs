@@ -48,7 +48,7 @@ const BYPASSES = [
   "python3 -c \"import os; os.remove('/etc/hosts')\"", "perl -e 'unlink glob q(*)'", 'find ~ -delete', 'rm -rf .', 'D"R"OP TABLE users', 'su""do ls',
 ];
 const ALLOWED = [
-  'autopilot 이 버그 고쳐줘', 'git commit -m "fix: 정산 오류"', 'SELECT * FROM payments WHERE id = 1', 'DELETE FROM payments WHERE id = 3',
+  'autopilot 이 버그 고쳐줘', 'git commit -m "fix: 로그인 오류"', 'SELECT * FROM payments WHERE id = 1', 'DELETE FROM payments WHERE id = 3',
   'UPDATE merchant SET fee = 0 WHERE mid = 1', 'rm -rf node_modules', 'rm -rf ./build', 'rm -f /tmp/x', 'git push origin feature/x', 'git push -u origin main',
   'git reset --soft HEAD~1', 'git clean -n', 'mysql 버전 알려줘', 'cat README.md', 'curl https://api.example.com/health', 'chmod 755 script.sh',
   'npm test 돌려서 실패 원인 찾아줘', 'truncate the long log lines in the output', '.env 파일은 건드리지 말고 진행해', 'drop the old branch idea', 'ok 계속 진행해',

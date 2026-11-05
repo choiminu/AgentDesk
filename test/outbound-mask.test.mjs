@@ -18,7 +18,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CARD = '4111 1111 1111 1111', PASS = 'fake-pass-000', SLACK = 'xoxb-0000000000-FAKEFAKEFAKE', URI = 'mysql://fakeuser:fakepw@db.invalid/fakedb';
 const RAW = [CARD, PASS, SLACK, 'fakeuser:fakepw', 'db.invalid', 'fake@example.invalid'];
 const REPORT = `REPORT_START
-[한 일] 테스트 카드 ${CARD} 로 결제 재현, 담당 fake@example.invalid
+[한 일] 테스트 카드 ${CARD} 로 오류 재현, 담당 fake@example.invalid
 [변경 파일] application.yml (password=${PASS})
 \`\`\`
 SLACK_BOT_TOKEN=${SLACK}
@@ -73,7 +73,7 @@ test('maskForSend masks before the length cap and rejects empty or non-text bodi
 });
 
 test('replyPayload masks report, text, title and session (code blocks included) before the mrkdwn conversion', () => {
-  const p = replyPayload({ title: `EP-1 ${CARD}`, session: 'front-desk', report: REPORT, text: `✅ done ${SLACK}` });
+  const p = replyPayload({ title: `PROJ-1 ${CARD}`, session: 'front-desk', report: REPORT, text: `✅ done ${SLACK}` });
   const all = JSON.stringify(p);
   assert.deepEqual(leaks(all), []);
   assert.match(all, /SLACK_BOT_TOKEN=\[MASKED\]/);

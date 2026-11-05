@@ -87,15 +87,15 @@ test('state prune: projects of a complete load drop their quiet entries the load
   let now = Date.parse('2026-10-01T00:00:00Z');
   const file = tmpFile();
   const st = createQuestState({ file, now: () => now }); st.load();
-  for (const k of ['EP-1', 'EP-2', 'OPS-1']) st.set(k, { kind: 'worktree', repo: 'r' });
+  for (const k of ['PROJ-1', 'PROJ-2', 'OPS-1']) st.set(k, { kind: 'worktree', repo: 'r' });
   now += 40 * 864e5;
-  st.set('EP-3', { kind: 'worktree', repo: 'r' });
-  st.prune([{ key: 'EP-2', fields: { status: { statusCategory: { key: 'indeterminate' } } } }]);   // no projects: nothing by absence
-  assert.deepEqual(Object.keys(st.all().quests), ['EP-1', 'EP-2', 'OPS-1', 'EP-3']);
-  st.prune([{ key: 'EP-2', fields: { status: { statusCategory: { key: 'indeterminate' } } } }], ['EP']);
-  assert.deepEqual(Object.keys(st.all().quests), ['EP-2', 'OPS-1', 'EP-3']);
+  st.set('PROJ-3', { kind: 'worktree', repo: 'r' });
+  st.prune([{ key: 'PROJ-2', fields: { status: { statusCategory: { key: 'indeterminate' } } } }]);   // no projects: nothing by absence
+  assert.deepEqual(Object.keys(st.all().quests), ['PROJ-1', 'PROJ-2', 'OPS-1', 'PROJ-3']);
+  st.prune([{ key: 'PROJ-2', fields: { status: { statusCategory: { key: 'indeterminate' } } } }], ['PROJ']);
+  assert.deepEqual(Object.keys(st.all().quests), ['PROJ-2', 'OPS-1', 'PROJ-3']);
   const again = createQuestState({ file }); again.load();
-  assert.deepEqual(Object.keys(again.all().quests), ['EP-2', 'OPS-1', 'EP-3'], 'saved');
+  assert.deepEqual(Object.keys(again.all().quests), ['PROJ-2', 'OPS-1', 'PROJ-3'], 'saved');
   assert.equal(st.prune([], ['OPS']), 2, 'an empty complete load of OPS drops its quiet entry');
 });
 

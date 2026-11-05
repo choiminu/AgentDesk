@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-oO4g8HUeXac4ez+3u4gkEN45slUtszeIyIWb1lUibjU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-mjtzXOSRSfEd8nBv1yo1Pwa9QOHlyjb9F7ZU2bfrseg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2259,7 +2259,7 @@ const I18N = {
   '이미 PM이 있는 팀입니다': 'This team already has a PM', '이(가) PM이 되었습니다': ' became PM', ' 합류 (': ' joined (',
   '터미널 핸들을 찾을 수 없습니다': 'Terminal handle not found', 'PM 세션의 터미널을 찾을 수 없습니다': 'The PM session has no terminal', '팀원을 먼저 팀 블록에 드래그하세요': 'Drag members into the team block first',
   '팀 목표 지시 · ': 'Team goal · ', 'PM이 브리프를 작성하고 팀원별 지시를 제안합니다. 제안은 승인 후 전달됩니다.': 'The PM writes a brief and proposes tasks per member. Proposals are sent after your approval.',
-  '예: 결제 재시도 로직을 추가하고 문서화까지 마무리': 'e.g. Add payment retry logic and finish the docs', '이후 지시는 승인 없이 자동 전달': 'Dispatch later rounds without approval', '취소': 'Cancel', '브리프 작성 요청': 'Ask PM for a brief',
+  '예: 로그인 재시도 로직을 추가하고 문서화까지 마무리': 'e.g. Add login retry logic and finish the docs', '이후 지시는 승인 없이 자동 전달': 'Dispatch later rounds without approval', '취소': 'Cancel', '브리프 작성 요청': 'Ask PM for a brief',
   'PM이 브리프를 작성하는 중…': 'PM is writing the brief…', 'PM이 업무 분배를 정하는 중…': 'PM is splitting the work…', '실패: ': 'Failed: ', 'PM 분배안 승인': 'Approve the PM plan', '(팀원 매칭 실패)': '(no matching member)',
   '완료 조건: ': 'Done when: ', '선택한 팀원에게 전달': 'Send to selected members', '팀 로그 · ': 'Team log · ', '브리프 v': 'Brief v', '기록이 없습니다': 'No entries yet', '팀 작업 완료': 'Team work complete', '팀 라운드 상한 도달': 'Team round limit reached',
   '전달 실패: ': 'Dispatch failed: ', '전송 거부': 'send rejected', '터미널 없음': 'no terminal',
@@ -9368,7 +9368,7 @@ async function teamStartFlow(t) {
   if (!Object.keys(t.members).length) { showInAppToast('팀원을 먼저 팀 블록에 드래그하세요', 'error'); return; }
   const m = teamModal(`<h3>팀 목표 지시 · ${esc(pmCh.sess.name)}</h3>
     <p>PM이 브리프를 작성하고 팀원별 지시를 제안합니다. 제안은 승인 후 전달됩니다.</p>
-    <textarea id="team-goal" placeholder="예: 결제 재시도 로직을 추가하고 문서화까지 마무리">${esc(t.goal || '')}</textarea>
+    <textarea id="team-goal" placeholder="예: 로그인 재시도 로직을 추가하고 문서화까지 마무리">${esc(t.goal || '')}</textarea>
     <div class="row"><label><input type="checkbox" id="team-auto" ${t.autoDispatch ? 'checked' : ''}> 이후 지시는 승인 없이 자동 전달</label>
     <span style="margin-left:auto"></span><button id="team-cancel">취소</button><button class="primary" id="team-go">브리프 작성 요청</button></div>
     <div id="team-status" style="margin-top:8px;color:var(--text3)"></div>`);
@@ -11412,7 +11412,7 @@ async function jbLoad() {
     jb.projects = (r.result && r.result.projects) || [];
   }
   const keys = jb.projects.map(p => p.key);
-  jb.project = keys.includes(jbPrefs.project) ? jbPrefs.project : keys.includes('EP') ? 'EP' : (keys[0] || '');
+  jb.project = keys.includes(jbPrefs.project) ? jbPrefs.project : (keys[0] || '');
   if (!jb.project) { jb.err = t('볼 수 있는 Jira 프로젝트가 없습니다'); return; }
   const r = await window.orca.jiraBoard(jb.project, { mine: jb.mine });
   if (!r || r.ok === false) { jb.err = AgentDeskJira.errorText(r) || t('보드를 불러오지 못했습니다'); jb.issues = []; jb.cols = []; return; }

@@ -57,7 +57,7 @@ test('mask: tokens, keys, connection URIs, card / account numbers and e-mail add
   ];
   for (const [input, leak] of cases) assert.ok(!mask(input).includes(leak), `${input} → ${mask(input)}`);
   // ordinary text stays readable
-  for (const ok of ['EP-1234 결제 재시도', 'v0.2.0-internal.3', 'port 7331', '010-1234-5678', 'commit 8330cfb', 'took 1234567 ms']) assert.equal(mask(ok), ok);
+  for (const ok of ['PROJ-1234 로그인 재시도', 'v0.2.0-internal.3', 'port 7331', '010-1234-5678', 'commit 8330cfb', 'took 1234567 ms']) assert.equal(mask(ok), ok);
 });
 
 // timing: the default run only checks linear growth (2x the input → under 5x the time; linear = 2x, quadratic = 4x is

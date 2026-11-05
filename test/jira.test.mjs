@@ -9,13 +9,13 @@ const J = globalThis.AgentDeskJira;
 const adf = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '첫 줄' }, { type: 'hardBreak' }, { type: 'text', text: '둘째 줄' }] }, { type: 'paragraph', content: [{ type: 'text', text: '다음 문단' }] }] };
 
 test('isKey accepts project keys and rejects anything else', () => {
-  assert.equal(J.isKey('EP-1234'), true); assert.equal(J.isKey('ICV2-7'), true);
-  for (const bad of ['ep-1', 'EP-', '-EP-1', 'EP-1; rm -rf /', '1A-2', '', null, 42]) assert.equal(J.isKey(bad), false, String(bad));
+  assert.equal(J.isKey('PROJ-1234'), true); assert.equal(J.isKey('ICV2-7'), true);
+  for (const bad of ['proj-1', 'PROJ-', '-PROJ-1', 'PROJ-1; rm -rf /', '1A-2', '', null, 42]) assert.equal(J.isKey(bad), false, String(bad));
 });
 
 test('normalizeIssue reads the raw Jira REST shape (fields + ADF description)', () => {
-  const i = J.normalizeIssue({ key: 'EP-1', fields: { summary: '정산 확인', status: { name: 'In Progress' }, priority: { name: 'High' }, assignee: { displayName: 'Neo' }, labels: ['recon'], description: adf } });
-  assert.deepEqual({ ...i, url: undefined, updated: undefined }, { key: 'EP-1', summary: '정산 확인', status: 'In Progress', priority: 'High', assignee: 'Neo', labels: ['recon'], description: '첫 줄\n둘째 줄\n다음 문단', url: undefined, updated: undefined });
+  const i = J.normalizeIssue({ key: 'PROJ-1', fields: { summary: '로그인 확인', status: { name: 'In Progress' }, priority: { name: 'High' }, assignee: { displayName: 'Alex' }, labels: ['ops'], description: adf } });
+  assert.deepEqual({ ...i, url: undefined, updated: undefined }, { key: 'PROJ-1', summary: '로그인 확인', status: 'In Progress', priority: 'High', assignee: 'Alex', labels: ['ops'], description: '첫 줄\n둘째 줄\n다음 문단', url: undefined, updated: undefined });
 });
 
 test('normalizeIssue reads a flat shape with plain strings and caps the description', () => {
@@ -26,12 +26,12 @@ test('normalizeIssue reads a flat shape with plain strings and caps the descript
 });
 
 test('normalizeIssue carries the status category when the item has one (list mode quest view)', () => {
-  assert.equal(J.normalizeIssue({ key: 'EP-1', fields: { status: { name: 'Doing', statusCategory: { key: 'indeterminate' } } } }).statusCategory, 'indeterminate');
-  assert.equal(J.normalizeIssue({ key: 'EP-2', status: { name: 'Done', statusCategory: { key: 'done' } } }).statusCategory, 'done');
-  assert.equal(J.normalizeIssue({ key: 'EP-3', status: 'To Do', statusCategory: 'new' }).statusCategory, 'new');
-  assert.equal(J.normalizeIssue({ key: 'EP-4', status: 'X', statusCategory: { key: 'done' } }).statusCategory, 'done');
-  assert.equal('statusCategory' in J.normalizeIssue({ key: 'EP-5', status: 'X' }), false);
-  assert.equal('statusCategory' in J.normalizeIssue({ key: 'EP-6', status: 'X', statusCategory: 'weird' }), false);
+  assert.equal(J.normalizeIssue({ key: 'PROJ-1', fields: { status: { name: 'Doing', statusCategory: { key: 'indeterminate' } } } }).statusCategory, 'indeterminate');
+  assert.equal(J.normalizeIssue({ key: 'PROJ-2', status: { name: 'Done', statusCategory: { key: 'done' } } }).statusCategory, 'done');
+  assert.equal(J.normalizeIssue({ key: 'PROJ-3', status: 'To Do', statusCategory: 'new' }).statusCategory, 'new');
+  assert.equal(J.normalizeIssue({ key: 'PROJ-4', status: 'X', statusCategory: { key: 'done' } }).statusCategory, 'done');
+  assert.equal('statusCategory' in J.normalizeIssue({ key: 'PROJ-5', status: 'X' }), false);
+  assert.equal('statusCategory' in J.normalizeIssue({ key: 'PROJ-6', status: 'X', statusCategory: 'weird' }), false);
 });
 
 test('issuesFrom accepts several list envelopes and drops invalid rows', () => {
@@ -51,17 +51,17 @@ test('connectionFrom: the real "no site" reply is disconnected; errors carry the
 });
 
 test('worktreeName lowercases and strips unsafe characters', () => {
-  assert.equal(J.worktreeName('EP-1234'), 'ep-1234');
+  assert.equal(J.worktreeName('PROJ-1234'), 'proj-1234');
   assert.equal(J.worktreeName('A_B/../C-1'), 'a-b-c-1');
   assert.equal(J.worktreeName(''), 'jira-ticket');
 });
 
-const issue = { key: 'EP-7', summary: '대사 오류', status: 'To Do', priority: 'High', labels: ['recon'], description: '입금대사 불일치' };
+const issue = { key: 'PROJ-7', summary: '배포 오류', status: 'To Do', priority: 'High', labels: ['ops'], description: '캐시 불일치' };
 
 test('worktreePrompt: guidance first, ticket facts, REPORT hint, autopilot last only when asked', () => {
   const p = J.worktreePrompt(issue, { guidance: '로그부터 확인', autopilot: true });
-  assert.ok(p.indexOf('로그부터 확인') < p.indexOf('EP-7'));
-  assert.ok(p.includes('입금대사 불일치') && p.includes(J.REPORT_HINT));
+  assert.ok(p.indexOf('로그부터 확인') < p.indexOf('PROJ-7'));
+  assert.ok(p.includes('캐시 불일치') && p.includes(J.REPORT_HINT));
   assert.ok(p.trimEnd().endsWith('autopilot'));
   assert.ok(!J.worktreePrompt(issue, {}).includes('autopilot'));
   assert.ok(!J.worktreePrompt(issue, {}).includes('접근 지침'));
@@ -69,7 +69,7 @@ test('worktreePrompt: guidance first, ticket facts, REPORT hint, autopilot last 
 
 test('sessionMessage puts the guidance before the ticket and requires guidance', () => {
   const m = J.sessionMessage(issue, '테스트 DB만 사용');
-  const g = m.indexOf('테스트 DB만 사용'), k = m.indexOf('EP-7'), r = m.indexOf('REPORT_START');
+  const g = m.indexOf('테스트 DB만 사용'), k = m.indexOf('PROJ-7'), r = m.indexOf('REPORT_START');
   assert.ok(g >= 0 && g < k && k < r);
   assert.equal(J.sessionMessage(issue, '   '), '');
   assert.ok(J.sessionMessage(issue, 'x', 'en').startsWith('Before reading the ticket'));
@@ -84,8 +84,8 @@ test('extractReport takes the last real block and ignores the echoed format hint
 });
 
 test('reportToComment adds a header, strips markers and trailing spaces, caps length', () => {
-  const c = J.reportToComment('REPORT_START [한 일] 수정   \n\n\n\n[막힌 점] 없음 REPORT_END', { session: 'ep-7' });
-  assert.equal(c, 'AgentDesk 에이전트 보고 (ep-7)\n\n[한 일] 수정\n\n[막힌 점] 없음');
+  const c = J.reportToComment('REPORT_START [한 일] 수정   \n\n\n\n[막힌 점] 없음 REPORT_END', { session: 'proj-7' });
+  assert.equal(c, 'AgentDesk 에이전트 보고 (proj-7)\n\n[한 일] 수정\n\n[막힌 점] 없음');
   assert.ok(J.reportToComment('y'.repeat(40000)).length <= 30000);
 });
 
@@ -137,8 +137,8 @@ const types = [
 ];
 
 test('boardJql: project, 30-day done window, mine, rank or updated order', () => {
-  assert.equal(J.boardJql('EP'), 'project = "EP" AND (statusCategory != Done OR resolved >= -30d) ORDER BY rank ASC');
-  assert.equal(J.boardJql('EP', true, 'updated'), 'project = "EP" AND (statusCategory != Done OR resolved >= -30d) AND assignee = currentUser() ORDER BY updated DESC');
+  assert.equal(J.boardJql('PROJ'), 'project = "PROJ" AND (statusCategory != Done OR resolved >= -30d) ORDER BY rank ASC');
+  assert.equal(J.boardJql('PROJ', true, 'updated'), 'project = "PROJ" AND (statusCategory != Done OR resolved >= -30d) AND assignee = currentUser() ORDER BY updated DESC');
 });
 
 test('buildColumns: union of statuses deduped by id, ordered by category then Jira order', () => {
@@ -167,20 +167,20 @@ test('moveColumn swaps with the neighbour and stops at the edges', () => {
 
 test('groupIssues: by status id; unknown status → first column of its category; hidden column drops its issues', () => {
   const cols = J.buildColumns(types, { hidden: ['6'] });
-  const iss = [{ key: 'EP-1', statusId: '3', cat: 'indeterminate' }, { key: 'EP-2', statusId: '99', cat: 'done' }, { key: 'EP-3', statusId: '6', cat: 'done' }, { key: 'EP-4', statusId: '98', cat: 'new' }];
+  const iss = [{ key: 'PROJ-1', statusId: '3', cat: 'indeterminate' }, { key: 'PROJ-2', statusId: '99', cat: 'done' }, { key: 'PROJ-3', statusId: '6', cat: 'done' }, { key: 'PROJ-4', statusId: '98', cat: 'new' }];
   const g = J.groupIssues(cols, iss);
-  assert.deepEqual(g.get('3').map(i => i.key), ['EP-1']);
-  assert.deepEqual(g.get('5').map(i => i.key), ['EP-2']);
-  assert.deepEqual(g.get('1').map(i => i.key), ['EP-4']);
+  assert.deepEqual(g.get('3').map(i => i.key), ['PROJ-1']);
+  assert.deepEqual(g.get('5').map(i => i.key), ['PROJ-2']);
+  assert.deepEqual(g.get('1').map(i => i.key), ['PROJ-4']);
   assert.equal(g.has('6'), false);
   assert.equal([...g.values()].flat().length, 3);
 });
 
 test('boardIssue reads status/category, assignee, due, type and subtask progress', () => {
-  const i = J.boardIssue({ key: 'EP-1109', fields: { summary: 'S', status: st('3', 'In Progress', 'indeterminate'), priority: { name: 'Medium' }, assignee: { accountId: 'a1', displayName: 'Neo Kim', avatarUrls: { '24x24': 'https://avatar/x.png' } }, duedate: '2026-10-15', issuetype: { name: 'Task' }, subtasks: [{ fields: { status: st('5', 'DONE', 'done') } }, { fields: { status: st('1', 'NEW', 'new') } }] } });
+  const i = J.boardIssue({ key: 'PROJ-1109', fields: { summary: 'S', status: st('3', 'In Progress', 'indeterminate'), priority: { name: 'Medium' }, assignee: { accountId: 'a1', displayName: 'Neo Kim', avatarUrls: { '24x24': 'https://avatar/x.png' } }, duedate: '2026-10-15', issuetype: { name: 'Task' }, subtasks: [{ fields: { status: st('5', 'DONE', 'done') } }, { fields: { status: st('1', 'NEW', 'new') } }] } });
   assert.equal(i.statusId, '3'); assert.equal(i.cat, 'indeterminate'); assert.equal(i.assignee, 'Neo Kim'); assert.equal(i.assigneeId, 'a1');
   assert.equal(i.avatar, 'https://avatar/x.png'); assert.equal(i.due, '2026-10-15'); assert.deepEqual(i.subtasks, { done: 1, total: 2 });
-  assert.equal(J.boardIssue({ key: 'EP-1', fields: {} }).subtasks, null);
+  assert.equal(J.boardIssue({ key: 'PROJ-1', fields: {} }).subtasks, null);
   assert.equal(J.boardIssue({ key: 'bad' }), null);
 });
 
@@ -200,10 +200,10 @@ test('priorityIcon / typeIcon / initials', () => {
 });
 
 test('filterIssues: every search word must match key or summary; assignee chips filter by account id', () => {
-  const iss = [{ key: 'EP-1', summary: '정산 대사 오류', assigneeId: 'a1' }, { key: 'EP-22', summary: 'Recon batch', assigneeId: 'a2' }, { key: 'EP-3', summary: 'misc', assigneeId: '' }];
-  assert.deepEqual(J.filterIssues(iss, { q: 'ep-2' }).map(i => i.key), ['EP-22']);
-  assert.deepEqual(J.filterIssues(iss, { q: '정산 오류' }).map(i => i.key), ['EP-1']);
-  assert.deepEqual(J.filterIssues(iss, { assignees: new Set(['a2', '']) }).map(i => i.key), ['EP-22', 'EP-3']);
+  const iss = [{ key: 'PROJ-1', summary: '배포 캐시 오류', assigneeId: 'a1' }, { key: 'PROJ-22', summary: 'Nightly batch', assigneeId: 'a2' }, { key: 'PROJ-3', summary: 'misc', assigneeId: '' }];
+  assert.deepEqual(J.filterIssues(iss, { q: 'proj-2' }).map(i => i.key), ['PROJ-22']);
+  assert.deepEqual(J.filterIssues(iss, { q: '배포 오류' }).map(i => i.key), ['PROJ-1']);
+  assert.deepEqual(J.filterIssues(iss, { assignees: new Set(['a2', '']) }).map(i => i.key), ['PROJ-22', 'PROJ-3']);
   assert.equal(J.filterIssues(iss, {}).length, 3);
 });
 
@@ -229,18 +229,18 @@ test('promptTemplates has four presets per language', () => {
 
 test('ticketWorkers: teammate names per ticket from live sessions only', () => {
   const peers = {
-    will: { name: 'will', sessions: [{ id: '1', jira: 'EP-1', status: 'running' }, { id: '2', jira: 'EP-1', status: 'waiting' }, { id: '3', jira: 'EP-2', status: 'done' }] },
-    kim: { name: 'kim', sessions: [{ id: '4', jira: 'EP-1', status: 'error' }, { id: '5', jira: 'EP-3', status: 'waiting', ended: true }, { id: '6', jira: 'bad key', status: 'running' }, { id: '7', status: 'running' }] },
+    will: { name: 'will', sessions: [{ id: '1', jira: 'PROJ-1', status: 'running' }, { id: '2', jira: 'PROJ-1', status: 'waiting' }, { id: '3', jira: 'PROJ-2', status: 'done' }] },
+    kim: { name: 'kim', sessions: [{ id: '4', jira: 'PROJ-1', status: 'error' }, { id: '5', jira: 'PROJ-3', status: 'waiting', ended: true }, { id: '6', jira: 'bad key', status: 'running' }, { id: '7', status: 'running' }] },
     lee: { name: 'lee', sessions: null },
   };
   const m = J.ticketWorkers(peers);
-  assert.deepEqual([...m], [['EP-1', ['will']]], 'an error session does not count');
-  assert.deepEqual([...J.ticketWorkers(Object.values(peers))], [['EP-1', ['will']]]);
+  assert.deepEqual([...m], [['PROJ-1', ['will']]], 'an error session does not count');
+  assert.deepEqual([...J.ticketWorkers(Object.values(peers))], [['PROJ-1', ['will']]]);
   // waiting: only while its time is within 2 hours (no time → counted)
   const now = 10 * 3600000;
-  const w = { a: { name: 'a', sessions: [{ jira: 'EP-5', status: 'waiting', time: now - 2 * 3600000 }] }, b: { name: 'b', sessions: [{ jira: 'EP-5', status: 'waiting', time: now - 2 * 3600000 - 1 }] },
-    c: { name: 'c', sessions: [{ jira: 'EP-5', status: 'waiting' }] }, d: { name: 'd', sessions: [{ jira: 'EP-5', status: 'running', time: 1 }] } };
-  assert.deepEqual([...J.ticketWorkers(w, now)], [['EP-5', ['a', 'c', 'd']]]);
+  const w = { a: { name: 'a', sessions: [{ jira: 'PROJ-5', status: 'waiting', time: now - 2 * 3600000 }] }, b: { name: 'b', sessions: [{ jira: 'PROJ-5', status: 'waiting', time: now - 2 * 3600000 - 1 }] },
+    c: { name: 'c', sessions: [{ jira: 'PROJ-5', status: 'waiting' }] }, d: { name: 'd', sessions: [{ jira: 'PROJ-5', status: 'running', time: 1 }] } };
+  assert.deepEqual([...J.ticketWorkers(w, now)], [['PROJ-5', ['a', 'c', 'd']]]);
   assert.equal(J.ticketWorkers(null).size, 0);
-  assert.equal(J.ticketWorkers({ x: { sessions: [{ jira: 'EP-1', status: 'running' }] } }).size, 0);   // no name
+  assert.equal(J.ticketWorkers({ x: { sessions: [{ jira: 'PROJ-1', status: 'running' }] } }).size, 0);   // no name
 });

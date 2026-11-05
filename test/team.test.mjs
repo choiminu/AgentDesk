@@ -43,7 +43,7 @@ test('sanitizeSessions forces types, lengths and characters (a modified teammate
     id: 'x'.repeat(300), name: 'n\u0000a\u2028m\u009fe' + 'y'.repeat(300), branch: 'b'.repeat(500), tool: 't'.repeat(100), status: 'running" onmouseover="alert(1)',
     agent: '<img src=x>', ctxPct: '42"><script>', needsInput: 'yes', stuck: 1, ended: 'false', isSub: {}, hookOnly: true,
     time: '"><b>', askSince: -5, stuckSince: 1700000000000, now: 'z'.repeat(1000), report: { text: 'r'.repeat(1000), at: 'soon' },
-    files: Array.from({ length: 50 }, (_, i) => `src/f${i}.js`).concat(['f'.repeat(500)]), jira: 'EP-1<script>', subagents: 7, parentId: 'p::/Users/x',
+    files: Array.from({ length: 50 }, (_, i) => `src/f${i}.js`).concat(['f'.repeat(500)]), jira: 'PROJ-1<script>', subagents: 7, parentId: 'p::/Users/x',
   };
   const [o] = sanitizeSessions([evil]);
   assert.equal(o.status, 'done', 'unknown status → done');
@@ -253,10 +253,10 @@ test('token reissue: the old token stops working at once', async () => {
 });
 
 test('sanitizeSessions phase 2: repo-relative files, report summary, ticket key — never absolute paths', () => {
-  const [o] = sanitizeSessions([{ id: 'a', files: ['src/A.java', '/Users/x/secret/B.java', '../up/C.java', 'src/A.java', '~/D.txt'], report: { text: 'x'.repeat(300), at: 5 }, jira: 'EP-12' }]);
+  const [o] = sanitizeSessions([{ id: 'a', files: ['src/A.java', '/Users/x/secret/B.java', '../up/C.java', 'src/A.java', '~/D.txt'], report: { text: 'x'.repeat(300), at: 5 }, jira: 'PROJ-12' }]);
   assert.deepEqual(o.files, ['src/A.java', 'B.java', 'C.java', 'D.txt']);
   assert.equal(o.report.text.length, 200); assert.equal(o.report.at, 5);
-  assert.equal(o.jira, 'EP-12');
+  assert.equal(o.jira, 'PROJ-12');
   assert.equal(sanitizeSessions([{ id: 'b', jira: 'not a key; rm -rf' }])[0].jira, undefined);
   assert.ok(!JSON.stringify(o).includes('/Users/'));
 });

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Slack front desk: "@agentdesk ICV-206 정산 존에 넣어줘" in Slack → a task file for the widget → the agent's REPORT comes back in the thread.
+// Slack front desk: "@agentdesk PROJ-206 이 티켓 처리해줘" in Slack → a task file for the widget → the agent's REPORT comes back in the thread.
 // Config ~/.agentdesk/slack.json: { "appToken": "xapp-…", "botToken": "xoxb-…", "allowUsers": ["U…"] (optional), "allowChannels": ["C…"] (optional) }
 // Jira details come from ~/.agentdesk/jira.json when present. Communication with the widget goes through files under
 // ~/.agentdesk/inbox/ (tasks) and ~/.agentdesk/inbox/replies/ (results), so no port is opened.

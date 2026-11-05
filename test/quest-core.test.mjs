@@ -176,24 +176,24 @@ test('pruneState drops tickets done over 30 days ago', () => {
 test('pruneState: after a complete load, quiet entries of the loaded project that the load did not return go', () => {
   const now = Date.parse('2026-11-04T00:00:00Z'), day = 864e5;
   const st = { v: 1, quests: {
-    'EP-1': { kind: 'session', sessionId: 's', at: now - 40 * day },                       // absent, quiet 40 days → gone
-    'EP-2': { kind: 'worktree', repo: 'r', at: now - 40 * day, reportAt: now - 5 * day },  // absent, reported 5 days ago → kept
-    'EP-3': { kind: 'session', sessionId: 's', at: now - 5 * day },                         // absent, recent → kept
-    'EP-4': { kind: 'session', sessionId: 's', at: now - 90 * day },                        // returned by the load → kept
+    'PROJ-1': { kind: 'session', sessionId: 's', at: now - 40 * day },                       // absent, quiet 40 days → gone
+    'PROJ-2': { kind: 'worktree', repo: 'r', at: now - 40 * day, reportAt: now - 5 * day },  // absent, reported 5 days ago → kept
+    'PROJ-3': { kind: 'session', sessionId: 's', at: now - 5 * day },                         // absent, recent → kept
+    'PROJ-4': { kind: 'session', sessionId: 's', at: now - 90 * day },                        // returned by the load → kept
     'OPS-1': { kind: 'session', sessionId: 's', at: now - 90 * day },                       // another project → kept
-    'EPX-1': { kind: 'session', sessionId: 's', at: now - 90 * day },                       // prefix must match whole → kept
-    'EP-5': { kind: 'worktree', repo: 'r', at: now - 31 * day, reportAt: now - 31 * day },  // absent, quiet 31 days → gone
+    'PROJX-1': { kind: 'session', sessionId: 's', at: now - 90 * day },                       // prefix must match whole → kept
+    'PROJ-5': { kind: 'worktree', repo: 'r', at: now - 31 * day, reportAt: now - 31 * day },  // absent, quiet 31 days → gone
   } };
-  const loaded = [issue('EP-4', 'indeterminate'), issue('EP-6', 'new')];
-  assert.deepEqual(Object.keys(Q.pruneState(st, loaded, now, ['EP']).quests).sort(), ['EP-2', 'EP-3', 'EP-4', 'EPX-1', 'OPS-1']);
+  const loaded = [issue('PROJ-4', 'indeterminate'), issue('PROJ-6', 'new')];
+  assert.deepEqual(Object.keys(Q.pruneState(st, loaded, now, ['PROJ']).quests).sort(), ['OPS-1', 'PROJ-2', 'PROJ-3', 'PROJ-4', 'PROJX-1']);
   // no projects (a failed / partial load): only the done-30-days rule applies, nothing is pruned by absence
   assert.equal(Object.keys(Q.pruneState(st, loaded, now).quests).length, 7);
   assert.equal(Object.keys(Q.pruneState(st, loaded, now, []).quests).length, 7);
   assert.equal(Object.keys(Q.pruneState(st, loaded, now, ['ep', '', null, 'E P']).quests).length, 7, 'junk project keys are ignored');
   // the done rule still works alongside
-  const both = Q.pruneState(st, [...loaded, issue('EP-3', 'done', { resolutiondate: new Date(now - 40 * day).toISOString() })], now, ['EP']);
-  assert.deepEqual(Object.keys(both.quests).sort(), ['EP-2', 'EP-4', 'EPX-1', 'OPS-1']);
-  assert.ok(st.quests['EP-1'], 'input untouched');
+  const both = Q.pruneState(st, [...loaded, issue('PROJ-3', 'done', { resolutiondate: new Date(now - 40 * day).toISOString() })], now, ['PROJ']);
+  assert.deepEqual(Object.keys(both.quests).sort(), ['OPS-1', 'PROJ-2', 'PROJ-4', 'PROJX-1']);
+  assert.ok(st.quests['PROJ-1'], 'input untouched');
 });
 
 test('deskPrompt keeps untrusted ticket text inside its block', () => {

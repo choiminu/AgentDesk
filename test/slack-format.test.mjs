@@ -8,7 +8,7 @@ const S = globalThis.AgentDeskStatus;
 const W = 120;
 const pad = (s) => s + ' '.repeat(Math.max(0, W - S.displayCols(s)));
 const screen = [
-  '❯ 정산 README를 요약해줘 그리고 REPORT_START [한 일] REPORT_END 형식으로',
+  '❯ 프로젝트 README를 요약해줘 그리고 REPORT_START [한 일] REPORT_END 형식으로',
   '',
   '⏺ 요약입니다.',
   '',
@@ -67,11 +67,11 @@ test('splitMrkdwn keeps fences balanced', () => {
 });
 
 test('replyPayload: report → header + divider + sections; plain text otherwise', () => {
-  const p = replyPayload({ title: 'EP-1 요약', session: 'front-desk', report: '[한 일] 했음', text: 'fallback' });
-  assert.equal(p.blocks[0].text.text, '✅ *EP-1 요약*  ·  _front-desk_');
+  const p = replyPayload({ title: 'PROJ-1 요약', session: 'front-desk', report: '[한 일] 했음', text: 'fallback' });
+  assert.equal(p.blocks[0].text.text, '✅ *PROJ-1 요약*  ·  _front-desk_');
   assert.equal(p.blocks[1].type, 'divider');
   assert.equal(p.blocks[2].text.text, '*🛠 한 일*\n했음');
-  assert.equal(p.text, '✅ EP-1 요약 · front-desk');
+  assert.equal(p.text, '✅ PROJ-1 요약 · front-desk');
   assert.deepEqual(replyPayload({ text: '▶ 시작' }), { text: '▶ 시작' });
 });
 

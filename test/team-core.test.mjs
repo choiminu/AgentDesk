@@ -67,16 +67,16 @@ test('boardRows: today only, report or ticket, newest first; markdown table esca
   const now = new Date(2026, 9, 20, 15, 0).getTime();
   const today = new Date(2026, 9, 20, 10, 5).getTime(), yesterday = new Date(2026, 9, 19, 18, 0).getTime();
   const me = { name: 'neo', mine: true, sessions: [
-    { id: 'a', name: 'wt-a', jira: 'EP-1', report: { text: 'a|b', at: today }, time: today },
+    { id: 'a', name: 'wt-a', jira: 'PROJ-1', report: { text: 'a|b', at: today }, time: today },
     { id: 'b', name: 'wt-b', report: { text: 'old', at: yesterday }, time: yesterday },
-    { id: 'c', name: 'wt-c', jira: 'EP-3', time: now - 1000 },
+    { id: 'c', name: 'wt-c', jira: 'PROJ-3', time: now - 1000 },
   ] };
   const rows = T.boardRows(me, [{ name: 'will', sessions: [{ id: 'p', name: 'wt-p', report: { text: 'did it', at: today + 60000 }, time: today }, { id: 's', name: 'sub', isSub: true, report: { text: 'x', at: today } }] }], now);
-  assert.deepEqual(rows.map(r => [r.owner, r.session, r.ticket, r.done]), [['neo', 'wt-c', 'EP-3', ''], ['will', 'wt-p', '', 'did it'], ['neo', 'wt-a', 'EP-1', 'a|b']]);
+  assert.deepEqual(rows.map(r => [r.owner, r.session, r.ticket, r.done]), [['neo', 'wt-c', 'PROJ-3', ''], ['will', 'wt-p', '', 'did it'], ['neo', 'wt-a', 'PROJ-1', 'a|b']]);
   assert.equal(rows[2].mine, true);
   const md = T.boardMarkdown(rows).split('\n');
   assert.equal(md[0], '| 팀원 | 세션 | 티켓 | 한 일 | 시각 |');
-  assert.equal(md[4], '| neo | wt-a | EP-1 | a\\|b | 10:05 |');
+  assert.equal(md[4], '| neo | wt-a | PROJ-1 | a\\|b | 10:05 |');
 });
 
 test('noteMessage wraps the note as reference material, flattens newlines and strips control characters', () => {
