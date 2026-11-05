@@ -23,3 +23,8 @@ https://github.com/patch-gg/pixelfx · https://www.spritefusion.com/pixel-art-vf
 
 char_6.png … char_11.png are recolors of char_0 … char_5 (same Metro City frames, new hair and clothes), made by
 scripts/office-skins.mjs
+
+## UI pixel icons
+
+The 12 x 12 icons that replace colour emoji in the widget (gear, book, sword, shop, key, …) are our own drawings, kept as
+text grids in scripts/pixel-icons.mjs and generated into widget.html as inline SVG (`node scripts/pixel-icons.mjs`).
