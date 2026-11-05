@@ -21,17 +21,17 @@ test('empty / missing input → empty list, never throws', () => {
 
 test('jira-report: only dispatches in state report', () => {
   const items = build({ jiraDispatch: {
-    'TKT-1': { key: 'TKT-1', summary: 'fix it', state: 'report', sentAt: NOW - 50 * MIN, reportAt: NOW - 5 * MIN },
-    'TKT-2': { key: 'TKT-2', state: 'sent', sentAt: NOW },
-    'TKT-3': { key: 'TKT-3', state: 'posted', sentAt: NOW },
-    'TKT-4': { key: 'TKT-4', state: 'discarded', sentAt: NOW },
+    'PROJ-1': { key: 'PROJ-1', summary: 'fix it', state: 'report', sentAt: NOW - 50 * MIN, reportAt: NOW - 5 * MIN },
+    'PROJ-2': { key: 'PROJ-2', state: 'sent', sentAt: NOW },
+    'PROJ-3': { key: 'PROJ-3', state: 'posted', sentAt: NOW },
+    'PROJ-4': { key: 'PROJ-4', state: 'discarded', sentAt: NOW },
   } });
   assert.deepEqual(kinds(items), ['jira-report']);
-  assert.equal(items[0].id, 'TKT-1');
+  assert.equal(items[0].id, 'PROJ-1');
   assert.equal(items[0].at, NOW - 5 * MIN);
   assert.equal(items[0].severity, 'normal');
-  assert.deepEqual(items[0].target, { page: 'jira', ticket: 'TKT-1' });
-  assert.match(items[0].title, /^TKT-1 fix it$/);
+  assert.deepEqual(items[0].target, { page: 'jira', ticket: 'PROJ-1' });
+  assert.match(items[0].title, /^PROJ-1 fix it$/);
 });
 
 test('diff and stuck: from session flags', () => {
@@ -119,9 +119,9 @@ test('order: severity first, then oldest first', () => {
     sessions: [{ id: 'a', name: 'a', status: 'waiting', diffUnseen: true, reportAt: NOW - 90 * MIN }],
     peerNotes: [{ id: 'n1', from: 'k', to: 'x', text: 't', at: NOW - MIN, state: 'new' }, { id: 'n0', from: 'k', to: 'x', text: 't', at: NOW - 10 * MIN, state: 'new' }],
     permRequests: [{ id: 'r1', createdAt: NOW, expiresAt: NOW + MIN, summary: {} }],
-    jiraDispatch: { 'TKT-9': { key: 'TKT-9', state: 'report', reportAt: NOW - 5 * MIN } },
+    jiraDispatch: { 'PROJ-9': { key: 'PROJ-9', state: 'report', reportAt: NOW - 5 * MIN } },
   });
-  assert.deepEqual(items.map(x => x.kind + ':' + x.id), ['perm:r1', 'note:n0', 'jira-report:TKT-9', 'note:n1', 'diff:a']);
+  assert.deepEqual(items.map(x => x.kind + ':' + x.id), ['perm:r1', 'note:n0', 'jira-report:PROJ-9', 'note:n1', 'diff:a']);
 });
 
 test('outside text is length-limited and stripped of bidi / control characters', () => {
@@ -148,7 +148,7 @@ test('at most MAX_ITEMS items', () => {
 test('settings toggle: a kind set to false is left out', () => {
   const input = {
     peerNotes: [{ id: 'n1', from: 'k', to: 'x', text: 't', at: NOW, state: 'new' }],
-    jiraDispatch: { 'TKT-1': { key: 'TKT-1', state: 'report', reportAt: NOW } },
+    jiraDispatch: { 'PROJ-1': { key: 'PROJ-1', state: 'report', reportAt: NOW } },
   };
   assert.deepEqual(kinds(build(input, { kinds: { note: false } })), ['jira-report']);
   assert.deepEqual(kinds(build(input, { kinds: { note: true, 'jira-report': false } })), ['note']);
