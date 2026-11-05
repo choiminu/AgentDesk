@@ -5,7 +5,8 @@
 // a dark gradient. Output: docs/screenshots/*.png
 //
 //   node scripts/shots.mjs            # all pages
-//   node scripts/shots.mjs dock       # one page: dashboard | office | dock | team
+//   node scripts/shots.mjs dock       # one page: dashboard | office | dock | team | skillbook | quest
+// Skillbook and quest board: the demo Skillbook (scripts/demo-data.mjs) and the made-up Jira board (demoJira).
 //   node scripts/shots.mjs gif        # docs/screenshots/dock.gif: a question arrives → the bubble grows → one click answers
 //
 // The running app must be closed first (single instance). Needs node >= 22 (global WebSocket, fetch).
@@ -84,11 +85,26 @@ async function pageA(p) {
     save("team.png", await c.shot());
   }
   if (!only || only === "dock") {
-    await c.evalJs(`dockCfg.hoverTerm = true; dockCfg.anim = true; dockEnter(); true`);
+    await c.evalJs(`dockCfg.hoverTerm = true; dockCfg.anim = true; dockCfg.usage = 'hearts'; dockEnter(); true`);   // hearts in memory only: a saved 'bars' stays
     await sleep(1500);
     await sleep(1800);
     save("dock.png", await c.shot());
     await c.evalJs(`dockLeave(); true`);
+  }
+  if (!only || only === "skillbook") {
+    await c.evalJs(`showPage('skillbook'); window.orca.resizeWindow(820, 640, true); sbState.tab = 'skill'; skillbookLoad(); true`);
+    await sleep(1500);
+    await c.evalJs(`{ const it = sbState.data.items.find(i => i.name === 'code-review'); if (it) { sbState.sel = it.id; skillbookRender(); } } true`);
+    await sleep(600);
+    save("skillbook.png", await c.shot());
+  }
+  if (!only || only === "quest") {
+    await c.evalJs(`showPage('jira'); window.orca.resizeWindow(1000, 620, true); jiraLoad(); true`);
+    await sleep(1500);
+    await c.evalJs(`if (!questOn) questToggle(); true`);
+    await sleep(1200);
+    save("quest.png", await c.shot());
+    await c.evalJs(`if (questOn) questToggle(); true`);
   }
   c.close();
 }
@@ -138,7 +154,7 @@ async function pageGif() {
   console.log(`[shot] dock.gif (${bg[0].w}x${bg[0].h}, ${frames.length} frames)`);
 }
 
-const wantA = !only || ["dashboard", "team", "dock"].includes(only), wantB = !only || only === "office", wantGif = !only || only === "gif";
+const wantA = !only || ["dashboard", "team", "dock", "skillbook", "quest"].includes(only), wantB = !only || only === "office", wantGif = !only || only === "gif";
 if (wantA) { const p = launch("dashboard,en,skip-onboarding,demo"); try { await pageA(p); } finally { p.kill(); await sleep(800); } }
 if (wantB) { const p = launch("office-demo,en,skip-onboarding,demo"); try { await pageB(); } finally { p.kill(); await sleep(800); } }
 if (wantGif) { const p = launch("dashboard,en,skip-onboarding,demo"); try { await pageGif(); } finally { p.kill(); await sleep(800); } }

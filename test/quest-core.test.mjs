@@ -189,7 +189,7 @@ test('pruneState: after a complete load, quiet entries of the loaded project tha
   // no projects (a failed / partial load): only the done-30-days rule applies, nothing is pruned by absence
   assert.equal(Object.keys(Q.pruneState(st, loaded, now).quests).length, 7);
   assert.equal(Object.keys(Q.pruneState(st, loaded, now, []).quests).length, 7);
-  assert.equal(Object.keys(Q.pruneState(st, loaded, now, ['ep', '', null, 'E P']).quests).length, 7, 'junk project keys are ignored');
+  assert.equal(Object.keys(Q.pruneState(st, loaded, now, ['proj', '', null, 'P J']).quests).length, 7, 'junk project keys are ignored');
   // the done rule still works alongside
   const both = Q.pruneState(st, [...loaded, issue('PROJ-3', 'done', { resolutiondate: new Date(now - 40 * day).toISOString() })], now, ['PROJ']);
   assert.deepEqual(Object.keys(both.quests).sort(), ['OPS-1', 'PROJ-2', 'PROJ-4', 'PROJX-1']);
