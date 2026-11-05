@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-cSG0v74SwE7KlcWbDgku/mhUM4ZrtlFz8ulKr8KBQ98='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-lFsyWq5+ExOW0dRuqCVE5XUpRj5TVEBSc0kbAZU7wkI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2274,13 +2274,13 @@ const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&
 function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ESC_MAP[c]); }
 // ── pixel icons in place of the colour emoji (scripts/pixel-icons.mjs draws them and writes PXI_EMOJI): text the
 //    widget draws is scanned as it appears (MutationObserver) and each known emoji becomes <i class="pxi pxi-<name>">.
-//    Left alone: form fields and option labels (they cannot hold an image), terminal / chat screens and verbatim user
-//    text (what an agent or a person wrote), and attributes (tooltips stay plain text).
+//    Left alone: form fields and option labels (they cannot hold an image), terminal / chat screens (what an agent
+//    wrote, as it wrote it) and attributes (tooltips stay plain text).
 // pxi:map:start
 const PXI_EMOJI = {"⚙":"gear","📖":"book","🗡":"sword","🏪":"shop","🔑":"key","💤":"zzz","🎫":"ticket","🎟":"ticket","🛡":"shield","⚠":"warn","✉":"mail","📥":"inbox","📭":"empty","❓":"question","🔔":"bell","🔕":"bellOff","📌":"pin","📊":"chart","🔗":"link","⏱":"stopwatch","📋":"clipboard","💬":"chat","📜":"scroll","☕":"coffee","🔥":"fire","🧰":"toolbox","🧩":"puzzle","👑":"crown","📅":"calendar","🔐":"lock","🔒":"lock","🖥":"monitor","👁":"eye","👀":"eye","🙈":"hidden","🤖":"robot","📝":"memo","✏":"pencil","✨":"sparkle","✋":"hand","🧹":"broom","⏳":"hourglass","🎉":"party","🎨":"palette","📦":"box","🧪":"flask","⚡":"bolt","🗑":"trash","🧭":"compass","🏷":"tag","🔌":"plug","✅":"check","👤":"person","👥":"people","📄":"page","🌐":"globe","🚦":"traffic","⏸":"pause","⏹":"stop","⬇":"download","❤":"heart"};
 // pxi:map:end
 const PXI_RE = new RegExp(`(${Object.keys(PXI_EMOJI).sort((a, b) => b.length - a.length).map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\uFE0F?`, 'g');
-const PXI_SKIP = 'script, style, textarea, input, select, option, [contenteditable], [data-verbatim], .pt-screen, .chat-screen, .chat-line-response, .chat-line-prompt, pre';
+const PXI_SKIP = 'script, style, textarea, input, select, option, [contenteditable], .pt-screen, .chat-screen, .chat-line-response, .chat-line-prompt, pre';   // not [data-verbatim]: that only tells the page translator to keep names, and the whole dock carries it
 function pxiText(node) {
   const v = node.nodeValue;
   PXI_RE.lastIndex = 0;

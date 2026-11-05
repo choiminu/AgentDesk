@@ -22,9 +22,11 @@ test('pixel icons: the widget holds exactly what the script generates (run node 
   assert.equal(map, `const PXI_EMOJI = ${JSON.stringify(P.EMOJI)};`);
 });
 
-test('pixel icons: swapped only in drawn text, never in fields, options, terminal / chat screens or verbatim text', () => {
+test('pixel icons: swapped only in drawn text, never in fields, options or terminal / chat screens; the dock is included', () => {
   const skip = /const PXI_SKIP = '([^']+)';/.exec(html)[1];
-  for (const s of ['textarea', 'input', 'select', 'option', '[contenteditable]', '[data-verbatim]', '.pt-screen', '.chat-screen', 'pre']) assert.ok(skip.split(', ').includes(s), s);
+  for (const s of ['textarea', 'input', 'select', 'option', '[contenteditable]', '.pt-screen', '.chat-screen', 'pre']) assert.ok(skip.split(', ').includes(s), s);
+  assert.ok(!skip.includes('data-verbatim'), 'the dock (#page-dock carries data-verbatim for the translator) gets its icons');
+  assert.match(html, /<div class="page" id="page-dock" data-verbatim>/);
   assert.match(html, /new MutationObserver\(ms => \{[^\n]*characterData[^\n]*pxiText\(m\.target\)[^\n]*pxiDecorate\(n\)/);
   assert.match(html, /\.observe\(document\.body, \{ childList: true, subtree: true, characterData: true \}\);/);
   assert.match(html, /i\.className = `pxi pxi-\$\{PXI_EMOJI\[m\[1\]\]\}`; i\.setAttribute\('aria-hidden', 'true'\);/);
