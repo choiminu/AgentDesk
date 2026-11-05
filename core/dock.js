@@ -450,19 +450,20 @@ function dockBounds(input) {
 }
 
 // ── panels in the room above / below the bar ──
-const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 120, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 320, bubbleBigW: 440, bubbleH: 300, bubbleBigH: 420, bubbleMaxH: 560, bubbleBigMaxH: 680, doneW: 220, addW: 280, tail: 6 };
+const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 120, usageW: 300, usageH: 220, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 320, bubbleBigW: 440, bubbleH: 300, bubbleBigH: 420, bubbleMaxH: 560, bubbleBigMaxH: 680, doneW: 220, addW: 280, tail: 6 };
 const BUBBLE_ROWS = { head: 30, q: 66, qBig: 132, opt: 54, msg: 20, pad: 18 };   // larger type (13 px): the bubble is read from across the room
 function popWidth(kind, workWidth) {
   const ww = Math.max(0, Math.floor(num(workWidth))), room = Math.max(0, ww - 2 * POP.margin);
   if (kind === 'term') return Math.min(POP.termW, Math.floor(ww * POP.termFrac), room);
-  if (kind === 'tipSmall' || kind === 'usage' || kind === 'menu') return Math.min(room, POP.tipSmallW);
+  if (kind === 'tipSmall' || kind === 'menu') return Math.min(room, POP.tipSmallW);
+  if (kind === 'usage') return Math.min(room, POP.usageW);   // the limit card: what the hearts / ring / bars mean, then the numbers
   if (kind === 'add' || kind === 'drop') return Math.min(room, POP.addW);
   return 0;
 }
 function popExtra(kind, height) {
   const tall = (kind === 'bubbles' || kind === 'bubblesBig' || kind === 'bubblesDone') && Number.isFinite(Number(height)) && Number(height) > 0;
   if (tall) return Math.round(Number(height)) + POP.tail + 2 * POP.gap;
-  const h = kind === 'term' ? POP.termH : kind === 'add' || kind === 'drop' ? 2 * POP.tipSmallH : kind === 'tipSmall' || kind === 'usage' || kind === 'menu' || kind === 'bubblesDone' ? POP.tipSmallH : kind === 'bubbles' ? POP.bubbleH + POP.tail : kind === 'bubblesBig' ? POP.bubbleBigH + POP.tail : 0;
+  const h = kind === 'term' ? POP.termH : kind === 'add' || kind === 'drop' ? 2 * POP.tipSmallH : kind === 'usage' ? POP.usageH : kind === 'tipSmall' || kind === 'menu' || kind === 'bubblesDone' ? POP.tipSmallH : kind === 'bubbles' ? POP.bubbleH + POP.tail : kind === 'bubblesBig' ? POP.bubbleBigH + POP.tail : 0;
   return h ? h + 2 * POP.gap : 0;
 }
 function bubbleHeight(optionCount, big) {
