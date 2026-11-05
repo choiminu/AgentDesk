@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+wAqGisSL0kaWb7YdYWknIf9hLWC1ZTCo5kIyWy5BDQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-mqGxLNQmjQWTim1CsLnasncsbkA2o942oVoPXLvgSq8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -167,9 +167,6 @@
   }
   .minimize-btn:hover { color: var(--text); background: var(--surface-hover); border-color: var(--border); }
   /* review queue (📥): count in the header, list in a dropdown under it */
-  .header-controls .theme-btn.inbox-btn { width: auto; min-width: 26px; padding: 0 5px; gap: 2px; display: inline-flex; align-items: center; font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); white-space: nowrap; }
-  .header-controls .theme-btn.inbox-btn.has { color: var(--text); }
-  .header-controls .theme-btn.inbox-btn.hot { color: var(--yellow-text); background: var(--yellow-dim); }
   .inbox-panel { position: fixed; left: 8px; right: 8px; z-index: 150; max-height: 70vh; overflow-y: auto; overflow-x: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: 0 6px 20px rgba(0,0,0,0.35); font-size: var(--fs-sm); }
   .inbox-panel[hidden] { display: none; }
   .ibx-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); position: sticky; top: 0; background: var(--surface); }
@@ -1191,7 +1188,7 @@
   .q-dock .q-dock-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
   .q-dock .qb-col { flex: 0 0 auto; min-width: 0; }
   .q-dock .qb-colb { overflow: visible; }
-  .q-dock .qb-book { padding: 6px !important; flex: 1 0 auto; }
+  .q-dock .qb-book { padding: 6px !important; flex: 1 1 auto; min-height: 0; overflow-y: auto; }   /* scrolls inside the panel (1 0 auto grew past it and got clipped) */
   .q-dock .qb-cols { flex-direction: column; overflow: visible; }
   .q-dock .qb-book .qb-col { flex: 0 0 auto; min-width: 0; padding: 6px 8px; }
   .q-dock .qb-field select { max-width: 150px; }
@@ -1859,9 +1856,6 @@
   .dock-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .dock-btn { height: 32px; min-width: 32px; padding: 0 8px; border-radius: 8px; border: none; background: none; color: var(--text2); font: inherit; font-size: var(--fs-sm); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
   .dock-btn:hover { background: var(--surface-hover); color: var(--text); }
-  #dock-inbox { font-family: var(--mono); font-size: var(--fs-xs); color: var(--text3); white-space: nowrap; }
-  #dock-inbox.has { color: var(--text); }
-  #dock-inbox.hot { color: var(--yellow-text); background: var(--yellow-dim); }
   /* the timer page's countdown: a ring of what is left and mm:ss */
   .dock-timer { gap: 4px; font: 600 var(--fs-xs) var(--mono); color: var(--text2); }
   .dock-timer[hidden] { display: none; }
@@ -1976,14 +1970,12 @@
       <span class="stat done" title="완료"><span class="px-ic pc-off"></span><span id="nDone">0</span></span>
     </div>
     <div class="header-controls">
-      <button class="theme-btn inbox-btn" id="inbox-btn" title="검토 대기열" aria-haspopup="true" aria-expanded="false">📥<span id="inbox-n">0</span></button>
       <button class="theme-btn" id="dock-btn" title="도크 모드 (⌘⇧D / Ctrl+Shift+D)">▭</button>
       <button class="theme-btn" id="settings-btn" title="설정">⚙</button>
       <button class="minimize-btn" id="minimize-btn" title="최소화">▾</button>
     </div>
   </div>
 
-  <div class="inbox-panel" id="inbox-panel" role="dialog" aria-label="검토 대기열" hidden></div>
   <!-- dock mode: the skillbook (the same book as #page-skillbook, drawn by skillbookRender) above the bar (📖) -->
   <div class="inbox-panel sb-dock" id="sb-dock" role="dialog" aria-label="스킬북" hidden>
     <div class="sb-bar"></div>
@@ -2123,7 +2115,6 @@
       <div class="dock-sep" aria-hidden="true"></div>
       <div class="dock-msg" id="dock-msg" role="status" aria-live="polite" hidden></div>
       <div class="dock-right" id="dock-right">
-        <button class="dock-btn" id="dock-inbox" aria-haspopup="true" aria-expanded="false">📥<span id="dock-inbox-n">0</span></button>
         <button class="dock-btn" id="dock-sb" aria-haspopup="true" aria-expanded="false">📖</button>
         <button class="dock-btn" id="dock-q" aria-haspopup="true" aria-expanded="false">🗡</button>
         <div class="dock-usage" id="dock-usage" role="img" hidden></div>
@@ -3341,13 +3332,8 @@ hooksReady.then(async () => { try { for (const r of await window.orca.permList()
 // ── review queue (📥 in the header): what waits for me, gathered from the state the pages already keep. core/inbox.js
 //    decides what is included and the order; this only reads, draws and calls the existing handlers. No toast and no
 //    desktop notification of its own — those stay with the pages that own each item. ──
-let inboxQPrefs = { kinds: {} };   // localStorage roca-inbox: { kinds: { <kind>: false } } — every kind on by default
-try { inboxQPrefs = AgentDeskInbox.normalizePrefs(JSON.parse(localStorage.getItem('roca-inbox') || '{}')); } catch {}
-let inboxQOpen = false, inboxQTimer = 0, inboxQItems = [], inboxQSig = '', inboxQArmT = 0;
-// labels: '대기열: ' keys keep short words (거부, 변경 보기) out of the phrase dictionary; Korean shows them without it
-const inboxT = s => LANG === 'ko' ? String(s).replace(/^대기열: /, '') : t(s);
-const INBOX_KIND_LABEL = { perm: '권한 요청', 'perm-orphan': '세션 없는 권한 요청', 'peer-ask': '위임받은 세션', usage: '한도 경고', 'jira-report': 'Jira 보고 대기', hello: '팀원 등록 요청', note: '받은 메모', stuck: '응답 없음', diff: '대기열: 변경 보기' };
-const INBOX_KIND_ICON = { perm: '🔐', 'perm-orphan': '🔐', 'peer-ask': '🔑', usage: '⚠', 'jira-report': '🎫', hello: '👥', note: '✉', stuck: '⏳', diff: '📝' };
+const inboxQPrefs = AgentDeskInbox.normalizePrefs({});   // every kind: the dock tiles' badges read all of them
+let inboxQTimer = 0, inboxQItems = [];
 // called after every poll that can change an item; draws at most once per 200 ms
 function inboxRender() {
   if (inboxQTimer) return;
@@ -3369,60 +3355,7 @@ function inboxDraw() {
     permRequests: permSorted().map(r => { const s = permSessionOf(r.sessionId); return { ...r, name: permName(r), orphan: !s, localId: s ? s.id : '' }; }),
     sessions: sessions.map(s => ({ id: s.id, name: s.name, status: s.status, stuck: s.stuck, stuckSince: s.stuckSince, diffUnseen: diffReportBadge.has(s.id), reportAt: (peerReports.get(s.id) || {}).at || 0 })),
   }, inboxQPrefs);
-  const n = inboxQItems.length, b = $('inbox-btn');
-  $('inbox-n').textContent = n > 99 ? '99+' : n;
-  b.classList.toggle('has', n > 0); b.classList.toggle('hot', inboxQItems.some(x => x.severity === 'high'));
-  b.title = `${t('검토 대기열')} ${n}`;
-  if (inboxQOpen) inboxPanelDraw();
-  dockRender();   // the dock bar reads the same items (badges, 📥 count)
-}
-function inboxQuickHtml(x) {
-  // every button starts disabled and is armed after PERM_ARM_MS (inboxPanelDraw); data-off = stays disabled
-  const btn = (act, label, extra) => `<button class="set-btn" data-ibx="${act}" disabled${extra || ''}>${esc(inboxT(label))}</button>`;
-  if (x.kind === 'note') {
-    const n = peerNotes.find(m => m.id === x.id), s = n && peerLocalSession(n.to);
-    return btn('note-deliver', '세션에 전달', s && handles.get(s.id) ? '' : ` data-off="1" title="${esc(t('세션 터미널을 찾을 수 없습니다'))}"`);
-  }
-  if (x.kind === 'hello') return btn('hello-accept', '추가');
-  if (x.kind === 'perm' || x.kind === 'perm-orphan') return btn('perm-deny', '대기열: 거부');   // allowing stays on the full panel (arming delay, truncated input)
-  return '';
-}
-function inboxPanelDraw() {
-  const el = $('inbox-panel'), items = inboxQItems, now = Date.now();
-  // unchanged list (same items, texts, buttons, and the same age in minutes) → leave the DOM, focus and arming alone
-  const sig = [LANG, ...items.map(x => [x.kind, x.id, x.title, x.detail, x.severity, x.at ? Math.floor((now - x.at) / 60000) : '', inboxQuickHtml(x)].join('\u0001'))].join('\u0002');
-  if (sig === inboxQSig) return;
-  inboxQSig = sig;
-  const a = document.activeElement, fRow = a && el.contains(a) ? a.closest('.ibx-item') : null;
-  const focus = fRow ? { k: fRow.dataset.k, id: fRow.dataset.id, btn: a !== fRow } : null;
-  el.innerHTML = `<div class="ibx-head"><b>${esc(t('검토 대기열'))}</b><span class="ibx-n">${items.length}</span><button class="ibx-x" data-ibx="settings" title="${esc(t('대기열 설정'))}">⚙</button><button class="ibx-x" data-ibx="close" title="${esc(t('닫기'))}">✕</button></div>`
-    + (items.length ? items.map(x => `<div class="ibx-item sev-${esc(x.severity)}" tabindex="0" data-k="${esc(x.kind)}" data-id="${esc(x.id)}">
-        <span class="ibx-ic">${INBOX_KIND_ICON[x.kind] || '•'}</span>
-        <div class="ibx-tx"><div class="ibx-kind">${esc(inboxT(INBOX_KIND_LABEL[x.kind] || x.kind))}${x.at ? ` · ${esc(timeAgo(x.at))}` : ''}</div><div class="ibx-title" data-verbatim>${esc(x.title)}</div>${x.detail ? `<div class="ibx-detail" data-verbatim title="${esc(x.detail)}">${esc(x.detail)}</div>` : ''}</div>
-        ${inboxQuickHtml(x)}</div>`).join('')
-      : `<div class="ibx-empty">${esc(t('대기 중인 항목이 없습니다'))}</div>`);
-  // rows may have moved under the pointer: quick buttons ignore clicks for PERM_ARM_MS, as the permission panel does
-  clearTimeout(inboxQArmT);
-  inboxQArmT = setTimeout(() => { el.querySelectorAll('.ibx-item .set-btn').forEach(b => { if (!b.dataset.off) b.disabled = false; }); }, PERM_ARM_MS);
-  if (focus) {
-    const row = [...el.querySelectorAll('.ibx-item')].find(r => r.dataset.k === focus.k && r.dataset.id === focus.id);
-    if (row) { const b = focus.btn && row.querySelector('.set-btn'); (b && !b.disabled ? b : row).focus(); }
-    else { const first = el.querySelector('.ibx-item'); (first || $('inbox-btn')).focus(); }
-  }
-}
-function inboxToggle(open) {
-  inboxQOpen = open == null ? !inboxQOpen : !!open;
-  const el = $('inbox-panel'), b = $('inbox-btn');
-  b.setAttribute('aria-expanded', inboxQOpen ? 'true' : 'false');
-  if (dockOn) $('dock-inbox').setAttribute('aria-expanded', inboxQOpen ? 'true' : 'false');
-  if (!inboxQOpen) { if (dockOn) closeTeamModal(); el.hidden = true; el.innerHTML = ''; inboxQSig = ''; clearTimeout(inboxQArmT); if (dockOn) { dockAskPlace(); dockBoundsSync(); } return; }
-  // dock mode: the list opens above the bar (the window grows upward while it is open)
-  if (dockOn) dockWake();
-  if (dockOn && sbDockOpen) sbDockToggle(false);
-  if (dockOn && questDockOpen) questDockToggle(false);
-  if (dockOn) { dockTipHide(); dockTermClose(true); dockPopPlace(); dockBoundsSync(); }
-  else { el.style.bottom = ''; el.style.top = `${Math.round(document.querySelector('.header').getBoundingClientRect().bottom) + 2}px`; }
-  el.hidden = false; inboxDraw();
+  dockRender();   // the dock bar reads the items (the tiles' badges)
 }
 // scroll a dashboard card into view (the item's own place), when the current tab / filter shows it
 function inboxShowCard(id) {
@@ -3430,55 +3363,11 @@ function inboxShowCard(id) {
   if (card) { card.scrollIntoView({ block: 'center' }); card.classList.add('pulse'); }
   return card;
 }
-function inboxGo(x) {
-  const tg = x.target || {};
-  inboxToggle(false);
-  if (x.kind === 'jira-report') {
-    jb.drawer = tg.ticket; jiraOpen.add(tg.ticket);   // whichever view jiraLoad picks (board drawer or list row) opens on it
-    if (currentPage !== 'jira') showPage('jira');
-    if (jiraBoardMode) jbOpen(tg.ticket);
-    else { jiraRender(); if (!jiraDetail.has(tg.ticket)) jiraIssueFull(tg.ticket).then(() => jiraRender()).catch(() => {}); }
-  } else if (x.kind === 'peer-ask' || x.kind === 'note' || x.kind === 'hello') {
-    teamFocusCard(tg.peer || '', x.kind === 'peer-ask' ? tg.sessionId : '');
-    if (x.kind !== 'peer-ask') { const l = $('team-list'); if (l) l.scrollTop = 0; }   // notes and requests sit at the top
-  } else if (x.kind === 'perm' || x.kind === 'perm-orphan') {
-    if (currentPage !== 'dashboard') showPage('dashboard');
-    // focus goes to [터미널로], never to [허용] (as the header's 승인 대기 button does)
-    const el = permEls.get(tg.permId); if (el && el.isConnected) { el.scrollIntoView({ block: 'center' }); const b = el.querySelector('.perm-pass'); if (b) b.focus(); }
-  } else if (x.kind === 'diff') {
-    if (currentPage !== 'dashboard') showPage('dashboard');
-    diffOpen(tg.sessionId); inboxShowCard(tg.sessionId);
-  } else if (x.kind === 'stuck') {
-    if (currentPage !== 'dashboard') showPage('dashboard');
-    inboxShowCard(tg.sessionId);
-  } else if (x.kind === 'usage') {
-    if (currentPage !== 'dashboard') showPage('dashboard');
-    const bars = $('tokenBars'); if (bars) bars.scrollIntoView({ block: 'nearest' });
-  }
+// to a permission request on the panel: focus goes to [터미널로], never to [허용] (as the header's 승인 대기 button does)
+function permGo(permId) {
+  if (currentPage !== 'dashboard') showPage('dashboard');
+  const el = permEls.get(permId); if (el && el.isConnected) { el.scrollIntoView({ block: 'center' }); const b = el.querySelector('.perm-pass'); if (b) b.focus(); }
 }
-$('inbox-btn').addEventListener('click', e => { e.stopPropagation(); inboxToggle(); });
-$('inbox-panel').addEventListener('click', async e => {
-  e.stopPropagation();
-  const b = e.target.closest('[data-ibx]');
-  if (b && b.dataset.ibx === 'close') { inboxToggle(false); return; }
-  if (b && b.dataset.ibx === 'settings') { inboxToggle(false); showPage('settings'); return; }
-  const row = e.target.closest('.ibx-item'); if (!row) return;
-  const x = inboxQItems.find(i => i.kind === row.dataset.k && i.id === row.dataset.id); if (!x) return;
-  if (!b) { inboxGo(x); return; }
-  if (b.disabled) return;
-  b.disabled = true;
-  // quick actions call the same handlers as the team tab / permission panel
-  if (b.dataset.ibx === 'note-deliver') await peerNoteDeliver(x.id);
-  else if (b.dataset.ibx === 'hello-accept') await peerHelloDecide(x.target.key, true);
-  else if (b.dataset.ibx === 'perm-deny') await permDecide(x.target.permId, 'deny', '', permEls.get(x.target.permId));
-  inboxRender();
-});
-$('inbox-panel').addEventListener('keydown', e => {
-  e.stopPropagation();   // the dashboard has single-key shortcuts
-  if (e.key === 'Escape') { inboxToggle(false); $(dockOn ? 'dock-inbox' : 'inbox-btn').focus(); return; }
-  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('ibx-item')) { e.preventDefault(); e.target.click(); }
-});
-document.addEventListener('click', e => { if (inboxQOpen && !e.target.closest('#inbox-panel, #inbox-btn')) inboxToggle(false); });
 inboxRender();
 
 // ── dock mode (header ▭, ⌘⇧D / Ctrl+Shift+D): the widget as a thin bar on the bottom edge of the screen. core/dock.js picks
@@ -3489,15 +3378,14 @@ inboxRender();
 //    api.switchTo as a card click). The bar holds only the tiles (the session name under each character) and the
 //    right-hand buttons: hovering a tile opens its terminal window (the remote terminal view's markup, fed by this PC's
 //    terminal) with the input line and [허용][거부]; clicking it goes to the real terminal. Panel sizes: core/dock.js POP. ──
-const DOCK_INBOX_H = 360;
 const DOCK_Q_H = 420, DOCK_Q_W = 400;   // the quest panel (🗡): the groups stacked in a narrow panel
 let questDockOpen = false;   // the quest panel above the bar is open (questDockToggle, in the QUEST BOARD section)
 const DOCK_SB_H = 420, DOCK_SB_W = 640;   // the skillbook panel (📖): the same book as the page, in compact type; the window grows sideways to fit its two pages
 let sbDockOpen = false;   // the skillbook panel above the bar is open (sbDockToggle)
 // the room's full-width panels: the review queue (📥) and the skillbook (📖) — one at a time; while one is open the hover
 // cards, the terminal window, the bubbles and the limit card wait
-const dockFullPop = k => k === 'inbox' || k === 'skillbook' || k === 'quest';
-const dockSheetOpen = () => inboxQOpen || sbDockOpen || questDockOpen;
+const dockFullPop = k => k === 'skillbook' || k === 'quest';
+const dockSheetOpen = () => sbDockOpen || questDockOpen;
 let DOCK_H = 72;   // the bar's height: AgentDeskDock.stripHeight(size) (dockSizeApply)
 // localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, size, autoHide, yieldOrca, idleMin, hidden }
 let dockCfg = { start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, yieldOrca: true, idleMin: 60, hidden: {}, order: [], addRepo: '' };   // order: my session ids in the user's drag order
@@ -3767,7 +3655,7 @@ function dockPermLine(r) {
   el.addEventListener('click', e => {
     e.stopPropagation();
     // the review queue's "go to this request": back to the panel, focus on its [터미널로] (never on [허용])
-    const go = e.target.closest('[data-dock-panel]'); if (go) { if (!go.disabled) inboxGo({ kind: 'perm', target: { permId: r.id } }); return; }
+    const go = e.target.closest('[data-dock-panel]'); if (go) { if (!go.disabled) permGo(r.id); return; }
     const b = e.target.closest('[data-perm]'); if (b && !b.disabled) permDecide(r.id, b.dataset.perm, '', el);
   });
   el.addEventListener('keydown', e => e.stopPropagation());
@@ -3776,10 +3664,6 @@ function dockPermLine(r) {
   return el;
 }
 function dockRightDraw() {
-  const n = inboxQItems.length, b = $('dock-inbox');
-  $('dock-inbox-n').textContent = n > 99 ? '99+' : n;
-  b.classList.toggle('has', n > 0); b.classList.toggle('hot', inboxQItems.some(x => x.severity === 'high'));
-  b.title = `${dockT('도크: 검토 대기열')} ${n}`; b.setAttribute('aria-label', b.title);
   const c = lastRateLimits && lastRateLimits.claude, u = $('dock-usage');
   const bars = c ? [['s', c.session], ['w', c.weekly]].filter(([, w]) => w && Number.isFinite(Number(w.usedPercent))) : [];
   u.hidden = !bars.length;
@@ -3823,7 +3707,7 @@ function dockBoundsSync(natural) {
   if (natural != null) dockNatural = Math.round(natural);
   if (!dockOn) return;
   const kind = dockPopKind();
-  const extra = kind === 'inbox' ? DOCK_INBOX_H : kind === 'skillbook' ? DOCK_SB_H : kind === 'quest' ? DOCK_Q_H : AgentDeskDock.popExtra(kind, dockAskH);   // bubbles: room for the tallest one
+  const extra = kind === 'skillbook' ? DOCK_SB_H : kind === 'quest' ? DOCK_Q_H : AgentDeskDock.popExtra(kind, dockAskH);   // bubbles: room for the tallest one
   // the part of the room the panel / queue covers (x and width in the window): Windows / Linux cut the window to the
   // bar plus this, so the rest of the room is neither drawn nor clickable. popWidth: the window grows sideways for it.
   const bubbles = kind === 'bubbles' || kind === 'bubblesBig' || kind === 'bubblesDone';
@@ -3855,7 +3739,6 @@ function dockWinSet(b) {
 }
 // what the room above / below the bar holds: the review queue, a terminal window, the hover panel, or nothing
 function dockPopKind() {
-  if (inboxQOpen) return 'inbox';
   if (sbDockOpen) return 'skillbook';
   if (questDockOpen) return 'quest';
   if (dockTermBg()) return 'term';
@@ -3886,8 +3769,7 @@ function dockSetDir(dir) {
   dockPopPlace();
 }
 function dockPopPlace() {
-  const el = $('inbox-panel'), near = `${DOCK_H + 6}px`;
-  if (inboxQOpen) { el.style.top = dockDir === 'up' ? '6px' : near; el.style.bottom = dockDir === 'up' ? near : '6px'; }
+  const near = `${DOCK_H + 6}px`;
   if (questDockOpen) { const qp = $('q-dock'); qp.style.top = dockDir === 'up' ? '6px' : near; qp.style.bottom = dockDir === 'up' ? near : '6px'; }
   if (sbDockOpen) { const sp = $('sb-dock'); sp.style.top = dockDir === 'up' ? '6px' : near; sp.style.bottom = dockDir === 'up' ? near : '6px'; }
   const put = (node, g, fixedH) => {
@@ -3915,7 +3797,7 @@ function dockPopPlace() {
 // pointer over the empty room around the panel / queue → clicks go to the windows behind (main: setIgnoreMouseEvents)
 document.addEventListener('mousemove', e => {
   if (!dockOn || !dockPopKind()) return;
-  const hit = !!(e.target && e.target.closest && e.target.closest('#dock-strip, #inbox-panel, #sb-dock, #q-dock, .peer-term, .team-modal-bg, .dock-bubble, .dock-pop'));
+  const hit = !!(e.target && e.target.closest && e.target.closest('#dock-strip, #sb-dock, #q-dock, .peer-term, .team-modal-bg, .dock-bubble, .dock-pop'));
   if (hit === dockHit) return;
   dockHit = hit; window.orca.dock({ hit }).catch(() => {});
 });
@@ -5032,7 +4914,7 @@ async function dockSendTo(s, handle, text) {
 }
 function dockEnter() {
   if (dockOn) return;
-  inboxToggle(false); closeCtxMenu(); peerRemoteTermClose();   // a full-window remote terminal view: closed (the bar opens its own)
+  closeCtxMenu(); peerRemoteTermClose();   // a full-window remote terminal view: closed (the bar opens its own)
   const w = document.querySelector('.widget');
   dockPrev = { page: currentPage, minimized: isMinimized };
   if (isMinimized) w.classList.remove('minimized');   // the header-only window: the bar replaces it, leaving brings it back
@@ -5061,7 +4943,6 @@ function dockLeave(page) {
   dockWin = null; for (const k of ['width', 'marginLeft', 'alignSelf']) $('dock-strip').style[k] = '';
   if (dockPermEl) { dockPermEl.remove(); dockPermEl = null; }
   dockReqSig = '';
-  if (inboxQOpen) inboxToggle(false);
   if (sbDockOpen) sbDockToggle(false);
   if (questDockOpen) questDockToggle(false);
   window.orca.setOpacity(1);
@@ -5084,7 +4965,6 @@ function dockLeave(page) {
 $('dock-btn').addEventListener('click', () => dockEnter());
 $('dock-expand').addEventListener('click', () => dockLeave());
 $('dock-settings').addEventListener('click', () => dockLeave('settings'));
-$('dock-inbox').addEventListener('click', e => { e.stopPropagation(); inboxToggle(); });
 $('dock-sb').addEventListener('click', e => { e.stopPropagation(); sbDockToggle(); });
 $('dock-q').addEventListener('click', e => { e.stopPropagation(); questDockToggle(); });
 $('dock-timer').addEventListener('click', e => { e.stopPropagation(); dockLeave('pomodoro'); });
@@ -5275,7 +5155,7 @@ if (window.orca && window.orca.onShortcut) window.orca.onShortcut(p => {
   if (action === 'dock-toggle') { if (dockOn) dockLeave(); else dockEnter(); }
   else if (action === 'perm-open') {
     const r = permSorted()[0]; if (!r) { showInAppToast(t('승인 대기 중인 요청이 없습니다')); return; }
-    inboxGo({ kind: 'perm', target: { permId: r.id } });
+    permGo(r.id);
     // the window just jumped under the pointer: re-arm the panel so a long-armed [허용] is not pressed by a stray click
     const rearm = () => { const el = permEls.get(r.id); if (el && el.isConnected) permArm(el); };
     rearm(); requestAnimationFrame(rearm);
@@ -6931,7 +6811,6 @@ document.addEventListener('mousedown', e => { if (ctxMenuEl && !ctxMenuEl.contai
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (dockOn && $('team-modal')) { closeTeamModal(); return; }   // a modal opened from a dock panel goes first: the window must not shrink under it
-    if (inboxQOpen) { inboxToggle(false); return; }
     if (sbDockOpen) { sbDockToggle(false); $('dock-sb').focus(); return; }
     if (questDockOpen) { questDockToggle(false); $('dock-q').focus(); return; }
     if (ctxMenuEl) { closeCtxMenu(); return; }
@@ -10575,7 +10454,6 @@ function sbDockToggle(open) {
     if (dockOn) { dockAskPlace(); dockBoundsSync(); }
     return;
   }
-  if (inboxQOpen) inboxToggle(false);
   if (questDockOpen) questDockToggle(false);
   dockPopClose(); dockTipHide(); dockUsageHide(); dockTermClose(true);
   sbDockOpen = true; $('dock-sb').setAttribute('aria-expanded', 'true');
@@ -10846,8 +10724,6 @@ function settingsRender() {
     ${row(t('응답 없음 기준(분)'), t('작업 중인 세션에 이 시간 동안 도구 호출이나 응답이 없으면 응답 없음으로 표시하고 알립니다.'), `<div class="set-inline"><input id="set-stuck" type="number" min="1" max="600" step="1" value="${notifyCfg.stuckMin}" style="width:52px"><button class="set-btn" data-set="notify-stuck">${esc(t('저장'))}</button></div>`)}
     ${row(t('한도 경고'), t('5시간·주간 한도 사용률이 임계값을 넘으면 토스트와 데스크톱 알림을 한 번 띄웁니다 (레벨별 한 번, 리셋 후 다시).'), sw('usage-alert', usageAlert.on), '', true)}
     ${row(t('한도 경고 임계값'), t('두 값(%) — 앞 값에서 노랑, 뒤 값에서 빨강. 한도 막대 색에도 쓰입니다.'), `<div class="set-inline"><input id="set-usage-l1" type="number" min="1" max="100" value="${usageAlert.levels[0]}" style="width:52px"><input id="set-usage-l2" type="number" min="1" max="100" value="${usageAlert.levels[1]}" style="width:52px"><button class="set-btn" data-set="usage-levels">${esc(t('저장'))}</button></div>`)}
-    ${row(t('대기열에 포함할 항목'), t('헤더의 📥 대기열에 보일 항목을 고릅니다. 대기열은 이미 있는 상태를 모아 보여 줄 뿐, 알림을 따로 띄우지 않습니다.'), '')}
-    <div class="ibx-kinds">${AgentDeskInbox.KINDS.map(k => `<button class="set-btn${inboxQPrefs.kinds[k] === false ? '' : ' on'}" data-set="inbox-kind" data-v="${esc(k)}" aria-pressed="${inboxQPrefs.kinds[k] === false ? 'false' : 'true'}">${INBOX_KIND_ICON[k] || ''} ${esc(inboxT(INBOX_KIND_LABEL[k] || k))}</button>`).join('')}</div>
     ${guardSectionHtml(row, seg, sw)}
     <h2>${esc(t('슬랙 창구'))}</h2>
     ${row(t('브리지 상태'), inboxStatus.configured ? (inboxStatus.running ? t('연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.') : `${t('설정 파일은 있지만 브리지가 꺼져 있습니다.')}${inboxStatus.lastError ? ` (${esc(inboxStatus.lastError)})` : ''}`) : t('~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.'), inboxStatus.configured ? `<button class="set-btn" data-set="inbox-restart">${esc(t('재시작'))}</button>` : '')}
@@ -10952,11 +10828,6 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'update-download') await updateDownloadRun();
   else if (name === 'update-check') { b.disabled = true; b.textContent = t('확인 중…'); await checkForUpdate(true); settingsRender(); }
   else if (name === 'usage-alert') { usageAlert.on = !usageAlert.on; usageAlertSave(); settingsRender(); }
-  else if (name === 'inbox-kind' && AgentDeskInbox.KINDS.includes(v)) {
-    if (inboxQPrefs.kinds[v] === false) delete inboxQPrefs.kinds[v]; else inboxQPrefs.kinds[v] = false;
-    try { localStorage.setItem('roca-inbox', JSON.stringify(inboxQPrefs)); } catch {}
-    settingsRender(); inboxRender();
-  }
   else if (name === 'notify-remind' || name === 'notify-stuck') {
     const remind = name === 'notify-remind', n = Number($(remind ? 'set-remind' : 'set-stuck').value);
     if (!(Number.isInteger(n) && (remind ? n >= 0 && n <= 240 : n >= 1 && n <= 600))) { showInAppToast(t(remind ? '재알림 간격은 0~240 사이의 정수(분)입니다' : '응답 없음 기준은 1~600 사이의 정수(분)입니다'), 'error'); return; }
@@ -11837,7 +11708,6 @@ function questDockToggle(open) {
     if (dockOn) { dockAskPlace(); dockBoundsSync(); }
     return;
   }
-  if (inboxQOpen) inboxToggle(false);
   if (sbDockOpen) sbDockToggle(false);
   dockPopClose(); dockTipHide(); dockUsageHide(); dockTermClose(true);
   questDockOpen = true; $('dock-q').setAttribute('aria-expanded', 'true');

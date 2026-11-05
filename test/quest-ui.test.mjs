@@ -219,19 +219,17 @@ test('quest ui: a missed preselect adds a disabled "선택하세요" placeholder
 });
 
 // ── Task 4: dock panel (🗡) and office marker ──
-test('quest dock: 🗡 button with an I18N title, shared dockSheetOpen mutual exclusion with 📥/📖', () => {
+test('quest dock: 🗡 button with an I18N title, shared dockSheetOpen mutual exclusion with 📖', () => {
   match(html, /<button class="dock-btn" id="dock-q"/);
   match(html, /\['dock-q', '도크: 퀘스트'\]/);
   match(html, /'도크: 퀘스트': 'Quests'/);
-  match(html, /const dockSheetOpen = \(\) => inboxQOpen \|\| sbDockOpen \|\| questDockOpen;/);
+  match(html, /const dockSheetOpen = \(\) => sbDockOpen \|\| questDockOpen;/);
   match(html, /dockFullPop = k => [^\n]*'quest'/);
   match(html, /if \(questDockOpen\) return 'quest';/);
   const tog = html.slice(html.indexOf('function questDockToggle('), html.indexOf("$('q-dock').addEventListener('keydown'"));
-  match(tog, /if \(inboxQOpen\) inboxToggle\(false\);\s*if \(sbDockOpen\) sbDockToggle\(false\);/);
+  match(tog, /if \(sbDockOpen\) sbDockToggle\(false\);/);
   const sbT = html.slice(html.indexOf('function sbDockToggle('), html.indexOf("$('sb-dock').addEventListener('keydown'"));
   match(sbT, /if \(questDockOpen\) questDockToggle\(false\);/);
-  const inb = html.slice(html.indexOf('function inboxToggle('), html.indexOf('function inboxToggle(') + 1500);
-  match(inb, /questDockToggle\(false\)/);
   match(html, /\$\('dock-q'\)\.addEventListener\('click', e => \{ e\.stopPropagation\(\); questDockToggle\(\); \}\)/);
   match(html, /if \(questDockOpen\) \{ questDockToggle\(false\); \$\('dock-q'\)\.focus\(\); return; \}/);
   match(html, /\.q-dock \.qb-col \{ flex: 0 0 auto; min-width: 0; \}/);   // groups stacked, scoped to the dock panel
@@ -281,9 +279,8 @@ test('quest marker: drawn in the seated seat path, memoized per quest file', () 
 
 test('quest dock fix round 1: Esc closes the modal first, panel closes never shrink under a modal, backdrop click guard', () => {
   const esc = html.slice(html.indexOf("document.addEventListener('keydown', e => {\n  if (e.key === 'Escape') {"));
-  assert.ok(esc.indexOf("$('team-modal')") < esc.indexOf('if (inboxQOpen)'), 'team-modal before dock sheets');
+  assert.ok(esc.indexOf("$('team-modal')") < esc.indexOf('if (sbDockOpen)'), 'team-modal before dock sheets');
   match(html, /if \(dockOn\) closeTeamModal\(\);   \/\/ never shrink/);
-  match(html, /if \(!inboxQOpen\) \{ if \(dockOn\) closeTeamModal\(\);/);
   match(html, /if \(dockOn\) closeTeamModal\(\);\n    sbDockOpen = false;/);
   match(html, /teamModalClosedAt = Date\.now\(\)/);
   match(html, /questDockOpen && Date\.now\(\) - teamModalClosedAt > 300/);
@@ -429,4 +426,8 @@ test('dock panels: a click outside AgentDesk (window blur) closes 🗡 and 📖,
   // inside the window, both already close on any click outside them
   assert.match(html, /document\.addEventListener\('click', e => \{ if \(sbDockOpen && !e\.composedPath\(\)\.some\(n => n\.id === 'sb-dock' \|\| n\.id === 'dock-sb'\)\) sbDockToggle\(false\); \}\);/);
   assert.match(html, /document\.addEventListener\('click', e => \{ if \(questDockOpen && /);
+});
+
+test('dock quest panel scrolls inside itself (the book does not grow past the panel)', () => {
+  match(html, /\.q-dock \.qb-book \{ padding: 6px !important; flex: 1 1 auto; min-height: 0; overflow-y: auto; \}/);
 });
