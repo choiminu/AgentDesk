@@ -39,6 +39,17 @@ You run three, five, ten coding agents in parallel. Terminal tabs do not tell yo
 </tr>
 </table>
 
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/skillbook.png" alt="Skillbook: an index of skills, plugins and MCP servers with mastery stars, and a page per entry" /></td>
+<td width="50%"><img src="docs/screenshots/quest.png" alt="Quest board: Jira tickets as quests in four groups, with a board and an assignee picker" /></td>
+</tr>
+<tr>
+<td align="center"><sub><b>Skillbook</b> — every skill, plugin and MCP server, how often you use it, and a Shop</sub></td>
+<td align="center"><sub><b>Quest board</b> — Jira tickets as quests; hand one to an agent</sub></td>
+</tr>
+</table>
+
 <img src="docs/screenshots/dock.gif" alt="Dock mode: a question arrives, the bubble grows under the pointer, one click answers it" />
 
 <p align="center"><sub><b>Dock mode</b> — a thin bar on the edge of the screen; a session that asks a question gets a bubble you answer in place (<a href="docs/screenshots/dock.png">still image</a>)</sub></p>
@@ -61,7 +72,7 @@ cd AgentDesk && npm install && npm start
 ## Features
 
 - **Live dashboard**: every agent session in a terminal, tmux or Orca with its real state: working, waiting for input, needs a choice, done, error. With Exact detection on, state comes from hook events; Claude Code sessions without hooks are judged from the terminal screen.
-- **Pixel office**: each recent session is a character. Working agents sit at station desks (Dev / Research / Exec / Docs, picked from the tools they use) with a live tool tag and a context-window gauge. Subagents appear next to their parent, idle agents rest on the lounge sofa, and a whiteboard on the wall summarizes the room. Finished work bursts into sparkles, a question puts an exclamation mark over the head, subagents teleport in and out, resting agents breathe out zzz, and an agent in error glitches (effects: [pixelfx](https://github.com/patch-gg/pixelfx), MIT).
+- **Pixel office**: each recent session is a character. Working agents sit at station desks (Dev / Research / Exec / Docs, picked from the tools they use) with a live tool tag and a context-window gauge. Subagents appear next to their parent, idle agents rest on the lounge sofa, and a whiteboard on the wall summarizes the room. Finished work bursts into sparkles, a question puts an exclamation mark over the head, subagents teleport in and out, resting agents breathe out zzz, an agent in error glitches, and an agent that uses a skill opens a small spell book over its head (effects: [pixelfx](https://github.com/patch-gg/pixelfx), MIT).
 - **Dock mode**: turns the widget into a thin bar along the bottom edge of the screen. See [Dock mode](#dock-mode) below.
 - **PM teams**: drag an agent onto the PM seat to form a team and drag others in as members. Give the PM a goal: it writes a team brief and proposes a task split, and after your approval each member receives the brief plus its task. Reports flow back to the PM automatically.
 - **Needs-input alerts**: notifications, toast, tray badge and an optional chime fire only when an agent is really waiting on you (a permission prompt or a question).
@@ -70,6 +81,7 @@ cd AgentDesk && npm install && npm start
 - **Team sharing**: see teammates' sessions on the same office network in the Team tab and the pixel office. Create or join a team with an invite code, get warned when two people edit the same file, leave a note on a teammate's session, or delegate a session. See [Team sharing](#team-sharing) and the [team sharing guide](docs/TEAM-GUIDE.en.md).
 - **Jira integration**: sign in with Atlassian OAuth, browse tickets on a Kanban board, dispatch a ticket to a new worktree or an existing session, and turn a session's REPORT into a Jira comment draft. See [Jira integration](#jira-integration).
 - **Skillbook**: the Skillbook tab lists the skills, plugins and MCP servers of Claude Code, Codex CLI and Gemini CLI as a book: an index with mastery stars from how often each one was used, a page per entry (what it does, trigger phrases, source, recent use), and a 📊 Usage tab that gathers what you have not used lately. Turn an entry off or on, open its folder, or remove it after a confirmation; removed plugins and MCP servers can be restored, removed skill folders go to the OS trash. MCP servers show key names only, never values. Files in `~/.roca`: `skillbook-usage.json` (use counts), `skillbook-parked.json` (turned-off MCP servers), `skillbook-removed.json` (removed entries, kept 30 days) and `skillbook-backup/` (a copy of each settings file before it is changed).
+- **Quest board**: the Jira tab's **Quests** view shows tickets as quests in the Skillbook's book style (New · In progress · Awaiting report · Done, difficulty stars from the priority). Pick the **Board** and the **Assignee** at the top (you by default, or unassigned, everyone, a teammate), hand a quest to an idle session or a new worktree, or let **Auto** propose one (labelled as an AI suggestion; a worktree opened from it starts with autopilot off). The same board opens from the dock's 🗡 button. See [Jira integration](#jira-integration).
 - **Shop**: the 🏪 Shop tab in the Skillbook browses Claude Code plugins, MCP servers and skills (filter, sort, search, or paste a GitHub link). Each page lists exactly what installing will do, asks for required secrets in password fields that are cleared right after use, and installs only after an in-page confirmation. Plugins can run hooks and scripts inside Claude Code, so check the source. A new version is only marked; updating is not done from here.
 - **Approve permissions in the widget** (Claude Code): answer Claude Code's tool permission prompts with [Allow] / [Deny] on the session card. Off by default.
 - **Guardrail** (Claude Code): checks Bash commands and the target path of file edits against risk rules right before they run, then warns or blocks. Off by default.
@@ -80,6 +92,7 @@ cd AgentDesk && npm install && npm start
 - **Masking of outgoing text**: Jira comments, Slack replies and team-shared data have secret patterns replaced with `[MASKED]` right before they leave. Test card numbers and email addresses are masked too, and a comment draft says how many places were masked.
 - **Slack front desk, morning briefing, session notes**: a front desk that hands Slack requests to a session and posts the REPORT back to the thread, a daily briefing, and session notes (recall). These run only on a machine with a source checkout (`recall/`). See [Session notes (recall)](#session-notes-recall).
 - **English and Korean UI**: English by default, switch in ⚙ Settings.
+- **Pixel icons**: the interface draws its icons as 12 × 12 pixel art in the office's palette instead of colour emoji (drawn in `scripts/pixel-icons.mjs`).
 - **Timer**: a Pomodoro timer page; the dock bar shows the time left as well.
 
 ### Dock mode
@@ -93,7 +106,9 @@ The ▭ button in the header or ⌘⇧D (Windows and Linux: Ctrl+Shift+D) turns 
 - **Done bubble**: when one of your sessions finishes, the first line of its last answer (masked, 80 characters) shows for 8 seconds.
 - **Scope of [Allow]**: the dock offers [Allow] only for a Bash command or a short request that fits on one line. File edits and truncated requests go through [View in panel].
 - **Clicks and shortcuts**: a click switches to the session's real terminal; a double-click goes to its card in the panel. ⌘1 to ⌘9 (Windows and Linux: Ctrl+1 to 9) switch to the terminal of your n-th tile from the left. These keys work while the widget window has focus. With ⚙ Settings → Other → **Global shortcuts** on (off by default, because the keys may clash with other apps), ⌘⇧D toggles the dock and ⌘⇧A (Windows and Linux: Ctrl+Shift+A) opens the most urgent approval request from any app.
-- **Do not disturb (🔕)**: stops bubbles, toasts and desktop notifications; only tile colours and ! badges remain.
+- **Plan limits**: hover the hearts (or the bars) for a card that says what each mark means, how much is used and left, and when it resets. Settings → Limits as switches between hearts and the two thin bars.
+- **Skillbook and quests (📖, 🗡)**: the Skillbook and the quest board open as panels above the bar. A click anywhere outside AgentDesk or on another button closes them.
+- **Do not disturb**: ⚙ Settings → Dock → Do not disturb stops bubbles, toasts and desktop notifications; only tile colours and ! badges remain.
 - **Order and pinning**: drag one of your tiles between two others to save the order; that session is pinned. Right-click or long-press a tile for "Unpin".
 - **New session (＋)**: the ＋ tile at the end of your tiles creates a Claude worktree session from an Orca repository and a name. Without Orca, it opens Claude Code (or Codex CLI / Gemini CLI when installed) in a new terminal window in a folder you pick: a recent folder, one of your sessions' folders, or **Choose folder…**; the new session's tile is selected when it shows up.
 - **Drag and drop**: drop text, a URL or a file from another app onto one of your tiles that is waiting for input; after a masked preview, [Send] types it into that session. Files are sent as paths only, and text starting with `/`, `!` or `#` is not sent.
@@ -214,7 +229,7 @@ The Jira tab has two ways to connect.
 
 - **Atlassian OAuth 2.0 (3LO)**: create your own OAuth app in the Atlassian developer console, paste its Client ID and Secret into **Connection** in the Jira tab, and sign in. The callback URL is `http://localhost:47391/callback`. Tokens are stored only in a file encrypted with the OS keychain (Electron safeStorage). Step by step: [Jira setup](docs/JIRA-SETUP.md#english).
 - **Orca fallback**: when you are not signed in with OAuth, ticket lists, details and comments go through Orca's own Jira connection (`orca jira …`). The Kanban board needs OAuth.
-- **Quest view**: the board's **Quests** button shows tickets as quests in four groups (New · In progress · Awaiting report · Done) with a difficulty from the priority. **Assign** opens a picker of your idle sessions (busy ones are disabled) or a new worktree, then the usual dispatch dialog. **Auto** asks a headless front-desk call (masked input) to propose a session or repo; it never dispatches by itself, only your **Assign** click does.
+- **Quest view**: the board's **Quests** button shows tickets as quests in four groups (New · In progress · Awaiting report · Done) with a difficulty from the priority. The quest board's header picks the board and whose quests to show (you by default; unassigned, everyone or one person), and remembers the choice. **Assign** opens a picker of your idle sessions (busy ones are disabled) or a new worktree, then the usual dispatch dialog. **Auto** asks a headless front-desk call (masked input) to propose a session or repo; it never dispatches by itself, only your **Assign** click does.
 
 With OAuth you get:
 
