@@ -135,6 +135,9 @@ test('state: loaded keys are filtered by the ticket-key pattern; set refuses a n
 // ── front desk ──
 test('desk args follow the constraints', () => {
   const a = deskArgs();
+  assert.ok(a.includes('--no-session-persistence'), 'no transcript on disk');
+  assert.ok(a.indexOf('--no-session-persistence') < a.indexOf('--disallowedTools'), 'the variadic --disallowedTools stays last');
+  assert.ok(readFileSync(new URL('../quest/desk.mjs', import.meta.url), 'utf8').includes('spawn(cmd, deskArgs(), { cwd: deskCwd(),'), 'runs in its own empty folder');
   assert.equal(a[0], '-p');
   assert.equal(a[a.indexOf('--model') + 1], process.env.AGENTDESK_QUEST_MODEL || 'haiku');
   assert.equal(a[a.indexOf('--output-format') + 1], 'json');

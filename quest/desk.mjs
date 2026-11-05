@@ -13,6 +13,9 @@
 //        env (when given) is used as is: the caller passes PATH and the hook-quiet variables
 //   killAllDesk() → kill every running desk child (app quit)
 import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import "../core/mask.js";    // globalThis.AgentDeskMask
 import "../core/quest.js";   // globalThis.AgentDeskQuest
 
@@ -32,6 +35,7 @@ export function deskArgs() {
   // allowlists, hooks and MCP entries do not apply). --disallowedTools stays as a second fence. It is variadic: keep it last.
   return ["-p", "--model", process.env.AGENTDESK_QUEST_MODEL || "haiku", "--output-format", "json", "--json-schema", Q().DESK_SCHEMA,
     "--system-prompt", Q().DESK_SYSTEM, "--disable-slash-commands", "--tools", "", "--strict-mcp-config", "--setting-sources", "",
+    "--no-session-persistence",   // the ticket and the session list are not kept as a transcript on disk
     "--disallowedTools", "Bash", "Edit", "Write", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "Agent", "Task"];
 }
 
@@ -126,13 +130,20 @@ function killChild(child, graceMs = child.__deskGrace || DESK_KILL_GRACE_MS) {
 }
 export function killAllDesk() { for (const c of children) killChild(c); }
 
+// an empty folder of our own as the working directory: no project CLAUDE.md or .claude/ of wherever the app started
+let deskDir = "";
+function deskCwd() {
+  if (!deskDir) { const d = join(homedir(), ".roca", "desk"); mkdirSync(d, { recursive: true, mode: 0o700 }); deskDir = d; }
+  return deskDir;
+}
+
 export function spawnRun({ cmd = "claude", env, killGraceMs = DESK_KILL_GRACE_MS } = {}) {
   // headless run: our own hooks stay quiet (AGENTDESK_RECALL), OMC keyword triggers / hooks off
   const runEnv = env || { ...process.env, ...HOOK_QUIET };
   return (input, { signal } = {}) => new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawn(cmd, deskArgs(), { env: runEnv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+      child = spawn(cmd, deskArgs(), { cwd: deskCwd(), env: runEnv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
     } catch (e) { reject(e); return; }
     child.__deskGrace = killGraceMs;
     children.add(child);

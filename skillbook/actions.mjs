@@ -273,6 +273,9 @@ function removableSkill(home, item, repos) {
   if (typeof item.repo !== 'string' || !item.repo || basename(parent) !== 'skills' || basename(dirname(parent)) !== '.claude') return false;
   const repo = dirname(dirname(parent));
   if (basename(repo) !== item.repo) return false;
+  // <repo>/.claude/skills must really be there: a repo that commits .claude or skills as a symlink would offer
+  // folders elsewhere (another repo's, a plugin's) for deletion as its own
+  try { if (realpathSync(parent) !== join(realpathSync(repo), '.claude', 'skills')) return false; } catch { return false; }
   return !Array.isArray(repos) || repos.some(r => typeof r === 'string' && resolve(r) === repo);
 }
 async function skillRemove(home, item, trash, now, repos) {

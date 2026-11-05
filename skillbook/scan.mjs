@@ -10,7 +10,8 @@ const ALL = ['claude', 'codex', 'gemini'];
 const WHERES = ['claude-user', 'claude-project', 'mcpjson', 'codex', 'gemini'];
 
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
-const baseOf = cmd => (typeof cmd === 'string' ? (cmd.trim().split(/\s+/)[0] || '').split(/[\\/]/).pop() : '') || undefined;
+// the program's file name only, and only when it looks like one: "TOKEN=xxx npx" must not show its first word
+const baseOf = cmd => { const b = typeof cmd === 'string' ? (cmd.trim().split(/\s+/)[0] || '').split(/[\\/]/).pop() : ''; return /^[\w.+-]{1,64}$/.test(b || '') ? b : undefined; };
 const names = o => (isObj(o) ? Object.keys(o) : []);
 const readJson = f => JSON.parse(readFileSync(f, 'utf8'));
 function readHead(f) {
