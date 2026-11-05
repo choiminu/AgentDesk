@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-NVP6ue4a/JOLSB5YPzxFeFIhV1NJ98VE1oRaaDkid38='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-h5e7xTPlJGNAC5aUIg0tSTIT5wKA/P1vqiFU8u2wu5A='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1031,6 +1031,65 @@
   .qb-card button:disabled { cursor: default; opacity: 0.7; }
   .qb-card button[data-q="auto"], .qb-card button[data-q="accept"] { border-color: var(--accent); color: var(--text); }
   .qb-pick > button { align-self: flex-start; }
+  /* ── the quest board as a wooden notice board (questRender adds .qb-wood): planks with grain and seams, a carved
+     header sign, column signs nailed on, quest notes as pinned parchment that sits a little crooked. One look in both
+     themes (wood and paper are their own colours). */
+  .qb-wood { --wood-hi: #a06a35; --wood: #855528; --wood-lo: #6b421d; --wood-edge: #4a2c12; --seam: rgba(40, 20, 6, 0.45);
+    --paper: #f4e7c5; --paper-lo: #e8d5a6; --paper-edge: #c9ad72; --ink: #3a2814; --ink2: #6a5032; --seal: #9b2a1f;
+    flex-direction: column !important; gap: 10px !important; padding: 10px 12px 12px !important;
+    background:
+      repeating-linear-gradient(180deg, transparent 0 44px, var(--seam) 44px 46px, rgba(255, 220, 160, 0.08) 46px 47px),
+      repeating-linear-gradient(90deg, rgba(255, 230, 190, 0.035) 0 2px, transparent 2px 9px, rgba(0, 0, 0, 0.05) 9px 11px, transparent 11px 23px),
+      linear-gradient(180deg, var(--wood-hi), var(--wood) 45%, var(--wood-lo));
+    border: 7px solid var(--wood-edge); border-radius: 10px;
+    box-shadow: inset 0 0 0 2px rgba(255, 210, 150, 0.18), inset 0 0 28px rgba(20, 8, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3); }
+  .qb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .qb-sign { position: relative; padding: 4px 16px; border-radius: 4px; background: linear-gradient(180deg, #c18b4d, #9a6430); color: #fff4dc;
+    font-weight: 800; letter-spacing: 0.06em; text-shadow: 0 1px 0 rgba(60, 25, 0, 0.7); box-shadow: 0 2px 0 var(--wood-edge), inset 0 1px 0 rgba(255, 240, 210, 0.4); }
+  .qb-sign::before, .qb-sign::after, .qb-wood .qb-colh::before, .qb-wood .qb-colh::after { content: ''; position: absolute; top: 50%; width: 4px; height: 4px;
+    margin-top: -2px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #e6d2b0, #6d6252 70%); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4); }
+  .qb-sign::before, .qb-wood .qb-colh::before { left: 5px; }
+  .qb-sign::after, .qb-wood .qb-colh::after { right: 5px; }
+  .qb-field { display: inline-flex; align-items: center; gap: 6px; color: #fbe9c8; font-size: var(--fs-xs); font-weight: 700; text-shadow: 0 1px 0 rgba(40, 15, 0, 0.6); }
+  .qb-field select { appearance: none; font: inherit; font-weight: 600; text-shadow: none; color: var(--ink); background: var(--paper);
+    border: 1px solid var(--paper-edge); border-radius: 3px; padding: 3px 22px 3px 8px; max-width: 220px; cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ink2) 50%), linear-gradient(135deg, var(--ink2) 50%, transparent 50%);
+    background-position: right 10px center, right 6px center; background-size: 4px 4px; background-repeat: no-repeat; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
+  .qb-field select:focus-visible { outline: 2px solid #ffd27a; outline-offset: 1px; }
+  .qb-cols { flex: 1; min-height: 0; display: flex; gap: 12px; overflow-x: auto; align-items: stretch; }
+  .qb-none { flex: 1; display: grid; place-items: center; color: #f6e2bd; font-weight: 700; text-shadow: 0 1px 0 rgba(40, 15, 0, 0.6); min-height: 80px; }
+  .qb-wood .qb-col { background: rgba(30, 12, 0, 0.12); border: none; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(255, 210, 150, 0.07); }
+  .qb-wood .qb-colh { position: relative; align-self: center; margin: 6px 0 4px; padding: 3px 16px; border-radius: 3px; color: #fff1d6;
+    background: linear-gradient(180deg, #b47f45, #8c5a2a); box-shadow: 0 2px 0 var(--wood-edge); text-shadow: 0 1px 0 rgba(60, 25, 0, 0.7); font-weight: 800; }
+  .qb-cnt { min-width: 18px; padding: 0 5px; border-radius: 8px; background: rgba(40, 15, 0, 0.35); color: #ffe9c2; font-size: var(--fs-xs); text-align: center; }
+  .qb-wood .qb-colb { padding: 10px 8px 10px; gap: 14px; }
+  .qb-wood .qb-card { position: relative; padding: 12px 10px 9px; color: var(--ink); border: 1px solid var(--paper-edge); border-radius: 2px;
+    background: radial-gradient(ellipse at 20% 0%, rgba(255, 255, 255, 0.45), transparent 60%), linear-gradient(180deg, var(--paper), var(--paper-lo));
+    box-shadow: 0 4px 7px rgba(20, 8, 0, 0.45), inset 0 0 14px rgba(150, 110, 40, 0.18); transform: rotate(-0.8deg); transition: transform 140ms ease, box-shadow 140ms ease; }
+  .qb-wood .qb-card:nth-child(3n+2) { transform: rotate(0.9deg); }
+  .qb-wood .qb-card:nth-child(3n) { transform: rotate(-0.3deg); }
+  .qb-wood .qb-card:hover, .qb-wood .qb-card:focus-within { transform: rotate(0deg) translateY(-2px); box-shadow: 0 8px 12px rgba(20, 8, 0, 0.5), inset 0 0 14px rgba(150, 110, 40, 0.18); z-index: 1; }
+  .qb-wood .qb-card::before { content: ''; position: absolute; top: -6px; left: 50%; width: 11px; height: 11px; margin-left: -5px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ff9b8a, #c8372a 55%, #74170f); box-shadow: 0 2px 2px rgba(0, 0, 0, 0.45); }
+  .qb-wood .qb-col[data-group="done"] .qb-card { filter: saturate(0.6); opacity: 0.85; }
+  .qb-wood .qb-col[data-group="done"] .qb-card::after { content: '✓'; position: absolute; right: 8px; top: 8px; width: 22px; height: 22px; display: grid; place-items: center;
+    border: 2px solid var(--seal); border-radius: 50%; color: var(--seal); font-weight: 900; transform: rotate(-12deg); opacity: 0.8; }
+  .qb-wood .qb-top, .qb-wood .qb-who, .qb-wood .qb-due { color: var(--ink2); }
+  .qb-wood .jb-key { color: var(--ink2); }
+  .qb-wood .qb-title { color: var(--ink); font-weight: 600; }
+  .qb-wood .qb-stars { color: #b87800; text-shadow: 0 1px 0 rgba(255, 240, 200, 0.8); }
+  .qb-wood .qb-due.over, .qb-wood .qb-err { color: var(--seal); }
+  .qb-wood .qb-why { color: var(--ink2); }
+  .qb-wood .qb-card button { background: rgba(255, 250, 235, 0.6); border: 1.5px solid var(--ink2); color: var(--ink); font-weight: 700; border-radius: 3px; }
+  .qb-wood .qb-card button:hover:not(:disabled) { background: rgba(255, 250, 235, 0.95); color: var(--ink); }
+  .qb-wood .qb-card button[data-q="auto"], .qb-wood .qb-card button[data-q="accept"] { border-color: var(--seal); color: var(--seal); }
+  .qb-wood .qb-row { border-color: var(--paper-edge); background: rgba(255, 252, 240, 0.5); color: var(--ink); }
+  .qb-wood .qb-row .qb-sk span { background: rgba(106, 80, 50, 0.15); color: var(--ink2); }
+  .qb-wood .qb-prop { border-color: var(--seal); color: var(--ink); background: rgba(255, 252, 240, 0.4); }
+  .qb-wood .qb-ai { background: rgba(155, 42, 31, 0.12); color: var(--seal); }
+  .qb-wood .qb-spin { border-color: var(--paper-edge); border-top-color: var(--seal); }
+  .qb-wood .empty-text { color: #f6e2bd; }
+  @media (prefers-reduced-motion: reduce) { .qb-wood .qb-card { transition: none; } }
   .jb-card { background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 9px; cursor: pointer; box-shadow: var(--shadow-card); }
   .jb-card:hover { background: var(--surface-hover); }
   .jb-card.sel { border-color: var(--accent); }
@@ -1147,6 +1206,9 @@
   .q-dock .q-dock-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
   .q-dock .qb-col { flex: 0 0 auto; min-width: 0; }
   .q-dock .qb-colb { overflow: visible; }
+  .q-dock .qb-wood { border-width: 5px; padding: 8px !important; flex: 1 0 auto; }
+  .q-dock .qb-cols { flex-direction: column; overflow: visible; }
+  .q-dock .qb-field select { max-width: 150px; }
   .sb-chk { flex-shrink: 0; width: 12px; height: 12px; display: inline-grid; place-items: center; border: 1px solid #b89c68; background: #f3e6c8; font-size: 9px; }
 
   /* ── Pomodoro page ── */
@@ -2176,7 +2238,7 @@ let LANG = 'en';
 try { LANG = localStorage.getItem('roca-lang') || 'en'; } catch {}
 const I18N = {
   '퀘스트': 'Quests', '선택하세요': 'Choose one', '미리 고른 대상을 찾을 수 없습니다. 직접 고르세요': 'The preselected target is gone. Please pick one yourself', 'Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다': 'View Jira tickets as quests and hand them to an agent', '맡기기': 'Assign', '새 워크트리에서 시작': 'Start in a new worktree',
-  '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', 'AI 제안': 'AI suggestion', '티켓 내용을 읽고 AI가 고른 제안입니다. 티켓에 적힌 지시에 영향을 받을 수 있으니 확인하고 맡기세요': 'An AI picked this after reading the ticket. Instructions written in the ticket can sway it: check before you assign', '자동 제안에서 열려 autopilot을 꺼 두었습니다': 'Opened from an auto suggestion: autopilot is off', '직접 고르세요': 'Please pick one yourself', 'claude CLI를 실행하지 못했습니다': 'Could not run the claude CLI', '응답이 늦어 중단했습니다': 'Stopped: the answer took too long', '다른 제안이 진행 중입니다': 'Another proposal is in progress', '제안이 목록에 없습니다': 'The proposal was not in the list', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
+  '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', 'AI 제안': 'AI suggestion', '퀘스트 게시판': 'Quest board', '보드': 'Board', '담당자': 'Assignee', '나': 'Me', '붙어 있는 의뢰가 없습니다': 'No quests pinned here', '퀘스트 검색': 'Search quests', '칸반 보드로 돌아갑니다': 'Back to the Kanban board', '티켓 내용을 읽고 AI가 고른 제안입니다. 티켓에 적힌 지시에 영향을 받을 수 있으니 확인하고 맡기세요': 'An AI picked this after reading the ticket. Instructions written in the ticket can sway it: check before you assign', '자동 제안에서 열려 autopilot을 꺼 두었습니다': 'Opened from an auto suggestion: autopilot is off', '직접 고르세요': 'Please pick one yourself', 'claude CLI를 실행하지 못했습니다': 'Could not run the claude CLI', '응답이 늦어 중단했습니다': 'Stopped: the answer took too long', '다른 제안이 진행 중입니다': 'Another proposal is in progress', '제안이 목록에 없습니다': 'The proposal was not in the list', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
   '설정': 'Settings', '표시': 'Appearance', '언어': 'Language', 'UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.': 'UI language. Also applies to office text and team prompts.',
   '테마': 'Theme', '시스템 설정을 따르거나 라이트/다크로 고정합니다.': 'Follow the system or force light / dark.', '시스템': 'System', '라이트': 'Light', '다크': 'Dark',
   '감지와 알림': 'Detection & alerts', '정확 감지 (Claude Code 훅)': 'Exact detection (Claude Code hooks)',
@@ -11428,6 +11490,11 @@ function jbBuildCols() { jb.cols = AgentDeskJira.buildColumns(jb.data && jb.data
 document.addEventListener('error', e => { const el = e.target; if (el && el.tagName === 'IMG' && el.closest && el.closest('.jb-ava')) el.remove(); }, true);
 function jbAvatar(name, url) { return `<span class="jb-ava" data-verbatim><i>${esc(AgentDeskJira.initials(name))}</i>${url ? `<img src="${escA(url)}" alt="">` : ''}</span>`; }
 function jbBarRender() {
+  if (questOn) {
+    $('jb-bar').innerHTML = `<input type="text" id="jb-q" placeholder="${escA(t('퀘스트 검색'))}" value="${escA(jb.q)}" spellcheck="false">
+    <button class="jb-btn on" data-jb="quest" title="${escA(t('칸반 보드로 돌아갑니다'))}">${esc(t('퀘스트'))}</button>`;
+    return;
+  }
   const people = new Map();
   if (jb.me && jb.me.accountId) people.set(jb.me.accountId, { name: jb.me.displayName || '', avatar: jb.me.avatar, me: true });
   for (const i of jb.issues) if (i.assigneeId && !people.has(i.assigneeId)) people.set(i.assigneeId, { name: i.assignee, avatar: i.avatar });
@@ -11687,6 +11754,13 @@ function questCardHtml(c) {
 }
 function questWire(root) {
   if (quest.wired.has(root)) return; quest.wired.add(root);
+  root.addEventListener('change', e => {
+    const f = e.target.closest('[data-qf]'); if (!f) return;
+    if (f.dataset.qf === 'who') { questWhoPref = f.value; try { localStorage.setItem('roca-quest-who', f.value); } catch {} questRefresh(); }
+    else if (f.dataset.qf === 'project' && jb.projects.some(p => p.key === f.value)) {   // the same as the board's own project select
+      jb.project = f.value; jbPrefs.project = f.value; jbSavePrefs(); jb.who.clear(); jb.q = ''; jb.drawer = ''; jiraLoad();
+    }
+  });
   root.addEventListener('click', e => {
     const b = e.target.closest('[data-q]'); if (!b || b.disabled) return;
     const key = b.dataset.key, act = b.dataset.q;
@@ -11700,9 +11774,37 @@ function questWire(root) {
     else if (act === 'accept') questAccept(key);   // the only path from a proposal to a dispatch, and it still goes through the normal modal
   });
 }
-// the tickets the view shows: the board's own search and avatar filters in board mode, the loaded list otherwise
+// whose quests the board shows (the board header's 담당자): 'me' (default), 'none' (nobody's yet), 'all', or an account id;
+// remembered per viewer. Board mode only: the Orca-CLI list has its own 내 담당 / 전체 filter and no account ids.
+let questWhoPref = 'me';
+try { const v = localStorage.getItem('roca-quest-who'); if (typeof v === 'string' && /^[\w:-]{1,128}$/.test(v)) questWhoPref = v; } catch {}
+function questPeople() {
+  const me = jb.me && jb.me.accountId, out = new Map();
+  for (const i of jb.issues) if (i.assigneeId && i.assigneeId !== me && !out.has(i.assigneeId)) out.set(i.assigneeId, i.assignee || i.assigneeId);
+  return new Map([...out].sort((a, b) => String(a[1]).localeCompare(String(b[1]))));
+}
+function questWho() {
+  const w = questWhoPref;
+  if (w === 'me') return jb.me && jb.me.accountId ? 'me' : 'all';   // not known yet (no OAuth profile): everything
+  if (w === 'none' || w === 'all' || questPeople().has(w)) return w;
+  return jb.me && jb.me.accountId ? 'me' : 'all';   // that person is no longer on the board
+}
+// the tickets the view shows: the board's search and the header's 담당자 in board mode, the loaded list otherwise
 function questIssues() {
-  return jiraBoardMode ? AgentDeskJira.filterIssues(jb.issues, { q: jb.q, assignees: jb.who }) : jiraIssues;
+  if (!jiraBoardMode) return jiraIssues;
+  const base = AgentDeskJira.filterIssues(jb.issues, { q: jb.q }), who = questWho();
+  if (who === 'all') return base;
+  if (who === 'none') return base.filter(i => !i.assigneeId);
+  const id = who === 'me' ? jb.me.accountId : who;
+  return base.filter(i => i.assigneeId === id);
+}
+// the board's header: a sign, the Jira board and whose quests (board mode only)
+function questHeadHtml() {
+  if (!jiraBoardMode) return `<div class="qb-head"><span class="qb-sign">${esc(t('퀘스트 게시판'))}</span></div>`;
+  const who = questWho(), opt = (v, label) => `<option value="${escA(v)}"${v === who ? ' selected' : ''}>${esc(label)}</option>`;
+  const boards = jb.projects.length ? `<label class="qb-field"><span>${esc(t('보드'))}</span><select data-qf="project" data-verbatim>${jb.projects.map(p => `<option value="${escA(p.key)}"${p.key === jb.project ? ' selected' : ''}>${esc(p.key)} · ${esc(p.name)}</option>`).join('')}</select></label>` : '';
+  const people = [...questPeople()].map(([id, n]) => opt(id, n)).join('');
+  return `<div class="qb-head"><span class="qb-sign">${esc(t('퀘스트 게시판'))}</span>${boards}<label class="qb-field"><span>${esc(t('담당자'))}</span><select data-qf="who" data-verbatim>${jb.me && jb.me.accountId ? opt('me', t('나') + (jb.me.displayName ? ` (${jb.me.displayName})` : '')) : ''}${opt('none', t('담당자 없음'))}${opt('all', t('전체'))}${people}</select></label></div>`;
 }
 const questEmptyHtml = text => `<div class="empty"><span class="empty-icon">🎫</span><span class="empty-text" data-verbatim>${esc(text)}</span></div>`;
 function questRender(root) {
@@ -11716,11 +11818,13 @@ function questRender(root) {
   if (err) { root.innerHTML = questEmptyHtml(err); return; }
   const live = new Set(sessions.filter(s => s.connected && s.ended !== true).map(s => s.id));
   const cards = AgentDeskQuest.questView(questIssues(), quest.file, live, questWorktrees());
-  if (!cards.length) { root.innerHTML = questEmptyHtml(t('표시할 티켓이 없습니다')); return; }
-  root.innerHTML = QUEST_GROUPS.map(([g, label]) => {
+  root.classList.add('qb-wood');
+  // the header stays even with no cards, so 담당자 / 보드 can still be changed
+  const body = !cards.length ? `<div class="qb-none">${esc(t('붙어 있는 의뢰가 없습니다'))}</div>` : `<div class="qb-cols">${QUEST_GROUPS.map(([g, label]) => {
     const list = cards.filter(c => c.group === g);
-    return `<div class="qb-col" data-group="${g}"><div class="qb-colh"><span>${esc(questGroupLabel(g, label))}</span><span class="jb-cnt">${list.length}</span></div><div class="qb-colb">${list.map(questCardHtml).join('')}</div></div>`;
-  }).join('');
+    return `<div class="qb-col" data-group="${g}"><div class="qb-colh"><span>${esc(questGroupLabel(g, label))}</span><span class="qb-cnt">${list.length}</span></div><div class="qb-colb">${list.map(questCardHtml).join('')}</div></div>`;
+  }).join('')}</div>`;
+  root.innerHTML = questHeadHtml() + body;
 }
 // ── end of QUEST BOARD ──
 // dock panel (🗡 on the bar): questRender into #q-dock-body. Jira is loaded here when the Jira page never loaded it;
