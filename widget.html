@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-N7N7wDCO7dRj3Ue8EGbWDriygV6nAgBZKiaVTnZabnU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-CoznxKqwXfDRvab1AIqHIsUq1s528ibaoC9SlopLFEg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -5048,6 +5048,18 @@ function dockFxEl(b, kind, loop, t0 = performance.now()) {
   c.appendChild(el);
   return el;
 }
+// which activity loop a working session gets (OFFICE_FX act_*): its current tool — edits (docs files apart), reads and
+// searches, the web, the shell, subagents — and no tool (or one not listed: todos, MCP, a skill) = thinking
+function dockActKind(s) {
+  if (!s) return '';
+  const tool = s.tool ? String(s.tool) : '', base = tool.split(/[\s:(]/)[0];
+  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(base)) return OFFICE_DOC_RE.test(`${s.toolInput || ''} ${tool}`) ? 'act_docs' : 'act_code';
+  if (/^(Read|Grep|Glob|LS|NotebookRead|Search|Explore)$/.test(base)) return 'act_read';
+  if (/^(WebFetch|WebSearch)$/.test(base)) return 'act_web';
+  if (/^(Bash|Shell|Run|BashOutput|KillShell)$/.test(base)) return 'act_shell';
+  if (/^(Task|Agent)$/.test(base)) return 'act_agents';
+  return 'act_think';
+}
 function dockFxSync(changes) {
   dockCastSync();
   const tiles = $('dock-tiles');
@@ -5062,6 +5074,10 @@ function dockFxSync(changes) {
     const k = b.dataset.key;
     if (!dockFxSeen.has(k)) { dockFxSeen.add(k); if (dockFxPrimed) dockFxPlay(k, 'blinkIn'); }
     for (const e of dockFxPlaying.get(k) || []) if (!b.querySelector(`.dock-fx[data-t0="${e.t0}"]`)) dockFxEl(b, e.kind, false, e.t0);
+    // what a working session of mine is doing, as a loop over its tile (dockActKind); another kind replaces it
+    const want = b.classList.contains('st-run') ? dockActKind(dockLocal(dockTileOf(k))) : '', cur = b.querySelector('.dock-fx[data-fx^="act_"]');
+    if (cur && cur.dataset.fx !== want) cur.remove();
+    if (want && (!cur || cur.dataset.fx !== want)) dockFxEl(b, want, true);
     const z = b.querySelector('.dock-fx[data-fx="sleep"]');
     if (b.classList.contains('st-done') && !z) dockFxEl(b, 'sleep', true);
     else if (!b.classList.contains('st-done') && z) z.remove();
@@ -7128,7 +7144,7 @@ function officeSetSkin(sid, idx) {
 // sprite-sheet effects from pixelfx (MIT, patch-gg/pixelfx), baked by scripts/office-fx.mjs — rerun it and paste its
 // table here when the sheets change. px/py: the effect's origin (a character's feet) in the frame; dy: drawn that much
 // lower because pixelfx's stand-in is taller than our 16 x 32 characters.
-const OFFICE_FX = {"collect":{"src":"fx/collect-burst","w":112,"h":108,"px":56,"py":94,"cols":7,"n":42,"fps":30,"loop":false},"blinkIn":{"src":"fx/blink-in","w":136,"h":96,"px":68,"py":80,"cols":6,"n":43,"fps":30,"loop":false},"blinkOut":{"src":"fx/blink-out","w":136,"h":96,"px":68,"py":80,"cols":6,"n":49,"fps":30,"loop":false},"exclaim":{"src":"fx/exclamation","w":84,"h":104,"px":42,"py":92,"cols":8,"n":43,"fps":30,"loop":false,"dy":6},"sleep":{"src":"fx/zzz","w":24,"h":42,"px":4,"py":41,"cols":8,"n":30,"fps":10,"loop":true},"skillCast":{"src":"fx/skill-cast","w":56,"h":64,"px":28,"py":58,"cols":6,"n":30,"fps":20,"loop":false},"skillCastDock":{"src":"fx/skill-cast-dock","w":56,"h":64,"px":28,"py":58,"cols":6,"n":30,"fps":20,"loop":false},"steam":{"src":"fx/steam","w":12,"h":18,"px":6,"py":17,"cols":7,"n":30,"fps":15,"loop":true},"rackA":{"src":"fx/rack-a","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"rackB":{"src":"fx/rack-b","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"skyDay":{"src":"fx/sky-day","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyDusk":{"src":"fx/sky-dusk","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyNight":{"src":"fx/sky-night","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true}};
+const OFFICE_FX = {"collect":{"src":"fx/collect-burst","w":112,"h":108,"px":56,"py":94,"cols":7,"n":42,"fps":30,"loop":false},"blinkIn":{"src":"fx/blink-in","w":136,"h":96,"px":68,"py":80,"cols":6,"n":43,"fps":30,"loop":false},"blinkOut":{"src":"fx/blink-out","w":136,"h":96,"px":68,"py":80,"cols":6,"n":49,"fps":30,"loop":false},"exclaim":{"src":"fx/exclamation","w":84,"h":104,"px":42,"py":92,"cols":8,"n":43,"fps":30,"loop":false,"dy":6},"sleep":{"src":"fx/zzz","w":24,"h":42,"px":4,"py":41,"cols":8,"n":30,"fps":10,"loop":true},"skillCast":{"src":"fx/skill-cast","w":56,"h":64,"px":28,"py":58,"cols":6,"n":30,"fps":20,"loop":false},"skillCastDock":{"src":"fx/skill-cast-dock","w":56,"h":64,"px":28,"py":58,"cols":6,"n":30,"fps":20,"loop":false},"steam":{"src":"fx/steam","w":12,"h":18,"px":6,"py":17,"cols":7,"n":30,"fps":15,"loop":true},"rackA":{"src":"fx/rack-a","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"rackB":{"src":"fx/rack-b","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"skyDay":{"src":"fx/sky-day","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyDusk":{"src":"fx/sky-dusk","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyNight":{"src":"fx/sky-night","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"act_code":{"src":"fx/act-code","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_docs":{"src":"fx/act-docs","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_read":{"src":"fx/act-read","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_web":{"src":"fx/act-web","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_shell":{"src":"fx/act-shell","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_agents":{"src":"fx/act-agents","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_think":{"src":"fx/act-think","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true}};
 const officeFx = [];   // one-shots playing: { kind, x, y (feet), t, ch (follow that character while it lives) }
 function officeFxPlay(kind, x, y, ch = null) {
   if (OFFICE_FX[kind] && officeFx.length < 24) officeFx.push({ kind, x, y, t: 0, ch });
