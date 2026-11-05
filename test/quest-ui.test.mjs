@@ -106,7 +106,7 @@ function boot(over = {}) {
     console, Date, Promise, Set, Map, WeakSet, Array, Object, String, JSON,
     AgentDeskQuest: globalThis.AgentDeskQuest, AgentDeskJira: globalThis.AgentDeskJira,
     esc, escA: esc, t: x => x, LANG: 'ko', $: () => null,
-    sessions: [], handles: new Map(), nowSummaries: new Map(), jb: { issues: [], q: '', who: new Set(), err: '' }, jiraIssues: [], jiraDetail: new Map(),
+    sessions: [], handles: new Map(), nowSummaries: new Map(), jb: { issues: [], q: '', who: new Set(), err: '', projects: [], me: null }, jiraIssues: [], jiraDetail: new Map(),
     jiraBoardMode: true, jiraBusy: false, jiraErr: '', jiraConn: null, jiraDispatch: {},
     jiraSessFor: d => (d.sid ? sb.sessions.find(x => x.id === d.sid) || null : null),
     dockPermMap: () => new Map(), hookStateFor: () => null, skillCastOf: () => null,
@@ -195,11 +195,11 @@ test('quest behavior: card and picker escape Jira and session text', () => {
 
 test('quest behavior: render shows load / error / not-connected states', () => {
   const { sb, q: Q } = boot();
-  const root = { isConnected: true, innerHTML: '', addEventListener() {} };
+  const root = { isConnected: true, innerHTML: '', addEventListener() {}, classList: { add() {} } };
   sb.jiraBusy = true; Q.questRender(root); assert.match(root.innerHTML, /불러오는 중/);
   sb.jiraBusy = false; sb.jb.err = 'boom'; Q.questRender(root); assert.match(root.innerHTML, /boom/);
   sb.jb.err = ''; sb.jiraConn = { connected: false, error: 'sign in' }; Q.questRender(root); assert.match(root.innerHTML, /sign in/);
-  sb.jiraConn = null; Q.questRender(root); assert.match(root.innerHTML, /표시할 티켓이 없습니다/);
+  sb.jiraConn = null; Q.questRender(root); assert.match(root.innerHTML, /붙어 있는 의뢰가 없습니다/); assert.match(root.innerHTML, /qb-head/, 'the header stays with no cards');
   sb.jiraBoardMode = false; sb.jiraIssues = [{ key: 'PROJ-2', summary: 'list mode', status: 'To Do', priority: 'Low', labels: [] }]; Q.questRender(root); assert.match(root.innerHTML, /list mode/);
 });
 
@@ -251,7 +251,7 @@ test('quest dock: panel loads Jira once when the page never did; re-renders on J
 
 test('quest dock: disconnected shows the sign-in text, never throws', () => {
   const { sb, q: Q } = boot();
-  const root = { isConnected: true, innerHTML: '', addEventListener() {} };
+  const root = { isConnected: true, innerHTML: '', addEventListener() {}, classList: { add() {} } };
   sb.jiraConn = { connected: false, error: '' }; assert.doesNotThrow(() => Q.questRender(root));
   assert.match(root.innerHTML, /Jira가 연결되지 않았습니다/);
 });
@@ -292,7 +292,7 @@ test('quest dock fix round 1: Esc closes the modal first, panel closes never shr
 test('quest dock fix round 1: disconnected dock variant points at the Jira page with a button', () => {
   const { sb, q: Q } = boot();
   sb.dockLeave = page => { sb.left = page; };
-  const root = { id: 'q-dock-body', isConnected: true, innerHTML: '', addEventListener() {} };
+  const root = { id: 'q-dock-body', isConnected: true, innerHTML: '', addEventListener() {}, classList: { add() {} } };
   sb.jiraConn = { connected: false, error: 'x' };
   Q.questRender(root);
   assert.match(root.innerHTML, /Jira 페이지에서 연결하세요/);
@@ -307,7 +307,7 @@ const cardOf = (root, key) => { const i = root.innerHTML.indexOf(`<div class="qb
 const colOf = (root, key) => { const h = root.innerHTML, i = h.indexOf(`data-key="${key}"`); return h.slice(h.lastIndexOf('data-group="', i) + 12, h.indexOf('"', h.lastIndexOf('data-group="', i) + 12)); };
 test('quest final: ended or stuck quests can be reassigned (Jira 진행 중, ended session, dead worktree)', () => {
   const { sb, q: Q } = boot();
-  const root = { isConnected: true, innerHTML: '', addEventListener() {} };
+  const root = { isConnected: true, innerHTML: '', addEventListener() {}, classList: { add() {} } };
   sb.sessions = [sess('s1', 'running')]; sb.handles.set('s1', 'h1');
   const ip = k => ({ key: k, summary: k, status: 'Doing', cat: 'indeterminate', priority: 'High', labels: [] });
   sb.jb.issues = [ip('PROJ-1'), ip('PROJ-2'), ip('PROJ-3'), ip('PROJ-4'), ip('PROJ-5'), ip('PROJ-6'), ip('PROJ-7')];
@@ -388,4 +388,33 @@ test('a proposal is labelled as the AI\'s, and a worktree opened from it starts 
   assert.match(html, /id="jira-wt-auto"\$\{preselect \? '' : ' checked'\}/);
   // only the proposal path passes a preselected repo
   assert.deepEqual([...html.matchAll(/(?<!function )jiraWorktreeModal\(key, ([^)]+)\)/g)].map(m => m[1]), ['ok.repo']);
+});
+
+test('quest board header: 보드 and 담당자 pickers, 담당자 defaults to me and filters the cards', () => {
+  const { sb, q: Q } = boot();
+  sb.jb.me = { accountId: 'me1', displayName: 'Alex' };
+  sb.jb.projects = [{ key: 'PROJ', name: 'Project' }, { key: 'OPS', name: 'Ops' }]; sb.jb.project = 'PROJ';
+  const iss = (key, who) => ({ key, summary: 'S ' + key, status: 'To Do', statusCategory: 'new', priority: 'Low', labels: [], assigneeId: who || '', assignee: who ? 'N ' + who : '' });
+  sb.jb.issues = [iss('PROJ-1', 'me1'), iss('PROJ-2', 'p2'), iss('PROJ-3', '')];
+  const root = { isConnected: true, innerHTML: '', addEventListener() {}, classList: { add() {} } };
+  Q.questRender(root);
+  assert.match(root.innerHTML, /<select data-qf="project"[^>]*><option value="PROJ" selected>/);
+  assert.match(root.innerHTML, /<option value="me" selected>나 \(Alex\)<\/option>/);
+  assert.match(root.innerHTML, /<option value="p2">N p2<\/option>/);
+  assert.ok(root.innerHTML.includes('S PROJ-1') && !root.innerHTML.includes('S PROJ-2') && !root.innerHTML.includes('S PROJ-3'), 'default: mine only');
+  const pick = w => { vm.runInContext(`questWhoPref = ${JSON.stringify(w)}`, sb); Q.questRender(root); return ['PROJ-1', 'PROJ-2', 'PROJ-3'].filter(k => root.innerHTML.includes('S ' + k)); };
+  assert.deepEqual(pick('none'), ['PROJ-3']);
+  assert.deepEqual(pick('all'), ['PROJ-1', 'PROJ-2', 'PROJ-3']);
+  assert.deepEqual(pick('p2'), ['PROJ-2']);
+  assert.deepEqual(pick('gone-person'), ['PROJ-1'], 'someone no longer on the board falls back to me');
+  sb.jb.me = null;
+  assert.deepEqual(pick('me'), ['PROJ-1', 'PROJ-2', 'PROJ-3'], 'no profile yet: everything');
+});
+
+test('quest board header: changes are wired, the choice is remembered, the wooden look is on', () => {
+  const src = html.slice(html.indexOf('function questWire('), html.indexOf('// the tickets the view shows'));
+  assert.match(src, /f\.dataset\.qf === 'who'\) \{ questWhoPref = f\.value; try \{ localStorage\.setItem\('roca-quest-who', f\.value\)/);
+  assert.match(src, /f\.dataset\.qf === 'project' && jb\.projects\.some\(p => p\.key === f\.value\)\) \{[^}]*jbSavePrefs\(\);[^}]*jiraLoad\(\);/);
+  assert.match(html, /root\.classList\.add\('qb-wood'\);/);
+  assert.match(html, /\.qb-wood \.qb-card::before \{ content: '';/);   // the pin
 });
