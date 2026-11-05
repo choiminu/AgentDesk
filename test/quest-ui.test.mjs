@@ -381,3 +381,11 @@ test('quest mode hides the board columns and styles the card buttons', () => {
   assert.match(html, /\.jb-cols\[hidden\][^{]*\{ display: none; \}/);
   assert.match(html, /\.qb-card button \{ appearance: none;/);
 });
+
+test('a proposal is labelled as the AI\'s, and a worktree opened from it starts with autopilot off', () => {
+  const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+  assert.match(html, /<div class="qb-prop"><span class="qb-ai" title="\$\{escA\(t\('티켓 내용을 읽고 AI가 고른 제안입니다/);
+  assert.match(html, /id="jira-wt-auto"\$\{preselect \? '' : ' checked'\}/);
+  // only the proposal path passes a preselected repo
+  assert.deepEqual([...html.matchAll(/(?<!function )jiraWorktreeModal\(key, ([^)]+)\)/g)].map(m => m[1]), ['ok.repo']);
+});

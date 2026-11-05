@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-mjtzXOSRSfEd8nBv1yo1Pwa9QOHlyjb9F7ZU2bfrseg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-NVP6ue4a/JOLSB5YPzxFeFIhV1NJ98VE1oRaaDkid38='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1018,6 +1018,7 @@
   .qb-acts { display: flex; gap: 6px; margin-top: 6px; align-items: center; flex-wrap: wrap; }
   .qb-spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: qb-spin 0.8s linear infinite; }
   @keyframes qb-spin { to { transform: rotate(360deg); } }
+  .qb-ai { display: inline-block; padding: 0 5px; border-radius: 6px; background: var(--accent-dim); color: var(--text2); font-weight: 600; }
   .qb-prop { margin-top: 6px; padding: 5px 7px; border: 1px dashed var(--accent); border-radius: 6px; font-size: var(--fs-xs); color: var(--text); overflow-wrap: anywhere; }
   .qb-err { margin-top: 6px; font-size: var(--fs-xs); color: var(--red-text); }
   .qb-why { display: block; margin-top: 2px; color: var(--text3); }
@@ -2175,7 +2176,7 @@ let LANG = 'en';
 try { LANG = localStorage.getItem('roca-lang') || 'en'; } catch {}
 const I18N = {
   '퀘스트': 'Quests', '선택하세요': 'Choose one', '미리 고른 대상을 찾을 수 없습니다. 직접 고르세요': 'The preselected target is gone. Please pick one yourself', 'Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다': 'View Jira tickets as quests and hand them to an agent', '맡기기': 'Assign', '새 워크트리에서 시작': 'Start in a new worktree',
-  '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', '직접 고르세요': 'Please pick one yourself', 'claude CLI를 실행하지 못했습니다': 'Could not run the claude CLI', '응답이 늦어 중단했습니다': 'Stopped: the answer took too long', '다른 제안이 진행 중입니다': 'Another proposal is in progress', '제안이 목록에 없습니다': 'The proposal was not in the list', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
+  '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', 'AI 제안': 'AI suggestion', '티켓 내용을 읽고 AI가 고른 제안입니다. 티켓에 적힌 지시에 영향을 받을 수 있으니 확인하고 맡기세요': 'An AI picked this after reading the ticket. Instructions written in the ticket can sway it: check before you assign', '자동 제안에서 열려 autopilot을 꺼 두었습니다': 'Opened from an auto suggestion: autopilot is off', '직접 고르세요': 'Please pick one yourself', 'claude CLI를 실행하지 못했습니다': 'Could not run the claude CLI', '응답이 늦어 중단했습니다': 'Stopped: the answer took too long', '다른 제안이 진행 중입니다': 'Another proposal is in progress', '제안이 목록에 없습니다': 'The proposal was not in the list', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
   '설정': 'Settings', '표시': 'Appearance', '언어': 'Language', 'UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.': 'UI language. Also applies to office text and team prompts.',
   '테마': 'Theme', '시스템 설정을 따르거나 라이트/다크로 고정합니다.': 'Follow the system or force light / dark.', '시스템': 'System', '라이트': 'Light', '다크': 'Dark',
   '감지와 알림': 'Detection & alerts', '정확 감지 (Claude Code 훅)': 'Exact detection (Claude Code hooks)',
@@ -11256,7 +11257,7 @@ async function jiraWorktreeModal(key, preselect) {   // preselect (optional): th
     <label class="jira-field">${esc(t('워크트리 이름'))}<input type="text" id="jira-wt-name" value="${esc(AgentDeskJira.worktreeName(key))}"></label>
     <label class="jira-field">${esc(t('지침 (선택)'))}<textarea id="jira-wt-guide" placeholder="${esc(t('예: 원인 분석만 하고 코드는 고치지 말 것'))}"></textarea></label>
     ${jiraGuideChipsHtml()}
-    <label class="jira-field"><input type="checkbox" id="jira-wt-auto" checked> ${esc(t('autopilot 키워드 추가'))}</label>
+    <label class="jira-field"><input type="checkbox" id="jira-wt-auto"${preselect ? '' : ' checked'}> ${esc(t('autopilot 키워드 추가'))}</label>${preselect ? `<p style="margin:0;color:var(--text3);font-size:var(--fs-xs)">${esc(t('자동 제안에서 열려 autopilot을 꺼 두었습니다'))}</p>` : ''}
     <details class="jira-prev"><summary>${esc(t('에이전트에게 보낼 프롬프트 미리보기'))}</summary><pre class="brief" id="jira-wt-prev" data-verbatim></pre></details>
     <div class="row"><button class="primary" id="jira-wt-go">${esc(t('만들고 시작'))}</button><button id="jira-wt-cancel">${esc(t('취소'))}</button><span id="jira-wt-msg" style="color:var(--text3)"></span></div>`);
   m.querySelector('#jira-wt-cancel').onclick = closeTeamModal;
@@ -11680,7 +11681,7 @@ function questCardHtml(c) {
     ${c.due ? `<div class="qb-due${over ? ' over' : ''}">${over ? '⚠ ' : '📅 '}${esc(AgentDeskJira.formatDue(c.due, LANG))}</div>` : ''}
     ${who ? `<div class="qb-who" data-verbatim>${esc(who)}</div>` : ''}
     ${acts ? `<div class="qb-acts">${acts}</div>` : ''}
-    ${prop ? `<div class="qb-prop" data-verbatim>⟶ ${esc(prop.label)} · ${esc(prop.reason)}<div class="qb-acts"><button data-q="accept" data-key="${escA(key)}">${esc(t('맡기기'))}</button><button data-q="other" data-key="${escA(key)}">${esc(t('다른 사람'))}</button></div></div>` : ''}
+    ${prop ? `<div class="qb-prop"><span class="qb-ai" title="${escA(t('티켓 내용을 읽고 AI가 고른 제안입니다. 티켓에 적힌 지시에 영향을 받을 수 있으니 확인하고 맡기세요'))}">${esc(t('AI 제안'))}</span> <span data-verbatim>⟶ ${esc(prop.label)} · ${esc(prop.reason)}</span><div class="qb-acts"><button data-q="accept" data-key="${escA(key)}">${esc(t('맡기기'))}</button><button data-q="other" data-key="${escA(key)}">${esc(t('다른 사람'))}</button></div></div>` : ''}
     ${err ? `<div class="qb-err">${esc(t('직접 고르세요'))}${Object.prototype.hasOwnProperty.call(QUEST_ERR_WHY, err) ? `<span class="qb-why">${esc(t(QUEST_ERR_WHY[err]))}</span>` : ''}</div>` : ''}
     ${quest.picker === key && questCanAssign(c) ? questPickerHtml(key) : ''}</div>`;
 }
