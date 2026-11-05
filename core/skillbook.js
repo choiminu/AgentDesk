@@ -39,12 +39,32 @@ function parseSkillMd(text) {
     } else val = unquote(val);
     if (kv[1] === 'name') out.name = val || null; else out.description = val;
   }
-  const seen = new Set();
-  const re = /(?:^|[^\w])(?:"([^"]+)"|'([^']+)'|‘([^’]+)’|“([^”]+)”)/g;
-  let t;
-  while ((t = re.exec(out.description)) && out.triggers.length < MAX_TRIGGERS) {
-    const p = (t[1] || t[2] || t[3] || t[4] || '').trim();
-    if (p && p.length <= TRIGGER_MAX && !seen.has(p)) { seen.add(p); out.triggers.push(p); }
+  out.triggers = quotedPhrases(out.description);
+  return out;
+}
+
+// quoted phrases ("…", '…', ‘…’, “…”) that start the text or follow a non-word character — what
+// /(?:^|[^\w])(?:"([^"]+)"|'([^']+)'|‘([^’]+)’|“([^”]+)”)/g found, without its backtracking: that regex took time
+// quadratic in the length on unclosed quotes (a crafted SKILL.md froze the main process). Linear: the next closing
+// quote of each kind is precomputed in one pass from the end.
+const QUOTES = { '"': '"', "'": "'", '\u2018': '\u2019', '\u201C': '\u201D' };
+function quotedPhrases(text) {
+  const s = String(text || ''), n = s.length, out = [], seen = new Set(), next = {};
+  for (const c of new Set(Object.values(QUOTES))) {
+    const a = new Int32Array(n + 2).fill(n);
+    for (let i = n - 1; i >= 0; i--) a[i] = s[i] === c ? i : a[i + 1];
+    next[c] = a;
+  }
+  let from = 0;   // a match's own characters cannot be the leading non-word character of the next one
+  for (let i = 0; i < n && out.length < MAX_TRIGGERS; i++) {
+    const close = QUOTES[s[i]];
+    if (!close) continue;
+    if (i === 0 ? from !== 0 : i - 1 < from || /\w/.test(s[i - 1])) continue;
+    const j = next[close][i + 1];
+    if (j >= n || j === i + 1) continue;   // unclosed, or empty quotes
+    const p = s.slice(i + 1, j).trim();
+    if (p && p.length <= TRIGGER_MAX && !seen.has(p)) { seen.add(p); out.push(p); }
+    from = j + 1; i = j;
   }
   return out;
 }
@@ -152,8 +172,12 @@ function usageOfTool(name, input) {
     const k = input && typeof input.skill === 'string' ? input.skill.trim() : '';
     return k ? { key: k, kind: 'skill' } : null;
   }
-  const m = /^mcp__(.+?)__(.+)$/.exec(typeof name === 'string' ? name : '');
-  return m ? { key: m[1], kind: 'mcp', tool: m[2] } : null;
+  // /^mcp__(.+?)__(.+)$/ without its quadratic backtracking: a server of 1+ chars, the first "__" after it, a tool of
+  // 1+ chars; no line terminator anywhere ('.' does not match one)
+  const s = typeof name === 'string' ? name : '';
+  if (!s.startsWith('mcp__') || /[\n\r\u2028\u2029]/.test(s)) return null;
+  const k = s.indexOf('__', 6);
+  return k > 0 && k + 2 < s.length ? { key: s.slice(5, k), kind: 'mcp', tool: s.slice(k + 2) } : null;
 }
 function usageOfPrompt(text) {
   if (typeof text !== 'string') return null;
