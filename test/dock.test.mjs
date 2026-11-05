@@ -416,7 +416,23 @@ test('widget dock: hover opens the terminal window, a click goes to the terminal
   assert.match(html, /\.dock-tile \{ position: relative; width: 56px; height: 56px;/);
   // the terminal window opens over its tile; my tiles: pinned first, then the latest activity on the left
   assert.match(between(html, 'function dockPopGeom(kind)', '\n}\n'), /const key = kind === 'term' \? dockTermKey\(\) : (?:kind === 'add' \|\| kind === 'menu'(?: \|\| kind === 'drop')? \? \(dockPop && dockPop\.key\) : )?dockTipKey;[\s\S]*if \(tile\) \{ const r = tile\.getBoundingClientRect\(\); anchor = r\.left \+ r\.width \/ 2; \}\n\s*else if \(kind !== 'term'\) return null;/);
-  assert.match(between(html, 'function dockSessions()', '\n}\n'), /AgentDeskDock\.orderSessions\(shown, dockCfg\.order, pinnedSessions\)/);
+  // latest activity first unless the user chose their own order; held still under the pointer
+  const ds = between(html, 'function dockSessions()', '\n}\n');
+  assert.match(ds, /AgentDeskDock\.orderSessions\(shown, manual \? dockCfg\.order : \[\], manual \? pinnedSessions : \[\]\)/);
+  assert.match(ds, /if \(!manual && dockDrawnOrder\.length && \$\('dock-tiles'\)\.matches\(':hover'\)\) sorted = AgentDeskDock\.keepOrder\(sorted, dockDrawnOrder\);/);
+  assert.match(html, /dockCfg\.sort = c\.sort === 'manual' \? 'manual' : 'recent';/, 'latest first by default, also for a saved drag order');
+  assert.match(html, /\$\('dock-tiles'\)\.addEventListener\('mouseleave', \(\) => \{ if \(dockCfg\.sort !== 'manual'\) dockRender\(\); \}\);/);
+  assert.match(html, /dockCfg\.sort = 'manual';   \/\/ a drag says where the tile goes/);
+  assert.match(html, /name === 'dock-sort' && \(v === 'recent' \|\| v === 'manual'\)\) \{ dockCfg\.sort = v; if \(v === 'recent'\) dockCfg\.order = \[\];/);
+  // a skill in use: a purple bubble over its tile (the pill only when the tile is not on the bar)
+  assert.match(html, /if \(!dockSkillFire\(`me:\$\{s\.id\}`, name \|\| text\)\) dockSkillHint\(text\);/);
+  const sf = between(html, 'function dockSkillFire(key, name)', '\n}\n');
+  assert.match(sf, /if \(!dockOn \|\| dockCfg\.dnd\) return true;/, 'do not disturb: no bubble and no pill');
+  assert.match(sf, /el\.className = 'dock-bubble done skill';/);
+  assert.match(sf, /while \(skills\.length > 3\) skills\.shift\(\);/);
+  assert.match(sf, /dockDoneExpire\(d, DOCK_SKILL_MS\);/);
+  assert.match(between(html, 'function dockDoneSync()', '\n}\n'), /const stale = d\.skill \? false :/, 'a skill bubble outlives the state checks of a completion bubble');
+  assert.match(html, /\.dock-bubble\.skill \{ --bb-edge: var\(--purple\); border-width: 2px;/);
   // the screen wraps instead of scrolling sideways; a row of box-drawing rules is one thin line
   assert.match(html, /\.peer-term \.pt-screen \{ white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: hidden; \}/);
   assert.match(between(html, 'function termScreenHtml(lines)', '\n}\n'), /TERM_RULE_RE\.test\(l\) \? '<span class="pt-rule"><\/span>' : esc\(l\) \+ '\\n'/);
@@ -1042,6 +1058,14 @@ test('orderSessions: the drag order first, then pinned, then the latest activity
   assert.deepEqual(D.orderSessions(null, null, null), []);
 });
 
+test('keepOrder: the tiles as drawn, new ones after them', () => {
+  const L = [{ id: 'c' }, { id: 'a' }, { id: 'n' }, { id: 'b' }];
+  assert.deepEqual(D.keepOrder(L, ['a', 'b', 'c']).map(x => x.id), ['a', 'b', 'c', 'n']);
+  assert.deepEqual(D.keepOrder(L, ['gone', 'b']).map(x => x.id), ['b', 'c', 'a', 'n'], 'ids no longer shown do no harm');
+  assert.deepEqual(D.keepOrder(L, []).map(x => x.id), ['c', 'a', 'n', 'b'], 'nothing drawn yet: as given');
+  assert.deepEqual(D.keepOrder(null, null), []);
+});
+
 test('moveInOrder / dropOrder: where a dragged tile lands, and what is saved', () => {
   assert.deepEqual(D.moveInOrder(['a', 'b', 'c'], 'c', 'a'), ['c', 'a', 'b']);
   assert.deepEqual(D.moveInOrder(['a', 'b', 'c'], 'a', null), ['b', 'c', 'a'], 'no target: the end');
@@ -1086,13 +1110,14 @@ test('dropPayload: paths not contents, URLs as they are, text masked and cut to 
 });
 
 test('renderer: tiles follow orderSessions; the drag runs through dragStep; a drop saves dropOrder, pins and says so; unpin in the tile menu', () => {
-  assert.match(between(html, 'function dockSessions()', '\n}\n'), /AgentDeskDock\.orderSessions\(shown, dockCfg\.order, pinnedSessions\)/);
+  assert.match(between(html, 'function dockSessions()', '\n}\n'), /AgentDeskDock\.orderSessions\(shown, manual \? dockCfg\.order : \[\], manual \? pinnedSessions : \[\]\)/);
   const step = between(html, 'function dockDragDo(ev, e)', '\n}\n');
   assert.match(step, /const prev = dockDrag, r = AgentDeskDock\.dragStep\(prev, ev\);/);
   assert.match(step, /src\.addEventListener\('lostpointercapture', \(\) => dockDragDo\(\{ type: 'cancel' \}\), \{ once: true \}\)/);
   assert.match(step, /AgentDeskDock\.dropOrder\(visible, prev\.id, bx \? bx\.id : null\)/);
   assert.match(step, /pinnedSessions\.add\(prev\.id\); dockPinSave\(\);/);
-  assert.match(step, /dockHint\(t\('📌 고정됨 — 우클릭으로 해제'\), '', true\);/, 'L2: the pin is announced');
+  assert.match(step, /: t\('📌 고정됨 — 우클릭으로 해제'\), '', true\);/, 'L2: the pin is announced');
+  assert.match(step, /dockHint\(wasRecent \? t\('📌 직접 정한 순서로 바꿨습니다/, 'the switch to the user\'s order is announced');
   assert.equal((step.match(/dropOrder/g) || []).length, 1, 'only the drop action changes the order');
   assert.match(between(html, "$('dock-tiles').addEventListener('pointerdown'", '\n});'), /movable: !!\(x && !x\.bundle && !x\.peer\)/);
   assert.match(html, /document\.addEventListener\('pointermove', e => \{ if \(dockDrag\) dockDragDo\(\{ type: 'move', x: e\.clientX, y: e\.clientY, buttons: e\.buttons \}, e\); \}\);/);

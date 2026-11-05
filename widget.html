@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-7HBrn3E/BpOPFsYav/PGiAevaN3ElARMgSq8Arrv9gI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-N7N7wDCO7dRj3Ue8EGbWDriygV6nAgBZKiaVTnZabnU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -2031,6 +2031,10 @@
   .dock-bubble.keyed { outline: 2px solid var(--accent); outline-offset: 1px; }   /* the bubble the digit keys answer */
   .dock-bubble.done { --bb-edge: color-mix(in srgb, var(--green) 45%, var(--border)); gap: 4px; cursor: pointer; user-select: none; }
   .dock-bubble.done .bb-st { color: var(--green-text); }
+  .dock-bubble.skill { --bb-edge: var(--purple); border-width: 2px; background: color-mix(in srgb, var(--purple) 14%, var(--surface)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--purple) 35%, transparent), 0 8px 24px rgba(0,0,0,0.32), 0 0 18px color-mix(in srgb, var(--purple) 45%, transparent); }
+  .dock-bubble.skill::after { background: color-mix(in srgb, var(--purple) 14%, var(--surface)); border-width: 2px; }
+  .dock-bubble.skill .bb-st { color: var(--purple); }
+  .dock-bubble.done.skill .bb-a { font: 700 var(--fs-base)/1.35 var(--sans); color: var(--text); }
   .dock-bubble.done .bb-a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); color: var(--text); }
   .peer-term .pt-foot [hidden] { display: none; }
   .peer-term .pt-head button { flex: none; white-space: nowrap; }
@@ -2619,6 +2623,7 @@ Object.assign(I18N, {
   '시작 시 도크 모드': 'Start in dock mode', '위젯을 켤 때 도크 모드로 시작합니다.': 'The widget starts as the dock bar.',
   '도크 흐리게': 'Dock fade', '마우스가 띠를 떠나고 1.5초 뒤 이 불투명도로 흐려집니다. 띠에 마우스를 올리면 다시 선명해집니다.': 'When the pointer leaves the bar, it fades to this opacity after 1.5 s; pointing at it brings it back.',
   '도크: 세션': 'Sessions', '도크: 팀원 세션': 'Teammate sessions', '도크: 대기열': 'queue', '도크: 서브에이전트': 'subagents', '도크: 위임받음': 'delegated to you',
+  '도크: 스킬 사용': 'Skill used', '도크 정렬': 'Dock order', '최신순': 'Latest first', '직접 정한 순서': 'My order', '최신순: 가장 최근에 활동한 세션이 왼쪽에 옵니다. 마우스가 타일 위에 있는 동안에는 자리를 바꾸지 않습니다. 타일을 끌어 옮기면 직접 정한 순서로 바뀌고, 최신순을 다시 고르면 끌어 정한 순서를 지웁니다.': 'Latest first: the session with the latest activity sits on the left. Tiles hold still while the pointer is on them. Dragging a tile switches to My order; choosing Latest first again clears the dragged order.', '📌 직접 정한 순서로 바꿨습니다 — 설정의 "도크 정렬"에서 최신순으로 되돌립니다': '📌 Switched to My order — "Dock order" in Settings brings back Latest first',
   '도크: 작업 중': 'running', '도크: 입력 대기': 'waiting for input', '도크: 승인 필요': 'needs approval', '도크: 오류': 'error', '도크: 완료': 'done',
   '도크: 보냄': 'Sent', '도크: 허용': 'Allow', '도크: 이번만 허용': 'Allow once', '도크: 거부': 'Deny',
   '도크: 설정': 'Settings', '도크: 패널로 펼치기 (⌘⇧D)': 'Expand to the panel (⌘⇧D)', '도크: 검토 대기열': 'Review queue', '도크: 스킬북': 'Skillbook', '도크: 퀘스트': 'Quests', 'Jira 페이지에서 연결하세요': 'Connect on the Jira page', 'Jira 페이지 열기': 'Open the Jira page',
@@ -3351,7 +3356,7 @@ function skillCastPlay(s, text, name) {
   if (dockOn) {
     if (dockFxAllowed()) { dockFxPlay(`me:${s.id}`, 'skillCastDock'); dockFxSync(); }   // the tile's cut: the book fits under the tile's top
     dockCastMark(`me:${s.id}`, name || text);
-    dockSkillHint(text);
+    if (!dockSkillFire(`me:${s.id}`, name || text)) dockSkillHint(text);   // no tile to put a bubble on (folded, collected): the pill
   }
 }
 
@@ -3547,6 +3552,7 @@ try {
   // "도크에서 숨기기": session id → when it was hidden (AgentDeskDock.dockIdleSplit); at most 200, string ids only
   dockCfg.hidden = {};
   if (c.hidden && typeof c.hidden === 'object' && !Array.isArray(c.hidden)) for (const [k, v] of Object.entries(c.hidden).slice(0, 200)) if (k && k.length <= 500 && Number.isFinite(v) && v > 0) dockCfg.hidden[k] = v;
+  dockCfg.sort = c.sort === 'manual' ? 'manual' : 'recent';   // the bar's order: latest activity first / the user's drag order
   dockCfg.order = Array.isArray(c.order) ? c.order.filter(v => typeof v === 'string' && v && v.length <= 200).slice(0, 50) : [];
   dockCfg.addRepo = typeof c.addRepo === 'string' && c.addRepo.length <= 500 ? c.addRepo : '';
   // a spot per display (an old single { cx, y } becomes 'legacy': main uses it on the display it lies on)
@@ -3577,15 +3583,20 @@ function dockPermMap() {
   for (const r of permSorted()) { const s = permSessionOf(r.sessionId); if (s && !m.has(s.id)) m.set(s.id, r); }
   return m;
 }
-// my sessions, pinned first and then by latest activity (newest on the left): hidden ones left out, finished ones only
-// when pinned or active in the last 24 h
+// my sessions, latest activity first (newest on the left; "직접 정한 순서": the drag order, then pinned, then activity):
+// hidden ones left out, finished ones only when pinned or active in the last 24 h. While the pointer is on the tiles
+// they keep the order they were drawn in (AgentDeskDock.keepOrder), so a tile does not move away from under a click;
+// leaving the row redraws them sorted.
 // idle sessions (AgentDeskDock.dockIdleSplit): out of the row into the 💤 tile; dockIdleOpen puts them back at its end
-let dockIdleOpen = false, dockIdleN = 0;
+let dockIdleOpen = false, dockIdleN = 0, dockDrawnOrder = [];
 function dockSessions() {
   const now = Date.now(), perm = dockPermMap();
   const shown = sessions.filter(s => !hiddenSessions.has(s.id) && (s.status !== 'done' || pinnedSessions.has(s.id) || (s.time && now - s.time < DONE_RECENT_MS)));
-  // the user's drag order first, then pinned, then the latest activity leftmost (AgentDeskDock.orderSessions)
-  const ordered = AgentDeskDock.orderSessions(shown, dockCfg.order, pinnedSessions).map(s => ({ ...s, hasPerm: perm.has(s.id) }));
+  const manual = dockCfg.sort === 'manual';
+  let sorted = AgentDeskDock.orderSessions(shown, manual ? dockCfg.order : [], manual ? pinnedSessions : []);
+  if (!manual && dockDrawnOrder.length && $('dock-tiles').matches(':hover')) sorted = AgentDeskDock.keepOrder(sorted, dockDrawnOrder);
+  dockDrawnOrder = sorted.map(s => s.id);
+  const ordered = sorted.map(s => ({ ...s, hasPerm: perm.has(s.id) }));
   const keep = dockSel.startsWith('me:') ? dockSel.slice(3) : '';
   const split = AgentDeskDock.dockIdleSplit(ordered, { now, idleMs: dockCfg.idleMin * 60000, pinned: pinnedSessions, keep, hidden: dockCfg.hidden });
   if (split.unhide.length) { for (const id of split.unhide) delete dockCfg.hidden[id]; dockSave(); }   // busy again / needs me: back
@@ -4611,6 +4622,37 @@ async function dockDoneFire(key) {
   dockAskPlace(); dockBoundsSync();
   dockDoneExpire(d, DOCK_DONE_MS);
 }
+// ── skill bubbles (skillCastPlay): "스킬 사용" and the skill's name over the tile, purple, for DOCK_SKILL_MS — through
+//    the completion bubbles' slots (dockDone, skill: true), so they share the room, the hover hold and the click to the
+//    terminal. Skills used close together on one tile share its bubble (the last 3). Do not disturb keeps them off;
+//    false: the tile is not on the bar (the caller shows the pill instead). ──
+const DOCK_SKILL_MS = 5000;
+function dockSkillFire(key, name) {
+  if (!dockOn || dockCfg.dnd) return true;
+  const x = dockTileOf(key), s = dockLocal(x);
+  if (!s || !$('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(key)}"]`)) return false;
+  const old = dockDone.get(key), skills = old && old.skill ? old.skills.filter(n => n !== name) : [];
+  skills.push(String(name || '')); while (skills.length > 3) skills.shift();
+  dockDoneDrop(key);
+  const d = { key, sid: s.id, name: s.name, state: x.state, text: skills.join(' · '), skills, skill: true, at: Date.now(), el: null, timer: 0, placed: false };
+  dockDone.set(key, d);
+  const el = d.el = document.createElement('div');
+  el.className = 'dock-bubble done skill'; el.dataset.key = key; el.setAttribute('role', 'status');
+  el.innerHTML = `<div class="bb-head"><b>${esc(d.name || '')}</b><span class="bb-st">📖 ${esc(dockT('도크: 스킬 사용'))}</span></div>`
+    + `<div class="bb-a" title="${esc(d.text)}">${esc(d.text)}</div>`;
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    const y = dockTileOf(key);
+    dockDoneDrop(key); dockAskPlace(); dockBoundsSync();
+    if (y && !y.bundle && !y.peer) { dockTermClose(true); dockTipHide(); dockSel = key; dockDraw(); dockFocusTerminal(y); }
+  });
+  el.addEventListener('dblclick', e => e.stopPropagation());
+  $('dock-asks').appendChild(el);
+  dockWake();
+  dockAskPlace(); dockBoundsSync();
+  dockDoneExpire(d, DOCK_SKILL_MS);
+  return true;
+}
 // time's up — unless the pointer is on it (then a second later, again)
 function dockDoneExpire(d, ms) {
   clearTimeout(d.timer);
@@ -4625,7 +4667,8 @@ function dockDoneSync() {
   let gone = false;
   for (const [k, d] of [...dockDone]) {
     const x = dockTileOf(k);
-    if (!dockCfg.done || dockCfg.dnd || !x || (x.state !== 'input' && x.state !== 'done') || (d.el && x.state !== d.state)) { dockDoneDrop(k); gone = true; }
+    const stale = d.skill ? false : !dockCfg.done || (x && x.state !== 'input' && x.state !== 'done') || (d.el && x && x.state !== d.state);   // a skill bubble only times out
+    if (dockCfg.dnd || !x || stale) { dockDoneDrop(k); gone = true; }
   }
   if (gone) { dockAskPlace(); dockBoundsSync(); }
 }
@@ -4849,14 +4892,17 @@ function dockDragDo(ev, e) {
       dockDragEnd();
       if (!dockOn || !dockModelNow) break;
       const visible = dockModelNow.mine.filter(x => !x.bundle).map(x => x.id);
+      const wasRecent = dockCfg.sort !== 'manual';
+      dockCfg.sort = 'manual';   // a drag says where the tile goes: the bar keeps the user's order from now on
       dockCfg.order = AgentDeskDock.dropOrder(visible, prev.id, bx ? bx.id : null).slice(0, 50); dockSave();
       pinnedSessions.add(prev.id); dockPinSave();
       dockDraw();
-      dockHint(t('📌 고정됨 — 우클릭으로 해제'), '', true);   // the drop pins it on the dashboard too: say so
+      dockHint(wasRecent ? t('📌 직접 정한 순서로 바꿨습니다 — 설정의 "도크 정렬"에서 최신순으로 되돌립니다') : t('📌 고정됨 — 우클릭으로 해제'), '', true);   // the drop pins it on the dashboard too: say so
       break;
     }
   }
 }
+$('dock-tiles').addEventListener('mouseleave', () => { if (dockCfg.sort !== 'manual') dockRender(); });   // the order held while pointed at: sorted again
 $('dock-tiles').addEventListener('pointerdown', e => {
   if (!dockOn || e.button !== 0 || !e.isPrimary) return;
   const b = e.target.closest('.dock-tile'), x = b && dockTileOf(b.dataset.key);
@@ -10858,6 +10904,7 @@ function settingsRender() {
     ${row(t('선택 말풍선 표시'), t('세션이 선택을 기다릴 때 타일 위에 질문과 선택지를 띄웁니다. "선택지만"은 질문 본문을 숨깁니다.'), seg('dock-ask', dockCfg.ask, [['on', t('켬')], ['options', t('선택지만')], ['off', t('끔')]]), '', true)}
     ${row(t('쉬는 세션 모으기'), t('입력 대기·완료 상태로 이 시간 동안 활동이 없는 세션은 띠 오른쪽의 💤 타일로 모읍니다. 질문·승인 대기, 오류, 고정한 세션은 항상 띠에 남습니다. 💤를 누르면 펼쳐지고, 타일 메뉴(길게 누르기)의 "도크에서 숨기기"로 직접 보낼 수도 있습니다.'), seg('dock-idle', String(dockCfg.idleMin), [['30', t('30분')], ['60', t('1시간')], ['240', t('4시간')], ['0', t('끔')]]))}
     ${row(t('Orca 사용 중엔 말풍선 접기'), t('Orca가 앞에 있으면 질문이 이미 터미널에 보이므로 선택 말풍선을 띄우지 않고 타일의 !만 표시합니다. 타일에 마우스를 올리거나 다른 앱으로 넘어가면 말풍선이 펼쳐집니다. macOS 전용입니다.'), sw('dock-yield-orca', dockCfg.yieldOrca))}
+    ${row(t('도크 정렬'), t('최신순: 가장 최근에 활동한 세션이 왼쪽에 옵니다. 마우스가 타일 위에 있는 동안에는 자리를 바꾸지 않습니다. 타일을 끌어 옮기면 직접 정한 순서로 바뀌고, 최신순을 다시 고르면 끌어 정한 순서를 지웁니다.'), seg('dock-sort', dockCfg.sort, [['recent', t('최신순')], ['manual', t('직접 정한 순서')]]))}
     ${row(t('완료 말풍선'), t('내 세션이 작업을 마치면(작업 중 → 입력 대기·완료) 그 타일 위에 마지막 응답의 첫 줄을 8초 동안 띄웁니다. 누르면 터미널로 갑니다.'), sw('dock-done', dockCfg.done))}
     ${row(t('한도 표시'), t('도크의 5시간·주간 한도와 세션별 컨텍스트를 하트(5시간)·스태미나 링(주간)·타일 옆 하트 3개(컨텍스트)로 보여 줍니다. 막대를 고르면 예전의 가는 막대 두 개로 돌아갑니다.'), seg('dock-usage', dockCfg.usage, [['hearts', t('하트')], ['bars', t('막대')]]))}
     ${row(t('방해 금지'), t('도크에서 말풍선·알림 알약·데스크톱 알림을 띄우지 않습니다. 타일 색과 !는 그대로 보입니다. 끄면 기다리던 선택 말풍선이 바로 다시 뜹니다.'), sw('dock-dnd', dockCfg.dnd))}
@@ -10948,6 +10995,7 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'dock-yield-orca') { dockCfg.yieldOrca = !dockCfg.yieldOrca; dockSave(); dockFront.id = ''; dockFront.at = 0; if (dockOn) { dockAskSync(); dockFrontCheck(true); } settingsRender(); }
   else if (name === 'dock-autohide') { dockCfg.autoHide = !dockCfg.autoHide; dockSave(); if (!dockCfg.autoHide) dockHideSet(false); settingsRender(); }
   else if (name === 'dock-ask' && ['on', 'options', 'off'].includes(v)) { dockCfg.ask = v; dockSave(); if (dockOn) dockAskSync(); settingsRender(); }
+  else if (name === 'dock-sort' && (v === 'recent' || v === 'manual')) { dockCfg.sort = v; if (v === 'recent') dockCfg.order = []; dockSave(); if (dockOn) dockDraw(); settingsRender(); }
   else if (name === 'dock-done') { dockCfg.done = !dockCfg.done; dockSave(); if (dockOn) dockDoneSync(); settingsRender(); }
   else if (name === 'dock-anim') { dockCfg.anim = !dockCfg.anim; dockSave(); settingsRender(); }
   else if (name === 'dock-hover-term') { dockCfg.hoverTerm = !dockCfg.hoverTerm; dockSave(); settingsRender(); }
