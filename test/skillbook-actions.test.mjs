@@ -471,3 +471,16 @@ test('backups keep the newest 20 per config file', async () => {
   assert.equal(left.filter(n => n.startsWith('config.toml.')).length, 3);
   assert.ok(left.includes('unrelated.txt'));
 });
+
+test('a repo whose .claude/skills is a symlink cannot offer folders elsewhere for deletion', async () => {
+  const { home, repo } = fixture();
+  const f = fakes();
+  const elsewhere = join(home, 'other-repo', 'skills');
+  put(join(elsewhere, 'victim', 'SKILL.md'), '---\nname: victim\n---\n');
+  mkdirSync(join(repo, '.claude'), { recursive: true });
+  rmSync(join(repo, '.claude', 'skills'), { recursive: true, force: true });
+  symlinkSync(elsewhere, join(repo, '.claude', 'skills'));
+  const it = { id: 'skill:project:claude:' + repo.split('/').pop() + ':victim', kind: 'skill', name: 'victim', agents: ['claude'], repo: repo.split('/').pop(), path: join(repo, '.claude', 'skills', 'victim') };
+  assert.deepEqual(await actOn({ home, item: it, action: 'remove', repos: [repo], ...f }), { ok: false, error: 'unsupported', detail: 'location' });
+  assert.deepEqual(f.calls.trash, []);
+});

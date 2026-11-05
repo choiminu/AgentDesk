@@ -251,3 +251,13 @@ test('hidden folders (an interrupted shop install temp) are never skills', () =>
   assert.ok(names.includes('real-skill'));
   assert.ok(!names.some(n => n.includes('agentdesk') || n.startsWith('.')), names.join(','));
 });
+
+test('an MCP command shows only a program name: "TOKEN=xxx npx" shows nothing', () => {
+  const home = mkdtempSync(join(tmpdir(), 'sb-cmd-'));
+  put(join(home, '.claude.json'), { mcpServers: { 'tok-srv': { command: 'GH_TOKEN=sk-SECRET9 npx', args: ['x'] }, 'ok-srv': { command: '/opt/bin/demo-srv' } } });
+  const items = scanInventory({ home, repos: [] }).items;
+  const tok = items.find(i => i.name === 'tok-srv'), ok = items.find(i => i.name === 'ok-srv');
+  assert.ok(!JSON.stringify(items).includes('sk-SECRET9'));
+  assert.equal(tok.mcp.command, undefined);
+  assert.equal(ok.mcp.command, 'demo-srv');
+});
