@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-/I6DM2tTHx9WcMwLfEG9I7ElTzp9MeTiNf4lPr7jF7M='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-oO4g8HUeXac4ez+3u4gkEN45slUtszeIyIWb1lUibjU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1706,11 +1706,13 @@
   /* the office's pixelfx sheets on a tile (dockFx*): clipped to the tile, feet on the sprite's baseline */
   .dock-fxc { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; z-index: 2; }
   .dock-fx { position: absolute; background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; }
-  /* a skill in use (dockCastSync): the tile glows purple and a tag over it names the skill for DOCK_CAST_MS */
+  /* a skill in use (dockCastSync): the tile glows purple and the skill's name takes the agent name's place for DOCK_CAST_MS
+     (the top of the tile is the skill book's) */
   .dock-tile.cast { border-color: var(--purple); box-shadow: 0 0 0 1px var(--purple), 0 0 10px color-mix(in srgb, var(--purple) 60%, transparent); }
   .dock-tile.cast .dock-spr { opacity: 1; filter: drop-shadow(0 0 2px var(--purple)); }
-  .dock-cast-tag { position: absolute; top: 2px; left: 2px; right: 2px; z-index: 3; padding: 0 3px; border-radius: 6px; background: var(--purple); color: #fff; font: 600 9px/12px var(--sans); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+  .dock-cast-tag { position: absolute; bottom: 3px; left: 2px; right: 2px; z-index: 3; padding: 0 3px; border-radius: 6px; background: var(--purple); color: #fff; font: 600 9px/12px var(--sans); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
   .dock-tiles.s40 .dock-cast-tag { display: none; }
+  .dock-tile.cast .dock-name { visibility: hidden; }
   @media (prefers-reduced-motion: no-preference) {
     .dock-tiles.fx .dock-tile.cast { animation: dockCast 0.6s ease-in-out 4 alternate; }
   }
@@ -3167,7 +3169,7 @@ function skillCastPlay(s, text, name) {
     if (officeSkillTags.length < 12) officeSkillTags.push({ ch, text, t0: performance.now() });
   }
   if (dockOn) {
-    if (dockFxAllowed()) { dockFxPlay(`me:${s.id}`, 'skillCast'); dockFxSync(); }
+    if (dockFxAllowed()) { dockFxPlay(`me:${s.id}`, 'skillCastDock'); dockFxSync(); }   // the tile's cut: the book fits under the tile's top
     dockCastMark(`me:${s.id}`, name || text);
     dockSkillHint(text);
   }
@@ -6991,7 +6993,7 @@ function officeSetSkin(sid, idx) {
 // sprite-sheet effects from pixelfx (MIT, patch-gg/pixelfx), baked by scripts/office-fx.mjs — rerun it and paste its
 // table here when the sheets change. px/py: the effect's origin (a character's feet) in the frame; dy: drawn that much
 // lower because pixelfx's stand-in is taller than our 16 x 32 characters.
-const OFFICE_FX = {"collect":{"src":"fx/collect-burst","w":112,"h":108,"px":56,"py":94,"cols":7,"n":42,"fps":30,"loop":false},"blinkIn":{"src":"fx/blink-in","w":136,"h":96,"px":68,"py":80,"cols":6,"n":43,"fps":30,"loop":false},"blinkOut":{"src":"fx/blink-out","w":136,"h":96,"px":68,"py":80,"cols":6,"n":49,"fps":30,"loop":false},"exclaim":{"src":"fx/exclamation","w":84,"h":104,"px":42,"py":92,"cols":8,"n":43,"fps":30,"loop":false,"dy":6},"sleep":{"src":"fx/zzz","w":24,"h":42,"px":4,"py":41,"cols":8,"n":30,"fps":10,"loop":true},"skillCast":{"src":"fx/skill-cast","w":48,"h":56,"px":24,"py":51,"cols":6,"n":25,"fps":20,"loop":false},"steam":{"src":"fx/steam","w":12,"h":18,"px":6,"py":17,"cols":7,"n":30,"fps":15,"loop":true},"rackA":{"src":"fx/rack-a","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"rackB":{"src":"fx/rack-b","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"skyDay":{"src":"fx/sky-day","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyDusk":{"src":"fx/sky-dusk","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyNight":{"src":"fx/sky-night","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true}};
+const OFFICE_FX = {"collect":{"src":"fx/collect-burst","w":112,"h":108,"px":56,"py":94,"cols":7,"n":42,"fps":30,"loop":false},"blinkIn":{"src":"fx/blink-in","w":136,"h":96,"px":68,"py":80,"cols":6,"n":43,"fps":30,"loop":false},"blinkOut":{"src":"fx/blink-out","w":136,"h":96,"px":68,"py":80,"cols":6,"n":49,"fps":30,"loop":false},"exclaim":{"src":"fx/exclamation","w":84,"h":104,"px":42,"py":92,"cols":8,"n":43,"fps":30,"loop":false,"dy":6},"sleep":{"src":"fx/zzz","w":24,"h":42,"px":4,"py":41,"cols":8,"n":30,"fps":10,"loop":true},"skillCast":{"src":"fx/skill-cast","w":56,"h":64,"px":28,"py":58,"cols":6,"n":30,"fps":20,"loop":false},"skillCastDock":{"src":"fx/skill-cast-dock","w":56,"h":64,"px":28,"py":58,"cols":6,"n":30,"fps":20,"loop":false},"steam":{"src":"fx/steam","w":12,"h":18,"px":6,"py":17,"cols":7,"n":30,"fps":15,"loop":true},"rackA":{"src":"fx/rack-a","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"rackB":{"src":"fx/rack-b","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"skyDay":{"src":"fx/sky-day","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyDusk":{"src":"fx/sky-dusk","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyNight":{"src":"fx/sky-night","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true}};
 const officeFx = [];   // one-shots playing: { kind, x, y (feet), t, ch (follow that character while it lives) }
 function officeFxPlay(kind, x, y, ch = null) {
   if (OFFICE_FX[kind] && officeFx.length < 24) officeFx.push({ kind, x, y, t: 0, ch });

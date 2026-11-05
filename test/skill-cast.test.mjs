@@ -14,7 +14,11 @@ test('skill cast: a small one-shot sheet in the OFFICE_FX table', () => {
   assert.ok(f, 'skillCast in OFFICE_FX');
   assert.equal(f.src, 'fx/skill-cast');
   assert.equal(f.loop, false);
-  assert.deepEqual([f.w, f.h], [48, 56]);
+  assert.deepEqual([f.w, f.h], [56, 64]);
+  const d = FX.skillCastDock;   // the dock tile's cut of the same effect
+  assert.ok(d && d.src === 'fx/skill-cast-dock' && d.loop === false && d.n === f.n);
+  assert.deepEqual(pngSize(new URL(`../assets/pixel/${d.src}.png`, import.meta.url)), [d.cols * d.w, Math.ceil(d.n / d.cols) * d.h]);
+  assert.match(readFileSync(new URL('../scripts/office-fx.mjs', import.meta.url), 'utf8'), /key: "skillCastDock", id: "office\/skill-cast", file: "skill-cast-dock", options: \{ compact: true \}/);
   assert.deepEqual(pngSize(new URL(`../assets/pixel/${f.src}.png`, import.meta.url)), [f.cols * f.w, Math.ceil(f.n / f.cols) * f.h]);
   assert.ok(f.n / f.fps <= 1.5, 'quick: at most 1.5 s');
   assert.match(readFileSync(new URL('../scripts/office-fx.mjs', import.meta.url), 'utf8'), /key: "skillCast", id: "office\/skill-cast"/);
@@ -65,7 +69,7 @@ test('skill cast: office plays the effect and draws the label with the office fo
 
 test('skill cast: dock plays it on the tile behind the animation setting, and shows a short info pill', () => {
   const play = fn('skillCastPlay');
-  assert.match(play, /if \(dockFxAllowed\(\)\) \{ dockFxPlay\(`me:\$\{s\.id\}`, 'skillCast'\); dockFxSync\(\); \}/);
+  assert.match(play, /if \(dockFxAllowed\(\)\) \{ dockFxPlay\(`me:\$\{s\.id\}`, 'skillCastDock'\); dockFxSync\(\); \}/);
   assert.match(play, /dockSkillHint\(/);
   const hint = fn('dockSkillHint');
   assert.match(hint, /dock-msg info/);
@@ -86,5 +90,7 @@ test('skill cast: the dock tile itself shows who cast it (glow and a name tag), 
   assert.match(html, /\.dock-tile\.cast \{/);
   assert.match(html, /\.dock-tile\.cast \.dock-spr \{ opacity: 1;/);   // a resting agent lights up while casting
   assert.match(html, /\.dock-tiles\.s40 \.dock-cast-tag \{ display: none; \}/);
+  assert.match(html, /\.dock-cast-tag \{ position: absolute; bottom: 3px;/);   // the top is the book's
+  assert.match(html, /\.dock-tile\.cast \.dock-name \{ visibility: hidden; \}/);
   assert.match(html, /prefers-reduced-motion: no-preference\) \{[^}]*\.dock-tiles\.fx \.dock-tile\.cast \{ animation: dockCast/);
 });
