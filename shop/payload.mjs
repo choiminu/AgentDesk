@@ -10,6 +10,7 @@
 import { planInstall, hasUpdate, mcpEntryName } from './plan.mjs';
 import { parseMarketplace } from './catalog.mjs';
 import { join, resolve, isAbsolute, sep } from 'node:path';
+import { inCloneOf } from './repo.mjs';
 
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const str = v => (typeof v === 'string' ? v : '');
@@ -41,7 +42,7 @@ const publicPlan = p => ({ kind: p.kind, show: list(p.show).map(String), needs: 
 
 const lc = v => str(v).toLowerCase();
 // does the known marketplace `name` come from this link's repo? (github repo, a git URL on github.com, or a local-path
-// marketplace inside this repo's link clone ~/.roca/shop/<owner>-<repo> — what a /tree/ link or the fallback adds)
+// marketplace inside this repo's link clone ~/.roca/shop/<owner>__<repo>[@ref] — what a /tree/ link or the fallback adds)
 function sameSource(rec, ownerRepo, home) {
   const src = isObj(rec) && isObj(rec.source) ? rec.source : null;
   if (!src || !ownerRepo) return false;
@@ -49,9 +50,8 @@ function sameSource(rec, ownerRepo, home) {
   if (src.source === 'github') return lc(src.repo) === want;
   if (src.source === 'directory') {
     if (typeof home !== 'string' || !isAbsolute(home) || !str(src.path) || !isAbsolute(src.path)) return false;
-    const clone = join(home, '.roca', 'shop', ownerRepo.replace('/', '-'));
-    const p = resolve(src.path);
-    return p === clone || p.startsWith(clone + sep);
+    const [owner, repo] = ownerRepo.split('/');
+    return !!owner && !!repo && inCloneOf(resolve(src.path), home, owner, repo);
   }
   if (src.source === 'git' || src.source === 'url') {
     const m = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/i.exec(str(src.url));

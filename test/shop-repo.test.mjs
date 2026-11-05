@@ -1,10 +1,10 @@
 // Shop pasted links: shop/repo.mjs (made-up names, temp dirs only, no network).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, existsSync, symlinkSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, existsSync, symlinkSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { parseRepoLink, fetchRepo, detectRepo } from '../shop/repo.mjs';
+import { parseRepoLink, fetchRepo, detectRepo, inCloneOf } from '../shop/repo.mjs';
 
 const put = (file, text) => { mkdirSync(join(file, '..'), { recursive: true }); writeFileSync(file, typeof text === 'string' ? text : JSON.stringify(text)); };
 const skillMd = (dir, name, desc) => put(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: ${desc}\n---\nbody\n`);
@@ -35,8 +35,8 @@ test('clone command is fixed', async () => {
   const home = mkdtempSync(join(tmpdir(), 'shop-home-'));
   const calls = [];
   const run = mkRun(calls);
-  const dir = join(home, '.roca', 'shop', 'a-b');
-  const tmp = join(home, '.roca', 'shop', '.tmp-a-b');
+  const dir = join(home, '.roca', 'shop', 'a__b');
+  const tmp = join(home, '.roca', 'shop', '.tmp-a__b');
   let r = await fetchRepo({ home, link: 'a/b', run });
   assert.deepEqual(r, { ok: true, dir });
   assert.deepEqual(calls[0][1], [...OPTS, 'clone', '--depth', '1', '--no-tags', '--', 'https://github.com/a/b.git', tmp]);
@@ -44,7 +44,8 @@ test('clone command is fixed', async () => {
   assert.deepEqual(calls[0][2], { env: { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ASKPASS: '', SSH_ASKPASS: '' }, timeout: 60000 });
   assert.ok(existsSync(dir) && !existsSync(tmp));
   r = await fetchRepo({ home, link: 'https://github.com/a/b/tree/v2/sub', run });
-  assert.deepEqual(calls[1][1], [...OPTS, 'clone', '--depth', '1', '--no-tags', '--branch', 'v2', '--', 'https://github.com/a/b.git', tmp]);
+  assert.deepEqual(r, { ok: true, dir: join(home, '.roca', 'shop', 'a__b@v2') });   // a ref gets its own folder
+  assert.deepEqual(calls[1][1], [...OPTS, 'clone', '--depth', '1', '--no-tags', '--branch', 'v2', '--', 'https://github.com/a/b.git', join(home, '.roca', 'shop', '.tmp-a__b@v2')]);
   const n = calls.length;
   assert.deepEqual(await fetchRepo({ home, link: '--upload-pack=x', run }), { ok: false, error: 'bad link' });
   assert.equal(calls.length, n);
@@ -54,7 +55,7 @@ test('clone command is fixed', async () => {
 
 test('older clone is replaced on success and kept on failure', async () => {
   const home = mkdtempSync(join(tmpdir(), 'shop-home-'));
-  const dir = join(home, '.roca', 'shop', 'a-b');
+  const dir = join(home, '.roca', 'shop', 'a__b');
   put(join(dir, 'old.txt'), 'x');
   assert.equal((await fetchRepo({ home, link: 'a/b', run: mkRun([], 128) })).ok, false);
   assert.ok(existsSync(join(dir, 'old.txt')));
@@ -144,4 +145,31 @@ test('skill name falls back to folder; root SKILL.md is found', () => {
   const e = mkdtempSync(join(tmpdir(), 'shop-det-'));
   skillMd(e, 'rootskill', 'r');
   assert.equal(detectRepo(e)[0].name, 'rootskill');
+});
+
+test('clone folders never collide: acme-tools/kit and acme/tools-kit, and an owner with "_" is no GitHub account', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'shop-home-'));
+  const run = mkRun([]);
+  const a = await fetchRepo({ home, link: 'acme-tools/kit', run }), b = await fetchRepo({ home, link: 'acme/tools-kit', run });
+  assert.notEqual(a.dir, b.dir);
+  assert.equal(parseRepoLink('ac_me/kit'), null);
+  assert.equal(parseRepoLink('-acme/kit'), null);
+  assert.ok(inCloneOf(join(home, '.roca', 'shop', 'acme__kit@v2', 'sub'), home, 'acme', 'kit'));
+  assert.ok(!inCloneOf(join(home, '.roca', 'shop', 'acme__kit2'), home, 'acme', 'kit'));
+  assert.ok(!inCloneOf(join(home, '.roca', 'shop', 'acme__kit@..', 'x'), home, 'acme', 'kit'));
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('a preview never replaces a folder Claude Code registered as a marketplace', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'shop-home-'));
+  const calls = [], run = mkRun(calls);
+  const first = await fetchRepo({ home, link: 'acme/kit', run });
+  writeFileSync(join(first.dir, 'mark'), 'installed');
+  mkdirSync(join(home, '.claude', 'plugins'), { recursive: true });
+  writeFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ kit: { source: { source: 'directory', path: first.dir } } }));
+  const again = await fetchRepo({ home, link: 'acme/kit', run });
+  assert.deepEqual(again, { ok: true, dir: first.dir, kept: true });
+  assert.equal(calls.length, 1, 'no second clone');
+  assert.equal(readFileSync(join(first.dir, 'mark'), 'utf8'), 'installed');
+  rmSync(home, { recursive: true, force: true });
 });

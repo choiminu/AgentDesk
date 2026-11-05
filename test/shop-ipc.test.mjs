@@ -72,7 +72,7 @@ test('installed sets come from the inventory', () => {
 });
 
 test('link detections become installable items', () => {
-  const dir = '/home/x/.roca/shop/acme-kit';
+  const dir = '/home/x/.roca/shop/acme__kit';
   const found = linkItems([
     { kind: 'marketplace', name: 'kit-market', path: dir, description: 'M', manifest: { name: 'kit-market', plugins: [{ name: 'p1', description: 'P1' }, { name: '-bad' }] } },
     { kind: 'plugin', name: 'p1', path: dir, description: 'P1', manifest: {} },
@@ -139,8 +139,8 @@ test('install result carries no env values', async () => {
   assert.deepEqual(thrown, { ok: false, error: 'failed', detail: 'io' });
   // allAgents goes only to skill choices
   const skillItem = { kind: 'skill', name: 'sk' };
-  await shopInstallJob({ home: '/home/x', item: skillItem, choice: { path: '/home/x/.roca/shop/a-b/sk' }, allAgents: true, inventory: INVENTORY, have: {}, run: async () => ({}), runInstall: fakeRunInstall });
-  assert.deepEqual(calls[calls.length - 1].choice, { path: '/home/x/.roca/shop/a-b/sk', allAgents: true });
+  await shopInstallJob({ home: '/home/x', item: skillItem, choice: { path: '/home/x/.roca/shop/a__b/sk' }, allAgents: true, inventory: INVENTORY, have: {}, run: async () => ({}), runInstall: fakeRunInstall });
+  assert.deepEqual(calls[calls.length - 1].choice, { path: '/home/x/.roca/shop/a__b/sk', allAgents: true });
 });
 
 // ---- handlers (shop/ipc.mjs) over a temp home ----
@@ -173,7 +173,7 @@ test('second clone invalidates earlier choices', async () => {
   assert.equal(first.hasScripts, false);
   assert.ok(!JSON.stringify(a).includes(home), 'no clone path sent');
   repo.files = { 'skills/sk/SKILL.md': SKILL('sk', 'second') };
-  const b = await h.link({ text: 'https://github.com/acme/kit/tree/v2' });
+  const b = await h.link({ text: 'acme/kit' });   // the same link again: same folder, re-cloned
   const second = b.found.find(f => f.kind === 'skill');
   assert.deepEqual(await h.install({ choiceId: first.choiceId }), { ok: false, error: 'gone', detail: 'missing' });
   const r = await h.install({ choiceId: second.choiceId });
@@ -186,7 +186,7 @@ test('a fallback clone in an install invalidates choices from that folder', asyn
   let home0;
   // install.mjs's plugin fallback clones through the runner it is given: here a fake runInstall does the same
   const { home, h, calls } = harness({ files: { 'skills/sk/SKILL.md': SKILL('sk') },
-    runInstall: async ({ run }) => { await run('git', ['clone', '--', 'https://github.com/acme/kit.git', join(home0, '.roca', 'shop', '.tmp-acme-kit')]); return { ok: true, route: 'local' }; } });
+    runInstall: async ({ run }) => { await run('git', ['clone', '--', 'https://github.com/acme/kit.git', join(home0, '.roca', 'shop', '.tmp-acme__kit')]); return { ok: true, route: 'local' }; } });
   home0 = home;
   const sk = (await h.link({ text: 'acme/kit' })).found[0];
   assert.equal(h.choices.size, 1);
@@ -325,7 +325,7 @@ test('a /tree/<ref>/<path> link plans its marketplace from the previewed local f
     '.claude-plugin/marketplace.json': JSON.stringify({ name: 'root-market', plugins: [{ name: 'r1' }] }) };
   const seen = [];
   const { home, h } = harness({ files, runInstall: async a => { seen.push(a); return { ok: true, route: 'local' }; } });
-  const dir = join(home, '.roca', 'shop', 'acme-kit', 'sub', 'dir');
+  const dir = join(home, '.roca', 'shop', 'acme__kit@dev', 'sub', 'dir');
   const r = await h.link({ text: 'https://github.com/acme/kit/tree/dev/sub/dir' });
   const p = r.found.find(f => f.name === 'p1');
   assert.ok(!r.found.some(f => f.name === 'r1'), 'only what the path holds');
@@ -337,12 +337,12 @@ test('a /tree/<ref>/<path> link plans its marketplace from the previewed local f
   // a ref alone (no path): the clone root, still local — the clone is that ref, owner/repo would be the default branch
   const h2 = harness({ files: { '.claude-plugin/marketplace.json': files['sub/dir/.claude-plugin/marketplace.json'] } });
   const p2 = (await h2.h.link({ text: 'https://github.com/acme/kit/tree/v2' })).found.find(f => f.name === 'p1');
-  assert.deepEqual(p2.plan.show, [`claude plugin marketplace add ${join(h2.home, '.roca', 'shop', 'acme-kit')}`, 'claude plugin install p1@kit-market']);
+  assert.deepEqual(p2.plan.show, [`claude plugin marketplace add ${join(h2.home, '.roca', 'shop', 'acme__kit@v2')}`, 'claude plugin install p1@kit-market']);
   rmSync(h2.home, { recursive: true, force: true });
   // linkItems: no ref/path → owner/repo, as before
-  const d = [{ kind: 'marketplace', name: 'm', path: '/h/.roca/shop/a-b', manifest: { name: 'm', plugins: [{ name: 'x' }] } }];
+  const d = [{ kind: 'marketplace', name: 'm', path: '/h/.roca/shop/a__b', manifest: { name: 'm', plugins: [{ name: 'x' }] } }];
   assert.equal(linkItems(d, { owner: 'a', repo: 'b' })[0].item.marketplacePath, undefined);
-  assert.equal(linkItems(d, { owner: 'a', repo: 'b', ref: 'v1' })[0].item.marketplacePath, '/h/.roca/shop/a-b');
+  assert.equal(linkItems(d, { owner: 'a', repo: 'b', ref: 'v1' })[0].item.marketplacePath, '/h/.roca/shop/a__b');
 });
 
 test('re-pasting a link after a local-path install: installed, and a directory source in the clone is the same source', async () => {
@@ -351,16 +351,16 @@ test('re-pasting a link after a local-path install: installed, and a directory s
   // harness makes its own home: known_marketplaces.json (pointing into that home) is written after it exists
   const hh = harness({ files, inventory });
   const home = hh.home;
-  put(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'kit-market': { source: { source: 'directory', path: join(home, '.roca', 'shop', 'acme-kit', 'sub') } } }));
+  put(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'kit-market': { source: { source: 'directory', path: join(home, '.roca', 'shop', 'acme__kit', 'sub') } } }));
   const found = (await hh.h.link({ text: 'https://github.com/acme/kit/tree/main/sub' })).found;
   const p1 = found.find(f => f.name === 'p1'), p2 = found.find(f => f.name === 'p2');
   assert.equal(p1.plan.kind, 'installed', 'installed is checked before conflict');
   assert.equal(p2.plan.kind, 'plugin', 'same clone folder → same source, no re-add');
   assert.deepEqual(p2.plan.show, ['claude plugin install p2@kit-market']);
   // the clone root itself is accepted too; another clone folder is not
-  put(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'kit-market': { source: { source: 'directory', path: join(home, '.roca', 'shop', 'acme-kit') } } }));
+  put(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'kit-market': { source: { source: 'directory', path: join(home, '.roca', 'shop', 'acme__kit') } } }));
   assert.equal((await hh.h.link({ text: 'https://github.com/acme/kit/tree/main/sub' })).found.find(f => f.name === 'p2').plan.kind, 'plugin');
-  put(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'kit-market': { source: { source: 'directory', path: join(home, '.roca', 'shop', 'acme-kit2') } } }));
+  put(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'kit-market': { source: { source: 'directory', path: join(home, '.roca', 'shop', 'acme__kit2') } } }));
   const p2b = (await hh.h.link({ text: 'https://github.com/acme/kit/tree/main/sub' })).found.find(f => f.name === 'p2');
   assert.equal(p2b.plan.detail, 'conflict');
   rmSync(home, { recursive: true, force: true });
