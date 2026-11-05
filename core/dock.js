@@ -24,6 +24,8 @@
 //   dockEdge(tiles) → the colour of a hidden bar's visible edge: 'ask' > 'err' > 'run' among the tiles, else ''
 //   orderSessions(list, order, pinned) → list sorted for the bar: ids in order (the user's drag order) first, in that
 //     order; then pinned ones; then the latest activity (time) first; ties keep the list's order
+//   keepOrder(list, prevIds) → list in prevIds' order (the tiles as they were drawn), ids not in it after them in the
+//     list's order — the bar holds still under the pointer while sorting by activity
 //   moveInOrder(order, id, beforeId) → a new order with id taken out and put right before beforeId (at the end when
 //     beforeId is missing / not in it / id itself)
 //   dropOrder(visibleIds, id, beforeId) → the order to save after a drag: the visible row with id moved, kept up to
@@ -299,6 +301,14 @@ function orderSessions(list, order, pinned) {
   return (Array.isArray(list) ? list : []).filter(x => x && x.id != null)
     .map((x, i) => ({ x, i, o: ord.has(String(x.id)) ? ord.get(String(x.id)) : Infinity, p: pin.has(x.id) ? 0 : 1 }))
     .sort((a, b) => (a.o === b.o ? 0 : a.o - b.o) || a.p - b.p || num(b.x.time) - num(a.x.time) || a.i - b.i)
+    .map(e => e.x);
+}
+function keepOrder(list, prevIds) {
+  const at = new Map();
+  for (const id of Array.isArray(prevIds) ? prevIds : []) if (!at.has(String(id))) at.set(String(id), at.size);
+  return (Array.isArray(list) ? list : []).filter(x => x && x.id != null)
+    .map((x, i) => ({ x, i, o: at.has(String(x.id)) ? at.get(String(x.id)) : Infinity }))
+    .sort((a, b) => (a.o === b.o ? 0 : a.o - b.o) || a.i - b.i)
     .map(e => e.x);
 }
 function moveInOrder(order, id, beforeId) {
@@ -747,7 +757,7 @@ function permAllowable(sm) {
   return !!v.trim() && !/[\r\n]/.test(v) && [...v].length <= PERM_LINE_MAX;
 }
 
-const AgentDeskDock = { dropSafeText, dragStep, DRAG_PX, orderSessions, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
+const AgentDeskDock = { dropSafeText, dragStep, DRAG_PX, orderSessions, keepOrder, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
   POP, SCREEN, popWidth, popExtra, bubbleHeight, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame,
   numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows, isOrcaApp, askYield, dockIdleSplit };
 root.AgentDeskDock = AgentDeskDock;
