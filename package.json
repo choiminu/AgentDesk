@@ -18,8 +18,11 @@
   },
   "devDependencies": {
     "@electron/fuses": "^1.8.0",
-    "electron": "^36.0.0",
-    "electron-builder": "^26.0.0"
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  },
+  "overrides": {
+    "minimatch": "^11.0.5"
   },
   "build": {
     "appId": "com.agentdesk.app",
