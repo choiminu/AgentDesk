@@ -962,9 +962,10 @@ ipcMain.on("orca:session-counts", (_e, counts) => {
     if (IS_MAC) tray.setTitle(parts.length ? ` ${parts.join(" ")}` : "");
   }
   if (running > prevRunningCount && prevRunningCount >= 0) {
+    const started = running - prevRunningCount;
     new Notification({
       title: "AgentDesk",
-      body: `${running - prevRunningCount}개 세션이 새로 실행을 시작했습니다`,
+      body: started === 1 ? "Une nouvelle session a démarré · A new session started" : `${started} nouvelles sessions ont démarré · ${started} new sessions started`,
     }).show();
   }
   prevRunningCount = running;
@@ -2039,7 +2040,7 @@ const teamRemoteHandlers = {
     const entry = teamRemoteEvent(ev);
     if (ev.result === "blocked" && Date.now() - teamBlockNotifyAt > 30000) {
       teamBlockNotifyAt = Date.now();
-      try { new Notification({ title: "원격 입력 차단", body: `${ev.peer}의 원격 입력을 차단했습니다: ${ev.ruleLabel || ev.rule}` }).show(); } catch {}
+      try { new Notification({ title: "Saisie distante bloquée · Remote input blocked", body: `Saisie distante de ${ev.peer} bloquée : ${ev.ruleLabel || ev.rule} · Remote input from ${ev.peer} blocked: ${ev.ruleLabel || ev.rule}` }).show(); } catch {}
     }
     return entry;
   },
