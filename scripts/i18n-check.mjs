@@ -103,7 +103,16 @@ export function loadI18n(html) {
   const end = html.indexOf("const I18N_KEYS");
   if (start < 0 || end < 0) throw new Error("I18N map not found in widget.html");
   const I18N = Function(html.slice(start, end) + "\nreturn I18N;")();
-  return { I18N, start, end };
+  const frStart = html.indexOf("const I18N_FR = {");
+  let frEnd = -1, I18N_FR = null;
+  if (frStart >= 0) {
+    const keysIdx = html.indexOf("const I18N_FR_KEYS", frStart);   // the map's own end marker
+    const close = html.indexOf("\n};", frStart);
+    const cands = [keysIdx, close < 0 ? -1 : close + 3].filter(x => x > frStart);
+    frEnd = Math.min(...cands);
+    I18N_FR = Function(html.slice(frStart, frEnd) + "\nreturn I18N_FR;")();
+  }
+  return { I18N, I18N_FR, start, end, frStart, frEnd };
 }
 export function makeTr(I18N) {
   const keys = Object.keys(I18N).sort((a, b) => b.length - a.length);
@@ -125,9 +134,10 @@ export function loadTimelineWords(html) {
   return m ? Function(`return ${m[1]};`)() : {};
 }
 export function checkWidgetI18n(html, allow = {}) {
-  const { I18N, start: mapStart, end: mapEnd } = loadI18n(html);
+  const { I18N, I18N_FR, start: mapStart, end: mapEnd, frStart, frEnd } = loadI18n(html);
   const TL = loadTimelineWords(html);
   const tr = makeTr(I18N);
+  const trs = I18N_FR ? [tr, makeTr(I18N_FR)] : [tr];   // a piece must be Korean-free in every non-Korean mode
   const lineStarts = [0];
   for (let k = 0; k < html.length; k++) if (html[k] === "\n") lineStarts.push(k + 1);
   const lineOf = pos => { let lo = 0, hi = lineStarts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (lineStarts[mid] <= pos) lo = mid; else hi = mid - 1; } return lo + 1; };
@@ -145,6 +155,7 @@ export function checkWidgetI18n(html, allow = {}) {
     for (const lit of lexLiterals(m[1])) {
       const pos = base + lit.start;
       if (pos >= mapStart && pos < mapEnd) continue;   // the dictionary itself
+      if (frStart >= 0 && pos >= frStart && pos < frEnd) continue;
       const text = lit.quote === "`" ? lit.text : unescapeJs(lit.text);
       if (!HAN.test(text)) continue;
       const before = m[1].slice(Math.max(0, lit.start - 40), lit.start);
@@ -161,7 +172,7 @@ export function checkWidgetI18n(html, allow = {}) {
       }
       if (BRANCH_RE.test(stmt) || EN_RETURN_RE.test(head)) continue;
       // template pieces: check the Korean runs between markup and ${…}
-      if (HAN.test(tr(strip(text)))) untranslated.push({ line: lineOf(pos), text: text.trim() });
+      if (trs.some(tr => HAN.test(tr(strip(text))))) untranslated.push({ line: lineOf(pos), text: text.trim() });
     }
   }
   // static markup outside <script>/<style>; a line whose only Korean sits right inside a data-verbatim element is skipped
@@ -170,8 +181,8 @@ export function checkWidgetI18n(html, allow = {}) {
   const lines = markup.split("\n");
   lines.forEach((ln, idx) => {
     if (/data-verbatim/.test(ln) && !/>[^<]*[가-힣]/.test(ln.replace(/<[^>]*data-verbatim[^>]*>[^<]*/g, ""))) return;
-    for (const mm of ln.matchAll(/>([^<>]*[가-힣][^<>]*)</g)) if (!allowed(mm[1]) && HAN.test(tr(strip(mm[1])))) untranslated.push({ line: idx + 1, text: mm[1].trim() });
-    for (const mm of ln.matchAll(/(?:title|placeholder|aria-label)="([^"]*[가-힣][^"]*)"/g)) if (!allowed(mm[1]) && HAN.test(tr(strip(mm[1])))) untranslated.push({ line: idx + 1, text: "[attr] " + mm[1] });
+    for (const mm of ln.matchAll(/>([^<>]*[가-힣][^<>]*)</g)) if (!allowed(mm[1]) && trs.some(tr => HAN.test(tr(strip(mm[1]))))) untranslated.push({ line: idx + 1, text: mm[1].trim() });
+    for (const mm of ln.matchAll(/(?:title|placeholder|aria-label)="([^"]*[가-힣][^"]*)"/g)) if (!allowed(mm[1]) && trs.some(tr => HAN.test(tr(strip(mm[1]))))) untranslated.push({ line: idx + 1, text: "[attr] " + mm[1] });
   });
   return { keys: Object.keys(I18N).length, missingKeys, untranslated };
 }
@@ -185,7 +196,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (process.argv.includes("--json")) console.log(JSON.stringify(r, null, 1));
   else {
     for (const x of r.missingKeys) console.log(`widget.html:${x.line}  t() without an I18N key: ${x.text}`);
-    for (const x of r.untranslated) console.log(`widget.html:${x.line}  Korean left in English mode: ${x.text.slice(0, 120)}`);
+    for (const x of r.untranslated) console.log(`widget.html:${x.line}  Korean left in English/French mode: ${x.text.slice(0, 120)}`);
     console.log(r.missingKeys.length + r.untranslated.length ? `i18n: ${r.missingKeys.length} t() keys missing, ${r.untranslated.length} untranslated pieces` : `i18n: ok (${r.keys} keys)`);
   }
   process.exit(r.missingKeys.length + r.untranslated.length ? 1 : 0);
