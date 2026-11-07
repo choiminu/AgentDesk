@@ -91,6 +91,17 @@ test('widget loads core/discover.js and builds detected cards after the hook-onl
   assert.match(f, /for \(const p of procOnly\) sessions\.push\(procSession\(p\)\)/);
 });
 
+test('widget: a poll that outlasts POLL cannot interleave with the next — fetchData is re-entrancy guarded', () => {
+  // sessions = wts.map(…) resets the shared list, then hook-only cards are pushed one awaited sessionMeta at a
+  // time; with large transcripts one fetch outlasts POLL and a second fetch used to reset + interleave, so the
+  // tile list and the running count (and its start notifications) flickered
+  assert.match(html, /let fetching = false;/);
+  const f = between(html, 'async function fetchData() {', '\n}\n');
+  assert.match(f, /if \(fetching\) return;/);
+  assert.match(f, /fetching = true;/);
+  assert.match(f, /finally \{ fetching = false;/);
+});
+
 test('widget: a term: handle is screen-read only after macOS automation was allowed', () => {
   const fn = between(html, 'function screenReadable(handle) {', '\n');
   assert.match(fn, /startsWith\('tmux:'\) \|\| \(h\.startsWith\('term:'\) && automationAllowed\(\)\)/);
