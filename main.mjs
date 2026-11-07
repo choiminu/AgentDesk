@@ -74,6 +74,7 @@ const MARGIN = 16;
 let mainWindow = null;
 let tray = null;
 let prevRunningCount = 0;
+let appLang = "en";   // the widget's language (ko / en / fr), reported by the renderer via orca:app-lang
 let saveBoundsTimer = null;
 
 // the app was called "roca" before it became AgentDesk: carry the old profile (window bounds, localStorage) over once
@@ -953,6 +954,15 @@ ipcMain.handle("roca:session-meta", async (_e, transcriptPath, cwd, agent) => {
   return out;
 });
 
+// desktop notifications follow the widget's language (the renderer reports it via orca:app-lang): ko keeps the
+// original Korean strings, en and fr are the same events in each language
+const NOTIF_STRINGS = {
+  ko: { started: n => `${n}개 세션이 새로 실행을 시작했습니다`, blockedTitle: "원격 입력 차단", blocked: (peer, rule) => `${peer}의 원격 입력을 차단했습니다: ${rule}` },
+  en: { started: n => n === 1 ? "A new session started" : `${n} new sessions started`, blockedTitle: "Remote input blocked", blocked: (peer, rule) => `Remote input from ${peer} blocked: ${rule}` },
+  fr: { started: n => n === 1 ? "Une nouvelle session a démarré" : `${n} nouvelles sessions ont démarré`, blockedTitle: "Saisie distante bloquée", blocked: (peer, rule) => `Saisie distante de ${peer} bloquée : ${rule}` },
+};
+const notifStrings = () => NOTIF_STRINGS[appLang] || NOTIF_STRINGS.en;
+ipcMain.on("orca:app-lang", (_e, l) => { if (l === "ko" || l === "en" || l === "fr") appLang = l; });
 ipcMain.on("orca:session-counts", (_e, counts) => {
   const { running, asks } = counts;
   if (tray) {
@@ -962,10 +972,9 @@ ipcMain.on("orca:session-counts", (_e, counts) => {
     if (IS_MAC) tray.setTitle(parts.length ? ` ${parts.join(" ")}` : "");
   }
   if (running > prevRunningCount && prevRunningCount >= 0) {
-    const started = running - prevRunningCount;
     new Notification({
       title: "AgentDesk",
-      body: started === 1 ? "Une nouvelle session a démarré · A new session started" : `${started} nouvelles sessions ont démarré · ${started} new sessions started`,
+      body: notifStrings().started(running - prevRunningCount),
     }).show();
   }
   prevRunningCount = running;
@@ -2040,7 +2049,7 @@ const teamRemoteHandlers = {
     const entry = teamRemoteEvent(ev);
     if (ev.result === "blocked" && Date.now() - teamBlockNotifyAt > 30000) {
       teamBlockNotifyAt = Date.now();
-      try { new Notification({ title: "Saisie distante bloquée · Remote input blocked", body: `Saisie distante de ${ev.peer} bloquée : ${ev.ruleLabel || ev.rule} · Remote input from ${ev.peer} blocked: ${ev.ruleLabel || ev.rule}` }).show(); } catch {}
+      try { new Notification({ title: notifStrings().blockedTitle, body: notifStrings().blocked(ev.peer, ev.ruleLabel || ev.rule) }).show(); } catch {}
     }
     return entry;
   },
