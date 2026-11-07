@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-/1Tg2WgoVy4noF38zH7YYelfBZ+QyslBy/I171Xm1B0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-ttAUzlK08FK+QAYDmeGBcsWuClS4gbnEuMZLha7L+q8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -3084,7 +3084,9 @@ function clearWaitingToast(sessionId) {
 }
 
 let fetching = false;   // one poll can outlast POLL (large transcripts, one sessionMeta per hook session): a
-// second fetch must not reset `sessions` and interleave pushes while the first is still running
+// second fetch must not interleave pushes while the first is still running. The new list is built in a local
+// and swapped in whole at the end — screenTick (2s) must never read a half-built `sessions`: a partial list
+// drops the running count to ~0 mid-fetch, and every refill then reads as "new sessions started" (notif spam)
 async function fetchData() {
   if (DEMO_MODE) {   // the demo data in place of Orca / hooks: the same rendering path, nothing read from this PC
     sessions = demoSessions(); handles.clear();
@@ -3146,7 +3148,7 @@ async function fetchData() {
 
     await refreshScreenStatuses();
 
-    sessions = wts.map(w => {
+    const next = wts.map(w => {
       const term = tMap.get(w.worktreeId);
       const a = w.agents?.[0];
       const baseStatus = status(w);
@@ -3183,8 +3185,9 @@ async function fetchData() {
         permissionMode: hk ? (hk.permissionMode || '') : '',
       };
     });
-    for (const h of hookOnly) sessions.push(await hookOnlySession(h));
-    for (const p of procOnly) sessions.push(procSession(p));
+    for (const h of hookOnly) next.push(await hookOnlySession(h));
+    for (const p of procOnly) next.push(procSession(p));
+    sessions = next;   // whole-list swap: the old (complete) list stays visible while this fetch runs
 
     applyStatusTransitions();
     updateCounters();
