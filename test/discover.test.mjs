@@ -88,18 +88,20 @@ test('widget loads core/discover.js and builds detected cards after the hook-onl
   assert.ok(a >= 0 && b > a, 'procSessions runs after hookOnlySessions');
   assert.ok(f.indexOf('AgentDeskDiscover.migrateIds(procPrev, hookOnly)') > b);
   assert.match(f, /for \(const p of procOnly\) if \(screenReadable\(p\.handle\)\) handles\.set\(p\.id, p\.handle\)/);
-  assert.match(f, /for \(const p of procOnly\) sessions\.push\(procSession\(p\)\)/);
+  assert.match(f, /for \(const p of procOnly\) next\.push\(procSession\(p\)\)/);
 });
 
 test('widget: a poll that outlasts POLL cannot interleave with the next — fetchData is re-entrancy guarded', () => {
-  // sessions = wts.map(…) resets the shared list, then hook-only cards are pushed one awaited sessionMeta at a
-  // time; with large transcripts one fetch outlasts POLL and a second fetch used to reset + interleave, so the
-  // tile list and the running count (and its start notifications) flickered
+  // the new list is built in a local and swapped in whole at the end: screenTick (2s) must never read a
+  // half-built `sessions` — a partial list drops the running count to ~0 mid-fetch, and every refill then
+  // reads as "new sessions started" in the main process (notification spam)
   assert.match(html, /let fetching = false;/);
   const f = between(html, 'async function fetchData() {', '\n}\n');
   assert.match(f, /if \(fetching\) return;/);
   assert.match(f, /fetching = true;/);
   assert.match(f, /finally \{ fetching = false;/);
+  assert.match(f, /const next = wts\.map\(w => \{/);
+  assert.match(f, /sessions = next;/);
 });
 
 test('widget: a term: handle is screen-read only after macOS automation was allowed', () => {
