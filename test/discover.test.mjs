@@ -88,7 +88,29 @@ test('widget loads core/discover.js and builds detected cards after the hook-onl
   assert.ok(a >= 0 && b > a, 'procSessions runs after hookOnlySessions');
   assert.ok(f.indexOf('AgentDeskDiscover.migrateIds(procPrev, hookOnly)') > b);
   assert.match(f, /for \(const p of procOnly\) if \(screenReadable\(p\.handle\)\) handles\.set\(p\.id, p\.handle\)/);
-  assert.match(f, /for \(const p of procOnly\) sessions\.push\(procSession\(p\)\)/);
+  assert.match(f, /for \(const p of procOnly\) next\.push\(procSession\(p\)\)/);
+});
+
+test('widget: a poll that outlasts POLL cannot interleave with the next — fetchData is re-entrancy guarded', () => {
+  // the new list is built in a local and swapped in whole at the end: screenTick (2s) must never read a
+  // half-built `sessions` — a partial list drops the running count to ~0 mid-fetch, and every refill then
+  // reads as "new sessions started" in the main process (notification spam)
+  assert.match(html, /let fetching = false;/);
+  const f = between(html, 'async function fetchData() {', '\n}\n');
+  assert.match(f, /if \(fetching\) return;/);
+  assert.match(f, /fetching = true;/);
+  assert.match(f, /finally \{ fetching = false;/);
+  assert.match(f, /const next = wts\.map\(w => \{/);
+  assert.match(f, /sessions = next;/);
+});
+
+test('widget: a hook card applies the same staleness gate as hookStateFor, so fetch and screenTick agree', () => {
+  // a session whose last hook event is older than HOOK_STALE_MS must resolve to 'done' in BOTH paths — the
+  // full fetch (raw hook state, status stuck 'running' when no Stop hook fired) and screenTick (hookStateFor)
+  // — or the running count oscillates every tick and every climb fires a start notification
+  const f = between(html, 'async function hookOnlySession(h) {', '\n}\n');
+  assert.match(f, /Date\.now\(\) - st\.last <= HOOK_STALE_MS/);
+  assert.match(f, /resolveStatus\('done', screenSt, hk\)/);
 });
 
 test('widget: a term: handle is screen-read only after macOS automation was allowed', () => {
