@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-CoznxKqwXfDRvab1AIqHIsUq1s528ibaoC9SlopLFEg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-gea6J9j3q/j3Z5YoGEJznEA8erq5UZIyU6cC2uXkIng='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1963,6 +1963,34 @@
   #page-dock.dock-hidden.dock-down.edge-ask .dock-strip { box-shadow: inset 0 -4px 0 var(--yellow); }
   #page-dock.dock-hidden.dock-down.edge-err .dock-strip { box-shadow: inset 0 -4px 0 var(--red); }
   #page-dock.dock-hidden.dock-down.edge-run .dock-strip { box-shadow: inset 0 -4px 0 var(--accent); }
+  /* ── vertical dock (dockCfg.edge 'right' / 'left'): the same bar along the screen's side edge. dock-v = vertical,
+     dock-left = the left edge (default is the right), dock-room-right = the room opens to the right of the bar ── */
+  #page-dock.dock-v { flex-direction: row; }
+  #page-dock.dock-v.dock-left { justify-content: flex-start; }
+  .dock-v .dock-strip { flex-direction: column; width: var(--dock-h, 72px); height: 100%; padding: 8px 0; }
+  .dock-v .dock-tiles { flex-direction: column; min-height: 0; }
+  .dock-v .dock-gsep { width: 32px; height: 1px; margin: 4px 0; background: linear-gradient(90deg, transparent, var(--border) 30%, var(--border) 70%, transparent); }
+  .dock-v .dock-sep { width: 40px; height: 1px; background: linear-gradient(90deg, transparent, var(--border) 25%, var(--border) 75%, transparent); }
+  .dock-v .dock-name, .dock-v .dock-num { display: none; }   /* a 60-84 px column has no room for the name; the hover card and title carry it */
+  .dock-v .dock-tile:hover { transform: translateX(-2px); }
+  .dock-v .dock-tile.sel { transform: translateX(-2px); }
+  .dock-v.dock-left .dock-tile:hover, .dock-v.dock-left .dock-tile.sel { transform: translateX(2px); }
+  .dock-v .dock-right { flex-direction: column; }
+  .dock-v .dock-usage.hearts { flex-direction: column; }
+  .dock-v .dock-tile.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+  .dock-v .dock-tile.drop-after { box-shadow: 0 3px 0 var(--accent); }
+  .dock-v.dock-hidden .dock-strip { transform: translateX(calc(var(--dock-h, 72px) - 8px)); }
+  .dock-v.dock-left.dock-hidden .dock-strip { transform: translateX(calc(8px - var(--dock-h, 72px))); }
+  .dock-v.dock-hidden.edge-ask .dock-strip { box-shadow: inset -4px 0 0 var(--yellow); }
+  .dock-v.dock-hidden.edge-err .dock-strip { box-shadow: inset -4px 0 0 var(--red); }
+  .dock-v.dock-hidden.edge-run .dock-strip { box-shadow: inset -4px 0 0 var(--accent); }
+  .dock-v.dock-left.dock-hidden.edge-ask .dock-strip { box-shadow: inset 4px 0 0 var(--yellow); }
+  .dock-v.dock-left.dock-hidden.edge-err .dock-strip { box-shadow: inset 4px 0 0 var(--red); }
+  .dock-v.dock-left.dock-hidden.edge-run .dock-strip { box-shadow: inset 4px 0 0 var(--accent); }
+  /* the panels point at the bar: the tail on the side that faces it (--tail: the tile's y inside the panel) */
+  .dock-v .dock-tip::after, .dock-v .peer-term-bg.docked::after, .dock-v .dock-bubble::after { left: auto; bottom: auto; right: -6px; top: calc(var(--tail, 50%) - 6px); border: none; border-top: 1px solid var(--border); border-right: 1px solid var(--border); transform: rotate(45deg); }
+  .dock-v.dock-room-right .dock-tip::after, .dock-v.dock-room-right .peer-term-bg.docked::after, .dock-v.dock-room-right .dock-bubble::after { right: auto; left: -6px; border: none; border-top: 1px solid var(--border); border-left: 1px solid var(--border); transform: rotate(-45deg); }
+  .dock-v .dock-bubble::after { border-color: var(--bb-edge); }
   /* hover card (the hover setting off, a "+N" pile, a tile without a terminal window): name, state, 지금 하는 일, last answer */
   .dock-tip { position: fixed; z-index: 160; display: flex; flex-direction: column; gap: 2px; width: 260px; max-width: calc(100vw - 12px); padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-float); font-size: var(--fs-xs); color: var(--text2); pointer-events: none; }
   .dock-tip[hidden] { display: none; }
@@ -2619,7 +2647,7 @@ Object.assign(I18N, {
 Object.assign(I18N, {
   // dock mode — '도크: ' keys keep short words (세션, 완료, 거부 …) out of the phrase dictionary; Korean shows them without it
   '도크 모드 (⌘⇧D / Ctrl+Shift+D)': 'Dock mode (⌘⇧D / Ctrl+Shift+D)', '도크 모드': 'Dock mode', '도크로 전환': 'Switch to dock',
-  '화면 아래 가장자리에 붙는 가로 띠로 세션 상태를 봅니다. 헤더의 ▭ 버튼이나 ⌘⇧D (Windows·Linux: Ctrl+Shift+D)로 전환하고, 띠의 ▣ 버튼으로 패널에 돌아옵니다.': 'Watch your sessions in a thin bar on the bottom edge of the screen. Switch with the ▭ button in the header or ⌘⇧D (Windows / Linux: Ctrl+Shift+D); the bar\'s ▣ button brings the panel back.',
+  '화면 가장자리에 붙는 띠로 세션 상태를 봅니다. 방향은 "도크 방향"에서 고릅니다. 헤더의 ▭ 버튼이나 ⌘⇧D (Windows·Linux: Ctrl+Shift+D)로 전환하고, 띠의 ▣ 버튼으로 패널에 돌아옵니다.': 'Watch your sessions in a thin bar on the edge of the screen — the edge is chosen in "Dock position". Switch with the ▭ button in the header or ⌘⇧D (Windows / Linux: Ctrl+Shift+D); the bar\'s ▣ button brings the panel back.',
   '시작 시 도크 모드': 'Start in dock mode', '위젯을 켤 때 도크 모드로 시작합니다.': 'The widget starts as the dock bar.',
   '도크 흐리게': 'Dock fade', '마우스가 띠를 떠나고 1.5초 뒤 이 불투명도로 흐려집니다. 띠에 마우스를 올리면 다시 선명해집니다.': 'When the pointer leaves the bar, it fades to this opacity after 1.5 s; pointing at it brings it back.',
   '도크: 세션': 'Sessions', '도크: 팀원 세션': 'Teammate sessions', '도크: 대기열': 'queue', '도크: 서브에이전트': 'subagents', '도크: 위임받음': 'delegated to you',
@@ -2649,6 +2677,7 @@ Object.assign(I18N, {
   '📌 고정됨 — 우클릭으로 해제': '📌 Pinned — right-click to unpin', '마스킹을 할 수 없어 보내지 않았습니다': 'Not sent: masking is not available', '보낼 내용이 없습니다': 'Nothing to send', '내용이 너무 깁니다': 'Too long to send',
   '/ · ! · # 로 시작하는 내용은 명령으로 읽힐 수 있어 보내지 않습니다': 'Not sent: text starting with / ! # would be read as a command', '도크: 타이머': 'Timer', '도크: 눌러서 팀 탭에서 봅니다': 'click to see them on the Team tab',
   '도크 크기': 'Dock size', '작게': 'Small', '보통': 'Medium', '크게': 'Large', '작게: 이름 없는 작은 타일과 낮은 띠. 크게: 큰 타일과 큰 글자.': 'Small: small tiles without names and a lower bar. Large: bigger tiles and text.',
+  '도크 방향': 'Dock position', '아래': 'Bottom', '오른쪽': 'Right', '왼쪽': 'Left', '아래: 화면 아래 가로 띠. 오른쪽·왼쪽: 화면 옆 가장자리의 세로 띠입니다.': 'Bottom: a horizontal bar on the bottom edge. Right / Left: a vertical bar on the side edge of the screen.',
   '마우스가 멀어지면 숨기기': 'Hide when the pointer leaves', '마우스가 띠를 떠나고 2초 뒤 띠가 화면 가장자리로 밀려 8px만 보입니다. 마우스를 가져가거나 말풍선·알림이 뜨면 바로 돌아옵니다.': 'Two seconds after the pointer leaves, the bar slides to the screen edge until 8 px show. It comes back when the pointer returns or a bubble or message appears.', '권한 요청은 버튼으로 답하세요': 'Answer a permission request with its buttons', '이 선택지는 도크에서 누를 수 없습니다': 'The dock never presses this option', '잠시 후 다시 누르세요': 'Wait a moment, then press it again',
   '여기서는 허용할 수 없습니다 — 패널에서 내용을 확인하세요': 'Cannot be allowed here — check the request in the panel', '도크: 패널에서 보기': 'View in panel', '전송이 거부되었습니다': 'Send refused', '세션이 입력 대기 상태가 아닙니다': 'The session is not waiting for input', '전송 실패': 'Send failed',
 });
@@ -3533,7 +3562,7 @@ const dockFullPop = k => k === 'skillbook' || k === 'quest';
 const dockSheetOpen = () => sbDockOpen || questDockOpen;
 let DOCK_H = 72;   // the bar's height: AgentDeskDock.stripHeight(size) (dockSizeApply)
 // localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, size, autoHide, yieldOrca, idleMin, hidden }
-let dockCfg = { usage: 'hearts', start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, yieldOrca: true, idleMin: 60, hidden: {}, order: [], addRepo: '' };   // order: my session ids in the user's drag order
+let dockCfg = { usage: 'hearts', start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', edge: 'bottom', autoHide: false, yieldOrca: true, idleMin: 60, hidden: {}, order: [], addRepo: '' };   // order: my session ids in the user's drag order; edge: the screen edge the bar lies on
 try {
   const c = JSON.parse(localStorage.getItem('roca-dock') || '{}') || {};
   dockCfg.start = c.start === true;
@@ -3546,6 +3575,7 @@ try {
   // the fade is off by default (opacity 1); a value saved before 0.2.10 (when 0.85 was the default) is reset once — opacityV 2 marks a value the user chose
   if (c.opacityV === 2 && Number.isFinite(c.opacity) && c.opacity >= 0.3 && c.opacity <= 1) dockCfg.opacity = c.opacity;
   dockCfg.size = ['sm', 'md', 'lg'].includes(c.size) ? c.size : 'md';
+  dockCfg.edge = ['bottom', 'right', 'left'].includes(c.edge) ? c.edge : 'bottom';   // the screen edge the bar lies on
   dockCfg.autoHide = c.autoHide === true;      // slide away when the pointer leaves
   dockCfg.yieldOrca = c.yieldOrca !== false;   // choice bubbles stay folded while Orca is the app in front (macOS)
   dockCfg.idleMin = [0, 30, 60, 240].includes(c.idleMin) ? c.idleMin : 60;   // waiting / done this long → the 💤 tile (0: off)
@@ -3625,6 +3655,11 @@ function dockFixedWidth() {
   const cs = getComputedStyle($('dock-strip')), gap = parseFloat(cs.columnGap) || 6;
   return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + 2 + 1 + 2 * gap + 4 + $('dock-right').offsetWidth + DOCK_ADD_W + (dockIdleN ? DOCK_IDLE_W : 0);
 }
+// the vertical bar's twin: everything in the column but the tiles (padding, border, the separator, gaps, the buttons)
+function dockFixedHeight() {
+  const cs = getComputedStyle($('dock-strip')), gap = parseFloat(cs.rowGap) || 6;
+  return (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + 2 + 1 + 2 * gap + 4 + $('dock-right').offsetHeight + DOCK_ADD_W + (dockIdleN ? DOCK_IDLE_W : 0);
+}
 // a tile's state start when the bar first sees it: the dashboard's status change time (askSince for a choice)
 function dockSeed(x) {
   const s = dockLocal(x); if (!s) return 0;
@@ -3636,6 +3671,13 @@ function dockSizeApply() {
   const pd = $('page-dock');
   pd.style.setProperty('--dock-h', `${DOCK_H}px`);
   for (const k of ['sm', 'md', 'lg']) pd.classList.toggle(`dock-sz-${k}`, dockCfg.size === k);
+  dockSig = '';
+}
+// edge → the screen edge the bar lies on: bottom (horizontal, the default) / right / left (a vertical bar)
+function dockEdgeApply() {
+  const pd = $('page-dock');
+  pd.classList.toggle('dock-v', dockCfg.edge !== 'bottom');
+  pd.classList.toggle('dock-left', dockCfg.edge === 'left');
   dockSig = '';
 }
 let dockAskKeys = new Set();   // my tiles that needed me at the last draw (a new one un-hides the bar)
@@ -3688,10 +3730,11 @@ function dockDraw() {
     const pick = full.mine.find(x => x.state === 'ask') || full.mine.find(x => x.state === 'input');
     if (pick) dockSel = pick.key;
   }
-  if (!dockWin) $('page-dock').classList.toggle('dock-narrow', window.innerWidth <= DOCK_NARROW);   // before main's first answer
-  const fixed = dockFixedWidth();
+  const dv = dockCfg.edge !== 'bottom';
+  if (!dockWin) $('page-dock').classList.toggle('dock-narrow', (dv ? window.innerHeight : window.innerWidth) <= DOCK_NARROW);   // before main's first answer
+  const fixed = dv ? dockFixedHeight() : dockFixedWidth();
   dockBoundsSync(AgentDeskDock.tilesWidth(full) + fixed);
-  const m = AgentDeskDock.dockModel({ sessions: mine, peers, inbox, selectedId: dockSel, size: dockCfg.size, width: Math.max(0, ($('dock-strip').offsetWidth || window.innerWidth) - fixed) });
+  const m = AgentDeskDock.dockModel({ sessions: mine, peers, inbox, selectedId: dockSel, size: dockCfg.size, width: Math.max(0, ((dv ? $('dock-strip').offsetHeight : $('dock-strip').offsetWidth) || window.innerWidth) - fixed) });
   dockModelNow = m;
   // time in the current state (minutes only, so the tiles are redrawn once a minute at most) and the ⌘1 … ⌘9 numbers
   const now = Date.now();
@@ -3874,23 +3917,34 @@ function dockUsageHide() {
   dockUsageOn = false; $('dock-utip').hidden = true;
   dockBoundsSync();
 }
-// the bar's window: natural width, fixed height, room above while the hover card / the review queue is open
+// the bar's window: natural width, fixed height, room above while the hover card / the review queue is open.
+// Vertical bar: the room opens sideways — extra is its width, popWidth the panel's height, the pop band { y, height }.
 function dockBoundsSync(natural) {
   if (natural != null) dockNatural = Math.round(natural);
   if (!dockOn) return;
   const kind = dockPopKind();
-  const extra = kind === 'skillbook' ? DOCK_SB_H : kind === 'quest' ? DOCK_Q_H : AgentDeskDock.popExtra(kind, dockAskH);   // bubbles: room for the tallest one
-  // the part of the room the panel / queue covers (x and width in the window): Windows / Linux cut the window to the
-  // bar plus this, so the rest of the room is neither drawn nor clickable. popWidth: the window grows sideways for it.
+  const dv = dockCfg.edge !== 'bottom';
+  const P = AgentDeskDock.POP;
   const bubbles = kind === 'bubbles' || kind === 'bubblesBig' || kind === 'bubblesDone';
+  const workW = (dockWin && dockWin.workWidth) || (window.screen && window.screen.availWidth) || window.innerWidth;
+  const extra = dv
+    ? (kind === 'skillbook' ? DOCK_SB_W : kind === 'quest' ? DOCK_Q_W : kind ? bubbles ? (kind === 'bubblesBig' ? P.bubbleBigW : kind === 'bubblesDone' ? P.doneW : P.bubbleW) + 2 * P.gap : AgentDeskDock.popWidth(kind, workW) + 2 * P.gap : 0)
+    : (kind === 'skillbook' ? DOCK_SB_H : kind === 'quest' ? DOCK_Q_H : AgentDeskDock.popExtra(kind, dockAskH));   // bubbles: room for the tallest one
+  // the part of the room the panel / queue covers in the window: Windows / Linux cut the window to the bar plus this,
+  // so the rest of the room is neither drawn nor clickable. popWidth: the window grows for it (sideways / along the bar).
   const g = kind && !dockFullPop(kind) && !bubbles ? dockPopGeom(kind) : null;
-  let pop = dockFullPop(kind) ? { x: 8, width: Math.max(0, window.innerWidth - 16) } : bubbles ? dockAskBand : g ? { x: g.x, width: g.width } : null;
+  let pop = dockFullPop(kind) ? (dv ? { y: 8, height: Math.max(0, window.innerHeight - 16) } : { x: 8, width: Math.max(0, window.innerWidth - 16) })
+    : bubbles ? dockAskBand : g ? (dv ? { y: g.y, height: g.height } : { x: g.x, width: g.width }) : null;
   // a card open beside the bubbles (a tile's, the limit card): its part of the room is drawn too
   if (bubbles && pop) for (const k of [dockTipKey ? 'tipSmall' : '', dockUsageOn ? 'usage' : ''].filter(Boolean)) {
     const c = dockPopGeom(k); if (!c) continue;
-    const x0 = Math.min(pop.x, c.x); pop = { x: x0, width: Math.max(pop.x + pop.width, c.x + c.width) - x0 };
+    if (dv) { const y0 = Math.min(pop.y, c.y); pop = { y: y0, height: Math.max(pop.y + pop.height, c.y + c.height) - y0 }; }
+    else { const x0 = Math.min(pop.x, c.x); pop = { x: x0, width: Math.max(pop.x + pop.width, c.x + c.width) - x0 }; }
   }
-  const req = { on: true, contentWidth: dockNatural, height: DOCK_H, extra, popWidth: kind === 'skillbook' ? DOCK_SB_W : kind === 'quest' ? DOCK_Q_W : bubbles ? dockAskWant : g ? g.want : 0, pop, remembered: dockCfg.pos,
+  const req = { on: true, contentWidth: dockNatural, height: DOCK_H, edge: dockCfg.edge, extra,
+    popWidth: dv ? (kind === 'skillbook' ? DOCK_SB_H : kind === 'quest' ? DOCK_Q_H : AgentDeskDock.popExtra(kind, dockAskH))
+      : (kind === 'skillbook' ? DOCK_SB_W : kind === 'quest' ? DOCK_Q_W : bubbles ? dockAskWant : g ? g.want : 0),
+    pop, remembered: dockCfg.pos,
     hidden: AgentDeskDock.dockHitPlan({ hidden: dockHidden, popKind: kind, extra }).sendWithBounds };   // auto-hidden: main keeps the click-through
   const sig = JSON.stringify(req);
   if (sig === dockReqSig) return;
@@ -3902,11 +3956,13 @@ function dockBoundsSync(natural) {
 const DOCK_NARROW = 420;
 function dockWinSet(b) {
   const prev = dockWin; dockWin = b;
-  $('page-dock').classList.toggle('dock-narrow', (b.stripWidth || b.width) <= DOCK_NARROW);
-  const strip = $('dock-strip'), wide = b.stripWidth > 0 && b.stripWidth < b.width;
-  strip.style.width = wide ? `${b.stripWidth}px` : ''; strip.style.marginLeft = wide ? `${b.stripX}px` : ''; strip.style.alignSelf = wide ? 'flex-start' : '';
+  const dv = b.dir === 'left' || b.dir === 'right';
+  $('page-dock').classList.toggle('dock-narrow', (dv ? (b.stripHeight || b.height) : (b.stripWidth || b.width)) <= DOCK_NARROW);
+  const strip = $('dock-strip'), wide = dv ? b.stripHeight > 0 && b.stripHeight < b.height : b.stripWidth > 0 && b.stripWidth < b.width;
+  if (dv) { strip.style.height = wide ? `${b.stripHeight}px` : ''; strip.style.marginTop = wide ? `${b.stripY}px` : ''; strip.style.alignSelf = wide ? 'flex-start' : ''; strip.style.width = ''; strip.style.marginLeft = ''; }
+  else { strip.style.width = wide ? `${b.stripWidth}px` : ''; strip.style.marginLeft = wide ? `${b.stripX}px` : ''; strip.style.alignSelf = wide ? 'flex-start' : ''; strip.style.height = ''; strip.style.marginTop = ''; }
   if (b.dir) dockSetDir(b.dir); else dockPopPlace();
-  if (!prev || prev.stripWidth !== b.stripWidth) dockRender();   // the tiles fit the bar's width, not the window's
+  if (!prev || (dv ? prev.stripHeight !== b.stripHeight : prev.stripWidth !== b.stripWidth)) dockRender();   // the tiles fit the bar, not the window
   dockBoundsSync();   // the panel's band in the new window (same request → nothing is sent)
 }
 // what the room above / below the bar holds: the review queue, a terminal window, the hover panel, or nothing
@@ -3922,37 +3978,43 @@ function dockPopKind() {
 // a panel's place in the window: over its tile (popRect clamps it inside the window), the terminal window at the
 // bar's centre only when its tile is not in the row
 function dockPopGeom(kind) {
-  const w = dockWin && dockWin.width ? dockWin : null, winWidth = w ? w.width : window.innerWidth;
+  const dv = dockDir === 'left' || dockDir === 'right';
+  const w = dockWin && dockWin.width ? dockWin : null, winWidth = w ? (dv ? w.height : w.width) : (dv ? window.innerHeight : window.innerWidth);
   const stripX = w ? w.stripX || 0 : 0, stripW = w ? w.stripWidth || winWidth : winWidth;
+  const stripY = w ? w.stripY || 0 : 0, stripH = w ? w.stripHeight || winWidth : winWidth;
   const want = AgentDeskDock.popWidth(kind, (w && w.workWidth) || (window.screen && window.screen.availWidth) || winWidth);
-  let anchor = stripX + stripW / 2;
+  let anchor = dv ? stripY + stripH / 2 : stripX + stripW / 2;
   const key = kind === 'term' ? dockTermKey() : kind === 'add' || kind === 'menu' || kind === 'drop' ? (dockPop && dockPop.key) : dockTipKey;   // the panel sits over the tile it belongs to (the limit card: the bars)
   const tile = kind === 'usage' ? (!$('dock-usage').hidden && $('dock-usage')) : key && $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(key)}"]`);
-  if (tile) { const r = tile.getBoundingClientRect(); anchor = r.left + r.width / 2; }
+  if (tile) { const r = tile.getBoundingClientRect(); anchor = dv ? r.top + r.height / 2 : r.left + r.width / 2; }
   else if (kind !== 'term') return null;   // the terminal window falls back to the bar's centre (its tile folded into "+N")
   const P = AgentDeskDock.POP, height = kind === 'term' ? P.termH : kind === 'add' || kind === 'drop' ? 2 * P.tipSmallH : kind === 'usage' ? P.usageH : P.tipSmallH;
   const room = w && w.extra > 0 ? w.extra : AgentDeskDock.popExtra(kind);
   return { want, ...AgentDeskDock.popRect({ winWidth, width: want, anchor, dir: dockDir, stripHeight: DOCK_H, height, room }) };
 }
-// the room for the panel / queue is above the bar, or below it when the bar sits near the top of the screen
+// the room for the panel / queue: above the bar, below it when the bar sits near the top (vertical bar: to its left / right)
 function dockSetDir(dir) {
-  dockDir = dir === 'down' ? 'down' : 'up';
+  dockDir = ['up', 'down', 'left', 'right'].includes(dir) ? dir : 'up';
   $('page-dock').classList.toggle('dock-down', dockDir === 'down');
+  $('page-dock').classList.toggle('dock-room-right', dockDir === 'right');
   dockPopPlace();
 }
 function dockPopPlace() {
-  const near = `${DOCK_H + 6}px`;
-  if (questDockOpen) { const qp = $('q-dock'); qp.style.top = dockDir === 'up' ? '6px' : near; qp.style.bottom = dockDir === 'up' ? near : '6px'; }
-  if (sbDockOpen) { const sp = $('sb-dock'); sp.style.top = dockDir === 'up' ? '6px' : near; sp.style.bottom = dockDir === 'up' ? near : '6px'; }
+  const near = `${DOCK_H + 6}px`, dv = dockDir === 'left' || dockDir === 'right';
+  if (questDockOpen) { const qp = $('q-dock'); if (dv) { qp.style.right = dockDir === 'left' ? '6px' : near; qp.style.left = dockDir === 'left' ? near : '6px'; qp.style.top = ''; qp.style.bottom = ''; } else { qp.style.top = dockDir === 'up' ? '6px' : near; qp.style.bottom = dockDir === 'up' ? near : '6px'; qp.style.left = ''; qp.style.right = ''; } }
+  if (sbDockOpen) { const sp = $('sb-dock'); if (dv) { sp.style.right = dockDir === 'left' ? '6px' : near; sp.style.left = dockDir === 'left' ? near : '6px'; sp.style.top = ''; sp.style.bottom = ''; } else { sp.style.top = dockDir === 'up' ? '6px' : near; sp.style.bottom = dockDir === 'up' ? near : '6px'; sp.style.left = ''; sp.style.right = ''; } }
   const put = (node, g, fixedH) => {
-    node.style.left = `${g.x}px`; node.style.width = `${g.width}px`;
-    node.style.top = g.top == null ? '' : `${g.top}px`; node.style.bottom = g.bottom == null ? '' : `${g.bottom}px`;
+    node.style.left = g.left == null ? (g.x == null ? '' : `${g.x}px`) : `${g.left}px`;
+    node.style.right = g.right == null ? '' : `${g.right}px`;
+    node.style.width = g.width != null ? `${g.width}px` : '';
+    node.style.top = g.top == null ? (g.y == null ? '' : `${g.y}px`) : `${g.top}px`;
+    node.style.bottom = g.bottom == null ? '' : `${g.bottom}px`;
     if (fixedH) node.style.height = `${g.height}px`; else node.style.maxHeight = `${g.height}px`;
   };
   // the tail points at the tile the panel belongs to (the limit card: at the limit bars)
   const tail = (node, g, key) => {
     const tile = key === 'usage' ? $('dock-usage') : key && $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(key)}"]`);
-    if (tile) { const r = tile.getBoundingClientRect(); node.style.setProperty('--tail', `${Math.round(Math.min(g.width - 14, Math.max(14, r.left + r.width / 2 - g.x)))}px`); }
+    if (tile) { const r = tile.getBoundingClientRect(); node.style.setProperty('--tail', `${Math.round(Math.min((dv ? g.height : g.width) - 14, Math.max(14, (dv ? r.top + r.height / 2 - g.y : r.left + r.width / 2 - g.x))))}px`); }
     else node.style.removeProperty('--tail');
     node.classList.toggle('down', dockDir === 'down');
   };
@@ -4532,6 +4594,7 @@ function dockAskPlace() {
   const show = dockOn && !dockSheetOpen() && !dockTermBg() && !dockPop;
   box.hidden = !show;
   const items = [];
+  const dv = dockDir === 'left' || dockDir === 'right';   // vertical bar: the bubbles stack along y, the room is sideways
   for (const a of dockAsk.values()) {
     a.placed = false;
     if (!a.el) continue;
@@ -4540,7 +4603,8 @@ function dockAskPlace() {
     const tile = $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(a.key)}"]`);
     if (!tile) { a.el.hidden = true; continue; }
     const r = tile.getBoundingClientRect();
-    items.push({ key: a.key, anchor: r.left + r.width / 2, since: a.since, width: a.big ? P.bubbleBigW : P.bubbleW });
+    items.push(dv ? { key: a.key, anchor: r.top + r.height / 2, since: a.since, height: a.big ? P.bubbleBigH : P.bubbleH }
+      : { key: a.key, anchor: r.left + r.width / 2, since: a.since, width: a.big ? P.bubbleBigW : P.bubbleW });
   }
   // completion bubbles: not over a tile that has a choice bubble; the first to go when they do not all fit
   for (const d of dockDone.values()) {
@@ -4549,10 +4613,11 @@ function dockAskPlace() {
     const tile = !dockAsk.has(d.key) && $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(d.key)}"]`);
     if (!tile) { d.el.hidden = true; continue; }
     const r = tile.getBoundingClientRect();
-    items.push({ key: `done:${d.key}`, anchor: r.left + r.width / 2, since: d.at - 1e12, width: P.doneW });
+    items.push(dv ? { key: `done:${d.key}`, anchor: r.top + r.height / 2, since: d.at - 1e12, height: P.tipSmallH }
+      : { key: `done:${d.key}`, anchor: r.left + r.width / 2, since: d.at - 1e12, width: P.doneW });
   }
-  dockAskWant = items.reduce((n, x) => n + x.width, 0) + Math.max(0, items.length - 1) * P.gap;   // dockBounds adds the margins
-  const lay = AgentDeskDock.bubbleLayout(items, { winWidth: dockWin && dockWin.width ? dockWin.width : window.innerWidth });
+  dockAskWant = items.reduce((n, x) => n + (dv ? x.height : x.width), 0) + Math.max(0, items.length - 1) * P.gap;   // dockBounds adds the margins
+  const lay = AgentDeskDock.bubbleLayout(items, { winWidth: dockWin && (dv ? dockWin.height : dockWin.width) ? (dv ? dockWin.height : dockWin.width) : (dv ? window.innerHeight : window.innerWidth), vertical: dv });
   const bubbleOf = k => (k.startsWith('done:') ? dockDone.get(k.slice(5)) : dockAsk.get(k));
   for (const k of lay.dropped) { const a = bubbleOf(k); if (a && a.el) a.el.hidden = true; }
   const off = `${DOCK_H + P.gap + P.tail}px`, room = dockWin && dockWin.extra > 0 ? dockWin.extra : 0;
@@ -4560,9 +4625,15 @@ function dockAskPlace() {
     if (g.key.startsWith('done:')) {
       const d = bubbleOf(g.key), el = d.el;
       d.placed = show; el.hidden = false;
-      el.style.left = `${g.x}px`; el.style.width = `${g.width}px`; el.style.setProperty('--tail', `${g.tail}px`);
-      el.style.top = dockDir === 'down' ? off : ''; el.style.bottom = dockDir === 'down' ? '' : off;
-      el.style.maxHeight = `${room ? Math.max(40, Math.min(P.tipSmallH, room - 2 * P.gap - P.tail)) : P.tipSmallH}px`;
+      if (dv) {
+        el.style.top = `${g.y}px`; el.style.width = `${P.doneW}px`; el.style.setProperty('--tail', `${g.tail}px`);
+        el.style.left = dockDir === 'left' ? off : ''; el.style.right = dockDir === 'right' ? off : '';
+        el.style.maxHeight = `${g.height}px`;
+      } else {
+        el.style.left = `${g.x}px`; el.style.width = `${g.width}px`; el.style.setProperty('--tail', `${g.tail}px`);
+        el.style.top = dockDir === 'down' ? off : ''; el.style.bottom = dockDir === 'down' ? '' : off;
+        el.style.maxHeight = `${room ? Math.max(40, Math.min(P.tipSmallH, room - 2 * P.gap - P.tail)) : P.tipSmallH}px`;
+      }
       el.classList.toggle('down', dockDir === 'down');
       continue;
     }
@@ -4570,16 +4641,22 @@ function dockAskPlace() {
     a.placed = show; el.hidden = false;
     if (a.muted) { a.muted = false; dockAskArm(a); }   // back after the mute: armed again
     if (a.yielded) { a.yielded = false; dockAskArm(a); }   // unfolded: armed again (a click meant for Orca must not land)
-    if (a.x != null && a.x !== g.x) dockAskArm(a);   // pushed sideways: a click aimed at the old place must not land
-    a.x = g.x;
-    el.style.left = `${g.x}px`; el.style.width = `${g.width}px`; el.style.setProperty('--tail', `${g.tail}px`);
-    el.style.top = dockDir === 'down' ? off : ''; el.style.bottom = dockDir === 'down' ? '' : off;
-    el.style.maxHeight = `${room ? Math.max(80, Math.min(want, room - 2 * P.gap - P.tail)) : want}px`;
+    if (dv) { if (a.y != null && a.y !== g.y) dockAskArm(a); a.y = g.y; }   // pushed along the bar: a click aimed at the old place must not land
+    else { if (a.x != null && a.x !== g.x) dockAskArm(a); a.x = g.x; }
+    if (dv) {
+      el.style.top = `${g.y}px`; el.style.width = `${a.big ? P.bubbleBigW : P.bubbleW}px`; el.style.setProperty('--tail', `${g.tail}px`);
+      el.style.left = dockDir === 'left' ? off : ''; el.style.right = dockDir === 'right' ? off : '';
+      el.style.maxHeight = `${g.height}px`;
+    } else {
+      el.style.left = `${g.x}px`; el.style.width = `${g.width}px`; el.style.setProperty('--tail', `${g.tail}px`);
+      el.style.top = dockDir === 'down' ? off : ''; el.style.bottom = dockDir === 'down' ? '' : off;
+      el.style.maxHeight = `${room ? Math.max(80, Math.min(want, room - 2 * P.gap - P.tail)) : want}px`;
+    }
     el.classList.toggle('down', dockDir === 'down');
   }
   dockAskH = show ? Math.max(0, ...lay.placed.map(g => (g.key.startsWith('done:') ? P.tipSmallH : dockAskHeight(dockAsk.get(g.key))))) : 0;
-  const xs = lay.placed.map(g => g.x), ends = lay.placed.map(g => g.x + g.width);
-  dockAskBand = xs.length ? { x: Math.min(...xs), width: Math.max(...ends) - Math.min(...xs) } : null;
+  const xs = lay.placed.map(g => (dv ? g.y : g.x)), ends = lay.placed.map(g => (dv ? g.y + g.height : g.x + g.width));
+  dockAskBand = xs.length ? (dv ? { y: Math.min(...xs), height: Math.max(...ends) - Math.min(...xs) } : { x: Math.min(...xs), width: Math.max(...ends) - Math.min(...xs) }) : null;
   // the digit keys' bubble: a new one starts its own arming time (a digit meant for the last one does not land here)
   const kt = AgentDeskDock.bubbleKeyTarget([...dockAsk.values()].map(a => ({ key: a.key, shown: !!(a.placed && a.el && !a.el.hidden && !a.sent), big: !!a.big })));
   if (kt !== dockKeyTarget.key) dockKeyTarget = { key: kt, at: Date.now() };
@@ -4848,10 +4925,12 @@ const DOCK_LONG_MS = 550;   // the drag threshold: AgentDeskDock.DRAG_PX (6 px)
 let dockDrag = null;   // AgentDeskDock.dragStep's state: { key, id, x, y, on, long }
 let dockClickEat = false;
 const dockMineTiles = () => [...$('dock-tiles').querySelectorAll('.dock-tile')].filter(b => String(b.dataset.key).startsWith('me:'));
-function dockDropMark(cx) {
+function dockDropMark(e) {
   let before = null;
   const tiles = dockMineTiles();
-  for (const b of tiles) { b.classList.remove('drop-before', 'drop-after'); const r = b.getBoundingClientRect(); if (!before && cx < r.left + r.width / 2) before = b; }
+  const v = dockCfg.edge !== 'bottom';
+  const p = v ? e.clientY : e.clientX;
+  for (const b of tiles) { b.classList.remove('drop-before', 'drop-after'); const r = b.getBoundingClientRect(); if (!before && p < (v ? r.top + r.height / 2 : r.left + r.width / 2)) before = b; }
   if (before) before.classList.add('drop-before'); else if (tiles.length) tiles[tiles.length - 1].classList.add('drop-after');
   return before;
 }
@@ -4878,17 +4957,17 @@ function dockDragDo(ev, e) {
         try { src.setPointerCapture(e.pointerId); } catch {}   // the release reaches us even off the tiles
         src.addEventListener('lostpointercapture', () => dockDragDo({ type: 'cancel' }), { once: true });   // a lost capture ends the drag
       }
-      dockDropMark(e.clientX);
+      dockDropMark(e);
       break;
     }
-    case 'mark': dockDropMark(e.clientX); break;
+    case 'mark': dockDropMark(e); break;
     case 'cancel': clearTimeout(dockDragLongT); dockDragEnd(); dockRender(); break;   // tiles held back during the drag are drawn now
     case 'eat': clearTimeout(dockDragLongT); dockClickEat = true; setTimeout(() => { dockClickEat = false; }, 0); break;
     case 'click': clearTimeout(dockDragLongT); break;
     case 'drop': {
       clearTimeout(dockDragLongT);
       dockClickEat = true; setTimeout(() => { dockClickEat = false; }, 0);
-      const before = dockDropMark(e.clientX), bx = before && dockTileOf(before.dataset.key);
+      const before = dockDropMark(e), bx = before && dockTileOf(before.dataset.key);
       dockDragEnd();
       if (!dockOn || !dockModelNow) break;
       const visible = dockModelNow.mine.filter(x => !x.bundle).map(x => x.id);
@@ -5142,7 +5221,7 @@ function dockEnter() {
   dockPrev = { page: currentPage, minimized: isMinimized };
   if (isMinimized) w.classList.remove('minimized');   // the header-only window: the bar replaces it, leaving brings it back
   dockOn = true; dockSig = dockReqSig = ''; dockLabelLang = ''; dockTimerShown = false; $('dock-timer').hidden = true;
-  dockSizeApply();
+  dockSizeApply(); dockEdgeApply();
   w.classList.add('docked');
   showPage('dock', { keepSize: true });
   dockDraw();   // draws, then asks main for the bar's bounds (the panel's bounds are kept there)
@@ -5222,7 +5301,8 @@ $('dock-tiles').addEventListener('dblclick', e => {
 $('dock-tiles').addEventListener('keydown', e => {
   const tiles = [...$('dock-tiles').querySelectorAll('.dock-tile')], i = tiles.indexOf(document.activeElement);
   if (i < 0) return;
-  const j = e.key === 'ArrowRight' ? Math.min(tiles.length - 1, i + 1) : e.key === 'ArrowLeft' ? Math.max(0, i - 1) : e.key === 'Home' ? 0 : e.key === 'End' ? tiles.length - 1 : -1;
+  const v = dockCfg.edge !== 'bottom';   // the vertical bar also takes the up / down arrows
+  const j = (e.key === 'ArrowRight' || (v && e.key === 'ArrowDown')) ? Math.min(tiles.length - 1, i + 1) : (e.key === 'ArrowLeft' || (v && e.key === 'ArrowUp')) ? Math.max(0, i - 1) : e.key === 'Home' ? 0 : e.key === 'End' ? tiles.length - 1 : -1;
   if (j >= 0) { e.preventDefault(); e.stopPropagation(); tiles.forEach(b => { b.tabIndex = -1; }); tiles[j].tabIndex = 0; tiles[j].focus(); return; }
   if (e.key !== 'Enter' && e.key !== ' ') return;
   e.preventDefault(); e.stopPropagation();
@@ -10913,9 +10993,10 @@ function settingsRender() {
     <h2>${esc(t('표시'))}</h2>
     ${row(t('언어'), t('UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.'), seg('lang', LANG, [['en', 'English'], ['ko', '한국어']]))}
     ${row(t('테마'), t('시스템 설정을 따르거나 라이트/다크로 고정합니다.'), seg('theme', currentTheme, [['system', t('시스템')], ['light', t('라이트')], ['dark', t('다크')]]))}
-    ${row(t('도크 모드'), t('화면 아래 가장자리에 붙는 가로 띠로 세션 상태를 봅니다. 헤더의 ▭ 버튼이나 ⌘⇧D (Windows·Linux: Ctrl+Shift+D)로 전환하고, 띠의 ▣ 버튼으로 패널에 돌아옵니다.'), `<button class="set-btn" data-set="dock-enter">${esc(t('도크로 전환'))}</button>`)}
+    ${row(t('도크 모드'), t('화면 가장자리에 붙는 띠로 세션 상태를 봅니다. 방향은 "도크 방향"에서 고릅니다. 헤더의 ▭ 버튼이나 ⌘⇧D (Windows·Linux: Ctrl+Shift+D)로 전환하고, 띠의 ▣ 버튼으로 패널에 돌아옵니다.'), `<button class="set-btn" data-set="dock-enter">${esc(t('도크로 전환'))}</button>`)}
     ${row(t('시작 시 도크 모드'), t('위젯을 켤 때 도크 모드로 시작합니다.'), sw('dock-start', dockCfg.start))}
     ${row(t('도크 크기'), t('작게: 이름 없는 작은 타일과 낮은 띠. 크게: 큰 타일과 큰 글자.'), seg('dock-size', dockCfg.size, [['sm', t('작게')], ['md', t('보통')], ['lg', t('크게')]]))}
+    ${row(t('도크 방향'), t('아래: 화면 아래 가로 띠. 오른쪽·왼쪽: 화면 옆 가장자리의 세로 띠입니다.'), seg('dock-edge', dockCfg.edge, [['bottom', t('아래')], ['right', t('오른쪽')], ['left', t('왼쪽')]]))}
     ${row(t('마우스가 멀어지면 숨기기'), t('마우스가 띠를 떠나고 2초 뒤 띠가 화면 가장자리로 밀려 8px만 보입니다. 마우스를 가져가거나 말풍선·알림이 뜨면 바로 돌아옵니다.'), sw('dock-autohide', dockCfg.autoHide))}
     ${row(t('선택 말풍선 표시'), t('세션이 선택을 기다릴 때 타일 위에 질문과 선택지를 띄웁니다. "선택지만"은 질문 본문을 숨깁니다.'), seg('dock-ask', dockCfg.ask, [['on', t('켬')], ['options', t('선택지만')], ['off', t('끔')]]), '', true)}
     ${row(t('쉬는 세션 모으기'), t('입력 대기·완료 상태로 이 시간 동안 활동이 없는 세션은 띠 오른쪽의 💤 타일로 모읍니다. 질문·승인 대기, 오류, 고정한 세션은 항상 띠에 남습니다. 💤를 누르면 펼쳐지고, 타일 메뉴(길게 누르기)의 "도크에서 숨기기"로 직접 보낼 수도 있습니다.'), seg('dock-idle', String(dockCfg.idleMin), [['30', t('30분')], ['60', t('1시간')], ['240', t('4시간')], ['0', t('끔')]]))}
@@ -11007,6 +11088,7 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'dock-enter') dockEnter();
   else if (name === 'dock-start') { dockCfg.start = !dockCfg.start; dockSave(); settingsRender(); }
   else if (name === 'dock-size' && ['sm', 'md', 'lg'].includes(v)) { dockCfg.size = v; dockSave(); if (dockOn) { dockSizeApply(); dockDraw(); } settingsRender(); }
+  else if (name === 'dock-edge' && ['bottom', 'right', 'left'].includes(v)) { dockCfg.edge = v; dockSave(); if (dockOn) { dockEdgeApply(); dockDraw(); } settingsRender(); }
   else if (name === 'dock-idle' && ['0', '30', '60', '240'].includes(v)) { dockCfg.idleMin = Number(v); dockSave(); if (dockOn) dockDraw(); settingsRender(); }
   else if (name === 'dock-yield-orca') { dockCfg.yieldOrca = !dockCfg.yieldOrca; dockSave(); dockFront.id = ''; dockFront.at = 0; if (dockOn) { dockAskSync(); dockFrontCheck(true); } settingsRender(); }
   else if (name === 'dock-autohide') { dockCfg.autoHide = !dockCfg.autoHide; dockSave(); if (!dockCfg.autoHide) dockHideSet(false); settingsRender(); }
