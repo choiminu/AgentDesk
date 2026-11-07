@@ -104,6 +104,15 @@ test('widget: a poll that outlasts POLL cannot interleave with the next — fetc
   assert.match(f, /sessions = next;/);
 });
 
+test('widget: a hook card applies the same staleness gate as hookStateFor, so fetch and screenTick agree', () => {
+  // a session whose last hook event is older than HOOK_STALE_MS must resolve to 'done' in BOTH paths — the
+  // full fetch (raw hook state, status stuck 'running' when no Stop hook fired) and screenTick (hookStateFor)
+  // — or the running count oscillates every tick and every climb fires a start notification
+  const f = between(html, 'async function hookOnlySession(h) {', '\n}\n');
+  assert.match(f, /Date\.now\(\) - st\.last <= HOOK_STALE_MS/);
+  assert.match(f, /resolveStatus\('done', screenSt, hk\)/);
+});
+
 test('widget: a term: handle is screen-read only after macOS automation was allowed', () => {
   const fn = between(html, 'function screenReadable(handle) {', '\n');
   assert.match(fn, /startsWith\('tmux:'\) \|\| \(h\.startsWith\('term:'\) && automationAllowed\(\)\)/);
