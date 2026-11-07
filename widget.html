@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-CoznxKqwXfDRvab1AIqHIsUq1s528ibaoC9SlopLFEg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-E+v7UPxikIf4yKhO7Qt64F3PpJrOMIoBgDXZJDA/e0s='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -3083,6 +3083,10 @@ function clearWaitingToast(sessionId) {
   if (el) { el.remove(); persistentToasts.delete(sessionId); }
 }
 
+let fetching = false;   // one poll can outlast POLL (large transcripts, one sessionMeta per hook session): a
+// second fetch must not interleave pushes while the first is still running. The new list is built in a local
+// and swapped in whole at the end — screenTick (2s) must never read a half-built `sessions`: a partial list
+// drops the running count to ~0 mid-fetch, and every refill then reads as "new sessions started" (notif spam)
 async function fetchData() {
   if (DEMO_MODE) {   // the demo data in place of Orca / hooks: the same rendering path, nothing read from this PC
     sessions = demoSessions(); handles.clear();
@@ -3092,6 +3096,8 @@ async function fetchData() {
     } catch {}
     return;
   }
+  if (fetching) return;
+  fetching = true;
   $('footer').classList.add('loading');
   try {
     await hooksReady;
@@ -3142,7 +3148,7 @@ async function fetchData() {
 
     await refreshScreenStatuses();
 
-    sessions = wts.map(w => {
+    const next = wts.map(w => {
       const term = tMap.get(w.worktreeId);
       const a = w.agents?.[0];
       const baseStatus = status(w);
@@ -3179,8 +3185,9 @@ async function fetchData() {
         permissionMode: hk ? (hk.permissionMode || '') : '',
       };
     });
-    for (const h of hookOnly) sessions.push(await hookOnlySession(h));
-    for (const p of procOnly) sessions.push(procSession(p));
+    for (const h of hookOnly) next.push(await hookOnlySession(h));
+    for (const p of procOnly) next.push(procSession(p));
+    sessions = next;   // whole-list swap: the old (complete) list stays visible while this fetch runs
 
     applyStatusTransitions();
     updateCounters();
@@ -3189,7 +3196,7 @@ async function fetchData() {
     renderRateLimits(rateLimits);
     renderDashboard();
   } catch (e) { console.error(e); }
-  finally { $('footer').classList.remove('loading'); inboxRender(); }
+  finally { fetching = false; $('footer').classList.remove('loading'); inboxRender(); }
 }
 
 // orca's agent state lags; what the terminal screen shows right now is the truth for running/waiting.
@@ -5586,7 +5593,11 @@ async function hookOnlySession(h) {
   }
   const folder = st.cwd.split('/').filter(Boolean).pop() || st.cwd;
   const screenSt = screenStatusCache.get(h.id);
-  const finalStatus = st.ended ? 'done' : resolveStatus('done', screenSt, st);
+  // the same staleness gate hookStateFor (screenTick's path) applies: a session whose last hook event is older
+  // than HOOK_STALE_MS has no live state. Without it the full fetch reports its stuck 'running' status while
+  // screenTick reports 'done', and the running count (and its start notifications) oscillates every tick
+  const hk = (!st.ended && Date.now() - st.last <= HOOK_STALE_MS) ? st : null;
+  const finalStatus = resolveStatus('done', screenSt, hk);
   return {
     id: h.id, name: displayNameFor(h.id, meta.title || folder), branch: meta.branch || '', repo: st.cwd, cwd: st.cwd, sessionId: st.sid, ended: !!st.ended,
     status: finalStatus, baseStatus: 'done', agent: st.agent || 'claude', time: st.last,
