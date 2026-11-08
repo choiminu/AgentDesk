@@ -21,6 +21,16 @@ test('claude: prompt → tool → stop → waiting, then ages into done', () => 
   assert.equal(S.hookStatusFor(st), 'done');
 });
 
+test('claude: a running session silent past HOOK_STALE_MS reads done, not a flap back to running', () => {
+  const m = fold(claude('UserPromptSubmit'), claude('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'sleep 1' } }));
+  const st = m.get('c-1');
+  assert.equal(S.hookStatusFor(st), 'running');
+  st.last = Date.now() - S.HOOK_STALE_MS - 1000;   // last hook event 2 h ago, status still 'running'
+  assert.equal(S.hookStatusFor(st), 'done');
+  S.applyHookEvent(claude('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } }), m);
+  assert.equal(S.hookStatusFor(st), 'running');    // a new event brings it back
+});
+
 test('claude: permission prompt and AskUserQuestion mean needs input; PostToolUse clears it', () => {
   const m = fold(claude('UserPromptSubmit'), claude('PermissionRequest'));
   assert.equal(m.get('c-1').needsInput, true); assert.equal(m.get('c-1').status, 'waiting');
