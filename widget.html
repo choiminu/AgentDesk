@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-ubWZf0hbVDJ6usrhRQhYE8Ei6OwYWkScP4siXGThkR8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-NQIqWVM7379VPNlYyVEIjjOd0rP1jnQymXhlAtpcr8Q='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -5933,8 +5933,12 @@ function renderLocalStats() {
   if (askN) parts.push(`${t('선택 응답 평균')} ${Math.round(askMs / askN / 1000)}s`);
   el.hidden = false; el.textContent = parts.join(' · ');
 }
+let lastRunningIds = null;   // running ids at the previous tick: the start notification fires on genuinely new ids, not a count delta
 function updateCounters() {
-    const running = sessions.filter(s => s.status === 'running').length;
+    const runningIds = sessions.filter(s => s.status === 'running').map(s => s.id);
+    const newRunning = lastRunningIds ? runningIds.filter(id => !lastRunningIds.has(id)) : [];   // first tick = baseline, no notification
+    lastRunningIds = new Set(runningIds);
+    const running = runningIds.length;
     const waiting = sessions.filter(s => s.status === 'waiting').length;
     const done = sessions.filter(s => s.status === 'done' || s.status === 'error').length;
 
@@ -5954,7 +5958,7 @@ function updateCounters() {
     $('badge-running').textContent = running + waiting;
     $('badge-done').textContent = done;
 
-    window.orca.sendSessionCounts({ running, waiting, done, asks });
+    window.orca.sendSessionCounts({ running, waiting, done, asks, newRunning });
 }
 
 // fast path: re-read terminal screens only and patch statuses in place

@@ -2,6 +2,7 @@
 // Run: npm test   (node --test)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 await import('../core/notify.js');
 const N = globalThis.AgentDeskNotify;
 
@@ -170,4 +171,17 @@ test('peerAlerts: a per-teammate hourly cap survives new session ids and re-dele
   // the history goes only when the teammate leaves the list
   N.peerAlerts(tr, [], 60 * MIN);
   assert.equal(tr.peerHist.size, 0);
+});
+
+// the aggregate "N sessions started" desktop notification (main.mjs + widget.html wiring): it must fire on
+// genuinely new running ids with a cooldown — a count dip from a flaky poll must not read as new sessions
+test('session-start notification: new ids + 60 s cooldown, not a count delta', () => {
+  const main = readFileSync(new URL('../main.mjs', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+  assert.match(main, /const startNotifyTr = globalThis\.AgentDeskNotify\.createTracker\(\);/);
+  assert.match(main, /const fresh = Array\.isArray\(counts\.newRunning\) \? counts\.newRunning : \[\];/);
+  assert.match(main, /cooldownOk\(startNotifyTr, "start", Date\.now\(\), 60000\)/);
+  assert.doesNotMatch(main, /prevRunningCount/);
+  assert.match(html, /const newRunning = lastRunningIds \? runningIds\.filter\(id => !lastRunningIds\.has\(id\)\) : \[\];/);
+  assert.match(html, /window\.orca\.sendSessionCounts\(\{ running, waiting, done, asks, newRunning \}\);/);
 });
