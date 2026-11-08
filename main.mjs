@@ -18,6 +18,7 @@ import "./core/timeline.js";   // globalThis.AgentDeskTimeline: the card's [타�
 import "./core/version.js";    // globalThis.AgentDeskVersion: release version comparison and installer choice for updates
 import "./core/dock.js";      // globalThis.AgentDeskDock: dock mode window bounds (bottom-centre bar)
 import "./core/desktop.js";   // globalThis.AgentDeskDesktop: global shortcuts, start-at-login entry
+import "./core/notify.js";    // globalThis.AgentDeskNotify: cooldownOk — caps the aggregate session-start notification
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, NODE_CANDIDATES, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { relayState, installRelayAt, uninstallRelayAt } from "./statusline/install.mjs";
 import { scanInventory } from "./skillbook/scan.mjs";
@@ -73,7 +74,7 @@ const MARGIN = 16;
 
 let mainWindow = null;
 let tray = null;
-let prevRunningCount = 0;
+const startNotifyTr = globalThis.AgentDeskNotify.createTracker();
 let saveBoundsTimer = null;
 
 // the app was called "roca" before it became AgentDesk: carry the old profile (window bounds, localStorage) over once
@@ -961,13 +962,16 @@ ipcMain.on("orca:session-counts", (_e, counts) => {
     if (asks > 0) parts.push(`?${asks}`);
     if (IS_MAC) tray.setTitle(parts.length ? ` ${parts.join(" ")}` : "");
   }
-  if (running > prevRunningCount && prevRunningCount >= 0) {
+  // a count dip (a flaky Orca poll shrinks the list for one tick) must not read as "N sessions started":
+  // the renderer sends the ids that are genuinely new since the previous tick; the 60 s cooldown caps a
+  // flapping status at one notification per minute
+  const fresh = Array.isArray(counts.newRunning) ? counts.newRunning : [];
+  if (fresh.length && globalThis.AgentDeskNotify.cooldownOk(startNotifyTr, "start", Date.now(), 60000)) {
     new Notification({
       title: "AgentDesk",
-      body: `${running - prevRunningCount}개 세션이 새로 실행을 시작했습니다`,
+      body: `${fresh.length}개 세션이 새로 실행을 시작했습니다`,
     }).show();
   }
-  prevRunningCount = running;
 });
 
 let resizeAnim = null;
