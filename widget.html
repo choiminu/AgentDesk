@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-NQIqWVM7379VPNlYyVEIjjOd0rP1jnQymXhlAtpcr8Q='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-uuIA7wnSfirO7Ggk2lVYQ21QweU7LLCYT6Xuotnyk/A='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -3243,7 +3243,7 @@ function hooksAgentsSummary() {
   const off = Object.entries(hooksAgents).filter(([, v]) => v === 'off').map(([k]) => AGENT_LABELS[k] || k);
   return { on, off };
 }
-const HOOK_STALE_MS = 2 * 60 * 60 * 1000;
+const HOOK_STALE_MS = AgentDeskStatus.HOOK_STALE_MS;   // one staleness policy: core/status.js hookStatusFor and the hook: lookup both use it
 
 // worktreeId looks like "<uuid>::/abs/path"; pick the freshest hook session whose cwd is inside that path
 function hookStateFor(worktreeId) {

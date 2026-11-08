@@ -38,6 +38,8 @@ function statusFromScreen(lines) {
 // "✻ Worked for 22s · done 2:34 PM" → just finished → waiting for input.
 // "✻ … done Thursday 10:28 AM" (a weekday means another day) or finished > 10 min ago → idle/done.
 const DONE_FRESH_MS = 10 * 60 * 1000;
+// a session with no hook event for this long is not running anymore (the widget's hookStateFor uses the same cutoff)
+const HOOK_STALE_MS = 2 * 60 * 60 * 1000;
 
 function doneLineStatus(t) {
   const after = t.replace(/^.*?\bdone\b/i, '').trim();
@@ -222,6 +224,7 @@ function loopStateFor(st) {
 function hookStatusFor(st) {
   if (!st) return null;
   if (st.status === 'waiting' && Date.now() - st.since > DONE_FRESH_MS) return 'done';
+  if (st.status === 'running' && Date.now() - st.last > HOOK_STALE_MS) return 'done';   // stale 'running' is done, not a flap back to running
   return st.status;
 }
 
@@ -270,7 +273,7 @@ function responseTextFromScreen(lines) {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-const AgentDeskStatus = { SPINNER_RE, DONE_FRESH_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus, loopStateFor, relPath, recordTouch, touchedFiles, TOUCH_WINDOW_MS, displayCols, responseTextFromScreen };
+const AgentDeskStatus = { SPINNER_RE, DONE_FRESH_MS, HOOK_STALE_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus, loopStateFor, relPath, recordTouch, touchedFiles, TOUCH_WINDOW_MS, displayCols, responseTextFromScreen };
 // the widget loads this as a classic <script> (globals); tests `import()` it and read globalThis.AgentDeskStatus
 root.AgentDeskStatus = AgentDeskStatus;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskStatus;
