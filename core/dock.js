@@ -493,7 +493,7 @@ function dockBoundsSide(input) {
   const winW = thickness + extra;
   const winX = Math.round(dir === 'left' ? stripX0 - extra : stripX0);
   return { x: winX, y: winY, width: winW, height: winH, stripX: dir === 'left' ? extra : 0, stripWidth: thickness,
-    stripY, stripHeight: barH, extra, dir, workWidth: wa.width };
+    stripY: stripY - winY, stripHeight: barH, extra, dir, workWidth: wa.width };   // stripY window-relative, like stripX (main adds cur.y, the renderer uses it as margin-top)
 }
 
 // ── panels in the room above / below the bar ──
