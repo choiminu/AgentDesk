@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-/2VV5OmWQVfpu1dZa+uym2qOVObO4rWABKJWnQSidm0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-gEbRUMlOBcdTiq4ic7jKChBPsxVt8Wd1IPhNI+Z9TX4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -4554,7 +4554,7 @@ function dockPopPlace() {
     node.classList.toggle('down', dockDir === 'down');
   };
   const tip = $('dock-tip');
-  if (dockTipKey && !tip.hidden) { const g = dockPopGeom('tipSmall'); if (g) { put(tip, g, false); tail(tip, g, dockTipKey); } }
+  if (dockTipKey && !tip.hidden) { const g = dockPopGeom('tipSmall'); if (g) { put(tip, g, false); tail(tip, g, dockTipKey); } else dockTipHide(); }   // its tile vanished in a redraw: a card with no tile floats stale
   const term = dockTermBg();
   if (term) { const g = dockPopGeom('term'); if (g) { put(term, g, true); tail(term, g, dockTermKey()); } }
   const ut = $('dock-utip');

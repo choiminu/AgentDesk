@@ -327,7 +327,7 @@ test('dockBounds: a panel wider than the bar grows the window sideways around it
 
 test('dockBounds: edge right / left — a vertical bar pinned to the edge, room opens inward', () => {
   const b = dockBounds({ workArea: WA, edge: 'right', contentWidth: 500, height: 72 });
-  assert.deepEqual(b, { x: 1362, y: 213, width: 72, height: 500, stripX: 0, stripWidth: 72, stripY: 213, stripHeight: 500, extra: 0, dir: 'left', workWidth: 1440 });
+  assert.deepEqual(b, { x: 1362, y: 213, width: 72, height: 500, stripX: 0, stripWidth: 72, stripY: 0, stripHeight: 500, extra: 0, dir: 'left', workWidth: 1440 });
   assert.equal(b.x + b.width, 1440 - D.MARGIN, 'the bar touches the right edge minus the margin');
   assert.equal(dockBounds({ workArea: WA, edge: 'right', contentWidth: 100 }).stripHeight, 320, 'stacked at least 320');
   assert.equal(dockBounds({ workArea: WA, edge: 'right', contentWidth: 5000 }).stripHeight, Math.floor(875 * 0.9), 'stacked at most 90 % of the work area');
@@ -348,7 +348,7 @@ test('dockBounds (vertical): the room grows the window sideways; a tall panel gr
   assert.equal(b.x + b.stripX + b.stripWidth, 1440 - D.MARGIN, 'the bar keeps its screen x'); assert.equal(b.stripY, bar.stripY);
   const tall = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, extra: 332, popWidth: 420 });
   assert.equal(tall.height, 420 + 2 * D.MARGIN, 'the window grows for the panel');
-  assert.equal(tall.stripHeight, 400); assert.equal(tall.stripY, bar.stripY, 'the bar stays centred on its remembered y');
+  assert.equal(tall.stripHeight, 400); assert.equal(tall.y + tall.stripY, bar.y + bar.stripY, 'the bar stays centred on its remembered y');
   assert.equal(tall.x + tall.width, 1440 - D.MARGIN); assert.equal(tall.extra, 332);
   const noRoom = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, extra: 0, popWidth: 420 });
   assert.equal(noRoom.height, 400); assert.equal(noRoom.width, 72);
@@ -356,7 +356,7 @@ test('dockBounds (vertical): the room grows the window sideways; a tall panel gr
 
 test('dockBounds (vertical): remembered y = the bar centre, clamped inside the work area', () => {
   const r = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 300 } });
-  assert.equal(r.y, 100); assert.equal(r.stripY, 100); assert.equal(r.stripY + r.stripHeight / 2, 300, 'the bar is centred on the remembered y');
+  assert.equal(r.y, 100); assert.equal(r.stripY, 0); assert.equal(r.y + r.stripY + r.stripHeight / 2, 300, 'the bar is centred on the remembered y');
   const clamped = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 60 } });
   assert.equal(clamped.y, 25, 'clamped below the menu bar');
   assert.equal(dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 10 } }).y, 263, 'a spot off the work area is ignored');
