@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-CoznxKqwXfDRvab1AIqHIsUq1s528ibaoC9SlopLFEg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-gEbRUMlOBcdTiq4ic7jKChBPsxVt8Wd1IPhNI+Z9TX4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -1963,6 +1963,34 @@
   #page-dock.dock-hidden.dock-down.edge-ask .dock-strip { box-shadow: inset 0 -4px 0 var(--yellow); }
   #page-dock.dock-hidden.dock-down.edge-err .dock-strip { box-shadow: inset 0 -4px 0 var(--red); }
   #page-dock.dock-hidden.dock-down.edge-run .dock-strip { box-shadow: inset 0 -4px 0 var(--accent); }
+  /* ── vertical dock (dockCfg.edge 'right' / 'left'): the same bar along the screen's side edge. dock-v = vertical,
+     dock-left = the left edge (default is the right), dock-room-right = the room opens to the right of the bar ── */
+  #page-dock.dock-v { flex-direction: row; }
+  #page-dock.dock-v.dock-left { justify-content: flex-start; }
+  .dock-v .dock-strip { flex-direction: column; width: var(--dock-h, 72px); height: 100%; padding: 8px 0; }
+  .dock-v .dock-tiles { flex-direction: column; min-height: 0; }
+  .dock-v .dock-gsep { width: 32px; height: 1px; margin: 4px 0; background: linear-gradient(90deg, transparent, var(--border) 30%, var(--border) 70%, transparent); }
+  .dock-v .dock-sep { width: 40px; height: 1px; background: linear-gradient(90deg, transparent, var(--border) 25%, var(--border) 75%, transparent); }
+  .dock-v .dock-name, .dock-v .dock-num { display: none; }   /* a 60-84 px column has no room for the name; the hover card and title carry it */
+  .dock-v .dock-tile:hover { transform: translateX(-2px); }
+  .dock-v .dock-tile.sel { transform: translateX(-2px); }
+  .dock-v.dock-left .dock-tile:hover, .dock-v.dock-left .dock-tile.sel { transform: translateX(2px); }
+  .dock-v .dock-right { flex-direction: column; }
+  .dock-v .dock-usage.hearts { flex-direction: column; }
+  .dock-v .dock-tile.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+  .dock-v .dock-tile.drop-after { box-shadow: 0 3px 0 var(--accent); }
+  .dock-v.dock-hidden .dock-strip { transform: translateX(calc(var(--dock-h, 72px) - 8px)); }
+  .dock-v.dock-left.dock-hidden .dock-strip { transform: translateX(calc(8px - var(--dock-h, 72px))); }
+  .dock-v.dock-hidden.edge-ask .dock-strip { box-shadow: inset -4px 0 0 var(--yellow); }
+  .dock-v.dock-hidden.edge-err .dock-strip { box-shadow: inset -4px 0 0 var(--red); }
+  .dock-v.dock-hidden.edge-run .dock-strip { box-shadow: inset -4px 0 0 var(--accent); }
+  .dock-v.dock-left.dock-hidden.edge-ask .dock-strip { box-shadow: inset 4px 0 0 var(--yellow); }
+  .dock-v.dock-left.dock-hidden.edge-err .dock-strip { box-shadow: inset 4px 0 0 var(--red); }
+  .dock-v.dock-left.dock-hidden.edge-run .dock-strip { box-shadow: inset 4px 0 0 var(--accent); }
+  /* the panels point at the bar: the tail on the side that faces it (--tail: the tile's y inside the panel) */
+  .dock-v .dock-tip::after, .dock-v .peer-term-bg.docked::after, .dock-v .dock-bubble::after { left: auto; bottom: auto; right: -6px; top: calc(var(--tail, 50%) - 6px); border: none; border-top: 1px solid var(--border); border-right: 1px solid var(--border); transform: rotate(45deg); }
+  .dock-v.dock-room-right .dock-tip::after, .dock-v.dock-room-right .peer-term-bg.docked::after, .dock-v.dock-room-right .dock-bubble::after { right: auto; left: -6px; border: none; border-top: 1px solid var(--border); border-left: 1px solid var(--border); transform: rotate(-45deg); }
+  .dock-v .dock-bubble::after { border-color: var(--bb-edge); }
   /* hover card (the hover setting off, a "+N" pile, a tile without a terminal window): name, state, 지금 하는 일, last answer */
   .dock-tip { position: fixed; z-index: 160; display: flex; flex-direction: column; gap: 2px; width: 260px; max-width: calc(100vw - 12px); padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-float); font-size: var(--fs-xs); color: var(--text2); pointer-events: none; }
   .dock-tip[hidden] { display: none; }
@@ -2356,7 +2384,7 @@ function trunc(s, n) { return !s ? '' : s.length > n ? s.slice(0, n) + '…' : s
 // ══════════════════════════════════════════
 // default UI language is English; Korean is available from the footer toggle
 let LANG = 'en';
-try { LANG = localStorage.getItem('roca-lang') || 'en'; } catch {}
+try { const saved = localStorage.getItem('roca-lang'); LANG = saved === 'ko' || saved === 'fr' ? saved : 'en'; } catch {}
 const I18N = {
   '퀘스트': 'Quests', '선택하세요': 'Choose one', '미리 고른 대상을 찾을 수 없습니다. 직접 고르세요': 'The preselected target is gone. Please pick one yourself', 'Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다': 'View Jira tickets as quests and hand them to an agent', '맡기기': 'Assign', '새 워크트리에서 시작': 'Start in a new worktree',
   '프런트데스크가 고르는 중…': 'Front desk is choosing…', '난이도': 'Difficulty', '다른 사람': 'Someone else', 'AI 제안': 'AI suggestion', '방해 금지': 'Do not disturb', '도크에서 말풍선·알림 알약·데스크톱 알림을 띄우지 않습니다. 타일 색과 !는 그대로 보입니다. 끄면 기다리던 선택 말풍선이 바로 다시 뜹니다.': 'The dock shows no bubbles, pills or desktop alerts. Tile colours and ! stay. Turning it off brings the waiting choice bubbles straight back.', '도크: ❤ 하트 = 5시간 한도의 남은 양 (하트 하나 10%, 반 칸 5%)': '❤ Hearts = what is left of the 5-hour limit (a heart is 10%, half a heart 5%)', '도크: ◯ 링 = 주간 한도의 남은 양': '◯ Ring = what is left of the weekly limit', '도크: 위 막대 = 5시간 한도를 쓴 양': 'Top bar = how much of the 5-hour limit is used', '도크: 아래 막대 = 주간 한도를 쓴 양': 'Bottom bar = how much of the weekly limit is used', '도크: 사용': 'used', '도크: 남음': 'left', '도크: 다 떨어지면 초기화 시각까지 Claude를 쓸 수 없습니다. 캐릭터 옆 작은 하트 3개는 그 세션의 컨텍스트(대화 기억 공간) 남은 양입니다.': 'When they run out, Claude stops until the reset time. The 3 small hearts beside a character are what is left of that session\'s context window.', '도크: 다 차면 초기화 시각까지 Claude를 쓸 수 없습니다.': 'When a bar is full, Claude stops until the reset time.', '한도 표시': 'Limits as', '하트': 'Hearts', '막대': 'Bars', '도크의 5시간·주간 한도와 세션별 컨텍스트를 하트(5시간)·스태미나 링(주간)·타일 옆 하트 3개(컨텍스트)로 보여 줍니다. 막대를 고르면 예전의 가는 막대 두 개로 돌아갑니다.': 'Shows the 5-hour and weekly limits and each session\'s context as hearts (5-hour), a stamina ring (weekly) and 3 hearts beside each tile (context). Bars brings back the two thin bars.', '퀘스트 게시판': 'Quest board', '보드': 'Board', '담당자': 'Assignee', '나': 'Me', '붙어 있는 의뢰가 없습니다': 'No quests pinned here', '퀘스트 검색': 'Search quests', '칸반 보드로 돌아갑니다': 'Back to the Kanban board', '티켓 내용을 읽고 AI가 고른 제안입니다. 티켓에 적힌 지시에 영향을 받을 수 있으니 확인하고 맡기세요': 'An AI picked this after reading the ticket. Instructions written in the ticket can sway it: check before you assign', '자동 제안에서 열려 autopilot을 꺼 두었습니다': 'Opened from an auto suggestion: autopilot is off', '직접 고르세요': 'Please pick one yourself', 'claude CLI를 실행하지 못했습니다': 'Could not run the claude CLI', '응답이 늦어 중단했습니다': 'Stopped: the answer took too long', '다른 제안이 진행 중입니다': 'Another proposal is in progress', '제안이 목록에 없습니다': 'The proposal was not in the list', '새 퀘스트': 'New quests', '보고 대기': 'Awaiting report',
@@ -2619,7 +2647,7 @@ Object.assign(I18N, {
 Object.assign(I18N, {
   // dock mode — '도크: ' keys keep short words (세션, 완료, 거부 …) out of the phrase dictionary; Korean shows them without it
   '도크 모드 (⌘⇧D / Ctrl+Shift+D)': 'Dock mode (⌘⇧D / Ctrl+Shift+D)', '도크 모드': 'Dock mode', '도크로 전환': 'Switch to dock',
-  '화면 아래 가장자리에 붙는 가로 띠로 세션 상태를 봅니다. 헤더의 ▭ 버튼이나 ⌘⇧D (Windows·Linux: Ctrl+Shift+D)로 전환하고, 띠의 ▣ 버튼으로 패널에 돌아옵니다.': 'Watch your sessions in a thin bar on the bottom edge of the screen. Switch with the ▭ button in the header or ⌘⇧D (Windows / Linux: Ctrl+Shift+D); the bar\'s ▣ button brings the panel back.',
+  '화면 가장자리에 붙는 띠로 세션 상태를 봅니다. 방향은 "도크 방향"에서 고릅니다. 헤더의 ▭ 버튼이나 ⌘⇧D (Windows·Linux: Ctrl+Shift+D)로 전환하고, 띠의 ▣ 버튼으로 패널에 돌아옵니다.': 'Watch your sessions in a thin bar on the edge of the screen — the edge is chosen in "Dock position". Switch with the ▭ button in the header or ⌘⇧D (Windows / Linux: Ctrl+Shift+D); the bar\'s ▣ button brings the panel back.',
   '시작 시 도크 모드': 'Start in dock mode', '위젯을 켤 때 도크 모드로 시작합니다.': 'The widget starts as the dock bar.',
   '도크 흐리게': 'Dock fade', '마우스가 띠를 떠나고 1.5초 뒤 이 불투명도로 흐려집니다. 띠에 마우스를 올리면 다시 선명해집니다.': 'When the pointer leaves the bar, it fades to this opacity after 1.5 s; pointing at it brings it back.',
   '도크: 세션': 'Sessions', '도크: 팀원 세션': 'Teammate sessions', '도크: 대기열': 'queue', '도크: 서브에이전트': 'subagents', '도크: 위임받음': 'delegated to you',
@@ -2649,6 +2677,7 @@ Object.assign(I18N, {
   '📌 고정됨 — 우클릭으로 해제': '📌 Pinned — right-click to unpin', '마스킹을 할 수 없어 보내지 않았습니다': 'Not sent: masking is not available', '보낼 내용이 없습니다': 'Nothing to send', '내용이 너무 깁니다': 'Too long to send',
   '/ · ! · # 로 시작하는 내용은 명령으로 읽힐 수 있어 보내지 않습니다': 'Not sent: text starting with / ! # would be read as a command', '도크: 타이머': 'Timer', '도크: 눌러서 팀 탭에서 봅니다': 'click to see them on the Team tab',
   '도크 크기': 'Dock size', '작게': 'Small', '보통': 'Medium', '크게': 'Large', '작게: 이름 없는 작은 타일과 낮은 띠. 크게: 큰 타일과 큰 글자.': 'Small: small tiles without names and a lower bar. Large: bigger tiles and text.',
+  '도크 방향': 'Dock position', '아래': 'Bottom', '오른쪽': 'Right', '왼쪽': 'Left', '아래: 화면 아래 가로 띠. 오른쪽·왼쪽: 화면 옆 가장자리의 세로 띠입니다.': 'Bottom: a horizontal bar on the bottom edge. Right / Left: a vertical bar on the side edge of the screen.',
   '마우스가 멀어지면 숨기기': 'Hide when the pointer leaves', '마우스가 띠를 떠나고 2초 뒤 띠가 화면 가장자리로 밀려 8px만 보입니다. 마우스를 가져가거나 말풍선·알림이 뜨면 바로 돌아옵니다.': 'Two seconds after the pointer leaves, the bar slides to the screen edge until 8 px show. It comes back when the pointer returns or a bubble or message appears.', '권한 요청은 버튼으로 답하세요': 'Answer a permission request with its buttons', '이 선택지는 도크에서 누를 수 없습니다': 'The dock never presses this option', '잠시 후 다시 누르세요': 'Wait a moment, then press it again',
   '여기서는 허용할 수 없습니다 — 패널에서 내용을 확인하세요': 'Cannot be allowed here — check the request in the panel', '도크: 패널에서 보기': 'View in panel', '전송이 거부되었습니다': 'Send refused', '세션이 입력 대기 상태가 아닙니다': 'The session is not waiting for input', '전송 실패': 'Send failed',
 });
@@ -2786,13 +2815,540 @@ Object.assign(I18N, {
   '저장소를 가져오지 못했습니다': 'Could not fetch the repository', '이 링크에서 설치할 항목을 찾지 못했습니다': 'Nothing installable found at this link', 'Claude CLI를 실행하지 못했습니다': 'Could not run the Claude CLI',
 });
 const I18N_KEYS = Object.keys(I18N).sort((a, b) => b.length - a.length);
+const I18N_FR = {
+  '퀘스트': 'Quêtes', '선택하세요': 'Choisissez', '미리 고른 대상을 찾을 수 없습니다. 직접 고르세요': 'La cible présélectionnée a disparu. Veuillez en choisir une vous-même.',
+  'Jira 티켓을 퀘스트로 보고 에이전트에게 맡깁니다': 'Voir les tickets Jira comme des quêtes et les confier à un agent', '맡기기': 'Confier', '새 워크트리에서 시작': 'Commencer dans un nouveau worktree',
+  '프런트데스크가 고르는 중…': 'La réception choisit…', '난이도': 'Difficulté', '다른 사람': 'Quelqu\'un d\'autre', 'AI 제안': 'Suggestion IA', '방해 금지': 'Ne pas déranger',
+  '도크에서 말풍선·알림 알약·데스크톱 알림을 띄우지 않습니다. 타일 색과 !는 그대로 보입니다. 끄면 기다리던 선택 말풍선이 바로 다시 뜹니다.': 'Le dock n\'affiche ni bulles, ni pastilles, ni alertes bureau. Les couleurs des tuiles et le ! restent. Désactivé, les bulles d\'attente réapparaissent aussitôt.',
+  '도크: ❤ 하트 = 5시간 한도의 남은 양 (하트 하나 10%, 반 칸 5%)': 'Dock : ❤ cœurs = reste de la limite de 5 h (un cœur = 10 %, la moitié = 5 %)',
+  '도크: ◯ 링 = 주간 한도의 남은 양': 'Dock : ◯ anneau = reste de la limite hebdomadaire', '도크: 위 막대 = 5시간 한도를 쓴 양': 'Dock : barre du haut = part utilisée de la limite de 5 h',
+  '도크: 아래 막대 = 주간 한도를 쓴 양': 'Dock : barre du bas = part utilisée de la limite hebdomadaire', '도크: 사용': 'utilisé', '도크: 남음': 'restant',
+  '도크: 다 떨어지면 초기화 시각까지 Claude를 쓸 수 없습니다. 캐릭터 옆 작은 하트 3개는 그 세션의 컨텍스트(대화 기억 공간) 남은 양입니다.': 'Dock : une fois épuisé, Claude est indisponible jusqu\'à la réinitialisation. Les 3 petits cœurs à côté du personnage sont le contexte restant de cette session (mémoire de la conversation).',
+  '도크: 다 차면 초기화 시각까지 Claude를 쓸 수 없습니다.': 'Dock : une fois pleine, Claude est indisponible jusqu\'à la réinitialisation.', '한도 표시': 'Limites en', '하트': 'Cœurs', '막대': 'Barres',
+  '도크의 5시간·주간 한도와 세션별 컨텍스트를 하트(5시간)·스태미나 링(주간)·타일 옆 하트 3개(컨텍스트)로 보여 줍니다. 막대를 고르면 예전의 가는 막대 두 개로 돌아갑니다.': 'Affiche les limites de 5 h et hebdomadaire du dock et le contexte de chaque session en cœurs (5 h), anneau d\'endurance (hebdo) et 3 cœurs à côté de chaque tuile (contexte). Barres remet les deux fines barres d\'avant.',
+  '퀘스트 게시판': 'Tableau des quêtes', '보드': 'Tableau', '담당자': 'Responsable', '나': 'Moi', '붙어 있는 의뢰가 없습니다': 'Aucune quête épinglée ici', '퀘스트 검색': 'Rechercher des quêtes',
+  '칸반 보드로 돌아갑니다': 'Retour au tableau kanban',
+  '티켓 내용을 읽고 AI가 고른 제안입니다. 티켓에 적힌 지시에 영향을 받을 수 있으니 확인하고 맡기세요': 'Suggestion choisie par l\'IA après lecture du ticket. Les instructions écrites dans le ticket peuvent l\'influencer : vérifiez avant de confier',
+  '자동 제안에서 열려 autopilot을 꺼 두었습니다': 'Ouvert depuis une suggestion auto : le pilote automatique est désactivé', '직접 고르세요': 'Veuillez choisir vous-même',
+  'claude CLI를 실행하지 못했습니다': 'Impossible d\'exécuter le CLI claude', '응답이 늦어 중단했습니다': 'Arrêté : la réponse a mis trop de temps',
+  '다른 제안이 진행 중입니다': 'Une autre suggestion est en cours', '제안이 목록에 없습니다': 'La suggestion n\'était pas dans la liste', '새 퀘스트': 'Nouvelles quêtes', '보고 대기': 'En attente de rapport',
+  '설정': 'Paramètres', '표시': 'Apparence', '언어': 'Langue',
+  'UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.': 'Langue de l\'interface. S\'applique aussi aux textes du bureau et aux prompts d\'équipe.', '테마': 'Thème',
+  '시스템 설정을 따르거나 라이트/다크로 고정합니다.': 'Suivre le système ou forcer clair / sombre.', '시스템': 'Système', '라이트': 'Clair', '다크': 'Sombre', '감지와 알림': 'Détection & alertes',
+  '정확 감지 (Claude Code 훅)': 'Détection précise (hooks Claude Code)',
+  '켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 Claude Code 세션도 표시됩니다.': 'Activé. Les états de session arrivent par événements, et les sessions Claude Code lancées dans un terminal s\'affichent aussi.',
+  '꺼져 있습니다. 켜면 ~/.claude/settings.json에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.': 'Désactivé. En l\'activant, les hooks du widget sont ajoutés à ~/.claude/settings.json (hooks existants conservés, sauvegarde dans ~/.roca/). Nécessaire pour que les sessions s\'affichent.',
+  '알림음': 'Carillon', '에이전트가 입력을 기다리기 시작할 때 짧은 소리를 냅니다.': 'Joue un son bref quand un agent commence à attendre votre saisie.', '오피스': 'Bureau', '픽셀 배율': 'Zoom pixel',
+  '자동은 창 크기에 맞춰 정수 배율을 고릅니다.': 'Auto choisit une échelle entière qui tient dans la fenêtre.', '기타': 'Autre', '온보딩 다시 보기': 'Revoir l\'introduction',
+  '소개, 환경 점검, 사용 팁을 다시 표시합니다.': 'Affiche à nouveau l\'introduction, la vérification de l\'environnement et les astuces.', '열기': 'Ouvrir', '훅 스크립트': 'Script de hook',
+  '이벤트 로그': 'Journal d\'événements', '나중에 ⚙ 설정에서 바꿀 수 있습니다.': 'Vous pourrez le changer plus tard dans ⚙ Paramètres.',
+  '헤더의 ⚙ 설정에서 언어, 테마, 정확 감지, 알림음, 픽셀 배율을 바꿀 수 있습니다. 새로 시작하는 Claude Code 세션부터 훅 이벤트가 기록되니, 세션이 안 보이면 프롬프트를 한 번 보내 보세요.': 'Le ⚙ Paramètres de l\'en-tête permet de changer langue, thème, détection précise, carillon et zoom pixel. Les événements de hook sont enregistrés à partir de la prochaine activité Claude Code : si une session ne s\'affiche pas, envoyez-lui un prompt une fois.',
+  '정확 감지 (에이전트 훅)': 'Détection précise (hooks d\'agent)', '켜짐': 'activé', '꺼짐': 'désactivé', '대상': 'cibles', '에이전트 CLI': 'CLI d\'agents',
+  '에이전트 훅 (정확 감지)': 'Hooks d\'agent (détection précise)',
+  '켜져 있습니다. 세션 상태가 이벤트로 정확히 들어오고, 터미널에서 띄운 세션도 표시됩니다.': 'Activé. Les états de session arrivent par événements, et les sessions lancées dans un terminal s\'affichent aussi.',
+  '꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, ~/.roca/에 백업). 세션이 보이려면 필요합니다.': 'Désactivé. En l\'activant, les hooks du widget sont ajoutés à la config de chaque CLI d\'agent installé (config existante conservée, sauvegarde dans ~/.roca/). Nécessaire pour que les sessions s\'affichent.',
+  'claude / gemini / codex 명령을 찾지 못했습니다. 에이전트 CLI를 하나 이상 설치하고 로그인해 주세요.': 'Aucune des commandes claude / gemini / codex trouvée. Installez au moins un CLI d\'agent et connectez-vous.',
+  '꺼져 있습니다. 켜면 설치된 에이전트 CLI 설정에 위젯 훅을 추가합니다(기존 훅 보존, 백업 저장). 정확한 상태(작업 중·선택 필요·완료)를 받으려면 필요합니다.': 'Désactivé. En l\'activant, les hooks du widget sont ajoutés à la config de chaque CLI d\'agent installé (config existante conservée, sauvegarde faite). Nécessaire pour les états précis (en cours, choix requis, terminé).',
+  '설치된 에이전트 CLI(Claude Code · Gemini CLI · Codex CLI)의 설정에 위젯 훅을 등록합니다 (기존 설정은 보존, ~/.roca/에 백업). 이후 새로 시작하는 세션부터 이벤트 기반으로 정확히 감지됩니다. 진행할까요?': 'Enregistre les hooks du widget dans la config de chaque CLI d\'agent installé (Claude Code, Gemini CLI, Codex CLI) ; la config existante est conservée et sauvegardée dans ~/.roca/. Les sessions lancées à partir de maintenant sont détectées précisément par événements. Continuer ?',
+  '터미널 제어 (tmux)': 'Contrôle du terminal (tmux)', '터미널 제어': 'Contrôle du terminal',
+  'Linux에서는 tmux 안에서 실행한 세션만 채팅·지시가 됩니다. tmux가 없으면 상태 표시(훅)와 종료 세션 다시 열기만 동작합니다.': 'Sur Linux, seules les sessions exécutées dans tmux peuvent être chatées ou dirigées. Sans tmux, seuls les états (hooks) et la réouverture des sessions terminées fonctionnent.',
+  'Windows에서는 세션 상태 표시(훅)와 종료 세션 다시 열기(Windows Terminal)만 지원합니다. 채팅·지시는 아직 지원하지 않습니다.': 'Sur Windows, le widget affiche les états de session (hooks) et rouvre les sessions terminées dans Windows Terminal. Le chat et la direction ne sont pas encore pris en charge.',
+  '업데이트': 'Mise à jour', '새 버전': 'Nouvelle version', '사용 가능': 'disponible', '현재': 'actuelle', '최신 버전입니다': 'Vous êtes à jour',
+  '하루에 한 번 GitHub 릴리스를 확인합니다.': 'Vérifie les publications GitHub une fois par jour.', '받기': 'Télécharger', '지금 확인': 'Vérifier maintenant', '내려받는 중': 'Téléchargement',
+  '내려받는 중…': 'Téléchargement…', '릴리스 페이지': 'Page de publication', '다시 받기': 'Réessayer', '받기 실패': 'téléchargement échoué',
+  '이 기기용 설치 파일이 없어 릴리스 페이지를 엽니다': 'aucun installateur pour cette machine ; ouvre la page de publication',
+  '이 기기용 설치 파일이 없어 릴리스 페이지를 열었습니다': 'Aucun installateur pour cette machine ; page de publication ouverte', '내려받았지만 열지 못했습니다': 'Téléchargé mais impossible à ouvrir',
+  '설치 파일을 열었습니다': 'Installateur ouvert', '폴더에서 보여 줍니다': 'Affiché dans le dossier', '내려받은 파일': 'Téléchargé', 'SHA-256 확인 안 됨': 'SHA-256 non vérifié',
+  '업데이트 받기 실패': 'Échec du téléchargement de la mise à jour', '눌러서 릴리스 페이지 열기': 'cliquez pour ouvrir la page de publication',
+  '업데이트 자동 확인': 'Vérifier les mises à jour automatiquement', '꺼 두면 위젯이 GitHub에 접속하지 않습니다.': 'Désactivé, le widget ne contacte jamais GitHub.', '선택 필요': 'Choix requis',
+  '이전 완료': 'Terminés plus anciens', '더 보기': 'Afficher', '접기': 'Réduire', '모두 숨기기': 'Tout masquer',
+  '24시간 넘게 지난 완료 세션을 목록에서 숨깁니다': 'Masque de la liste les sessions terminées depuis plus de 24 heures', '24시간 지난 완료 세션을 숨겼습니다': 'Sessions terminées depuis plus de 24 h masquées',
+  '숨긴 세션': 'Sessions masquées', '개 보기': ' afficher', '숨긴 세션 감추기': 'Masquer à nouveau les sessions masquées', '목록에서 숨기기': 'Masquer de la liste', '다시 표시': 'Afficher à nouveau',
+  '펼치기': 'Déplier', '응답 없음': 'sans réponse', '30분 넘게 도구 호출이나 응답이 없습니다': 'Aucun appel d\'outil ni réponse depuis plus de 30 minutes',
+  '선택을 기다린 시간': 'En attente de votre choix depuis', '마지막 프롬프트': 'Dernier prompt', '마지막 응답': 'Dernière réponse', '최근 도구': 'Outils récents', '위치': 'Emplacement', '컨텍스트': 'Contexte',
+  '지난 노트': 'Notes passées', '불러오는 중…': 'Chargement…', '관련 노트 없음': 'Aucune note liée', '개 파일 변경됨': ' fichier(s) modifié(s) depuis',
+  '/compact 보내기 (컨텍스트 정리)': 'Envoyer /compact (alléger le contexte)', '/compact 전송': '/compact envoyé', '/compact 전송 (수락 미확인)': '/compact envoyé (non confirmé)',
+  '/compact 전송 실패': 'Impossible d\'envoyer /compact', '컨텍스트 90% — /compact 권장': 'contexte à 90 % — /compact conseillé', '오늘 세션': 'aujourd\'hui', '선택 응답 평균': 'réponse moy.',
+  '검색... (repo: agent: term: 접두어 가능)': 'Recherche… (préfixes repo: agent: term:)', '에이전트 자율 조절': 'Autorégulation de l\'agent', '컨텍스트 자동 정리': 'Allègement auto du contexte',
+  '대기 중인 세션의 컨텍스트가 기준치를 넘으면 /compact 를 보냅니다 (30분에 한 번).': 'Envoie /compact à une session en attente dont le contexte a dépassé le seuil (au plus une fois par 30 min).',
+  '끔': 'Désactivé', '반복 실패 개입': 'Intervention en boucle',
+  '같은 도구 호출을 3번 반복하거나 3번 연속 실패하면, 팀이면 PM에게 다른 접근을 요청하고 아니면 세션에 직접 방향 전환을 요구합니다.': 'Quand une session répète 3 fois le même appel d\'outil ou échoue 3 fois de suite, son PM est sollicité pour une autre approche (ou la session elle-même si elle n\'a pas d\'équipe).',
+  '자율 조절 기록': 'Journal d\'autorégulation', '아직 개입한 적이 없습니다.': 'Aucune intervention pour l\'instant.', '건': '', '최근': 'Récent', '보기': 'Afficher', '연속 실패': 'en échec',
+  '반복 시도': 'en répétition', '도구 호출이 연속으로 실패하고 있습니다': 'Les appels d\'outil échouent en série', '같은 도구 호출을 반복하고 있습니다': 'Le même appel d\'outil se répète',
+  '반복 실패 → PM에게 다른 접근 요청': 'boucle → autre approche demandée au PM', '반복 실패 → 다른 접근 요청': 'boucle → autre approche demandée', '오늘의 브리핑': 'Briefing du jour',
+  '오늘은 그만 보기': 'Ne plus afficher aujourd\'hui', '노트': 'notes', '어제 세션': 'sessions hier', '선택 요청': 'requêtes de saisie',
+  '오늘의 브리핑이 화이트보드에 적혔습니다': 'Le briefing du jour est au tableau blanc', '아침 브리핑': 'Briefing du matin', '매일 생성': 'Générer chaque jour',
+  '지정 시각이 지나면 어제 노트·활동·Jira 마감 티켓으로 브리핑을 만들어 화이트보드와 대시보드에 적습니다.': 'Après l\'heure fixée, les notes, l\'activité et les tickets Jira à échéance d\'hier deviennent un briefing sur le tableau blanc et le tableau de bord.',
+  'Jira 마감 티켓은 ~/.agentdesk/jira.json(baseUrl·email·token)을 두거나 Jira 페이지에서 Atlassian(OAuth)으로 로그인하면 함께 읽습니다.': 'Les tickets Jira à échéance sont inclus dès que ~/.agentdesk/jira.json (baseUrl, email, token) existe ou que vous êtes connecté avec Atlassian (OAuth) sur la page Jira.',
+  '지금 생성': 'Générer maintenant', '마지막': 'dernier', '아직 생성된 브리핑이 없습니다.': 'Aucun briefing généré pour l\'instant.', '생성': 'Générer', '생성 중…': 'Génération…',
+  '브리핑 생성을 시작하지 못했습니다 (recall 모듈·MongoDB 확인)': 'Impossible de démarrer le briefing (vérifiez le module recall et MongoDB)',
+  '브리핑 생성 중 — 1~2분 뒤 표시됩니다': 'Génération du briefing — affiché dans une ou deux minutes', '슬랙 창구': 'Accueil Slack', '브리지 상태': 'État du pont',
+  '연결됨 — Slack에서 @멘션이나 DM으로 요청을 받습니다.': 'Connecté — les requêtes arrivent par @mention ou DM sur Slack.',
+  '설정 파일은 있지만 브리지가 꺼져 있습니다.': 'Config trouvée mais le pont n\'est pas en marche.',
+  '~/.agentdesk/slack.json(appToken·botToken)을 만들면 브리지가 자동으로 켜집니다.': 'Créez ~/.agentdesk/slack.json (appToken, botToken) et le pont démarre tout seul.', '재시작': 'Redémarrer',
+  '접수 담당 세션': 'Session d\'accueil',
+  '슬랙 요청을 처음 받아 처리하거나 다른 세션에 넘길 세션입니다. 연결된 세션 중에서 고르세요.': 'La session qui reçoit les requêtes Slack en premier et les traite ou les transfère. Choisissez parmi les sessions connectées.',
+  '지정 안 함': 'Aucune', '접수 기록': 'Journal d\'accueil', '보류': 'en attente', '아직 받은 요청이 없습니다.': 'Aucune requête pour l\'instant.', '접수 담당': 'Accueil',
+  '접수 담당 세션 지정 해제': 'Session d\'accueil retirée',
+  '슬랙 접수: 담당 세션이 없어 보류 — 설정 → 슬랙 창구에서 지정하세요': 'Requête Slack en attente — choisissez une session d\'accueil dans Paramètres → Accueil Slack',
+  '슬랙 스레드에 보고를 보냈습니다': 'rapport publié dans le fil Slack', '슬랙 회신 실패': 'Échec de la réponse Slack', '진행 요약 한 줄': 'En cours en une ligne',
+  '작업 중·대기 중 세션의 최근 대화를 Haiku가 한 문장으로 요약해 카드에 표시합니다 (세션당 5분에 한 번).': 'Haiku résume en une phrase les derniers échanges des sessions actives, affichée sur la carte (une fois par 5 minutes par session).',
+  '지금 하는 일 (5분마다 갱신)': 'En train de faire (actualisé toutes les 5 minutes)', '이전': 'Retour', '다음': 'Suivant', '시작하기': 'Commencer',
+  'AgentDesk에 오신 것을 환영합니다': 'Bienvenue sur AgentDesk',
+  'AI 코딩 에이전트 세션을 한 화면에서 지켜보는 데스크톱 위젯입니다. 세션 상태를 실시간으로 보여주고, 입력이 필요할 때만 알려주며, 픽셀 오피스에서 에이전트들이 일하는 모습을 볼 수 있습니다.': 'Un widget de bureau qui surveille vos sessions d\'agents de codage IA à un seul endroit : état en direct de chaque session, alertes seulement quand votre saisie est requise, et un bureau pixel où l\'on voit les agents au travail.',
+  '픽셀 오피스': 'Bureau pixel', '필요할 때만 알림': 'Alertes seulement si besoin',
+  'Orca 세션과 터미널(iTerm2·Terminal·tmux)에서 띄운 Claude Code 세션을 한 목록에서. 작업 중 / 대기 / 선택 필요 / 완료 상태를 정확히 표시합니다.': 'Sessions Orca et sessions Claude Code lancées dans un terminal (iTerm2, Terminal, tmux) dans une seule liste, avec les états précis en cours / en attente / choix requis / terminé.',
+  '세션마다 캐릭터가 하나씩. 일하는 에이전트는 책상에서, 쉬는 에이전트는 소파에서. PM 자리에 끌어다 놓으면 팀을 만들어 지시를 내립니다.': 'Un personnage par session : les agents qui travaillent sont à leur bureau, les inactifs sur le canapé. Glissez-en un sur le siège PM pour former une équipe et donner des consignes.',
+  '권한 확인이나 질문처럼 정말 당신의 선택이 필요할 때만 알림·배지·알림음이 울립니다.': 'Les notifications, le badge et le carillon sonnent seulement quand un agent a vraiment besoin de vous — une demande de permission ou une question.',
+  '환경 점검': 'Vérification de l\'environnement', '이 컴퓨터에서 무엇을 볼 수 있는지 확인합니다': 'Vérifie ce que cette machine peut afficher',
+  '위젯은 이 컴퓨터의 에이전트 CLI(Claude Code · Gemini CLI · Codex CLI)와 Orca만 읽습니다. 아래 항목이 준비되어야 세션이 나타납니다.': 'Le widget ne lit que les CLI d\'agents de cette machine (Claude Code, Gemini CLI, Codex CLI) et Orca. Les sessions apparaissent dès que les éléments ci-dessous sont prêts.',
+  '확인 중…': 'Vérification…', '설치됨': 'Installé',
+  'claude 명령을 찾지 못했습니다. Claude Code를 설치하고 로그인해 주세요.': 'La commande claude n\'a pas été trouvée. Installez Claude Code et connectez-vous.',
+  'Claude Code 훅 (정확 감지)': 'Hooks Claude Code (détection précise)', '켜져 있습니다. 세션 상태가 이벤트로 정확히 들어옵니다.': 'Activé. Les états de session arrivent par événements.',
+  '꺼져 있습니다. 켜면 ~/.claude/settings.json에 위젯 훅을 추가합니다(기존 훅 보존, 백업 저장). 세션이 보이려면 반드시 필요합니다.': 'Désactivé. En l\'activant, les hooks du widget sont ajoutés à ~/.claude/settings.json (hooks existants conservés, sauvegarde faite). Indispensable pour que les sessions s\'affichent.',
+  '켜기': 'Activer', '발견': 'Trouvé',
+  '선택 사항. Orca를 쓰지 않으면 넘어가세요. Orca 사용자인데 안 잡히면 터미널에서 `orca --version`을 확인하세요.': 'Facultatif. Passez si vous n\'utilisez pas Orca. Si vous l\'utilisez et qu\'il n\'est pas détecté, vérifiez `orca --version` dans un terminal.',
+  '터미널 제어 권한': 'Autorisation de contrôle du terminal', '허용됨': 'Accordée',
+  '채팅 패널에서 터미널로 메시지를 보내거나 탭을 전환하려면 macOS 자동화 권한이 필요합니다. 버튼을 누르면 권한 창이 뜹니다.': 'Envoyer un message à un terminal ou changer d\'onglet depuis le panneau de chat nécessite l\'autorisation d\'automatisation macOS. Le bouton ouvre la demande.',
+  'iTerm2 또는 Terminal이 실행 중일 때 권한을 요청할 수 있습니다. 나중에 첫 사용 시 macOS가 물어봅니다.': 'Peut être demandée tandis qu\'iTerm2 ou Terminal est en cours. Sinon macOS demande à la première utilisation.',
+  '권한 요청': 'Demande d\'autorisation', '다시 확인': 'Revérifier', '설치 중…': 'Installation…', '요청 중…': 'Demande en cours…', '훅 설치 실패': 'Échec de l\'installation des hooks',
+  '권한이 허용되지 않았습니다. 시스템 설정 → 개인정보 보호 및 보안 → 자동화에서 AgentDesk를 허용해 주세요.': 'Autorisation non accordée. Autorisez AgentDesk dans Réglages Système → Confidentialité et sécurité → Automatisation.',
+  '사용 팁': 'Astuces', '준비되었습니다': 'Tout est prêt', '클릭': 'Clic', '더블클릭': 'Double-clic', '우클릭': 'Clic droit', '드래그': 'Glisser',
+  '세션 카드를 누르면 그 에이전트의 터미널(Orca·tmux·iTerm2·Terminal)로 전환되고, 카드의 채팅 버튼이나 오피스 캐릭터를 누르면 채팅 패널이 열려 화면을 읽고 메시지를 보낼 수 있습니다. 종료된 터미널 세션은 claude --resume 으로 다시 엽니다.': 'Cliquez sur une carte de session pour amener le terminal de cet agent au premier plan (Orca, tmux, iTerm2, Terminal) ; le bouton de chat de la carte ou un personnage du bureau ouvre le panneau de chat pour lire son écran et envoyer un message. Les sessions de terminal terminées se rouvrent avec claude --resume.',
+  '채팅': 'Chat', '채팅 패널 열기': 'Ouvrir le panneau de chat', '터미널 전환 실패': 'Impossible de passer au terminal', '해당 세션의 터미널로 바로 전환합니다.': 'Passe directement au terminal de cette session.',
+  '이름 변경, 세션 ID 복사, 인터럽트, 팀 작업 메뉴.': 'Renommer, copier l\'ID de session, interrompre, actions d\'équipe.',
+  '오피스에서 캐릭터를 PM 자리에 놓으면 팀이 만들어지고, 다른 캐릭터를 팀 블록에 넣으면 팀원이 됩니다. PM에게 목표를 주면 브리프와 분담을 제안합니다.': 'Dans le bureau, déposez un personnage sur le siège PM pour créer une équipe et d\'autres dans le bloc pour ajouter des membres. Donnez un objectif au PM et il propose un brief et un partage des tâches.',
+  '헤더에서 테마와 언어를 바꿀 수 있습니다. 새로 시작하는 Claude Code 세션부터 훅 이벤트가 기록되니, 세션이 안 보이면 프롬프트를 한 번 보내 보세요.': 'Thème et langue se changent dans l\'en-tête. Les événements de hook sont enregistrés à partir de la prochaine activité Claude Code : si une session ne s\'affiche pas, envoyez-lui un prompt une fois.',
+  '팀': 'Équipe', '팀 공유': 'Partage d\'équipe', '같은 망의 팀원 세션': 'Sessions des coéquipiers sur le réseau local', '공유 중': 'partage', '서버 꺼짐': 'serveur éteint', '팀원': 'Membre',
+  '연결됨': 'connecté', '연결 안 됨': 'injoignable', '세션 없음': 'aucune session', '세션 정보를 받지 못했습니다': 'aucune donnée de session reçue', '팀 공유가 꺼져 있습니다': 'Le partage d\'équipe est désactivé',
+  '~/.agentdesk/team.json 에 내 이름·공유 토큰·팀원 주소를 적으면 같은 망의 팀원 세션이 여기에 보입니다.': 'Indiquez votre nom, un jeton partagé et les adresses de vos coéquipiers dans ~/.agentdesk/team.json et leurs sessions apparaîtront ici.',
+  '설정 파일 만들기': 'Créer la config', '설정 파일 열기': 'Ouvrir la config', 'team.json 의 peers 가 비어 있습니다': 'peers de team.json est vide',
+  '~/.agentdesk/team.json 에 이름·토큰·팀원 주소를 적으면 켜집니다. 팀원도 같은 토큰을 써야 합니다.': 'S\'active quand ~/.agentdesk/team.json contient un nom, un jeton et des pairs. Les coéquipiers doivent utiliser le même jeton.',
+  'team.json 예시 파일을 만들었습니다. 이름·토큰·팀원 주소를 채우세요': 'Un team.json d\'exemple a été créé. Renseignez le nom, le jeton et les pairs', '설정 파일을 엽니다': 'Ouverture du fichier de config',
+  '팀 공유 켜기': 'Activer le partage d\'équipe',
+  '팀 공유를 켰습니다. 팀 탭에서 팀을 만들거나 초대 코드로 합류하세요': 'Partage d\'équipe activé. Créez une équipe ou rejoignez-en une avec un code d\'invitation dans l\'onglet Équipe',
+  '팀 초대 코드': 'Code d\'invitation d\'équipe',
+  '코드에는 팀 비밀 토큰이 들어 있습니다. Slack DM 등 1:1 로만 전달하세요. 코드는 클립보드로만 복사되고 어디에도 저장되지 않습니다.': 'Le code contient le secret de l\'équipe. Transmettez-le en 1:1 uniquement (ex. un DM Slack). Il est copié dans le presse-papiers et n\'est enregistré nulle part.',
+  '초대 코드 만들기': 'Créer un code d\'invitation', '초대 코드 붙여넣기': 'Coller un code d\'invitation', '아직 팀이 없습니다': 'pas encore dans une équipe', '팀 공유 시작': 'Démarrer le partage d\'équipe',
+  '우리 팀 만들기 (초대 코드 생성)': 'Créer notre équipe (code d\'invitation)', '초대 코드로 합류': 'Rejoindre avec un code d\'invitation',
+  '초대 코드에는 팀 비밀 토큰이 들어 있습니다. Slack DM 등 1:1 로만 전달하세요.': 'Un code d\'invitation contient le secret de l\'équipe. Transmettez-le en 1:1 uniquement (ex. un DM Slack).',
+  '내 이름': 'Mon nom', '내 주소': 'Mon adresse', '이름 변경 실패': 'Échec du renommage',
+  '초대 코드를 클립보드에 복사했습니다. Slack DM 등 1:1 로만 전달하세요': 'Code d\'invitation copié. Transmettez-le en 1:1 uniquement (ex. un DM Slack)',
+  '초대 코드를 만들지 못했습니다': 'Impossible de créer un code d\'invitation',
+  '팀원에게 받은 agentdesk-team:v1: 코드를 붙여 넣으세요. 이 PC의 팀 토큰이 코드의 토큰으로 바뀌고, 초대한 사람이 팀원으로 추가됩니다.': 'Collez le code agentdesk-team:v1: reçu. Ce PC adopte le jeton d\'équipe du code et ajoute l\'invitant comme coéquipier.',
+  '합류': 'Rejoindre', '연결 확인 중': 'Vérification de la connexion', '합류 실패': 'Échec de la jonction', '합류했지만 아직 연결되지 않았습니다': 'Rejoint, mais pas encore connecté',
+  '다음을 누르면 정확 감지(훅) 켜기 (권장)': 'Activer la détection précise (hooks) quand j\'appuie sur Suivant (recommandé)', '켜기(권장)': 'Activer (recommandé)', '오늘 팀': 'Équipe aujourd\'hui',
+  '복사': 'Copier', '티켓': 'Ticket', '한 일': 'Fait', '시각': 'Heure', '진행 중': 'en cours', '오늘 보고나 배치된 티켓이 아직 없습니다': 'Pas encore de rapports ni de tickets affectés aujourd\'hui',
+  '받은 메모': 'Notes reçues', '세션에 전달': 'Transmettre à la session', '무시': 'Ignorer', '발견됨': 'Trouvé', '추가': 'Ajouter', '자동 발견 켜짐': 'détection auto activée', '실패': 'échecs',
+  '15초 간격': 'toutes les 15 s', '메모 남기기': 'Laisser un mot',
+  '받는 사람의 받은편지함에 쌓입니다. 세션에 바로 입력되지 않고, 받는 사람이 [세션에 전달]을 눌러야 전달됩니다.': 'Il va dans la boîte de réception du destinataire. Rien n\'est saisi dans la session tant que le destinataire n\'appuie pas sur [Transmettre à la session].',
+  '보내기': 'Envoyer', '메모를 보냈습니다': 'mot envoyé', '메모 전송 실패': 'Échec du mot', '메모를 전달했습니다': 'mot transmis', '세션에 알리기': 'Prévenir la session',
+  '내 세션에 충돌 주의 문구를 보냅니다': 'Envoie un avertissement de conflit à ma session', '충돌 주의를 보냈습니다': 'avertissement de conflit envoyé', '내 세션과 같은 파일': 'même fichier que ma session',
+  '내 세션과 같은 브랜치': 'même branche que ma session', '팀원 추가': 'Coéquipier ajouté', '이미 등록된 주소': 'Déjà listé', '추가 실패': 'Échec de l\'ajout',
+  '팀 보드를 마크다운 표로 복사했습니다': 'Tableau d\'équipe copié comme tableau Markdown', '팀 탭에서 추가': 'ajouter depuis l\'onglet Équipe', '연결 끊김': 'hors ligne',
+  '클릭: 메모 남기기': 'Clic : laisser un mot', '사무실에 팀원 표시': 'Afficher les coéquipiers dans le bureau',
+  '팀 공유가 켜져 있으면 사무실 맨 아래에 팀원별 구역과 그 PC의 세션 캐릭터를 그립니다 (읽기 전용, 클릭하면 메모 남기기).': 'Quand le partage d\'équipe est activé, trace une zone par coéquipier en bas du bureau avec les personnages de ses sessions (lecture seule ; clic pour laisser un mot).',
+  '대시보드': 'Tableau de bord', '메모': 'Note', '타이머': 'Minuteur', '전체': 'Tous', '실행 중': 'En cours', '완료': 'Terminé', '검색...': 'Recherche…', '대기 중': 'En attente', '작업 중': 'En travail',
+  '입력 대기': 'En attente de saisie', '쉬는 중': 'Inactif', '오류': 'Erreur', '대기': 'En attente', '작업': 'En travail', '휴식': 'Repos', '서브': 'sub', '개발': 'Dev', '조사': 'Recherche',
+  '실행·테스트': 'Exéc/Test', '문서화': 'Doc', '휴게실': 'Salle de repos', '회의실': 'Réunion', 'PM 없음': 'sans PM', '명': '', '새 팀 · PM 자리에 놓으세요': 'Nouvelle équipe · déposez sur le siège PM',
+  'PM 자리 또는 팀 블록에 놓기 · 밖에 놓으면 해제': 'Déposez sur le siège PM ou un bloc d\'équipe · à l\'extérieur = retirer', '대기 (❓=선택 필요)': 'En attente (❓= choix requis)',
+  '완료(휴게실)': 'Terminé (salle de repos)', '자동': 'Auto', '정확 감지 꺼짐': 'Détection précise désactivée', '정확 감지 켜짐': 'Détection précise activée',
+  '클릭: 채팅 · 더블클릭: 터미널 · 드래그: 팀 배치(PM 자리/팀 블록) · 우클릭: 메뉴': 'Clic : chat · double-clic : terminal (Orca ou tmux) · glisser : équipe (siège PM / bloc d\'équipe) · clic droit : menu',
+  'Claude Code hooks로 작업 중/대기/선택 필요를 이벤트 기반으로 정확히 감지합니다 (~/.claude/settings.json에 훅 등록)': 'Détection précise des états en cours / en attente / choix requis par événements via les hooks Claude Code (enregistre les hooks dans ~/.claude/settings.json)',
+  '입력 대기 전환 시 알림음': 'Carillon quand un choix est requis', '확대 배율': 'Zoom', '테마 전환': 'Changer de thème', '최소화': 'Réduire', '복원': 'Restaurer', 'Orca 보기': 'Ouvrir dans Orca',
+  'Orca 터미널로 전환': 'Passer au terminal Orca', '화면 새로고침': 'Actualiser l\'écran', '닫기': 'Fermer', '전송': 'Envoyer', '메시지 입력...': 'Saisissez un message…',
+  '화면을 불러오는 중...': 'Chargement de l\'écran…', '응답 대기 중...': 'En attente de réponse…', '화면 읽기 실패: ': 'Impossible de lire l\'écran : ', '채팅 열기': 'Ouvrir le chat',
+  'Orca 터미널 보기': 'Afficher le terminal Orca', '세션 ID 복사': 'Copier l\'ID de session', '세션 ID 복사됨': 'ID de session copié', '인터럽트 (Esc)': 'Interruption (Échap)',
+  '세션 종료': 'Fermer la session', '세션을 종료할까요?': 'Fermer cette session ?', '팀 목표 지시…': 'Donnez un objectif à l\'équipe…', '팀 브리프·로그 보기': 'Brief & journal d\'équipe',
+  '자동 진행 켜기': 'Déploiement auto activé', '자동 진행 끄기': 'Déploiement auto désactivé', '역할: 개발': 'Rôle : Dev', '역할: 조사': 'Rôle : Recherche', '역할: 실행·테스트': 'Rôle : Exéc/Test',
+  '역할: 문서화': 'Rôle : Doc', '팀에서 해제': 'Retirer de l\'équipe', ' 팀에서 해제': ' retiré de l\'équipe', '이미 PM이 있는 팀입니다': 'Cette équipe a déjà un PM', '이(가) PM이 되었습니다': ' est devenu PM',
+  ' 합류 (': ' a rejoint (', '터미널 핸들을 찾을 수 없습니다': 'Poignée de terminal introuvable', 'PM 세션의 터미널을 찾을 수 없습니다': 'La session PM n\'a pas de terminal',
+  '팀원을 먼저 팀 블록에 드래그하세요': 'Glissez d\'abord les membres dans le bloc d\'équipe', '팀 목표 지시 · ': 'Objectif d\'équipe · ',
+  'PM이 브리프를 작성하고 팀원별 지시를 제안합니다. 제안은 승인 후 전달됩니다.': 'Le PM rédige un brief et propose des tâches par membre. Les propositions sont envoyées après votre approbation.',
+  '예: 로그인 재시도 로직을 추가하고 문서화까지 마무리': 'ex. ajouter la logique de nouvelle tentative de connexion et finir la doc',
+  '이후 지시는 승인 없이 자동 전달': 'Déploier les rounds suivants sans approbation', '취소': 'Annuler', '브리프 작성 요청': 'Demander un brief au PM', 'PM이 브리프를 작성하는 중…': 'Le PM rédige le brief…',
+  'PM이 업무 분배를 정하는 중…': 'Le PM répartit le travail…', '실패: ': 'Échec : ', 'PM 분배안 승인': 'Approuver le plan du PM', '(팀원 매칭 실패)': '(aucun membre correspondant)',
+  '완료 조건: ': 'Terminé quand : ', '선택한 팀원에게 전달': 'Envoyer aux membres sélectionnés', '팀 로그 · ': 'Journal d\'équipe · ', '브리프 v': 'Brief v', '기록이 없습니다': 'Aucune entrée',
+  '팀 작업 완료': 'Travail d\'équipe terminé', '팀 라운드 상한 도달': 'Limite de rounds d\'équipe atteinte', '전달 실패: ': 'Déploiement échoué : ', '전송 거부': 'envoi refusé',
+  '터미널 없음': 'pas de terminal', '작업 완료': 'Travail terminé', '오류 발생': 'Une erreur s\'est produite',
+  '질문 또는 권한 승인이 기다리고 있습니다': 'une question ou une approbation de permission est en attente', '선택이 필요합니다': 'votre choix est requis', '개 세션이 새로 실행을 시작했습니다': ' session(s) ont démarré',
+  '세션이 없습니다': 'Aucune session', '실행 중인 세션이 없습니다': 'Aucune session en cours', '완료된 세션이 없습니다': 'Aucune session terminée',
+  '최근 24시간 내 세션이 없습니다': 'Aucune session dans les dernières 24 heures', '최근 24시간 내 활동한 세션이 없습니다': 'Aucune session active dans les dernières 24 heures',
+  '작업 시작 후 경과': 'Depuis le début du travail', '응답 완료 후 대기': 'En attente depuis la réponse', '마지막 활동': 'Dernière activité', '컨텍스트 사용량': 'Usage du contexte',
+  '가장 오래 대기: ': 'Attente la plus longue : ', '모두 응답 중입니다': 'Tout le monde travaille', '대기 중인 요청이 없습니다': 'Rien ne vous attend', '컨텍스트 주의: ': 'Attention au contexte : ',
+  '선택 필요 ': 'choix requis ', 'Orca CLI 호출 실패': 'Appel du CLI Orca échoué', 'Orca 앱이 실행 중인지, 터미널에서 ': 'Vérifiez que l\'app Orca est en cours et que ',
+  '이 동작하는지 확인하세요.': ' fonctionne dans un terminal.', 'Orca CLI를 찾을 수 없습니다': 'CLI Orca introuvable',
+  'Orca 앱이 /Applications에 설치되어 있는지 확인하세요.': 'Vérifiez que l\'app Orca est installée dans /Applications.', '고정': 'Épingler', '고정 해제': 'Détacher', '인터럽트': 'Interrompre',
+  '종료': 'Fermer', '인터럽트 전송': 'Interruption envoyée', '종료됨': 'Fermé', '개 경로 입력됨': ' chemin(s) inséré(s)', '경로 입력 실패: ': 'Échec de l\'insertion du chemin : ', '새로고침': 'Actualiser',
+  '복사됨': 'copié', '자': ' caractères', '뽀모도로': 'Pomodoro', '집중 25분': 'Concentration 25 min', '휴식 5분': 'Pause 5 min', '긴 휴식 15분': 'Grande pause 15 min', '시작': 'Démarrer',
+  '일시정지': 'Pause', '계속': 'Reprendre', '초기화': 'Réinitialiser', '완료: ': 'Terminé : ', '회': '', '다크 모드 (클릭: 시스템)': 'Mode sombre (clic : système)',
+  '라이트 모드 (클릭: 다크)': 'Mode clair (clic : sombre)', '시스템 모드 (클릭: 라이트)': 'Mode système (clic : clair)', '세션': 'Session', '주간': 'Hebdo',
+  '정확 감지를 끌까요? ~/.claude/settings.json에서 위젯 훅만 제거합니다.': 'Désactiver la détection précise ? Seuls les hooks du widget sont retirés de ~/.claude/settings.json.',
+  'Claude Code 훅을 ~/.claude/settings.json에 등록합니다 (기존 설정은 보존, ~/.roca/에 백업). 이후 새로 시작하는 Claude 세션부터 이벤트 기반으로 정확히 감지됩니다. 진행할까요?': 'Enregistre les hooks Claude Code dans ~/.claude/settings.json (config existante conservée, sauvegarde dans ~/.roca/). Les sessions Claude lancées à partir de maintenant sont détectées précisément par événements. Continuer ?',
+  '훅 설치 실패: ': 'Échec de l\'installation des hooks : ', 'Orca 없이 훅 모드로 동작 중': 'En mode hook (sans Orca)', 'Claude Code 세션': 'Sessions Claude Code', '없음': 'aucun',
+  'Orca가 없습니다': 'Orca n\'est pas disponible',
+  '오피스 탭에서 정확 감지를 켜면 Claude Code 세션을 훅으로 표시합니다.': 'Activez la détection précise dans l\'onglet Bureau pour afficher les sessions Claude Code via les hooks.',
+  '읽기 전용 (tmux 없음)': 'lecture seule (pas de tmux)', '다시 열기': 'Reprendre', '터미널에서 다시 열기 (claude --resume)': 'Rouvrir dans un terminal (claude --resume)',
+  '터미널에서 다시 열었습니다': 'rouvert dans un terminal', '다시 열기 실패': 'Impossible de rouvrir',
+  '클릭하면 터미널에서 claude --resume 으로 다시 엽니다': 'Cliquez pour rouvrir dans un terminal avec claude --resume', '읽기 전용 (터미널 없음)': 'lecture seule (aucun terminal trouvé)',
+  '터미널로 연결됨': 'Connecté à son terminal', '터미널': 'terminal', '연결 가능한 터미널': 'terminaux contrôlables', '터미널 보기': 'Ouvrir le terminal', '터미널 탭으로 전환': 'Passer à l\'onglet terminal',
+  '터미널 탭 보기': 'Afficher l\'onglet terminal', '이름 변경': 'Renommer', '위젯에 표시할 이름 (비우면 원래 이름)': 'Nom affiché dans le widget (laissez vide pour réinitialiser)', '읽기 전용': 'lecture seule',
+  'tmux 보기': 'Ouvrir dans tmux', 'tmux 터미널로 전환': 'Passer au terminal tmux', 'tmux 터미널 보기': 'Afficher le terminal tmux', 'tmux 터미널로 연결됨': 'Connecté via tmux',
+  '훅 전용 모드': 'Mode hook seul', 'Claude Code 훅이 꺼져 있습니다': 'Les hooks Claude Code sont désactivés',
+  '훅을 켜면 정확한 상태로 표시됩니다. tmux 안에서 실행 중인 세션은 채팅과 지시도 가능합니다.': 'Activez les hooks pour des états précis. Les sessions exécutées dans tmux peuvent aussi être chatées et dirigées.',
+  '감지된 세션': 'Sessions détectées', '정확 감지(훅)를 켤까요?': 'Activer la détection précise (hooks) ?',
+  '켜면 설치된 에이전트 CLI의 설정 파일(~/.claude/settings.json 등)에 위젯 훅을 추가해 세션 상태를 이벤트로 정확히 받습니다. 기존 훅은 그대로 두고 ~/.roca/에 백업합니다.': 'Cela ajoute les hooks du widget au fichier de config de chaque CLI d\'agent installé (~/.claude/settings.json et similaires), pour recevoir les états de session par événements précis. Les hooks existants sont conservés et une sauvegarde est faite dans ~/.roca/.',
+  '나중에': 'Plus tard', '다시 묻지 않기': 'Ne plus demander', '훅 없이 감지됨': 'Détecté sans hooks',
+  '훅 이벤트 없이 프로세스 목록에서 찾은 세션입니다. 상태는 터미널 화면을 읽을 수 있을 때만 표시되고, 정확 감지(훅)를 켜면 다음 활동부터 정확해집니다.': 'Trouvé dans la liste des processus, sans événements de hook. Son état s\'affiche seulement quand l\'écran du terminal est lisible ; activez la détection précise (hooks) et il devient précis à partir de la prochaine activité.',
+  '터미널이나 Orca에서 에이전트 CLI(Claude Code·Codex CLI·Gemini CLI)를 시작하면 여기에 나타납니다. 이미 실행 중인 세션도 몇 초 안에 보입니다.': 'Lancez un CLI d\'agent (Claude Code, Codex CLI, Gemini CLI) dans un terminal ou dans Orca et il apparaîtra ici. Les sessions déjà en cours apparaissent aussi en quelques secondes.',
+  '터미널에서 에이전트 CLI를 시작하면 여기에 "훅 없이 감지됨"으로 나타납니다. 정확 감지(훅)를 켜면 상태가 이벤트로 정확해집니다.': 'Lancez un CLI d\'agent dans un terminal et il apparaîtra ici comme « Détecté sans hooks ». Activez la détection précise (hooks) pour des états précis par événements.',
+  '정확 감지 켜기': 'Activer la détection précise',
+  'Orca CLI가 응답하면 Orca, 아니면 Claude Code 훅으로 세션을 찾습니다': 'Utilise Orca quand son CLI répond, sinon trouve les sessions via les hooks Claude Code',
+  '항상 Orca CLI로 세션을 읽고 Orca 터미널로 제어합니다': 'Lit toujours les sessions avec le CLI Orca et les pilote via les terminaux Orca',
+  'Orca를 쓰지 않고 Claude Code 훅으로 세션을 찾습니다. tmux 안의 세션만 채팅·지시 가능': 'N\'appelle jamais Orca ; trouve les sessions via les hooks Claude Code. Seules les sessions dans tmux peuvent être chatées ou dirigées',
+  '훅 전용': 'Hooks seuls', '⚠ 문맥 갱신 필요': '⚠ brief périmé', '⚠ 브리프가 갱신되어 문맥이 오래되었습니다': '⚠ Le brief a été mis à jour ; ce membre a un contexte périmé', '● 작업 중': '● En travail',
+  'Orca 버전': 'Version d\'Orca',
+  '은(는) 지원 범위 밖입니다. 1.4 이상으로 업데이트하면 화면 기반 상태 판독과 채팅이 동작합니다.': ' n\'est pas supporté. Mettez à jour vers 1.4 ou plus récent pour la lecture d\'état par écran et le chat.',
+  '팀원 등록 요청': 'Demandes de coéquipiers',
+  '지금은 이 PC 안에서만 열려 있습니다. 팀을 만들거나 합류하면 같은 네트워크에 내 이름과 세션 상태가 공개됩니다.': 'Pour l\'instant, c\'est ouvert sur ce PC uniquement. Créer ou rejoindre une équipe publie votre nom et l\'état de vos sessions sur le même réseau.',
+  '공유 꺼짐 (이 PC만)': 'partage désactivé (ce PC seulement)', '공유 꺼짐': 'partage désactivé', '다른 네트워크 — 폴링 안 함': 'autre réseau — pas de polling', '다른 네트워크': 'autre réseau',
+  '같은 네트워크에 내 이름과 세션 상태가 공개됩니다. 사무실 망에서만 켜세요.': 'Votre nom et l\'état de vos sessions deviennent visibles sur ce réseau. Activez-le uniquement sur le réseau du bureau.',
+  '우리 팀 만들기': 'Créer notre équipe', '공개하고 계속': 'Partager et continuer', '계속할까요?': 'Continuer ?', '확인': 'OK', '합류를 취소했습니다': 'Jonction annulée',
+  '초대한 사람이 등록 요청을 수락하면 서로 보입니다': 'vous vous verrez quand l\'invitant acceptera votre demande', '공유 끄기': 'Arrêter le partage',
+  '이 PC를 127.0.0.1 전용으로 되돌리고 자동 발견을 끕니다. 팀 토큰과 팀원 목록은 남고, 초대 코드를 다시 만들면 켜집니다.': 'Retour à 127.0.0.1 uniquement, détection auto désactivée. Le jeton d\'équipe et la liste des coéquipiers restent ; créer un code d\'invitation réactive le partage.',
+  '공유가 꺼져 있습니다 (이 PC만). 초대 코드를 만들면 다시 켜집니다.': 'Le partage est désactivé (ce PC seulement). Créer un code d\'invitation le réactive.', '토큰 재발급': 'Réémettre le jeton',
+  '새 팀 토큰을 만듭니다. 지금 팀원은 모두 연결이 끊기고, 새 초대 코드를 받아 다시 합류해야 합니다. 팀원을 내보낼 때 쓰세요.': 'Crée un nouveau jeton d\'équipe. Tous les coéquipiers actuels sont déconnectés et doivent rejoindre à nouveau avec un nouveau code d\'invitation. À utiliser pour exclure quelqu\'un de l\'équipe.',
+  '재발급': 'Réémettre', '삭제': 'Supprimer', '작업 실패': 'Échec', '공유를 껐습니다. 이 PC 안에서만 열려 있습니다': 'Partage désactivé. Ouvert sur ce PC uniquement',
+  '지금 팀원은 모두 연결이 끊깁니다. 새 초대 코드를 만들어 팀원에게 1:1 로 다시 전달해야 합니다. 계속할까요?': 'Tous les coéquipiers actuels sont déconnectés. Il faudra créer un nouveau code d\'invitation et le renvoyer à chacun en 1:1. Continuer ?',
+  '새 토큰을 만들었습니다. 초대 코드를 다시 만들어 팀원에게 전달하세요': 'Nouveau jeton créé. Créez un nouveau code d\'invitation et transmettez-le à vos coéquipiers', '팀원 삭제': 'Retirer un coéquipier',
+  '사무실 망 아님 — 공유 일시 중지': 'hors réseau du bureau — partage en pause', '신원 불일치 — 폴링 중지': 'identité non concordante — polling arrêté', '사무실 망': 'Réseau du bureau',
+  '지금 망은 사무실 망이 아니라 공유를 멈췄습니다.': 'Ce réseau n\'est pas le réseau du bureau, le partage est en pause.', '이 대역에 있을 때만 공유합니다': 'Partage uniquement sur',
+  '지정 안 됨 (모든 망)': 'non défini (tout réseau)', '이 망을 사무실 망으로 추가': 'Ajouter ce réseau comme réseau du bureau', '프롬프트 존': 'Zones de prompt', '존 프롬프트 보내기': 'Envoyer le prompt de zone',
+  '이 내용으로 보내기': 'Envoyer ceci', '다음부터 이 존은 확인 없이 바로 보내기': 'Ne plus confirmer pour cette zone', '존 편집': 'Modifier la zone', '새 존 추가…': 'Nouvelle zone…',
+  '이 존 삭제': 'Supprimer cette zone', '존에서 해제': 'Retirer de la zone', '프롬프트 편집…': 'Modifier le prompt…', '이름': 'Nom', '아이콘': 'Icône', '프롬프트 템플릿': 'Modèle de prompt',
+  '확인 없이 바로 보내기': 'Envoyer sans confirmation', '저장': 'Enregistrer', '드래그해 놓으면 이 프롬프트를 보냅니다': 'Glissez un agent ici pour envoyer ce prompt', '존 작업 응답 완료': 'tâche de zone traitée',
+  '여기에 놓기': 'déposez ici', '배포 문서': 'Doc de déploiement', '릴리스 노트': 'Notes de version', '테스트 보강': 'Plus de tests', '프롬프트 보내기': 'envoyer le prompt',
+  '존 기록 보기': 'Historique de la zone', '존 기록': 'Historique de zone', '캐릭터 바꾸기': 'Changer de personnage', '화이트보드': 'Tableau blanc',
+  '클릭: 가장 오래 기다리는 세션으로 이동해 채팅 열기': 'Clic : aller à la session qui attend le plus et ouvrir le chat', '대기 중인 세션이 없습니다': 'Aucune session en attente',
+  '휴게실 펫 · 클릭하면 좋아합니다': 'Animal de la salle de repos · cliquez pour le caresser', '회사 이름': 'Nom de l\'entreprise', '회사 간판 · 클릭해서 이름 변경': 'Enseigne · cliquez pour renommer',
+  '화면을 읽는 중…': 'Lecture de l\'écran…', '입력 대기가 끝났습니다': 'n\'attend plus de saisie', '직접 입력해서 답하기': 'Saisir une réponse',
+  '선택지를 찾지 못했습니다. 아래에 답을 입력하거나 채팅을 여세요.': 'Aucune option trouvée à l\'écran. Saisissez une réponse ci-dessous ou ouvrez le chat.', '전송됨: ': 'Envoyé : ',
+  '전송 실패: ': 'Échec de l\'envoi : ', '바로 답하기': 'Répondre ici', '템플릿 프롬프트 보내기': 'Envoyer un prompt modèle',
+  '존이 없습니다 — 오피스 탭에서 추가': 'Pas encore de zones — en ajoutez dans l\'onglet Bureau', '지침서 저장소 경로': 'Dossier de directives', '찾음': 'Trouvé',
+  'agentdesk/zones.json 존 세트 사용 중': 'utilise son ensemble de zones agentdesk/zones.json', '폴더를 찾지 못했습니다': 'Dossier introuvable',
+  '프롬프트 존의 {kb}로 치환되는 폴더. 안에 agentdesk/zones.json이 있으면 팀 공용 존 세트로 불러옵니다.': 'Dossier substitué à {kb} dans les prompts de zone. S\'il contient agentdesk/zones.json, il devient l\'ensemble de zones partagé de l\'équipe.',
+  '개 존': ' zones', '카테고리 폴더에서 생성': 'généré depuis les dossiers de catégorie', '지침서 저장소 연결됨': 'Dossier de directives connecté',
+  'README.md가 있는 카테고리 폴더마다 프롬프트 존이 생기고, 프롬프트의 {kb}가 이 경로로 치환됩니다. agentdesk/zones.json이 있으면 그 파일을 우선 사용합니다.': 'Chaque dossier de catégorie avec un README.md devient une zone de prompt, et {kb} dans les prompts pointe vers ce dossier. agentdesk/zones.json, s\'il existe, a la priorité.',
+  '지침서 저장소 경로가 없습니다 — 설정에서 지정하세요': 'Pas de dossier de directives — indiquez-le dans les Paramètres', 'Jira 티켓': 'Tickets Jira', '목록 필터': 'Filtre de liste', '내 담당': 'Affectés à moi',
+  '내가 보고': 'Signalés par me', '표시할 티켓이 없습니다': 'Aucun ticket à afficher', '설명 없음': 'Aucune description',
+  'Orca에 연결된 Jira 사이트가 없습니다. Orca 설정 → Jira에서 사이트를 연결한 뒤 새로고침하세요.': 'Aucun site Jira connecté dans Orca. Connectez-en un dans Paramètres Orca → Jira, puis actualisez.',
+  '배치됨': 'Déployé', '보고 도착': 'Rapport arrivé', '등록됨': 'Publié', '시간 초과': 'Délai dépassé', '버림': 'Abandonné',
+  '댓글 초안 — 고친 뒤 등록하세요 (자동 등록 안 함)': 'Brouillon de commentaire — modifiez-le puis publiez (jamais publié automatiquement)', '버리기': 'Abandonner', 'Jira에 등록': 'Publier sur Jira',
+  '워크트리로 배치': 'Déployer dans un worktree', '더보기': 'Plus', '기존 세션에 연결': 'Envoyer à une session existante', '화면에서 보고 읽기': 'Lire le rapport à l\'écran',
+  '배치 기록 지우기': 'Effacer le déploiement', 'Orca 저장소': 'Dépôt Orca', '워크트리 이름': 'Nom du worktree', '지침 (선택)': 'Consignes (facultatif)', '지침 (필수)': 'Consignes (requis)',
+  '예: 원인 분석만 하고 코드는 고치지 말 것': 'ex. analyser la cause seulement, ne pas modifier le code', 'autopilot 키워드 추가': 'Ajouter le mot-clé autopilot', '만들고 시작': 'Créer et démarrer',
+  'Orca에 등록된 저장소가 없습니다': 'Aucun dépôt enregistré dans Orca', '저장소를 고르세요': 'Choisissez un dépôt',
+  '이름은 영문·숫자·- _ . 만 쓸 수 있습니다': 'Le nom ne peut contenir que lettres, chiffres, - _ .', '워크트리 생성 중… (최대 3분)': 'Création du worktree… (3 min max)', '생성 실패': 'Échec de la création',
+  '세션은 지침을 먼저 받고, 이어서 티켓 내용을 받습니다.': 'La session reçoit d\'abord vos consignes, puis le contenu du ticket.',
+  '이 티켓을 어떻게 다룰지 먼저 알려 주세요': 'Dites d\'abord à l\'agent comment aborder ce ticket', '최근 지침': 'Récent', '에이전트에게 보낼 프롬프트 미리보기': 'Aperçu du prompt envoyé à l\'agent',
+  '보고에 빠진 항목': 'Manquant du rapport', '복사하지 못했습니다': 'Échec de la copie', '링크': 'Lien', '티켓 키 복사': 'Copier la clé du ticket', '티켓 링크 복사': 'Copier le lien du ticket',
+  '담당 세션 터미널로 이동': 'Aller au terminal de sa session', '연결된 세션이 없습니다': 'Aucune session connectée', '세션을 고르세요': 'Choisissez une session', '지침을 입력하세요': 'Saisissez des consignes',
+  '보내는 중…': 'Envoi…', '세션 터미널을 찾을 수 없습니다': 'Terminal de session introuvable', '보고 블록을 찾지 못했습니다': 'Aucun bloc REPORT trouvé',
+  '보고 도착 — Jira 탭에서 댓글 초안 확인': 'rapport arrivé — vérifiez le brouillon de commentaire dans l\'onglet Jira', '세션을 아직 찾지 못했습니다': 'Session pas encore trouvée',
+  '댓글 초안을 버릴까요?': 'Abandonner le brouillon de commentaire ?', '댓글 내용이 비어 있습니다': 'Le commentaire est vide',
+  'Jira가 연결되지 않았습니다. 위 연결 설정에서 Atlassian으로 로그인하거나, Orca 설정 → Jira에서 사이트를 연결하세요.': 'Jira n\'est pas connecté. Connectez-vous avec Atlassian dans la boîte de connexion ci-dessus, ou connectez un site dans Paramètres Orca → Jira.',
+  'OAuth 연결됨': 'OAuth connecté', 'OAuth 연결 안 됨': 'OAuth non connecté', '연결 설정': 'Connexion',
+  '이 시스템에서는 암호화 저장소를 쓸 수 없어 OAuth를 사용할 수 없습니다.': 'Le stockage chiffré n\'est pas disponible sur ce système, OAuth ne peut donc pas être utilisé.',
+  'developer.atlassian.com/console/myapps → OAuth 2.0 integration 만들기 → Permissions: Jira API (read:jira-work, read:jira-user, write:jira-work) → Authorization callback URL': 'developer.atlassian.com/console/myapps → créer une intégration OAuth 2.0 → Permissions : Jira API (read:jira-work, read:jira-user, write:jira-work) → URL de rappel d\'autorisation',
+  '→ Settings에서 Client ID/Secret 복사': '→ copiez le Client ID/Secret dans Settings',
+  'Client Secret 저장됨 — 바꿀 때만 입력': 'Client Secret enregistré — saisissez-le seulement pour le changer', 'Jira 사이트': 'Site Jira', 'Atlassian으로 로그인': 'Se connecter avec Atlassian',
+  '로그아웃': 'Se déconnecter', '저장했습니다. 이제 Atlassian으로 로그인하세요.': 'Enregistré. Connectez-vous maintenant avec Atlassian.',
+  '브라우저에서 Atlassian 로그인을 마치세요… (5분 안에)': 'Terminez la connexion Atlassian dans votre navigateur… (dans les 5 minutes)',
+  'Atlassian 연결을 끊고 저장된 Client ID·Secret·토큰을 지울까요?': 'Déconnecter Atlassian et supprimer le Client ID, le secret et les jetons enregistrés ?', 'Jira 프로젝트': 'Projet Jira',
+  '보드 검색': 'Rechercher un tableau', '내 계정': 'Moi', '배치 중': 'En déploiement', '내 담당만': 'Seulement mes tickets', '필터 지우기': 'Effacer les filtres', '열 편집': 'Modifier les colonnes',
+  '열 순서 바꾸기·숨기기': 'Réordonner ou masquer les colonnes', '배치한 티켓': 'Tickets déployés', '하위 작업': 'Sous-tâches', '담당자 없음': 'Non affecté', '표시할 열이 없습니다': 'Aucune colonne à afficher',
+  '최근 30일': '30 derniers jours', '열 보이기': 'Afficher la colonne', '열 숨기기': 'Masquer la colonne', '최대 300개까지만 표시합니다': 'Affiche au plus 300 tickets',
+  '프로젝트를 불러오지 못했습니다': 'Impossible de charger les projets', '볼 수 있는 Jira 프로젝트가 없습니다': 'Aucun projet Jira visible pour vous', '보드를 불러오지 못했습니다': 'Impossible de charger le tableau',
+  '티켓에 이 댓글을 등록할까요? 되돌릴 수 없습니다.': ' : publier ce commentaire sur le ticket ? Cette action est irréversible.', '등록 실패': 'Échec de la publication',
+  'Jira 댓글 등록됨': 'Commentaire Jira publié', '승인 대기': 'En attente d\'approbation', '이번만 허용': 'Autoriser une fois', '허용': 'Autoriser', '터미널로': 'Demander dans le terminal',
+  '거부 이유 (선택)': 'Motif du refus (facultatif)', '위젯에서 권한 승인': 'Approuver les permissions dans le widget', '승인 대기 시간': 'Délai d\'approbation', '권한 승인 요청': 'Demande de permission',
+  '이미 처리되었거나 만료된 요청입니다': 'Demande déjà traitée ou expirée', '응답 시간이 지나 터미널에서 묻습니다': 'Pas de réponse à temps — demande dans le terminal',
+  '위젯에서 답할 수 있는 권한 요청': 'Demandes de permission à traiter ici',
+  'Claude Code가 도구 권한을 물을 때 세션 카드에 [허용] [거부] [터미널로] 버튼을 띄웁니다. 터미널 질문도 함께 뜹니다. 먼저 답한 쪽이 적용됩니다. 버튼을 누르기 전에는 아무것도 허용되지 않고, 위젯이 꺼져 있거나 대기 시간이 지나면 터미널 질문만 남습니다. 정확 감지(Claude Code)가 켜져 있어야 하며, 새로 시작하는 세션부터 적용됩니다.': 'Quand Claude Code demande une permission d\'outil, la carte de session affiche [Autoriser] [Refuser] [Demander dans le terminal]. La question du terminal apparaît aussi ; la première réponse l\'emporte. Rien n\'est autorisé avant qu\'un bouton ne soit pressé ; si le widget est fermé ou le délai écoulé, seule la question du terminal reste. Nécessite la détection précise (Claude Code) activée ; s\'applique aux sessions lancées à partir de maintenant.',
+  '이 시간이 지나면 위젯 패널이 닫히고 터미널 질문만 남습니다. 터미널 질문도 함께 뜹니다. 먼저 답한 쪽이 적용됩니다.': 'Après ce délai, le panneau du widget se ferme et seule la question du terminal reste. La question du terminal apparaît aussi ; la première réponse l\'emporte.',
+  'Claude Code 설정(~/.claude/settings.json)의 PermissionRequest에 위젯 승인 훅을 추가합니다 (기존 훅 보존, ~/.roca/에 백업). 버튼을 눌러야만 허용·거부되고, 저장되는 허용 규칙은 없습니다. 진행할까요?': 'Ajoute le hook d\'approbation du widget à PermissionRequest dans ~/.claude/settings.json (hooks existants conservés, sauvegarde dans ~/.roca/). Les demandes ne sont autorisées ou refusées que quand vous pressez un bouton, et aucune règle d\'autorisation n\'est enregistrée. Continuer ?',
+  '위젯 권한 승인을 켰습니다. 새로 시작하는 Claude Code 세션부터 적용됩니다': 'Approbation du widget activée. S\'applique aux sessions Claude Code lancées à partir de maintenant',
+  '위젯 권한 승인을 껐습니다': 'Approbation du widget désactivée', '전체 보기': 'Voir tout', '전체를 볼 수 없어 터미널에서 확인하세요': 'L\'intégralité ne peut pas être affichée — vérifiez dans le terminal',
+  '입력이 길어 일부만 표시합니다. 허용은 터미널에서 확인한 뒤 하세요.': 'L\'entrée est trop longue pour être affichée en entier. Autorisez-la depuis le terminal après l\'avoir vérifiée là.',
+  '정확 감지(Claude Code)를 먼저 켜세요': 'Activez d\'abord la détection précise (Claude Code)', '허용함': 'Autorisé', '거부함': 'Refusé', '터미널로 넘김': 'Transmis au terminal', '가드레일': 'Garde-fou',
+  '오늘 가드': 'Garde-fou aujourd\'hui', '가드': 'Garde', '가드레일 기록': 'Journal du garde-fou', '가드레일 (위험 명령 확인)': 'Garde-fou (commandes dangereuses)',
+  '오늘 가드레일이 확인을 요청하거나 차단한 도구 호출': 'Appels d\'outil vérifiés ou bloqués par le garde-fou aujourd\'hui',
+  'Claude Code가 Bash 명령이나 파일 수정(Edit·Write)을 하기 직전에 위험 규칙과 맞춰 봅니다. 걸리면 터미널에서 한 번 더 확인하게 하거나(경고) 막습니다(차단). 위젯이 꺼져 있거나 응답 대기 2초(훅 제한 3초) 안에 판정하지 못하면 아무것도 막지 않습니다. 권한 승인과 별개이며, 새로 시작하는 세션부터 적용됩니다.': 'Juste avant qu\'une commande Bash ou une modification de fichier (Edit, Write) ne soit exécutée par Claude Code, la compare aux règles de commandes risquées. En cas de correspondance, demande à nouveau dans le terminal (avertir) ou refuse (bloquer). Rien n\'est bloqué si le widget est fermé ou s\'il ne peut pas trancher dans son délai de 2 s (le hook en autorise 3). Indépendant des approbations ; s\'applique aux sessions lancées après activation.',
+  '모드': 'Mode', '경고': 'Avertir', '차단': 'Bloquer',
+  '경고: 걸리면 터미널에서 확인을 받습니다. 차단: 차단 등급 규칙은 거부하고 나머지는 확인을 받습니다.': 'Avertir : une correspondance demande dans le terminal. Bloquer : les règles de niveau bloquant sont refusées, le reste demande.',
+  '이 명령이 걸리는지': 'Cette commande est-elle prise ?', '판정': 'Vérifier', '걸리지 않습니다': 'Non prise', '규칙': 'Règles', '규칙 추가': 'Ajouter une règle',
+  '기본값 복원': 'Restaurer les valeurs par défaut', '편집': 'Modifier', '내장': 'intégrée', '사용자': 'personnalisée', '규칙 편집': 'Modifier la règle',
+  '정규식 (500자 이하, 대소문자 무시)': 'Expression régulière (≤ 500 caractères, insensible à la casse)', '도구': 'Outils', '등급': 'Niveau',
+  'Bash는 명령 전체, 파일 도구는 대상 경로와 맞춰 봅니다.': 'Bash : la commande entière. Outils de fichier : le chemin cible.',
+  '내장 판정 대신 이 정규식을 씁니다 (사용자 규칙이 됩니다)': 'Utilise cette expression régulière à la place de la vérification intégrée (devient une règle personnalisée)',
+  '가드레일이 차단했습니다': 'bloqué par le garde-fou', '가드레일 차단': 'Bloqué par le garde-fou',
+  '가드레일을 켰습니다. 새로 시작하는 Claude Code 세션부터 적용됩니다': 'Garde-fou activé. S\'applique aux sessions Claude Code lancées à partir de maintenant', '가드레일을 껐습니다': 'Garde-fou désactivé',
+  '느린 정규식이라 규칙을 껐습니다': 'Règle désactivée : son expression régulière est trop lente', '경로': 'chemin', '정규식이 비어 있습니다': 'L\'expression régulière est vide',
+  '정규식 오류': 'Erreur d\'expression régulière',
+  'Claude Code 설정(~/.claude/settings.json)의 PreToolUse에 가드레일 훅을 추가합니다 (기존 훅 보존, ~/.roca/에 백업). 위젯이 꺼져 있으면 아무것도 막지 않습니다. 진행할까요?': 'Ajoute le hook du garde-fou à PreToolUse dans la config Claude Code (~/.claude/settings.json ; autres hooks conservés, sauvegarde dans ~/.roca/). Rien n\'est bloqué quand le widget n\'est pas en marche. Continuer ?',
+  '느린 차단 규칙입니다 — 설정 → 가드레일에서 정규식을 고치거나 끄세요': 'Règle de blocage lente — corrigez son expression régulière ou désactivez-la dans Paramètres → Garde-fou',
+  '시간 초과로 통과됨': 'passé (réponse en temps écoulé)', '가드레일 시간 초과': 'Garde-fou en temps écoulé', '파일 오류': 'Erreur de fichier',
+  '규칙 파일이 깨져 있습니다. 지금 화면의 설정(마지막으로 읽은 설정, 없으면 기본값)으로 덮어쓸까요?': 'Le fichier de règles est corrompu. L\'écraser avec les réglages affichés ici (la dernière config chargée, ou les valeurs par défaut) ?',
+  '파일을 고치기 전까지 마지막으로 읽은 설정(없으면 차단 모드)으로 동작합니다. 버튼을 누르면 파일을 덮어씁니다.': 'Jusqu\'à ce que le fichier soit réparé, la dernière config chargée est utilisée (mode bloquer si aucune). Presser un bouton écrase le fichier.',
+  '기본 규칙으로 되돌릴까요? 추가한 규칙과 편집 내용이 지워집니다 (모드는 유지).': 'Restaurer les règles par défaut ? Les règles ajoutées et les modifications sont supprimées (le mode reste).',
+  '타임라인': 'Chronologie', '세션 타임라인': 'Chronologie de session', '최근 10분': '10 dernières min', '사용자 대기': 'Attente de l\'utilisateur', '이전 기록 없음': 'Aucun enregistrement antérieur',
+  '이전 이벤트는 로그에 남아 있지 않습니다': 'et avant n\'est plus dans le journal', '최근 2,000건만 표시': 'les 2 000 plus récents seulement', '도구별': 'Par outil', '오래 걸린 호출': 'Appels les plus lents',
+  '읽기·검색': 'Lecture/recherche', '이 구간에 이벤트가 없습니다': 'Aucun événement sur cette période', '이 세션의 기록된 이벤트가 없습니다': 'Aucun événement enregistré pour cette session',
+  '이 세션의 hook 기록을 찾지 못했습니다': 'Aucun enregistrement de hook trouvé pour cette session',
+  '정확한 감지(hook)를 켜면 타임라인이 기록됩니다': 'Activez la détection précise (hooks) pour enregistrer une chronologie', '한도 경고': 'Alerte de limite', '한도 경고 임계값': 'Niveaux d\'alerte de limite',
+  '5시간·주간 한도 사용률이 임계값을 넘으면 토스트와 데스크톱 알림을 한 번 띄웁니다 (레벨별 한 번, 리셋 후 다시).': 'Affiche une fois un toast et une notification bureau quand l\'usage de 5 h ou hebdo passe un niveau (une fois par niveau, de nouveau après une réinitialisation).',
+  '두 값(%) — 앞 값에서 노랑, 뒤 값에서 빨강. 한도 막대 색에도 쓰입니다.': 'Deux valeurs (%) — jaune à la première, rouge à la seconde. Sert aussi aux couleurs des barres de limite.',
+  '임계값은 1~100 사이, 앞 값이 더 작아야 합니다': 'Les niveaux doivent être entre 1 et 100 et le premier plus petit',
+  '세션 파일 기반 추정, 구독 요금제에서는 실제 청구액이 아님': 'Estimé depuis les fichiers de session ; avec un abonnement, ce n\'est pas le montant facturé',
+  '기존 세션에 배치한 티켓은 그 세션의 배치 이전 비용도 포함': 'pour un ticket envoyé à une session existante, cela inclut le coût antérieur de cette session', '비용 미상 세션': 'sessions sans coût',
+  '오늘 배치 비용': 'Coût de déploiement du jour', '티켓별 상위 3': 'Top 3 tickets', '비용': 'Coût', '원격 터미널': 'Terminal distant', '연결 중…': 'Connexion…',
+  '소유자 승인 대기': 'En attente de l\'approbation du propriétaire', '위임 만료·해제': 'Délégation expirée ou révoquée', '화면을 읽을 수 없습니다': 'Impossible de lire l\'écran',
+  '연결 오류': 'Erreur de connexion', '팀원 목록에 없음': 'Pas dans votre liste de coéquipiers', '팀 공유 꺼짐': 'Le partage d\'équipe est désactivé', '위임 확인 중': 'Vérification de la délégation',
+  '중단을 보냈습니다': 'Interruption envoyée', '로컬 네트워크 권한 없음 — 권한을 켠 뒤 다시 위임하세요': 'Pas d\'accès au réseau local — activez l\'autorisation puis déléguez à nouveau',
+  '화면 보기': 'Écran consulté', '열람': 'consulté', '입력 후 Enter — 상대 세션에 그대로 전달됩니다': 'Saisissez puis Entrée — transmis tel quel à la session en face',
+  '입력 대기 상태일 때만 보낼 수 있습니다': 'Peut envoyer seulement quand la session attend une saisie',
+  '상대 화면을 그대로 보여 줍니다 (민감 정보는 가려짐). 승인·선택 프롬프트는 소유자만 답할 수 있습니다.': 'Affiche son écran tel quel (valeurs sensibles masquées). Seul le propriétaire peut répondre aux prompts de permission et de choix.',
+  '로컬 네트워크 권한 없음': 'Pas d\'accès au réseau local', '로컬 네트워크 권한 필요': 'Autorisation réseau local requise', '권한 설정 열기': 'Ouvrir les réglages d\'autorisation',
+  '설정을 열지 못했습니다': 'Impossible d\'ouvrir les Réglages',
+  '로컬 네트워크 권한이 꺼져 있어 팀원 세션을 받을 수 없습니다': 'L\'accès au réseau local est désactivé, les sessions des coéquipiers ne peuvent pas être reçues',
+  'macOS가 이 앱의 사무실 망 연결을 막고 있습니다 (EHOSTUNREACH). 팀원은 내 세션을 볼 수 있지만 나는 팀원 세션을 볼 수 없습니다. 시스템 설정 → 개인정보 보호 및 보안 → 로컬 네트워크에서 이 앱을 켜세요. 켜면 재시작 없이 몇 초 안에 다시 연결됩니다.': 'macOS bloque les connexions de cette app au réseau du bureau (EHOSTUNREACH). Les coéquipiers voient vos sessions, mais vous ne voyez pas les leurs. Activez cette app dans Réglages Système → Confidentialité et sécurité → Réseau local. Elle se reconnecte en quelques secondes, sans redémarrage.',
+  '개발 실행(npm start)은 목록에 "Electron"으로, DMG로 설치한 앱은 "AgentDesk"로 표시됩니다.': 'Un lancement en développement (npm start) est listé comme « Electron » ; l\'app installée depuis le DMG est listée comme « AgentDesk ».',
+  '버튼을 누르면 "개인정보 보호 및 보안" 화면이 열립니다. 아래쪽의 "로컬 네트워크"를 누른 뒤 이 앱의 스위치를 켜세요.': 'Le bouton ouvre « Confidentialité et sécurité ». Descendez jusqu\'à « Réseau local », ouvrez-le et activez cette app.',
+  '로컬 네트워크 권한이 꺼져 있습니다 — 팀 탭의 [권한 설정 열기]를 누르세요': 'L\'accès au réseau local est désactivé — pressez [Ouvrir les réglages d\'autorisation] dans l\'onglet Équipe',
+  '입력 가능': 'Prêt pour la saisie', '주인 승인 필요': 'Approbation du propriétaire requise', '다시 알림': 'Rappel', '위임 세션': 'Session déléguée',
+  '승인은 주인만 할 수 있습니다. 팀 탭에서 ✉ 메모로 알려 주세요': 'Seul le propriétaire peut approuver. Laissez-lui un mot ✉ depuis l\'onglet Équipe', '재알림 간격(분)': 'Intervalle de rappel (min)',
+  '응답 없음 기준(분)': 'Seuil sans réponse (min)',
+  '승인 대기·응답 없음이 계속되면 이 간격마다 토스트와 데스크톱 알림을 다시 띄웁니다(단순 입력 대기는 처음 한 번만 알림). 내 세션과 나에게 위임된 팀원 세션에 적용되고, 세션당 한 시간에 최대 2번입니다. 0이면 끕니다.': 'Quand une session reste en attente d\'approbation ou sans réponse, le toast et la notification bureau se répètent à cet intervalle (une simple attente de saisie n\'alerte qu\'une fois). S\'applique à vos sessions et aux sessions de coéquipiers déléguées à vous, au plus deux fois par heure par session. 0 désactive.',
+  '작업 중인 세션에 이 시간 동안 도구 호출이나 응답이 없으면 응답 없음으로 표시하고 알립니다.': 'Une session en travail sans appel d\'outil ni réponse pendant ce délai est marquée « sans réponse » et vous alerte.',
+  '재알림 간격은 0~240 사이의 정수(분)입니다': 'L\'intervalle de rappel est un entier de 0 à 240 minutes', '응답 없음 기준은 1~600 사이의 정수(분)입니다': 'Le seuil sans réponse est un entier de 1 à 600 minutes',
+  '가드 꺼짐 (hook 없음)': 'garde désactivé (pas de hook)', '가드 꺼짐': 'garde désactivé', '권한 hook 켜짐': 'hook de permission activé', '권한 hook 꺼짐': 'hook de permission désactivé',
+  '오늘 차단·경고': 'bloqués / avertis aujourd\'hui', '가드 상태 알 수 없음': 'état de la garde inconnu', '안전 상태 없음': 'aucun état de sécurité', '신원 모호': 'identité ambiguë',
+  '팀원 PC의 자기 신고 값입니다 (검증되지 않음)': 'Déclaré par le PC du coéquipier (non vérifié)', '팀원에게 보내는 자기 신고 값입니다 (검증되지 않음)': 'Valeur déclarée envoyée aux coéquipiers (non vérifiée)',
+  '같은 주소에 팀원이 둘 이상 등록되어 안전 상태를 받지 않았습니다': 'Plus d\'un coéquipier est enregistré à cette adresse, aucun état de sécurité n\'a été reçu',
+  '구버전이거나, 상대 쪽에서 내 주소에 팀원이 둘 이상 등록되어 있으면 안전 상태가 오지 않습니다': 'Aucun état de sécurité n\'arrive d\'une version antérieure, ou si le coéquipier a plus d\'un coéquipier enregistré à mon adresse',
+  '가드 hook이 설치되어 있지 않습니다': 'Le hook de garde n\'est pas installé', '규칙 동일': 'mêmes règles', '규칙 다름': 'règles différentes', '규칙 해시': 'hash des règles', '검토 대기열': 'File de revue',
+  '대기열 설정': 'Réglages de la file', '대기 중인 항목이 없습니다': 'Rien ne vous attend', '세션 없는 권한 요청': 'Demande de permission (session disparue)', '위임받은 세션': 'Session déléguée',
+  'Jira 보고 대기': 'Rapport Jira en attente', '대기열: 변경 보기': 'File : voir les changements', '대기열: 거부': 'File : refuser',
+  '전송이 거부되었습니다 (세션이 입력 대기 상태인지 확인)': 'Envoi refusé (vérifiez que la session attend une saisie)', '대기열에 포함할 항목': 'Éléments de la file de revue',
+  '헤더의 📥 대기열에 보일 항목을 고릅니다. 대기열은 이미 있는 상태를 모아 보여 줄 뿐, 알림을 따로 띄우지 않습니다.': 'Choisissez ce que la file 📥 de l\'en-tête liste. La file ne rassemble que ce qui est déjà en attente ; elle n\'envoie aucune notification elle-même.',
+  '안전 상태': 'Sécurité', '팀원의 가드가 꺼졌습니다': 'la garde du coéquipier a été désactivée', '팀원 세션이 이 티켓을 작업 중입니다': 'Une session de coéquipier travaille sur ce ticket',
+  '팀원이 작업 중인 티켓': 'Un coéquipier est sur ce ticket', '그래도 배치': 'Déployer quand même', '폴더': 'Dossier', '폴더 선택…': 'Choisir un dossier…', '에이전트': 'Agent',
+  '터미널에서 열기': 'Ouvrir dans un terminal', '폴더를 선택하세요': 'Choisissez un dossier', '터미널 열기 실패': 'Impossible d\'ouvrir un terminal',
+  '사용량 표시 설치 실패': 'Impossible d\'activer l\'affichage de l\'usage',
+  '사용량 표시를 켰습니다. Claude Code 세션이 다음 응답을 받으면 한도 막대가 보입니다': 'Affichage de l\'usage activé. Les barres de limite apparaissent quand une session Claude Code reçoit sa prochaine réponse',
+  '사용량 표시를 껐습니다. 원래 status line 설정으로 되돌렸습니다': 'Affichage de l\'usage désactivé. Votre réglage de status line d\'origine est restauré',
+  'Orca 없이 사용량(5시간·주간 한도)을 표시할까요?': 'Afficher l\'usage du plan (limites de 5 h et hebdo) sans Orca ?',
+  '켜면 ~/.claude/settings.json의 statusLine을 AgentDesk 중계 스크립트로 바꿉니다. 원래 status line은 그대로 실행되어 보이고, 설정은 ~/.roca/에 백업합니다. 끄면 원래 설정으로 되돌립니다. Pro·Max 구독에서 세션이 응답을 받은 뒤부터 보입니다.': 'En l\'activant, statusLine dans ~/.claude/settings.json pointe vers un script relais AgentDesk. Votre status line d\'origine continue de s\'exécuter et de s\'afficher, et le fichier de config est sauvegardé dans ~/.roca/. En le désactivant, l\'original est restauré. Les valeurs apparaissent sur les abonnements Pro/Max après que la session a reçu une réponse.',
+  'Orca 없이 사용량 표시': 'Usage sans Orca',
+  '켜져 있습니다. Claude Code status line 입력의 5시간·주간 한도 사용률을 ~/.roca/usage.json으로 받아 한도 막대에 씁니다(Orca 값이 있으면 Orca 우선). 원래 status line은 그대로 실행됩니다. 끄면 원래 설정으로 되돌립니다.': 'Activé. L\'usage des limites de 5 h et hebdo dans l\'entrée de la status line Claude Code atteint les barres de limite via ~/.roca/usage.json (les valeurs Orca priment quand elles existent). Votre status line d\'origine continue de s\'exécuter. En le désactivant, le réglage d\'origine est restauré.',
+  '꺼짐 — status line 설정이 그 뒤 바뀌어 중계가 동작하지 않습니다. 켜면 지금 설정을 보관하고 다시 중계합니다.': 'Désactivé — le réglage de la status line a changé depuis, le relais ne fonctionne plus. En l\'activant, le réglage actuel est conservé et le relais repart.',
+  '~/.claude/settings.json을 읽을 수 없습니다.': '~/.claude/settings.json ne peut pas être lu.',
+  'Node.js가 필요합니다 (macOS·Linux: /opt/homebrew/bin, /usr/local/bin 또는 PATH의 node. Windows 휴대용 빌드: Node.js를 설치하거나 설치형 빌드를 쓰세요).': 'Nécessite Node.js (macOS / Linux : node dans /opt/homebrew/bin, /usr/local/bin ou PATH. Build portable Windows : installez Node.js ou utilisez le build installable).',
+  '꺼져 있습니다. 켜면 ~/.claude/settings.json의 statusLine을 AgentDesk 중계 스크립트로 바꿔 Orca 없이도 한도 막대를 표시합니다(원래 status line은 그대로 실행, ~/.roca/에 백업). Pro·Max 구독에서만 값이 있습니다.': 'Désactivé. En l\'activant, statusLine dans ~/.claude/settings.json pointe vers un script relais AgentDesk pour afficher les barres de limite sans Orca (votre status line d\'origine continue de s\'exécuter ; sauvegarde dans ~/.roca/). Les valeurs n\'existent que sur les abonnements Pro/Max.',
+  '~/.claude/settings.json의 statusLine을 AgentDesk 중계 스크립트로 바꿉니다. 원래 status line 명령은 중계 스크립트가 같은 입력으로 실행해 그대로 보여 주고, 설정 파일은 ~/.roca/에 백업합니다. 중계 스크립트는 한도 사용률(rate_limits)과 세션 id만 ~/.roca/usage.json에 씁니다. 끄면 원래 설정으로 되돌립니다. 진행할까요?': 'Cela pointe statusLine dans ~/.claude/settings.json vers un script relais AgentDesk. Le relais exécute votre commande de status line d\'origine avec la même entrée et affiche sa sortie inchangée ; le fichier de config est sauvegardé dans ~/.roca/. Le relais n\'écrit que l\'usage des limites (rate_limits) et l\'id de session dans ~/.roca/usage.json. En le désactivant, l\'original est restauré. Continuer ?',
+  '도크 모드 (⌘⇧D / Ctrl+Shift+D)': 'Mode dock (⌘⇧D / Ctrl+Shift+D)', '도크 모드': 'Mode dock', '도크로 전환': 'Passer au dock',
+  '화면 가장자리에 붙는 띠로 세션 상태를 봅니다. 방향은 "도크 방향"에서 고릅니다. 헤더의 ▭ 버튼이나 ⌘⇧D (Windows·Linux: Ctrl+Shift+D)로 전환하고, 띠의 ▣ 버튼으로 패널에 돌아옵니다.': 'Suivez vos sessions dans une fine barre collée au bord de l\'écran — le bord se choisit dans « Position du dock ». Passez avec le bouton ▭ de l\'en-tête ou ⌘⇧D (Windows / Linux : Ctrl+Shift+D) ; le bouton ▣ de la barre ramène le panneau.',
+  '도크 방향': 'Position du dock', '아래': 'En bas', '오른쪽': 'À droite', '왼쪽': 'À gauche', '아래: 화면 아래 가로 띠. 오른쪽·왼쪽: 화면 옆 가장자리의 세로 띠입니다.': 'En bas : barre horizontale sur le bord inférieur. Droite / Gauche : barre verticale sur le bord latéral de l\'écran.',
+  '시작 시 도크 모드': 'Démarrer en mode dock', '위젯을 켤 때 도크 모드로 시작합니다.': 'Le widget démarre en barre de dock.', '도크 흐리게': 'Fondu du dock',
+  '마우스가 띠를 떠나고 1.5초 뒤 이 불투명도로 흐려집니다. 띠에 마우스를 올리면 다시 선명해집니다.': 'Quand le pointeur quitte la barre, elle fonce à cette opacité après 1,5 s ; en pointant dessus, elle redevient nette.',
+  '도크: 세션': 'Sessions', '도크: 팀원 세션': 'Sessions de coéquipiers', '도크: 대기열': 'file', '도크: 서브에이전트': 'sous-agents', '도크: 위임받음': 'déléguées à vous', '도크: 스킬 사용': 'Compétence utilisée',
+  '도크 정렬': 'Ordre du dock', '최신순': 'Plus récentes d\'abord', '직접 정한 순서': 'Mon ordre',
+  '최신순: 가장 최근에 활동한 세션이 왼쪽에 옵니다. 마우스가 타일 위에 있는 동안에는 자리를 바꾸지 않습니다. 타일을 끌어 옮기면 직접 정한 순서로 바뀌고, 최신순을 다시 고르면 끌어 정한 순서를 지웁니다.': 'Plus récentes d\'abord : la session avec l\'activité la plus récente est à gauche. Les tuiles restent en place tant que le pointeur est dessus. Glisser une tuile passe à Mon ordre ; choisir Plus récentes d\'abord de nouveau efface l\'ordre glissé.',
+  '📌 직접 정한 순서로 바꿨습니다 — 설정의 "도크 정렬"에서 최신순으로 되돌립니다': '📌 Passé à Mon ordre — « Ordre du dock » dans les Paramètres ramène Plus récentes d\'abord', '도크: 작업 중': 'en cours',
+  '도크: 입력 대기': 'en attente de saisie', '도크: 승인 필요': 'approbation requise', '도크: 오류': 'erreur', '도크: 완료': 'terminé', '도크: 보냄': 'Envoyé', '도크: 허용': 'Autoriser',
+  '도크: 이번만 허용': 'Autoriser une fois', '도크: 거부': 'Refuser', '도크: 설정': 'Paramètres', '도크: 패널로 펼치기 (⌘⇧D)': 'Déployer en panneau (⌘⇧D)', '도크: 검토 대기열': 'File de revue',
+  '도크: 스킬북': 'Livret de compétences', '도크: 퀘스트': 'Quêtes', 'Jira 페이지에서 연결하세요': 'Connectez sur la page Jira', 'Jira 페이지 열기': 'Ouvrir la page Jira', '도크: 한도': 'Limites du plan',
+  '도크: 더 보기 — 눌러서 패널에서 봅니다': 'plus — cliquez pour les voir dans le panneau', '호버 시 터미널 창 열기': 'Ouvrir la fenêtre du terminal au survol', '도크 애니메이션': 'Animation du dock',
+  '작업 중인 캐릭터의 움직임, 활동 바, 대기·승인 표시의 깜박임을 켭니다. 꺼도 상태 색은 그대로입니다.': 'Les personnages en travail bougent, les barres d\'activité respirent et les marques d\'attente / d\'approbation clignotent. Désactivé : les couleurs d\'état restent.',
+  '말풍선에서 답하세요': 'Répondez dans sa bulle', '팀원 세션의 터미널로는 갈 수 없습니다': 'La session d\'un coéquipier n\'a pas de terminal ici',
+  '팀원 세션의 터미널로는 갈 수 없습니다 — Enter로 원격 창을 엽니다': 'La session d\'un coéquipier n\'a pas de terminal ici — Entrée ouvre sa fenêtre distante', '선택 말풍선 표시': 'Bulles de choix',
+  '도크: 쉬는 세션': 'Sessions inactives', '도크: 도크에서 숨기기': 'Masquer du dock', '도크: 도크에 다시 표시': 'Afficher à nouveau dans le dock', '쉬는 세션 모으기': 'Regrouper les sessions inactives',
+  '30분': '30 min', '4시간': '4 heures',
+  '입력 대기·완료 상태로 이 시간 동안 활동이 없는 세션은 띠 오른쪽의 💤 타일로 모읍니다. 질문·승인 대기, 오류, 고정한 세션은 항상 띠에 남습니다. 💤를 누르면 펼쳐지고, 타일 메뉴(길게 누르기)의 "도크에서 숨기기"로 직접 보낼 수도 있습니다.': 'Les sessions en attente ou terminées sans activité pendant ce délai sont regroupées dans la tuile 💤 à droite de la barre. Les sessions posant une question ou une approbation, en erreur ou épinglées restent toujours dans la barre. Cliquez sur 💤 pour les ouvrir ; « Masquer du dock » dans le menu d\'une tuile (appui long) y en envoie une à la main.',
+  'Orca 사용 중엔 말풍선 접기': 'Plier les bulles quand Orca est au premier plan',
+  'Orca가 앞에 있으면 질문이 이미 터미널에 보이므로 선택 말풍선을 띄우지 않고 타일의 !만 표시합니다. 타일에 마우스를 올리거나 다른 앱으로 넘어가면 말풍선이 펼쳐집니다. macOS 전용입니다.': 'Quand Orca est l\'app au premier plan, la question est déjà sur son terminal, la bulle de choix reste pliée et la tuile n\'affiche que son !. En pointant la tuile ou en passant à une autre app, elle s\'ouvre. macOS uniquement.',
+  '선택지만': 'Options seulement', '켬': 'Activé',
+  '세션이 선택을 기다릴 때 타일 위에 질문과 선택지를 띄웁니다. "선택지만"은 질문 본문을 숨깁니다.': 'Quand une session attend un choix, sa question et ses options s\'affichent au-dessus de sa tuile. « Options seulement » masque le texte de la question.',
+  '검사할 내용이 너무 깁니다': 'Trop long pour vérifier', '가드레일 확인 실패': 'Échec de la vérification du garde-fou',
+  '가드레일 검사 시간·길이 초과': 'Le contrôle du garde-fou a dépassé son temps ou sa longueur', '가드레일 확인 중…': 'Vérification par le garde-fou…',
+  '여기서는 허용할 수 없습니다 — 전체 보기에서 확인하세요': 'Impossible d\'autoriser ici — vérifiez dans la vue complète', '프롬프트가 바뀌었습니다 — 다시 확인하세요': 'Le prompt a changé — vérifiez à nouveau',
+  '선택지를 찾지 못했습니다 — 터미널 창에서 확인하세요': 'Aucune option trouvée — vérifiez dans la fenêtre du terminal', '터미널에서 확인하세요': 'vérifiez dans le terminal',
+  '도크 타일에 마우스를 올리면 그 세션의 터미널 창(화면·입력 줄·[허용][거부])을 바로 띄웁니다. 끄면 이름·상태·지금 하는 일만 작은 카드로 보여 줍니다.': 'En pointant une tuile du dock, la fenêtre du terminal de sa session (écran, ligne de saisie, [Autoriser] [Refuser]) s\'ouvre aussitôt. Désactivé : une petite carte avec le nom, l\'état et la tâche en cours.',
+  '도크: 터미널로': 'Aller au terminal', '중단 실패': 'Échec de l\'interruption', '승인 필요': 'Approbation requise',
+  '내 세션의 터미널 화면입니다 (민감 정보는 가려짐). 입력 대기일 때만 보낼 수 있습니다.': 'L\'écran du terminal de cette session (valeurs sensibles masquées). Vous pouvez envoyer seulement quand elle attend une saisie.',
+  '입력 후 Enter — 세션에 그대로 전달됩니다': 'Saisissez puis Entrée — transmis tel quel à la session',
+  '위임받은 팀원 세션만 터미널 창을 열 수 있습니다 (더블클릭: 팀 탭)': 'Seules les sessions de coéquipiers déléguées à vous ouvrent une fenêtre de terminal (double-clic : onglet Équipe)',
+  '이 세션의 터미널을 찾을 수 없습니다': 'Impossible de trouver le terminal de cette session', '도크: 방해 금지': 'Ne pas déranger', '도크: 방해 금지 켬': 'Ne pas déranger : activé', '도크: 세션 한도': 'Session',
+  '도크: 주간 한도': 'Hebdo', '도크: 초기화': 'réinitialisation', '완료 말풍선': 'Bulles de complétion',
+  '내 세션이 작업을 마치면(작업 중 → 입력 대기·완료) 그 타일 위에 마지막 응답의 첫 줄을 8초 동안 띄웁니다. 누르면 터미널로 갑니다.': 'Quand l\'une de vos sessions cesse de travailler (en cours → en attente / terminé), la première ligne de sa dernière réponse s\'affiche au-dessus de sa tuile pendant 8 s. Cliquez pour aller au terminal.',
+  '가드레일 규칙 꺼짐': 'Règle du garde-fou désactivée', '도크: 새 세션': 'Nouvelle session', '도크: 저장소': 'Dépôt', '도크: 이름': 'Nom', '도크: 만들기': 'Créer', '도크: 고정 해제': 'Détacher',
+  '고정되지 않은 세션입니다 — 끌어서 옮기면 고정됩니다': 'Non épinglée — glissez-la à un nouvel endroit pour l\'épingler',
+  '이 세션에는 지금 보낼 수 없습니다 (입력 대기일 때만)': 'Impossible d\'envoyer à cette session pour l\'instant (seulement quand elle attend une saisie)', '보낼 수 없습니다': 'Impossible d\'envoyer',
+  '2000자로 잘림': 'coupé à 2000 caractères', '보낼까요?': 'Envoyer ceci ?', '📌 고정됨 — 우클릭으로 해제': '📌 Épinglée — clic droit pour détacher',
+  '마스킹을 할 수 없어 보내지 않았습니다': 'Non envoyé : le masquage n\'est pas disponible', '보낼 내용이 없습니다': 'Rien à envoyer', '내용이 너무 깁니다': 'Trop long pour envoyer',
+  '/ · ! · # 로 시작하는 내용은 명령으로 읽힐 수 있어 보내지 않습니다': 'Non envoyé : un texte commençant par / ! # serait lu comme une commande', '도크: 타이머': 'Minuteur',
+  '도크: 눌러서 팀 탭에서 봅니다': 'cliquez pour les voir dans l\'onglet Équipe', '도크 크기': 'Taille du dock', '작게': 'Petit', '보통': 'Moyen', '크게': 'Grand',
+  '작게: 이름 없는 작은 타일과 낮은 띠. 크게: 큰 타일과 큰 글자.': 'Petit : petites tuiles sans noms et barre plus basse. Grand : tuiles et texte plus grands.',
+  '마우스가 멀어지면 숨기기': 'Masquer quand le pointeur s\'éloigne',
+  '마우스가 띠를 떠나고 2초 뒤 띠가 화면 가장자리로 밀려 8px만 보입니다. 마우스를 가져가거나 말풍선·알림이 뜨면 바로 돌아옵니다.': 'Deux secondes après que le pointeur quitte la barre, elle glisse vers le bord de l\'écran jusqu\'à n\'afficher que 8 px. Elle revient quand le pointeur revient ou qu\'une bulle ou un message apparaît.',
+  '권한 요청은 버튼으로 답하세요': 'Répondez à une demande de permission avec ses boutons', '이 선택지는 도크에서 누를 수 없습니다': 'Le dock ne presse jamais cette option',
+  '잠시 후 다시 누르세요': 'Attendez un instant puis pressez à nouveau', '여기서는 허용할 수 없습니다 — 패널에서 내용을 확인하세요': 'Impossible d\'autoriser ici — vérifiez la demande dans le panneau',
+  '도크: 패널에서 보기': 'Voir dans le panneau', '전송이 거부되었습니다': 'Envoi refusé', '세션이 입력 대기 상태가 아닙니다': 'La session n\'attend pas une saisie', '전송 실패': 'Échec de l\'envoi',
+  '중단': 'Interrompre', '입력': 'Saisie', '응답 실패': 'réponse échouée', '정보': 'Infos', '변경': 'Changements', '정리 중': 'compaction',
+  '보고가 도착했습니다 — 이 세션이 바꾼 파일을 봅니다': 'Un rapport est arrivé — voir les fichiers modifiés par cette session', '변경 보기': 'Voir les changements',
+  '커밋하지 않은 변경 (HEAD 기준)': 'Changements non commités (par rapport à HEAD)', '작업 트리': 'Arbre de travail',
+  '기본 브랜치와 갈라진 지점부터의 변경 전체': 'Tout depuis le point de divergence avec la branche par défaut', '브랜치 전체': 'Branche entière', '파일': 'Fichiers', '기준': 'base',
+  '기본 브랜치를 찾지 못해 작업 트리 기준으로 보여 줍니다': 'Aucune branche par défaut trouvée, l\'arbre de travail est affiché à la place', '변경을 읽지 못했습니다': 'Impossible de lire les changements',
+  '변경 없음': 'Aucun changement', '바이너리': 'binaire', '파일이 너무 많아 일부만 표시합니다': 'Trop de fichiers, une partie seulement est affichée', '코멘트': 'Commentaires', '모두 지우기': 'Tout effacer',
+  '줄 번호를 눌러 코멘트를 남기세요': 'Cliquez sur un numéro de ligne pour laisser un commentaire', '세션에 보내기': 'Envoyer à la session',
+  'Finder에서 파일 위치를 엽니다': 'Afficher le fichier dans son dossier', '폴더에서 보기': 'Afficher dans le dossier', '바이너리 파일 — 내용은 표시하지 않습니다': 'Fichier binaire — contenu non affiché',
+  '이 줄에 코멘트': 'Commenter cette ligne', '(파일 끝 개행 없음)': '(pas de retour à la ligne en fin de fichier)', '코멘트 (⌘Enter 추가 · Esc 취소)': 'Commentaire (⌘Entrée ajoute · Échap annule)',
+  'diff가 커서 앞부분만 표시합니다': 'Le diff est grand, seul le début est affiché', '코멘트는 최대': 'Vous pouvez envoyer au plus', '건까지 보낼 수 있습니다': ' commentaires',
+  '코멘트 지우기': 'Effacer les commentaires', '건을 모두 지울까요?': ' — les effacer tous ?', '지우기': 'Effacer', '파일을 열 수 없습니다': 'Impossible d\'ouvrir le fichier',
+  '보내지 않을 코멘트': 'Commentaires non envoyés', '리뷰 코멘트 보내기': 'Envoyer les commentaires de revue',
+  '아래 메시지를 한 줄로 세션에 입력하고 Enter 를 누릅니다.': 'Le message ci-dessous est saisi dans la session en une ligne, puis Entrée est pressée.', '요약 (선택)': 'Résumé (facultatif)',
+  '리뷰 코멘트': 'Commentaires de revue', '건을 보냈습니다': ' envoyés', '(수락 미확인)': '(non confirmé)', '보내지 않은 코멘트': 'Commentaires non envoyés', '건이 남아 있습니다': ' restants',
+  '세션이 입력을 받을 수 없는 상태입니다(선택 중이거나 입력창에 글이 있음)': 'La session ne peut pas prendre de saisie pour l\'instant (un choix est ouvert ou sa ligne de saisie contient du texte)',
+  '보내지 못했습니다': 'Impossible d\'envoyer', '수정': 'Modifié', '유형 변경': 'Type modifié', '추적 안 됨': 'Non suivi',
+  '이 세션의 작업 폴더를 확인할 수 없습니다': 'Impossible de déterminer le dossier de travail de cette session', '홈 디렉터리 저장소는 표시하지 않습니다': 'Un dépôt dans le dossier personnel n\'est pas affiché',
+  '저장소 아님': 'Pas un dépôt git', '코멘트를 하나의 메시지로 세션에 보냅니다': 'Envoie les commentaires à la session en un seul message',
+  '터미널이 연결된 세션에만 보낼 수 있습니다': 'Seules les sessions avec un terminal connecté peuvent le recevoir', '빈 파일 추가': 'Fichier vide ajouté',
+  '표시할 줄 변경이 없습니다 (모드·이름만 변경)': 'Aucun changement de ligne à afficher (mode ou nom seulement)', '최대 건수 초과': 'limite dépassée', '빈 내용': 'vide',
+  '위임을 2시간 연장했습니다': 'Délégation prolongée de 2 heures', '연장 실패': 'Échec de la prolongation', '오프라인': 'Hors ligne', '전송 중...': 'Envoi…',
+  '⚠ 브리프가 갱신되어 문맥이 오래되었습니다 · 우클릭 → 브리프 다시 전달': '⚠ Le brief a changé et ce contexte est périmé · clic droit → renvoyer le brief', '✓ 보고 완료': '✓ Rapporté',
+  '변경한 파일': 'le fichier modifié', '(응답을 읽지 못했습니다)': '(impossible de lire la réponse)', '전달할 터미널 또는 과제가 없습니다': 'Aucun terminal ni tâche à qui envoyer', '전달 실패': 'Échec de l\'envoi',
+  '집중 시간이 끝났습니다! 휴식하세요 ☕': 'C\'est fini le temps de concentration ! Prenez une pause ☕', '휴식이 끝났습니다! 다시 집중하세요 🔥': 'La pause est finie ! Reconcentrez-vous 🔥',
+  '나에게 위임됨': 'déléguées à moi', '내가 위임한': 'déléguées par moi', '나에게 위임된': 'déléguées à moi',
+  '팀원이 이 세션에 입력·중단할 수 있습니다. 시간이 지나면 저절로 해제됩니다': 'Un coéquipier peut saisir et interrompre cette session. La délégation se termine d\'elle-même quand le temps est écoulé',
+  '지금부터 2시간으로 연장': 'Prolonger de 2 heures à compter de maintenant', '연장': 'Prolonger', '회수': 'Révoquer', '위임': 'Déléguer', '원격 입력 기록': 'Journal de saisie distante',
+  '정확 감지(hook)가 켜진 Claude Code 세션만 위임할 수 있습니다': 'Seules les sessions Claude Code avec détection précise (hooks) activée peuvent être déléguées',
+  '연결된 팀원이 없습니다': 'Aucun coéquipier connecté', '팀원에게 위임': 'Déléguer à un coéquipier', '팀원에게 위임…': 'Déléguer à un coéquipier…',
+  '이 세션에 입력·중단을 맡길 팀원을 고르세요. 연결된 팀원만 보입니다.': 'Choisissez le coéquipier qui pourra saisir et interrompre cette session. Seuls les coéquipiers connectés sont listés.',
+  '위임 중': 'déléguée', '세션 위임': 'Déléguer la session', '위임 실패': 'Échec de la délégation', '위임을 회수했습니다': 'Délégation révoquée', '회수 실패': 'Échec de la révocation',
+  '위임·회수·원격 입력·중단·차단 기록입니다 (~/.agentdesk/team-remote.jsonl).': 'Délégations, révocations, saisies distantes, interruptions et blocages (~/.agentdesk/team-remote.jsonl).',
+  '파일 위치 열기': 'Afficher l\'emplacement du fichier', '입력을 보냈습니다': 'Saisie envoyée', '입력을 보냈습니다 (수락 미확인)': 'Saisie envoyée (non confirmée)',
+  '이 세션(Terminal.app 탭)은 원격 중단을 지원하지 않습니다': 'Cette session (un onglet Terminal.app) ne prend pas en charge l\'interruption distante',
+  '상대 세션이 입력 대기 상태가 아닙니다 (빈 프롬프트에서만 받습니다)': 'La session en face n\'attend pas une saisie (elle n\'en accepte qu\'à un prompt vide)',
+  '상대 쪽에서 내 주소에 팀원이 둘 이상 등록되어 있어 거절되었습니다': 'Refusé : le coéquipier a plus d\'un coéquipier enregistré à mon adresse', '위험한 입력으로 차단되었습니다': 'Bloqué comme saisie dangereuse',
+  '위임되지 않은 세션입니다 (회수되었을 수 있습니다)': 'Cette session ne vous est pas déléguée (elle a peut-être été révoquée)', '1분에 20번까지만 보낼 수 있습니다': 'Au plus 20 envois par minute',
+  '원격 입력 실패': 'Échec de la saisie distante', '원격 입력': 'Saisie distante',
+  '원격 입력은 모두 상대 화면에 기록됩니다. 줄바꿈은 한 줄로 합쳐서 보냅니다.': 'Toute saisie distante est enregistrée sur l\'écran du propriétaire. Les sauts de ligne sont fusionnés en une ligne.',
+  '원격 중단': 'Interruption distante', '응답이 없습니다': 'Pas de réponse', '위임이 해제되었습니다': 'délégation terminée', '위임 중인 세션': 'Sessions déléguées',
+  '위임한 세션이 없습니다. 세션 카드 ⋯ 메뉴 → 팀원에게 위임…': 'Aucune session déléguée. Menu ⋯ de la carte de session → Déléguer à un coéquipier…', '전체 회수': 'Tout révoquer',
+  '위임한 세션을 모두 회수합니다. 팀원은 더 이상 입력·중단할 수 없습니다.': 'Révoque toutes les délégations. Les coéquipiers ne peuvent plus saisir ni interrompre vos sessions.', '수락': 'acceptée',
+  '대기 중 아님': 'ne fait pas d\'attente', '횟수 초과': 'limite de fréquence dépassée', 'Claude Code 세션만 위임할 수 있습니다': 'Seules les sessions Claude Code peuvent être déléguées',
+  '권한 모드를 알 수 없거나 꺼져 있어 위임할 수 없습니다 — 정확 감지(hook)가 켜진 Claude Code 세션만 위임할 수 있습니다': 'Impossible de déléguer : le mode de permission est inconnu ou désactivé — seules les sessions Claude Code avec détection précise (hooks) activée peuvent être déléguées',
+  '팀원 주소가 IP가 아니라 위임할 수 없습니다': 'Impossible de déléguer : l\'adresse du coéquipier n\'est pas une IP',
+  '같은 망에 식별되지 않은 팀원 항목(호스트 이름·instance id 없음)이 있어 위임할 수 없습니다': 'Impossible de déléguer : une entrée de coéquipier non identifiée (pas de nom d\'hôte ni d\'instance id) est sur le même réseau',
+  '같은 주소(IP)에 다른 팀원이 있어 위임할 수 없습니다': 'Impossible de déléguer : un autre coéquipier partage cette adresse (IP)', '팀원이 연결되어 있지 않습니다': 'Le coéquipier n\'est pas connecté',
+  '세션을 찾을 수 없습니다': 'Session introuvable', '팀원 식별자(instance id)가 아직 없습니다': 'Le coéquipier n\'a pas encore d\'instance id',
+  '⏸ 접수 담당 세션이 지정되지 않아 보류 중입니다. AgentDesk 설정 → 슬랙 창구에서 담당 세션을 지정하면 바로 전달됩니다.': '⏸ En attente : aucune session d\'accueil n\'est définie. Choisissez-en une dans Paramètres AgentDesk → Accueil Slack et elle sera transmise aussitôt.',
+  '60분 안에 보고가 오지 않아 추적을 멈춥니다. 세션을 직접 확인해 주세요.': 'Pas de rapport dans les 60 minutes, le suivi est arrêté. Vérifiez la session directement.',
+  '(보고 블록을 찾지 못했습니다. 세션 화면을 확인해 주세요.)': '(Aucun bloc REPORT trouvé. Vérifiez l\'écran de la session.)', '토론': 'Débat', '브레인스톰': 'Brainstorming', '코드리뷰': 'Revue de code',
+  '마스터-워커': 'Maître-ouvrier', '브리프 형식을 읽지 못했습니다': 'Impossible de lire le format du brief', '분배 JSON을 읽지 못했습니다': 'Impossible de lire le JSON d\'affectation',
+  '현재 브랜치 {branch}의 변경 사항을 기준으로 배포 문서를 작성해 주세요. 포함할 항목: 배포 대상과 순서, 사전 조건(환경 변수·마이그레이션·의존성), 배포 절차(실행 명령 포함), 배포 후 검증 방법, 롤백 절차. 결과는 docs/deploy/ 아래 마크다운 파일로 저장하고 파일 경로를 알려 주세요.': 'Rédigez un document de déploiement à partir des changements de la branche actuelle {branch}. À inclure : ce qui est déployé et dans quel ordre, les prérequis (variables d\'environnement, migrations, dépendances), les étapes de déploiement (avec les commandes), comment vérifier après le déploiement, et les étapes de retour arrière. Enregistrez-le en fichier Markdown sous docs/deploy/ et indiquez-moi son chemin.',
+  '최근 커밋과 변경 파일을 바탕으로 사용자 관점의 릴리스 노트를 작성해 주세요. 새 기능 / 개선 / 버그 수정 / 주의 사항으로 나누고 각 항목은 한 줄로 정리합니다. CHANGELOG.md 맨 위에 오늘 날짜({date})로 추가해 주세요.': 'Rédigez des notes de version à destination des utilisateurs à partir des derniers commits et fichiers modifiés. Classez-les en Nouveau / Améliorations / Corrections / À savoir, une ligne par point, et ajoutez-les en tête de CHANGELOG.md sous la date d\'aujourd\'hui ({date}).',
+  '방금 변경한 코드({file})에 대해 누락된 테스트를 찾아 추가해 주세요. 경계값과 실패 경로를 우선하고, 기존 테스트 러너로 실행해 통과를 확인한 뒤 추가한 테스트와 결과를 요약해 주세요.': 'Trouvez et ajoutez les tests manquants pour le code que vous venez de modifier ({file}). Commencez par les cas limites et les chemins d\'échec, exécutez-les avec le lanceur de tests existant jusqu\'à ce qu\'ils passent, puis résumez les tests ajoutés et le résultat.',
+  '경로 오류': 'chemin invalide', '중단(오류)': 'Arrêt (erreur)', '사용자 입력 대기': 'en attente de votre saisie',
+  'Claude Code 훅·화면으로만 동작합니다. Codex CLI·Gemini CLI 세션에는 적용되지 않습니다.': 'Fonctionne uniquement via les hooks et les écrans Claude Code. Les sessions Codex CLI et Gemini CLI ne sont pas couvertes.',
+  'Claude Code 전용': 'Claude Code uniquement', '도크: 세션 없음 · 터미널에서 에이전트를 시작하세요': 'Aucune session · lancez un agent dans un terminal',
+  '승인 대기 중인 요청이 없습니다': 'Aucune demande d\'approbation en attente',
+  '터미널이나 Orca에서 에이전트 CLI(Claude Code·Codex CLI·Gemini CLI)를 시작하면 여기에 나타납니다. 이미 실행 중인 세션은 프롬프트를 한 번 보내면 보입니다.': 'Lancez un CLI d\'agent (Claude Code, Codex CLI, Gemini CLI) dans un terminal ou dans Orca et il apparaîtra ici. Une session déjà en cours apparaît après son prochain prompt.',
+  '정확 감지(훅)를 켜면 터미널에서 실행한 에이전트 세션이 여기에 나타납니다.': 'Activez la détection précise (hooks) et les sessions d\'agents lancées dans un terminal apparaîtront ici.',
+  '에이전트 세션을 시작하면 캐릭터가 자리에 앉습니다': 'Lancez une session d\'agent et son personnage prend place à un bureau',
+  '설정 파일(~/.agentdesk/team.json)을 읽지 못했습니다. 파일을 고치거나 지운 뒤 다시 켜세요.': 'Impossible de lire le fichier de config (~/.agentdesk/team.json). Réparez-le ou supprimez-le, puis réactivez le partage.',
+  '켜면 이 PC 안에서만 준비됩니다. 그다음 팀을 만들어 초대 코드를 나누거나, 받은 초대 코드로 합류하면 같은 사무실 망의 팀원 세션이 여기에 보입니다. 외부로 나가는 글은 비밀 패턴을 가린 뒤 공유됩니다.': 'En l\'activant, le partage est préparé sur ce PC uniquement. Puis créez une équipe et partagez son code d\'invitation, ou rejoignez-en une avec un code reçu, et les sessions des coéquipiers du même réseau du bureau apparaîtront ici. Les motifs secrets sont masqués avant tout partage.',
+  '로그인 시 시작': 'Démarrer à la connexion', '설치한 앱에서만 켤 수 있습니다 (개발 실행에서는 쓸 수 없습니다).': 'Disponible dans l\'app installée uniquement (pas en lancement en développement).',
+  '컴퓨터에 로그인하면 AgentDesk를 자동으로 실행합니다.': 'Démarré AgentDesk quand vous vous connectez à cet ordinateur.', '전역 단축키': 'Raccourcis globaux',
+  '위젯에 포커스가 없어도 ⌘⇧D(도크 전환)와 ⌘⇧A(가장 급한 승인 요청 열기)가 동작합니다. Windows·Linux는 Ctrl+Shift입니다. ⌘⇧A·⌘⇧D 는 다른 앱의 단축키와 겹칠 수 있어 기본은 꺼짐입니다.': '⌘⇧D (dock on/off) et ⌘⇧A (ouvrir la demande d\'approbation la plus urgente) fonctionnent même quand le widget n\'est pas au premier plan. Ctrl+Shift sur Windows et Linux. Désactivés par défaut car ⌘⇧A et ⌘⇧D peuvent entrer en conflit avec les raccourcis d\'autres apps.',
+  '등록 실패(다른 앱이 사용 중)': 'non enregistré (utilisé par une autre app)', '설정을 바꾸지 못했습니다': 'Impossible de changer le réglage',
+  '소개·환경 점검·도크와 조작·팀 공유·연동·업데이트 안내를 다시 표시합니다.': 'Affiche à nouveau l\'introduction, la vérification de l\'environnement, le dock et les commandes, le partage d\'équipe, les intégrations et les mises à jour.',
+  'Jira가 연결되지 않았습니다. 위 "연결 설정"에 Atlassian OAuth 앱의 Client ID·Secret을 넣고 로그인하세요 (앱 만드는 방법: 저장소의 docs/JIRA-SETUP.md). Orca를 쓰면 Orca 설정 → Jira 연결도 쓸 수 있습니다.': 'Jira n\'est pas connecté. Saisissez le Client ID et le Secret de votre app OAuth Atlassian sous « Connexion » ci-dessus et connectez-vous (comment créer l\'app : docs/JIRA-SETUP.md dans le dépôt). Les utilisateurs d\'Orca peuvent aussi connecter Jira dans les réglages Orca.',
+  'AgentDesk는 이 컴퓨터에서 실행 중인 AI 코딩 에이전트 세션을 한 화면에 모아 보여 주는 데스크톱 위젯입니다. 당신의 답이 필요할 때만 알립니다.': 'AgentDesk est un widget de bureau qui regroupe dans un seul écran les sessions d\'agents de codage IA en cours sur cet ordinateur. Il n\'alerte que quand votre réponse est nécessaire.',
+  '터미널·tmux·Orca에서 띄운 Claude Code·Codex CLI·Gemini CLI 세션을 한 목록과 픽셀 오피스에 보여 줍니다.': 'Les sessions Claude Code, Codex CLI et Gemini CLI lancées depuis des terminaux, tmux et Orca, dans une seule liste et un bureau pixel.',
+  '상태': 'États',
+  '작업 중 · 입력 대기 · 선택 필요 · 완료 · 오류를 색과 배지로 구분합니다. 정확 감지(훅)를 켜면 추정이 아니라 이벤트로 받습니다.': 'En travail · en attente de saisie · choix requis · terminé · erreur, distingués par couleur et badge. Avec la détection précise (hooks), les états arrivent par événements au lieu d\'être devinés.',
+  '도구 권한 요청이 오면 세션 카드와 도크에 [허용] [거부] [터미널로] 버튼이 뜹니다. 터미널 질문도 함께 뜨고, 먼저 답한 쪽이 적용됩니다.': 'Une demande de permission d\'outil affiche [Autoriser] [Refuser] [Terminal] sur la carte de session et dans le dock. Le terminal demande aussi ; la première réponse l\'emporte.',
+  '도크와 핵심 조작': 'Dock et commandes essentielles', '작게 띄워 두고, 필요할 때 바로 답합니다': 'Gardez-le petit, répondez aussitôt quand c\'est nécessaire',
+  '도크 모드: 위젯을 화면 아래 가장자리의 얇은 띠로 바꿉니다. 띠의 ▣ 버튼이나 같은 단축키로 패널에 돌아옵니다.': 'Mode dock : transforme le widget en fine barre sur le bord bas de l\'écran. Le bouton ▣ de la barre ou les mêmes touches ramènent le panneau.',
+  '호버': 'Survol',
+  '도크 타일에 마우스를 올리면 그 세션의 터미널 창이 띠 위에 열립니다. 입력 대기일 때 바로 메시지를 보낼 수 있습니다.': 'En pointant une tuile du dock, la fenêtre du terminal de sa session s\'ouvre au-dessus de la barre. Quand elle attend une saisie, vous pouvez y envoyer un message.',
+  '세션 카드나 타일을 누르면 그 에이전트의 실제 터미널(Orca·tmux·iTerm2·Terminal)로 전환합니다. 우클릭하면 이름 변경·인터럽트·위임 같은 메뉴가 열립니다.': 'Cliquez sur une carte ou une tuile de session pour passer au vrai terminal de l\'agent (Orca, tmux, iTerm2, Terminal). Clic droit pour renommer, interrompre, déléguer et plus.',
+  '말풍선': 'Bulles',
+  '세션이 선택을 기다리면 타일 위에 질문과 선택지가 뜨고, 그 자리에서 고를 수 있습니다. 위험한 선택지는 가드레일이 잠급니다.': 'Quand une session attend un choix, la question et les options apparaissent au-dessus de sa tuile et on peut y choisir. Le garde-fou verrouille les options risquées.',
+  '왼쪽부터 n번째 내 세션의 터미널로 바로 전환합니다.': 'Passe directement au terminal de votre n-ième session en partant de la gauche.',
+  '같은 사무실 망의 팀원 세션을 함께 봅니다': 'Voir les sessions des coéquipiers sur le même réseau du bureau', '초대 코드': 'Code d\'invitation',
+  '팀 탭에서 "우리 팀 만들기"를 누르면 초대 코드가 클립보드에 복사됩니다. 코드에는 팀 비밀 토큰이 들어 있으니 1:1로만 전달하세요. 받은 사람은 "초대 코드로 합류"를 누릅니다.': 'Dans l\'onglet Équipe, « Créer notre équipe » copie un code d\'invitation dans le presse-papiers. Il porte le jeton secret de l\'équipe, transmettez-le en 1:1 uniquement. Le destinataire presse « Rejoindre avec un code d\'invitation ».',
+  '공유 범위': 'Ce qui est partagé',
+  '내 이름, 세션 이름·상태·브랜치, 지금 하는 일 요약, 최근 고친 파일의 상대 경로가 공유됩니다. 프롬프트·응답 본문과 명령어는 보내지 않습니다. 팀을 만들거나 합류하기 전에는 이 PC 안에서만 열려 있습니다.': 'Votre nom, les noms, états et branches des sessions, le résumé « en train de faire » et les chemins relatifs des fichiers modifiés récemment. Les prompts, les réponses et les commandes ne sont jamais envoyés. Tant que vous ne créez ni ne rejoignez d\'équipe, rien ne quitte ce PC.',
+  '마스킹': 'Masquage',
+  'API 키·토큰·DB 접속 문자열 같은 비밀 패턴은 보내기 전에 [MASKED]로 바꿉니다. 본문은 암호화하지 않으니 신뢰할 수 있는 사무실 망에서만 켜세요.': 'Les motifs secrets comme les clés API, les jetons et les chaînes de connexion BDD deviennent [MASKED] avant l\'envoi. Le trafic n\'est pas chiffré, n\'utilisez le partage que sur un réseau de bureau de confiance.',
+  '내 세션을 팀원에게 2시간 동안 맡기면 팀원이 입력·중단할 수 있습니다. 모든 입력은 기록됩니다.': 'Confiez une session à un coéquipier pendant 2 heures et il pourra y saisir et l\'interrompre. Toute saisie est enregistrée.',
+  '연동': 'Intégrations', '필요한 것만 연결하세요': 'Connectez seulement ce dont vous avez besoin',
+  'Jira 탭의 "연결 설정"에 Atlassian OAuth 앱의 Client ID·Secret을 넣고 로그인하면 보드를 보고 티켓을 워크트리 세션에 배치할 수 있습니다. 앱 만드는 방법은 저장소의 docs/JIRA-SETUP.md에 있습니다.': 'Saisissez le Client ID et le Secret de votre app OAuth Atlassian sous « Connexion » de l\'onglet Jira et connectez-vous pour voir le tableau et confier des tickets à des sessions de worktree. Comment créer l\'app : docs/JIRA-SETUP.md dans le dépôt.',
+  'Slack 창구': 'Accueil Slack',
+  '~/.agentdesk/slack.json(appToken·botToken)을 두면 Slack 멘션·DM 요청을 접수 담당 세션에 넘기고, 끝나면 그 스레드에 보고합니다.': 'Avec ~/.agentdesk/slack.json (appToken, botToken), les mentions et DM Slack vont à votre session d\'accueil, et le résultat est publié dans le fil.',
+  'Claude Code가 위험한 명령을 실행하거나 민감한 파일을 고치기 직전에 확인을 받거나 막습니다. ⚙ 설정 → 가드레일에서 켭니다.': 'Redemande ou bloque juste avant que Claude Code n\'exécute une commande risquée ou ne modifie un fichier sensible. À activer dans ⚙ Paramètres → Garde-fou.',
+  '⚙ 설정 → 감지와 알림에서 켭니다. 위젯이 꺼져 있으면 기존처럼 터미널에서 묻습니다.': 'À activer dans ⚙ Paramètres → Détection & alertes. Quand le widget est fermé, le terminal demande comme avant.',
+  '업데이트와 설정': 'Mises à jour et réglages',
+  '새 버전이 나오면 ⚙ 설정 → 기타 → 업데이트에 표시되고, [받기]를 누르면 이 기기에 맞는 설치 파일을 내려받아 엽니다. 자동 확인은 끌 수 있습니다.': 'Une nouvelle version s\'affiche sous ⚙ Paramètres → Autre → Mise à jour. [Télécharger] télécharge l\'installateur pour cet appareil et l\'ouvre. La vérification automatique peut être désactivée.',
+  '언어·테마·도크·정확 감지·알림·팀 공유·로그인 시 시작·전역 단축키는 헤더의 ⚙ 설정에 있습니다.': 'Langue, thème, dock, détection précise, alertes, partage d\'équipe, démarrage à la connexion et raccourcis globaux sont dans ⚙ Paramètres de l\'en-tête.',
+  '다시 보기': 'Revoir', '이 안내는 ⚙ 설정 → 기타 → 온보딩 다시 보기에서 언제든 다시 열 수 있습니다.': 'Rouvrez ce guide quand vous voulez depuis ⚙ Paramètres → Autre → Revoir l\'introduction.', '팁': 'Astuce',
+  '이미 실행 중인 세션은 훅 없이도 "감지됨"으로 바로 보입니다(macOS·Linux). 정확 감지(훅)를 켜면 그 세션의 다음 활동부터 정확한 상태로 바뀝니다.': 'Les sessions déjà en cours apparaissent aussitôt comme « détectées », même sans hooks (macOS, Linux). Activez la détection précise (hooks) et chacune passe aux états précis à partir de sa prochaine activité.',
+  '건너뛰기': 'Passer', '훅 연결 상태': 'Connexion du hook', '마지막 훅 연결': 'Dernière connexion du hook',
+  '아직 연결된 적 없음 — 훅이 실행되지 않으면 보호되지 않습니다(설정만 켜짐)': 'Jamais connecté — sans le hook en marche, vous n\'êtes pas protégé (le réglage est seulement activé)',
+  '스킬북': 'Livret de compétences', '스킬 사용': 'compétence', '스킬': 'Compétences', '플러그인': 'Extensions', '🧰 도구 주머니': '🧰 Sac à outils', '📊 사용 기록': '📊 Utilisation',
+  '📖 목차': '📖 Index', '7일': '7 jours', '30일': '30 jours', '이번 주': 'cette semaine', '미사용': 'non utilisé', '사용 기록 없음': 'aucun usage enregistré', '프로젝트': 'projet',
+  '하는 일': 'Ce qu\'il fait', '이렇게 말하면 켜짐': 'Se réveille sur', '출처': 'Source', '쓸 수 있는 에이전트': 'Agents', '범위': 'Portée', '실행': 'S\'exécute en', '키 이름': 'Noms de clés',
+  '모든 프로젝트 (사용자 설정)': 'tous les projets (réglages utilisateur)', '(값은 표시하지 않음)': '(valeurs jamais affichées)', '로컬 명령 (stdio)': 'commande locale (stdio)',
+  '원격 (HTTP)': 'distant (HTTP)', '원격 (SSE)': 'distant (SSE)', '누르면 끕니다': 'Cliquez pour désactiver', '누르면 켭니다': 'Cliquez pour activer', '폴더 열기': 'Ouvrir le dossier', '제거': 'Retirer',
+  '최근 제거': 'Récemment retirés', '되살리기': 'Restaurer', '지운 스킬 폴더는 OS 휴지통에서 되살릴 수 있습니다': 'Les dossiers de compétence supprimés peuvent être restaurés depuis la corbeille du système',
+  '왼쪽 목차에서 하나를 고르세요': 'Choisissez-en un dans l\'index à gauche', '아직 설치된 것이 없습니다': 'Rien d\'installé pour l\'instant', '이 기간에 쓴 것이 없습니다': 'Rien d\'utilisé sur cette période',
+  'Codex·Gemini 전용 항목은 사용 기록을 셀 수 없어 빠졌습니다': 'Les entrées Codex- et Gemini-uniquement sont omises : leur usage ne peut pas être compté',
+  '스킬·명령·MCP 서버가 없는 플러그인(출력 스타일·LSP·훅)은 사용 기록을 셀 수 없어 빠졌습니다': 'Les extensions sans compétences, commandes ou serveurs MCP (styles de sortie, LSP, hooks) sont omises : leur usage ne peut pas être compté',
+  '💤 안 쓰는 것': '💤 Non utilisé', '고른 것 끄기': 'Désactiver les choisis', '휴지통으로': 'Mettre à la corbeille', '스킬북을 읽지 못했습니다': 'Impossible de lire le livret de compétences',
+  '이 설정 파일은 읽지 못해 빠졌습니다': 'Ces fichiers de config n\'ont pas pu être lus et sont omis', '사용 기록을 읽는 중…': 'Lecture de l\'historique d\'usage…', '처리 중…': 'Traitement…',
+  '이미 바뀌었거나 없어졌습니다': 'changé ou disparu entre-temps', '이 항목은 할 수 없는 동작입니다': 'action impossible pour cette entrée', '처리하지 못했습니다': 'échec', '껐습니다': 'désactivé', '켰습니다': 'activé',
+  '제거했습니다': 'retiré', '되살렸습니다': 'restauré', '폴더를 열었습니다': 'dossier ouvert', '스킬 폴더는 OS 휴지통으로 갑니다.': 'Le dossier de compétence va à la corbeille du système.',
+  '최근 제거에서 되살릴 수 있습니다.': 'Il peut être restauré depuis Récemment retirés.', '사용자 설정': 'réglages utilisateur', '공유 스킬': 'compétences partagées', '확장': 'extension',
+  '에이전트별': 'Par agent', '사용한 도구': 'Outils utilisés', '🏪 상점': '🏪 Boutique', '새 버전 있음': 'Mise à jour disponible', '사용': 'Utilisé', 'MCP': 'MCP', '새로 나온 순': 'Plus récentes',
+  '인기순': 'Populaires', '이름순': 'Par nom', '🔗 링크로 설치': '🔗 Installer depuis un lien', '찾기': 'Chercher', '찾는 중…': 'Recherche…', '검색': 'Recherche', '찾는 항목이 없습니다': 'Rien trouvé',
+  '검색으로 좁혀 보세요': 'Rétrécissez avec la recherche', '여러 개를 찾았습니다 — 하나를 고르세요': 'Plusieurs trouvés — choisissez-en un', '찾았습니다': 'Trouvé',
+  '왼쪽 목록에서 하나를 고르세요': 'Choisissez-en un dans la liste à gauche', '(마켓)': '(marché)', 'MCP 레지스트리': 'Registre MCP', '붙여넣은 링크': 'Lien collé', '저장소': 'Dépôt', '버전': 'Version',
+  '인기': 'Popularité', '플러그인은 Claude Code 안에서 훅·스크립트를 실행할 수 있습니다 — 출처를 확인하세요': 'Les extensions peuvent exécuter des hooks et des scripts dans Claude Code — vérifiez la source',
+  '실행 파일 포함': 'Contient des fichiers exécutables', '설치하면': 'L\'installation', '설치 후 Claude에서 인증이 필요합니다': 'nécessite une connexion depuis Claude après l\'installation',
+  '모든 에이전트': 'Tous les agents', '자동 설치 불가': 'Installation automatique impossible', '복사했습니다': 'Copié', '설치': 'Installer', '사용할 수 없는 출처': 'Sources indisponibles',
+  '목록을 불러오지 못했습니다': 'Impossible de charger la liste', '설치했습니다': 'Installé', '링크를 다시 찾으세요': 'Retrouvez le lien', '스킬북에서 보기': 'Voir dans le livret de compétences',
+  '플러그인 마켓': 'Marché d\'extensions', '~/.claude.json 을 읽지 못했습니다 — 파일을 확인하세요': 'Impossible de lire ~/.claude.json — vérifiez le fichier',
+  '설치했습니다 (로컬 마켓 경로)': 'Installé (via le marché local)', '설치했습니다 (설정 파일에 추가)': 'Installé (ajouté au fichier de config)', '설치했습니다 (Claude CLI)': 'Installé (CLI Claude)',
+  '설치했습니다 (마켓 경로)': 'Installé (via le marché)', '설치했습니다 (Claude 경로)': 'Installé (via Claude)', '설치했습니다 (에이전트 공용 폴더)': 'Installé (dossier agents partagé)',
+  '설치하지 못했습니다': 'Impossible d\'installer',
+  '같은 이름의 마켓이 다른 출처로 이미 있어 자동 설치할 수 없습니다': 'Un marché du même nom existe déjà depuis une autre source, l\'installation automatique est impossible', '이미 있습니다': 'Existe déjà',
+  '필요한 값을 모두 입력하세요': 'Renseignez toutes les valeurs requises', '목록을 다시 불러오세요': 'Rechargez la liste',
+  '필요한 파일을 찾지 못했습니다 (~/.claude.json 또는 SKILL.md)': 'Un fichier requis n\'a pas été trouvé (~/.claude.json ou SKILL.md)',
+  'MCP 레지스트리는 앞쪽 500개까지만 보입니다 — Smithery에만 있는 항목은 직접 설정하세요': 'Seules les 500 premières entrées du registre MCP sont listées — les entrées uniquement sur Smithery nécessitent une configuration manuelle',
+  '지원하지 않는 링크입니다 (GitHub 저장소 링크만 됩니다)': 'Lien non pris en charge (seuls les liens de dépôt GitHub fonctionnent)', '저장소를 가져오지 못했습니다': 'Impossible de récupérer le dépôt',
+  '이 링크에서 설치할 항목을 찾지 못했습니다': 'Rien d\'installable trouvé à ce lien', 'Claude CLI를 실행하지 못했습니다': 'Impossible d\'exécuter le CLI Claude',
+};
+const I18N_FR_KEYS = Object.keys(I18N_FR).sort((a, b) => b.length - a.length);
 function t(str) {
   if (LANG === 'ko' || !str || !/[가-힣]/.test(str)) return str;
-  if (I18N[str] != null) return I18N[str];
+  const M = LANG === 'fr' ? I18N_FR : I18N;
+  if (M[str] != null) return M[str];
   const trimmed = str.trim();
-  if (I18N[trimmed] != null) return str.replace(trimmed, I18N[trimmed]);
+  if (M[trimmed] != null) return str.replace(trimmed, M[trimmed]);
   let out = str;
-  for (const k of I18N_KEYS) if (out.includes(k)) out = out.split(k).join(I18N[k]);
+  for (const k of (LANG === 'fr' ? I18N_FR_KEYS : I18N_KEYS)) if (out.includes(k)) out = out.split(k).join(M[k]);
   return out;
 }
 // translate a DOM subtree in place; originals are kept so switching back restores Korean
@@ -2839,6 +3395,7 @@ const i18nObserver = new MutationObserver(muts => {
 });
 function setLang(l) {
   LANG = l; try { localStorage.setItem('roca-lang', l); } catch {}
+  try { window.orca.setAppLang(l); } catch {}   // desktop notifications follow the widget language
   document.documentElement.lang = l;
   i18nObserverBusy = true; i18nApply(document.body); i18nObserverBusy = false;
   if (typeof settingsRender === 'function' && document.querySelector('#page-settings.active')) settingsRender();
@@ -2937,7 +3494,7 @@ document.querySelectorAll('.page-nav-btn').forEach(btn => btn.addEventListener('
 $('settings-btn').addEventListener('click', () => showPage(currentPage === 'settings' ? 'dashboard' : 'settings'));
 {
   const hashParts = location.hash.slice(1).split(',');
-  if (hashParts[1] === 'en' || hashParts[1] === 'ko') { try { localStorage.setItem('roca-lang', hashParts[1]); } catch {} LANG = hashParts[1]; document.addEventListener('DOMContentLoaded', () => setLang(hashParts[1])); }
+  if (hashParts[1] === 'en' || hashParts[1] === 'ko' || hashParts[1] === 'fr') { try { localStorage.setItem('roca-lang', hashParts[1]); } catch {} LANG = hashParts[1]; document.addEventListener('DOMContentLoaded', () => setLang(hashParts[1])); }
   const startPage = hashParts[0].replace(/-demo$/, '');
   const startBtn = startPage && (startPage === 'settings' ? $('settings-btn') : document.querySelector(`.page-nav-btn[data-page="${startPage}"]`));
   if (startBtn) {
@@ -3083,6 +3640,10 @@ function clearWaitingToast(sessionId) {
   if (el) { el.remove(); persistentToasts.delete(sessionId); }
 }
 
+let fetching = false;   // one poll can outlast POLL (large transcripts, one sessionMeta per hook session): a
+// second fetch must not interleave pushes while the first is still running. The new list is built in a local
+// and swapped in whole at the end — screenTick (2s) must never read a half-built `sessions`: a partial list
+// drops the running count to ~0 mid-fetch, and every refill then reads as "new sessions started" (notif spam)
 async function fetchData() {
   if (DEMO_MODE) {   // the demo data in place of Orca / hooks: the same rendering path, nothing read from this PC
     sessions = demoSessions(); handles.clear();
@@ -3092,6 +3653,8 @@ async function fetchData() {
     } catch {}
     return;
   }
+  if (fetching) return;
+  fetching = true;
   $('footer').classList.add('loading');
   try {
     await hooksReady;
@@ -3142,7 +3705,7 @@ async function fetchData() {
 
     await refreshScreenStatuses();
 
-    sessions = wts.map(w => {
+    const next = wts.map(w => {
       const term = tMap.get(w.worktreeId);
       const a = w.agents?.[0];
       const baseStatus = status(w);
@@ -3179,8 +3742,9 @@ async function fetchData() {
         permissionMode: hk ? (hk.permissionMode || '') : '',
       };
     });
-    for (const h of hookOnly) sessions.push(await hookOnlySession(h));
-    for (const p of procOnly) sessions.push(procSession(p));
+    for (const h of hookOnly) next.push(await hookOnlySession(h));
+    for (const p of procOnly) next.push(procSession(p));
+    sessions = next;   // whole-list swap: the old (complete) list stays visible while this fetch runs
 
     applyStatusTransitions();
     updateCounters();
@@ -3189,7 +3753,7 @@ async function fetchData() {
     renderRateLimits(rateLimits);
     renderDashboard();
   } catch (e) { console.error(e); }
-  finally { $('footer').classList.remove('loading'); inboxRender(); }
+  finally { fetching = false; $('footer').classList.remove('loading'); inboxRender(); }
 }
 
 // orca's agent state lags; what the terminal screen shows right now is the truth for running/waiting.
@@ -3214,7 +3778,7 @@ function hooksAgentsSummary() {
   const off = Object.entries(hooksAgents).filter(([, v]) => v === 'off').map(([k]) => AGENT_LABELS[k] || k);
   return { on, off };
 }
-const HOOK_STALE_MS = 2 * 60 * 60 * 1000;
+const HOOK_STALE_MS = AgentDeskStatus.HOOK_STALE_MS;   // one staleness policy: core/status.js hookStatusFor and the hook: lookup both use it
 
 // worktreeId looks like "<uuid>::/abs/path"; pick the freshest hook session whose cwd is inside that path
 function hookStateFor(worktreeId) {
@@ -3533,7 +4097,7 @@ const dockFullPop = k => k === 'skillbook' || k === 'quest';
 const dockSheetOpen = () => sbDockOpen || questDockOpen;
 let DOCK_H = 72;   // the bar's height: AgentDeskDock.stripHeight(size) (dockSizeApply)
 // localStorage roca-dock: { start, opacity, pos: { [displayId]: { cx, y, at } }, hoverTerm, anim, ask, done, dnd, size, autoHide, yieldOrca, idleMin, hidden }
-let dockCfg = { usage: 'hearts', start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', autoHide: false, yieldOrca: true, idleMin: 60, hidden: {}, order: [], addRepo: '' };   // order: my session ids in the user's drag order
+let dockCfg = { usage: 'hearts', start: false, opacity: 1, pos: null, hoverTerm: true, anim: true, ask: 'on', done: true, dnd: false, size: 'md', edge: 'bottom', autoHide: false, yieldOrca: true, idleMin: 60, hidden: {}, order: [], addRepo: '' };   // order: my session ids in the user's drag order; edge: the screen edge the bar lies on
 try {
   const c = JSON.parse(localStorage.getItem('roca-dock') || '{}') || {};
   dockCfg.start = c.start === true;
@@ -3546,6 +4110,7 @@ try {
   // the fade is off by default (opacity 1); a value saved before 0.2.10 (when 0.85 was the default) is reset once — opacityV 2 marks a value the user chose
   if (c.opacityV === 2 && Number.isFinite(c.opacity) && c.opacity >= 0.3 && c.opacity <= 1) dockCfg.opacity = c.opacity;
   dockCfg.size = ['sm', 'md', 'lg'].includes(c.size) ? c.size : 'md';
+  dockCfg.edge = ['bottom', 'right', 'left'].includes(c.edge) ? c.edge : 'bottom';   // the screen edge the bar lies on
   dockCfg.autoHide = c.autoHide === true;      // slide away when the pointer leaves
   dockCfg.yieldOrca = c.yieldOrca !== false;   // choice bubbles stay folded while Orca is the app in front (macOS)
   dockCfg.idleMin = [0, 30, 60, 240].includes(c.idleMin) ? c.idleMin : 60;   // waiting / done this long → the 💤 tile (0: off)
@@ -3625,6 +4190,11 @@ function dockFixedWidth() {
   const cs = getComputedStyle($('dock-strip')), gap = parseFloat(cs.columnGap) || 6;
   return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + 2 + 1 + 2 * gap + 4 + $('dock-right').offsetWidth + DOCK_ADD_W + (dockIdleN ? DOCK_IDLE_W : 0);
 }
+// the vertical bar's twin: everything in the column but the tiles (padding, border, the separator, gaps, the buttons)
+function dockFixedHeight() {
+  const cs = getComputedStyle($('dock-strip')), gap = parseFloat(cs.rowGap) || 6;
+  return (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + 2 + 1 + 2 * gap + 4 + $('dock-right').offsetHeight + DOCK_ADD_W + (dockIdleN ? DOCK_IDLE_W : 0);
+}
 // a tile's state start when the bar first sees it: the dashboard's status change time (askSince for a choice)
 function dockSeed(x) {
   const s = dockLocal(x); if (!s) return 0;
@@ -3636,6 +4206,13 @@ function dockSizeApply() {
   const pd = $('page-dock');
   pd.style.setProperty('--dock-h', `${DOCK_H}px`);
   for (const k of ['sm', 'md', 'lg']) pd.classList.toggle(`dock-sz-${k}`, dockCfg.size === k);
+  dockSig = '';
+}
+// edge → the screen edge the bar lies on: bottom (horizontal, the default) / right / left (a vertical bar)
+function dockEdgeApply() {
+  const pd = $('page-dock');
+  pd.classList.toggle('dock-v', dockCfg.edge !== 'bottom');
+  pd.classList.toggle('dock-left', dockCfg.edge === 'left');
   dockSig = '';
 }
 let dockAskKeys = new Set();   // my tiles that needed me at the last draw (a new one un-hides the bar)
@@ -3688,10 +4265,11 @@ function dockDraw() {
     const pick = full.mine.find(x => x.state === 'ask') || full.mine.find(x => x.state === 'input');
     if (pick) dockSel = pick.key;
   }
-  if (!dockWin) $('page-dock').classList.toggle('dock-narrow', window.innerWidth <= DOCK_NARROW);   // before main's first answer
-  const fixed = dockFixedWidth();
+  const dv = dockCfg.edge !== 'bottom';
+  if (!dockWin) $('page-dock').classList.toggle('dock-narrow', (dv ? window.innerHeight : window.innerWidth) <= DOCK_NARROW);   // before main's first answer
+  const fixed = dv ? dockFixedHeight() : dockFixedWidth();
   dockBoundsSync(AgentDeskDock.tilesWidth(full) + fixed);
-  const m = AgentDeskDock.dockModel({ sessions: mine, peers, inbox, selectedId: dockSel, size: dockCfg.size, width: Math.max(0, ($('dock-strip').offsetWidth || window.innerWidth) - fixed) });
+  const m = AgentDeskDock.dockModel({ sessions: mine, peers, inbox, selectedId: dockSel, size: dockCfg.size, width: Math.max(0, ((dv ? $('dock-strip').offsetHeight : $('dock-strip').offsetWidth) || window.innerWidth) - fixed) });
   dockModelNow = m;
   // time in the current state (minutes only, so the tiles are redrawn once a minute at most) and the ⌘1 … ⌘9 numbers
   const now = Date.now();
@@ -3874,23 +4452,34 @@ function dockUsageHide() {
   dockUsageOn = false; $('dock-utip').hidden = true;
   dockBoundsSync();
 }
-// the bar's window: natural width, fixed height, room above while the hover card / the review queue is open
+// the bar's window: natural width, fixed height, room above while the hover card / the review queue is open.
+// Vertical bar: the room opens sideways — extra is its width, popWidth the panel's height, the pop band { y, height }.
 function dockBoundsSync(natural) {
   if (natural != null) dockNatural = Math.round(natural);
   if (!dockOn) return;
   const kind = dockPopKind();
-  const extra = kind === 'skillbook' ? DOCK_SB_H : kind === 'quest' ? DOCK_Q_H : AgentDeskDock.popExtra(kind, dockAskH);   // bubbles: room for the tallest one
-  // the part of the room the panel / queue covers (x and width in the window): Windows / Linux cut the window to the
-  // bar plus this, so the rest of the room is neither drawn nor clickable. popWidth: the window grows sideways for it.
+  const dv = dockCfg.edge !== 'bottom';
+  const P = AgentDeskDock.POP;
   const bubbles = kind === 'bubbles' || kind === 'bubblesBig' || kind === 'bubblesDone';
+  const workW = (dockWin && dockWin.workWidth) || (window.screen && window.screen.availWidth) || window.innerWidth;
+  const extra = dv
+    ? (kind === 'skillbook' ? DOCK_SB_W : kind === 'quest' ? DOCK_Q_W : kind ? bubbles ? (kind === 'bubblesBig' ? P.bubbleBigW : kind === 'bubblesDone' ? P.doneW : P.bubbleW) + 2 * P.gap : AgentDeskDock.popWidth(kind, workW) + 2 * P.gap : 0)
+    : (kind === 'skillbook' ? DOCK_SB_H : kind === 'quest' ? DOCK_Q_H : AgentDeskDock.popExtra(kind, dockAskH));   // bubbles: room for the tallest one
+  // the part of the room the panel / queue covers in the window: Windows / Linux cut the window to the bar plus this,
+  // so the rest of the room is neither drawn nor clickable. popWidth: the window grows for it (sideways / along the bar).
   const g = kind && !dockFullPop(kind) && !bubbles ? dockPopGeom(kind) : null;
-  let pop = dockFullPop(kind) ? { x: 8, width: Math.max(0, window.innerWidth - 16) } : bubbles ? dockAskBand : g ? { x: g.x, width: g.width } : null;
+  let pop = dockFullPop(kind) ? (dv ? { y: 8, height: Math.max(0, window.innerHeight - 16) } : { x: 8, width: Math.max(0, window.innerWidth - 16) })
+    : bubbles ? dockAskBand : g ? (dv ? { y: g.y, height: g.height } : { x: g.x, width: g.width }) : null;
   // a card open beside the bubbles (a tile's, the limit card): its part of the room is drawn too
   if (bubbles && pop) for (const k of [dockTipKey ? 'tipSmall' : '', dockUsageOn ? 'usage' : ''].filter(Boolean)) {
     const c = dockPopGeom(k); if (!c) continue;
-    const x0 = Math.min(pop.x, c.x); pop = { x: x0, width: Math.max(pop.x + pop.width, c.x + c.width) - x0 };
+    if (dv) { const y0 = Math.min(pop.y, c.y); pop = { y: y0, height: Math.max(pop.y + pop.height, c.y + c.height) - y0 }; }
+    else { const x0 = Math.min(pop.x, c.x); pop = { x: x0, width: Math.max(pop.x + pop.width, c.x + c.width) - x0 }; }
   }
-  const req = { on: true, contentWidth: dockNatural, height: DOCK_H, extra, popWidth: kind === 'skillbook' ? DOCK_SB_W : kind === 'quest' ? DOCK_Q_W : bubbles ? dockAskWant : g ? g.want : 0, pop, remembered: dockCfg.pos,
+  const req = { on: true, contentWidth: dockNatural, height: DOCK_H, edge: dockCfg.edge, extra,
+    popWidth: dv ? (kind === 'skillbook' ? DOCK_SB_H : kind === 'quest' ? DOCK_Q_H : AgentDeskDock.popExtra(kind, dockAskH))
+      : (kind === 'skillbook' ? DOCK_SB_W : kind === 'quest' ? DOCK_Q_W : bubbles ? dockAskWant : g ? g.want : 0),
+    pop, remembered: dockCfg.pos,
     hidden: AgentDeskDock.dockHitPlan({ hidden: dockHidden, popKind: kind, extra }).sendWithBounds };   // auto-hidden: main keeps the click-through
   const sig = JSON.stringify(req);
   if (sig === dockReqSig) return;
@@ -3902,11 +4491,13 @@ function dockBoundsSync(natural) {
 const DOCK_NARROW = 420;
 function dockWinSet(b) {
   const prev = dockWin; dockWin = b;
-  $('page-dock').classList.toggle('dock-narrow', (b.stripWidth || b.width) <= DOCK_NARROW);
-  const strip = $('dock-strip'), wide = b.stripWidth > 0 && b.stripWidth < b.width;
-  strip.style.width = wide ? `${b.stripWidth}px` : ''; strip.style.marginLeft = wide ? `${b.stripX}px` : ''; strip.style.alignSelf = wide ? 'flex-start' : '';
+  const dv = b.dir === 'left' || b.dir === 'right';
+  $('page-dock').classList.toggle('dock-narrow', (dv ? (b.stripHeight || b.height) : (b.stripWidth || b.width)) <= DOCK_NARROW);
+  const strip = $('dock-strip'), wide = dv ? b.stripHeight > 0 && b.stripHeight < b.height : b.stripWidth > 0 && b.stripWidth < b.width;
+  if (dv) { strip.style.height = wide ? `${b.stripHeight}px` : ''; strip.style.marginTop = wide ? `${b.stripY}px` : ''; strip.style.alignSelf = wide ? 'flex-start' : ''; strip.style.width = ''; strip.style.marginLeft = ''; }
+  else { strip.style.width = wide ? `${b.stripWidth}px` : ''; strip.style.marginLeft = wide ? `${b.stripX}px` : ''; strip.style.alignSelf = wide ? 'flex-start' : ''; strip.style.height = ''; strip.style.marginTop = ''; }
   if (b.dir) dockSetDir(b.dir); else dockPopPlace();
-  if (!prev || prev.stripWidth !== b.stripWidth) dockRender();   // the tiles fit the bar's width, not the window's
+  if (!prev || (dv ? prev.stripHeight !== b.stripHeight : prev.stripWidth !== b.stripWidth)) dockRender();   // the tiles fit the bar, not the window
   dockBoundsSync();   // the panel's band in the new window (same request → nothing is sent)
 }
 // what the room above / below the bar holds: the review queue, a terminal window, the hover panel, or nothing
@@ -3922,42 +4513,48 @@ function dockPopKind() {
 // a panel's place in the window: over its tile (popRect clamps it inside the window), the terminal window at the
 // bar's centre only when its tile is not in the row
 function dockPopGeom(kind) {
-  const w = dockWin && dockWin.width ? dockWin : null, winWidth = w ? w.width : window.innerWidth;
+  const dv = dockDir === 'left' || dockDir === 'right';
+  const w = dockWin && dockWin.width ? dockWin : null, winWidth = w ? (dv ? w.height : w.width) : (dv ? window.innerHeight : window.innerWidth);
   const stripX = w ? w.stripX || 0 : 0, stripW = w ? w.stripWidth || winWidth : winWidth;
+  const stripY = w ? w.stripY || 0 : 0, stripH = w ? w.stripHeight || winWidth : winWidth;
   const want = AgentDeskDock.popWidth(kind, (w && w.workWidth) || (window.screen && window.screen.availWidth) || winWidth);
-  let anchor = stripX + stripW / 2;
+  let anchor = dv ? stripY + stripH / 2 : stripX + stripW / 2;
   const key = kind === 'term' ? dockTermKey() : kind === 'add' || kind === 'menu' || kind === 'drop' ? (dockPop && dockPop.key) : dockTipKey;   // the panel sits over the tile it belongs to (the limit card: the bars)
   const tile = kind === 'usage' ? (!$('dock-usage').hidden && $('dock-usage')) : key && $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(key)}"]`);
-  if (tile) { const r = tile.getBoundingClientRect(); anchor = r.left + r.width / 2; }
+  if (tile) { const r = tile.getBoundingClientRect(); anchor = dv ? r.top + r.height / 2 : r.left + r.width / 2; }
   else if (kind !== 'term') return null;   // the terminal window falls back to the bar's centre (its tile folded into "+N")
   const P = AgentDeskDock.POP, height = kind === 'term' ? P.termH : kind === 'add' || kind === 'drop' ? 2 * P.tipSmallH : kind === 'usage' ? P.usageH : P.tipSmallH;
   const room = w && w.extra > 0 ? w.extra : AgentDeskDock.popExtra(kind);
   return { want, ...AgentDeskDock.popRect({ winWidth, width: want, anchor, dir: dockDir, stripHeight: DOCK_H, height, room }) };
 }
-// the room for the panel / queue is above the bar, or below it when the bar sits near the top of the screen
+// the room for the panel / queue: above the bar, below it when the bar sits near the top (vertical bar: to its left / right)
 function dockSetDir(dir) {
-  dockDir = dir === 'down' ? 'down' : 'up';
+  dockDir = ['up', 'down', 'left', 'right'].includes(dir) ? dir : 'up';
   $('page-dock').classList.toggle('dock-down', dockDir === 'down');
+  $('page-dock').classList.toggle('dock-room-right', dockDir === 'right');
   dockPopPlace();
 }
 function dockPopPlace() {
-  const near = `${DOCK_H + 6}px`;
-  if (questDockOpen) { const qp = $('q-dock'); qp.style.top = dockDir === 'up' ? '6px' : near; qp.style.bottom = dockDir === 'up' ? near : '6px'; }
-  if (sbDockOpen) { const sp = $('sb-dock'); sp.style.top = dockDir === 'up' ? '6px' : near; sp.style.bottom = dockDir === 'up' ? near : '6px'; }
+  const near = `${DOCK_H + 6}px`, dv = dockDir === 'left' || dockDir === 'right';
+  if (questDockOpen) { const qp = $('q-dock'); if (dv) { qp.style.left = dockDir === 'left' ? '0px' : `${DOCK_H}px`; qp.style.right = dockDir === 'left' ? `${DOCK_H}px` : '0px'; qp.style.top = ''; qp.style.bottom = ''; } else { qp.style.top = dockDir === 'up' ? '6px' : near; qp.style.bottom = dockDir === 'up' ? near : '6px'; qp.style.left = ''; qp.style.right = ''; } }
+  if (sbDockOpen) { const sp = $('sb-dock'); if (dv) { sp.style.left = dockDir === 'left' ? '0px' : `${DOCK_H}px`; sp.style.right = dockDir === 'left' ? `${DOCK_H}px` : '0px'; sp.style.top = ''; sp.style.bottom = ''; } else { sp.style.top = dockDir === 'up' ? '6px' : near; sp.style.bottom = dockDir === 'up' ? near : '6px'; sp.style.left = ''; sp.style.right = ''; } }
   const put = (node, g, fixedH) => {
-    node.style.left = `${g.x}px`; node.style.width = `${g.width}px`;
-    node.style.top = g.top == null ? '' : `${g.top}px`; node.style.bottom = g.bottom == null ? '' : `${g.bottom}px`;
+    node.style.left = g.left == null ? (g.x == null ? '' : `${g.x}px`) : `${g.left}px`;
+    node.style.right = g.right == null ? '' : `${g.right}px`;
+    node.style.width = g.width != null ? `${g.width}px` : '';
+    node.style.top = g.top == null ? (g.y == null ? '' : `${g.y}px`) : `${g.top}px`;
+    node.style.bottom = g.bottom == null ? '' : `${g.bottom}px`;
     if (fixedH) node.style.height = `${g.height}px`; else node.style.maxHeight = `${g.height}px`;
   };
   // the tail points at the tile the panel belongs to (the limit card: at the limit bars)
   const tail = (node, g, key) => {
     const tile = key === 'usage' ? $('dock-usage') : key && $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(key)}"]`);
-    if (tile) { const r = tile.getBoundingClientRect(); node.style.setProperty('--tail', `${Math.round(Math.min(g.width - 14, Math.max(14, r.left + r.width / 2 - g.x)))}px`); }
+    if (tile) { const r = tile.getBoundingClientRect(); node.style.setProperty('--tail', `${Math.round(Math.min((dv ? g.height : g.width) - 14, Math.max(14, (dv ? r.top + r.height / 2 - g.y : r.left + r.width / 2 - g.x))))}px`); }
     else node.style.removeProperty('--tail');
     node.classList.toggle('down', dockDir === 'down');
   };
   const tip = $('dock-tip');
-  if (dockTipKey && !tip.hidden) { const g = dockPopGeom('tipSmall'); if (g) { put(tip, g, false); tail(tip, g, dockTipKey); } }
+  if (dockTipKey && !tip.hidden) { const g = dockPopGeom('tipSmall'); if (g) { put(tip, g, false); tail(tip, g, dockTipKey); } else dockTipHide(); }   // its tile vanished in a redraw: a card with no tile floats stale
   const term = dockTermBg();
   if (term) { const g = dockPopGeom('term'); if (g) { put(term, g, true); tail(term, g, dockTermKey()); } }
   const ut = $('dock-utip');
@@ -4532,6 +5129,7 @@ function dockAskPlace() {
   const show = dockOn && !dockSheetOpen() && !dockTermBg() && !dockPop;
   box.hidden = !show;
   const items = [];
+  const dv = dockDir === 'left' || dockDir === 'right';   // vertical bar: the bubbles stack along y, the room is sideways
   for (const a of dockAsk.values()) {
     a.placed = false;
     if (!a.el) continue;
@@ -4540,7 +5138,8 @@ function dockAskPlace() {
     const tile = $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(a.key)}"]`);
     if (!tile) { a.el.hidden = true; continue; }
     const r = tile.getBoundingClientRect();
-    items.push({ key: a.key, anchor: r.left + r.width / 2, since: a.since, width: a.big ? P.bubbleBigW : P.bubbleW });
+    items.push(dv ? { key: a.key, anchor: r.top + r.height / 2, since: a.since, height: a.big ? P.bubbleBigH : P.bubbleH }
+      : { key: a.key, anchor: r.left + r.width / 2, since: a.since, width: a.big ? P.bubbleBigW : P.bubbleW });
   }
   // completion bubbles: not over a tile that has a choice bubble; the first to go when they do not all fit
   for (const d of dockDone.values()) {
@@ -4549,20 +5148,27 @@ function dockAskPlace() {
     const tile = !dockAsk.has(d.key) && $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(d.key)}"]`);
     if (!tile) { d.el.hidden = true; continue; }
     const r = tile.getBoundingClientRect();
-    items.push({ key: `done:${d.key}`, anchor: r.left + r.width / 2, since: d.at - 1e12, width: P.doneW });
+    items.push(dv ? { key: `done:${d.key}`, anchor: r.top + r.height / 2, since: d.at - 1e12, height: P.tipSmallH }
+      : { key: `done:${d.key}`, anchor: r.left + r.width / 2, since: d.at - 1e12, width: P.doneW });
   }
-  dockAskWant = items.reduce((n, x) => n + x.width, 0) + Math.max(0, items.length - 1) * P.gap;   // dockBounds adds the margins
-  const lay = AgentDeskDock.bubbleLayout(items, { winWidth: dockWin && dockWin.width ? dockWin.width : window.innerWidth });
+  dockAskWant = items.reduce((n, x) => n + (dv ? x.height : x.width), 0) + Math.max(0, items.length - 1) * P.gap;   // dockBounds adds the margins
+  const lay = AgentDeskDock.bubbleLayout(items, { winWidth: dockWin && (dv ? dockWin.height : dockWin.width) ? (dv ? dockWin.height : dockWin.width) : (dv ? window.innerHeight : window.innerWidth), vertical: dv });
   const bubbleOf = k => (k.startsWith('done:') ? dockDone.get(k.slice(5)) : dockAsk.get(k));
   for (const k of lay.dropped) { const a = bubbleOf(k); if (a && a.el) a.el.hidden = true; }
-  const off = `${DOCK_H + P.gap + P.tail}px`, room = dockWin && dockWin.extra > 0 ? dockWin.extra : 0;
+  const off = dv ? `${P.gap}px` : `${DOCK_H + P.gap + P.tail}px`, room = dockWin && dockWin.extra > 0 ? dockWin.extra : 0;
   for (const g of lay.placed) {
     if (g.key.startsWith('done:')) {
       const d = bubbleOf(g.key), el = d.el;
       d.placed = show; el.hidden = false;
-      el.style.left = `${g.x}px`; el.style.width = `${g.width}px`; el.style.setProperty('--tail', `${g.tail}px`);
-      el.style.top = dockDir === 'down' ? off : ''; el.style.bottom = dockDir === 'down' ? '' : off;
-      el.style.maxHeight = `${room ? Math.max(40, Math.min(P.tipSmallH, room - 2 * P.gap - P.tail)) : P.tipSmallH}px`;
+      if (dv) {
+        el.style.top = `${g.y}px`; el.style.width = `${P.doneW}px`; el.style.setProperty('--tail', `${g.tail}px`);
+        el.style.left = dockDir === 'left' ? off : ''; el.style.right = dockDir === 'right' ? off : '';
+        el.style.maxHeight = `${g.height}px`;
+      } else {
+        el.style.left = `${g.x}px`; el.style.width = `${g.width}px`; el.style.setProperty('--tail', `${g.tail}px`);
+        el.style.top = dockDir === 'down' ? off : ''; el.style.bottom = dockDir === 'down' ? '' : off;
+        el.style.maxHeight = `${room ? Math.max(40, Math.min(P.tipSmallH, room - 2 * P.gap - P.tail)) : P.tipSmallH}px`;
+      }
       el.classList.toggle('down', dockDir === 'down');
       continue;
     }
@@ -4570,16 +5176,22 @@ function dockAskPlace() {
     a.placed = show; el.hidden = false;
     if (a.muted) { a.muted = false; dockAskArm(a); }   // back after the mute: armed again
     if (a.yielded) { a.yielded = false; dockAskArm(a); }   // unfolded: armed again (a click meant for Orca must not land)
-    if (a.x != null && a.x !== g.x) dockAskArm(a);   // pushed sideways: a click aimed at the old place must not land
-    a.x = g.x;
-    el.style.left = `${g.x}px`; el.style.width = `${g.width}px`; el.style.setProperty('--tail', `${g.tail}px`);
-    el.style.top = dockDir === 'down' ? off : ''; el.style.bottom = dockDir === 'down' ? '' : off;
-    el.style.maxHeight = `${room ? Math.max(80, Math.min(want, room - 2 * P.gap - P.tail)) : want}px`;
+    if (dv) { if (a.y != null && a.y !== g.y) dockAskArm(a); a.y = g.y; }   // pushed along the bar: a click aimed at the old place must not land
+    else { if (a.x != null && a.x !== g.x) dockAskArm(a); a.x = g.x; }
+    if (dv) {
+      el.style.top = `${g.y}px`; el.style.width = `${a.big ? P.bubbleBigW : P.bubbleW}px`; el.style.setProperty('--tail', `${g.tail}px`);
+      el.style.left = dockDir === 'left' ? off : ''; el.style.right = dockDir === 'right' ? off : '';
+      el.style.maxHeight = `${g.height}px`;
+    } else {
+      el.style.left = `${g.x}px`; el.style.width = `${g.width}px`; el.style.setProperty('--tail', `${g.tail}px`);
+      el.style.top = dockDir === 'down' ? off : ''; el.style.bottom = dockDir === 'down' ? '' : off;
+      el.style.maxHeight = `${room ? Math.max(80, Math.min(want, room - 2 * P.gap - P.tail)) : want}px`;
+    }
     el.classList.toggle('down', dockDir === 'down');
   }
   dockAskH = show ? Math.max(0, ...lay.placed.map(g => (g.key.startsWith('done:') ? P.tipSmallH : dockAskHeight(dockAsk.get(g.key))))) : 0;
-  const xs = lay.placed.map(g => g.x), ends = lay.placed.map(g => g.x + g.width);
-  dockAskBand = xs.length ? { x: Math.min(...xs), width: Math.max(...ends) - Math.min(...xs) } : null;
+  const xs = lay.placed.map(g => (dv ? g.y : g.x)), ends = lay.placed.map(g => (dv ? g.y + g.height : g.x + g.width));
+  dockAskBand = xs.length ? (dv ? { y: Math.min(...xs), height: Math.max(...ends) - Math.min(...xs) } : { x: Math.min(...xs), width: Math.max(...ends) - Math.min(...xs) }) : null;
   // the digit keys' bubble: a new one starts its own arming time (a digit meant for the last one does not land here)
   const kt = AgentDeskDock.bubbleKeyTarget([...dockAsk.values()].map(a => ({ key: a.key, shown: !!(a.placed && a.el && !a.el.hidden && !a.sent), big: !!a.big })));
   if (kt !== dockKeyTarget.key) dockKeyTarget = { key: kt, at: Date.now() };
@@ -4848,10 +5460,12 @@ const DOCK_LONG_MS = 550;   // the drag threshold: AgentDeskDock.DRAG_PX (6 px)
 let dockDrag = null;   // AgentDeskDock.dragStep's state: { key, id, x, y, on, long }
 let dockClickEat = false;
 const dockMineTiles = () => [...$('dock-tiles').querySelectorAll('.dock-tile')].filter(b => String(b.dataset.key).startsWith('me:'));
-function dockDropMark(cx) {
+function dockDropMark(e) {
   let before = null;
   const tiles = dockMineTiles();
-  for (const b of tiles) { b.classList.remove('drop-before', 'drop-after'); const r = b.getBoundingClientRect(); if (!before && cx < r.left + r.width / 2) before = b; }
+  const v = dockCfg.edge !== 'bottom';
+  const p = v ? e.clientY : e.clientX;
+  for (const b of tiles) { b.classList.remove('drop-before', 'drop-after'); const r = b.getBoundingClientRect(); if (!before && p < (v ? r.top + r.height / 2 : r.left + r.width / 2)) before = b; }
   if (before) before.classList.add('drop-before'); else if (tiles.length) tiles[tiles.length - 1].classList.add('drop-after');
   return before;
 }
@@ -4878,17 +5492,17 @@ function dockDragDo(ev, e) {
         try { src.setPointerCapture(e.pointerId); } catch {}   // the release reaches us even off the tiles
         src.addEventListener('lostpointercapture', () => dockDragDo({ type: 'cancel' }), { once: true });   // a lost capture ends the drag
       }
-      dockDropMark(e.clientX);
+      dockDropMark(e);
       break;
     }
-    case 'mark': dockDropMark(e.clientX); break;
+    case 'mark': dockDropMark(e); break;
     case 'cancel': clearTimeout(dockDragLongT); dockDragEnd(); dockRender(); break;   // tiles held back during the drag are drawn now
     case 'eat': clearTimeout(dockDragLongT); dockClickEat = true; setTimeout(() => { dockClickEat = false; }, 0); break;
     case 'click': clearTimeout(dockDragLongT); break;
     case 'drop': {
       clearTimeout(dockDragLongT);
       dockClickEat = true; setTimeout(() => { dockClickEat = false; }, 0);
-      const before = dockDropMark(e.clientX), bx = before && dockTileOf(before.dataset.key);
+      const before = dockDropMark(e), bx = before && dockTileOf(before.dataset.key);
       dockDragEnd();
       if (!dockOn || !dockModelNow) break;
       const visible = dockModelNow.mine.filter(x => !x.bundle).map(x => x.id);
@@ -5142,7 +5756,7 @@ function dockEnter() {
   dockPrev = { page: currentPage, minimized: isMinimized };
   if (isMinimized) w.classList.remove('minimized');   // the header-only window: the bar replaces it, leaving brings it back
   dockOn = true; dockSig = dockReqSig = ''; dockLabelLang = ''; dockTimerShown = false; $('dock-timer').hidden = true;
-  dockSizeApply();
+  dockSizeApply(); dockEdgeApply();
   w.classList.add('docked');
   showPage('dock', { keepSize: true });
   dockDraw();   // draws, then asks main for the bar's bounds (the panel's bounds are kept there)
@@ -5222,7 +5836,8 @@ $('dock-tiles').addEventListener('dblclick', e => {
 $('dock-tiles').addEventListener('keydown', e => {
   const tiles = [...$('dock-tiles').querySelectorAll('.dock-tile')], i = tiles.indexOf(document.activeElement);
   if (i < 0) return;
-  const j = e.key === 'ArrowRight' ? Math.min(tiles.length - 1, i + 1) : e.key === 'ArrowLeft' ? Math.max(0, i - 1) : e.key === 'Home' ? 0 : e.key === 'End' ? tiles.length - 1 : -1;
+  const v = dockCfg.edge !== 'bottom';   // the vertical bar also takes the up / down arrows
+  const j = (e.key === 'ArrowRight' || (v && e.key === 'ArrowDown')) ? Math.min(tiles.length - 1, i + 1) : (e.key === 'ArrowLeft' || (v && e.key === 'ArrowUp')) ? Math.max(0, i - 1) : e.key === 'Home' ? 0 : e.key === 'End' ? tiles.length - 1 : -1;
   if (j >= 0) { e.preventDefault(); e.stopPropagation(); tiles.forEach(b => { b.tabIndex = -1; }); tiles[j].tabIndex = 0; tiles[j].focus(); return; }
   if (e.key !== 'Enter' && e.key !== ' ') return;
   e.preventDefault(); e.stopPropagation();
@@ -5586,7 +6201,11 @@ async function hookOnlySession(h) {
   }
   const folder = st.cwd.split('/').filter(Boolean).pop() || st.cwd;
   const screenSt = screenStatusCache.get(h.id);
-  const finalStatus = st.ended ? 'done' : resolveStatus('done', screenSt, st);
+  // the same staleness gate hookStateFor (screenTick's path) applies: a session whose last hook event is older
+  // than HOOK_STALE_MS has no live state. Without it the full fetch reports its stuck 'running' status while
+  // screenTick reports 'done', and the running count (and its start notifications) oscillates every tick
+  const hk = (!st.ended && Date.now() - st.last <= HOOK_STALE_MS) ? st : null;
+  const finalStatus = resolveStatus('done', screenSt, hk);
   return {
     id: h.id, name: displayNameFor(h.id, meta.title || folder), branch: meta.branch || '', repo: st.cwd, cwd: st.cwd, sessionId: st.sid, ended: !!st.ended,
     status: finalStatus, baseStatus: 'done', agent: st.agent || 'claude', time: st.last,
@@ -5853,8 +6472,12 @@ function renderLocalStats() {
   if (askN) parts.push(`${t('선택 응답 평균')} ${Math.round(askMs / askN / 1000)}s`);
   el.hidden = false; el.textContent = parts.join(' · ');
 }
+let lastRunningIds = null;   // running ids at the previous tick: the start notification fires on genuinely new ids, not a count delta
 function updateCounters() {
-    const running = sessions.filter(s => s.status === 'running').length;
+    const runningIds = sessions.filter(s => s.status === 'running').map(s => s.id);
+    const newRunning = lastRunningIds ? runningIds.filter(id => !lastRunningIds.has(id)) : [];   // first tick = baseline, no notification
+    lastRunningIds = new Set(runningIds);
+    const running = runningIds.length;
     const waiting = sessions.filter(s => s.status === 'waiting').length;
     const done = sessions.filter(s => s.status === 'done' || s.status === 'error').length;
 
@@ -5874,7 +6497,7 @@ function updateCounters() {
     $('badge-running').textContent = running + waiting;
     $('badge-done').textContent = done;
 
-    window.orca.sendSessionCounts({ running, waiting, done, asks });
+    window.orca.sendSessionCounts({ running, waiting, done, asks, newRunning });
 }
 
 // fast path: re-read terminal screens only and patch statuses in place
@@ -10911,11 +11534,12 @@ function settingsRender() {
   const zoom = (() => { try { return localStorage.getItem('roca-office-zoom') || 'auto'; } catch { return 'auto'; } })();
   body.innerHTML = `
     <h2>${esc(t('표시'))}</h2>
-    ${row(t('언어'), t('UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.'), seg('lang', LANG, [['en', 'English'], ['ko', '한국어']]))}
+    ${row(t('언어'), t('UI 언어. 오피스의 글자와 팀 프롬프트에도 적용됩니다.'), seg('lang', LANG, [['en', 'English'], ['ko', '한국어'], ['fr', 'Français']]))}
     ${row(t('테마'), t('시스템 설정을 따르거나 라이트/다크로 고정합니다.'), seg('theme', currentTheme, [['system', t('시스템')], ['light', t('라이트')], ['dark', t('다크')]]))}
-    ${row(t('도크 모드'), t('화면 아래 가장자리에 붙는 가로 띠로 세션 상태를 봅니다. 헤더의 ▭ 버튼이나 ⌘⇧D (Windows·Linux: Ctrl+Shift+D)로 전환하고, 띠의 ▣ 버튼으로 패널에 돌아옵니다.'), `<button class="set-btn" data-set="dock-enter">${esc(t('도크로 전환'))}</button>`)}
+    ${row(t('도크 모드'), t('화면 가장자리에 붙는 띠로 세션 상태를 봅니다. 방향은 "도크 방향"에서 고릅니다. 헤더의 ▭ 버튼이나 ⌘⇧D (Windows·Linux: Ctrl+Shift+D)로 전환하고, 띠의 ▣ 버튼으로 패널에 돌아옵니다.'), `<button class="set-btn" data-set="dock-enter">${esc(t('도크로 전환'))}</button>`)}
     ${row(t('시작 시 도크 모드'), t('위젯을 켤 때 도크 모드로 시작합니다.'), sw('dock-start', dockCfg.start))}
     ${row(t('도크 크기'), t('작게: 이름 없는 작은 타일과 낮은 띠. 크게: 큰 타일과 큰 글자.'), seg('dock-size', dockCfg.size, [['sm', t('작게')], ['md', t('보통')], ['lg', t('크게')]]))}
+    ${row(t('도크 방향'), t('아래: 화면 아래 가로 띠. 오른쪽·왼쪽: 화면 옆 가장자리의 세로 띠입니다.'), seg('dock-edge', dockCfg.edge, [['bottom', t('아래')], ['right', t('오른쪽')], ['left', t('왼쪽')]]))}
     ${row(t('마우스가 멀어지면 숨기기'), t('마우스가 띠를 떠나고 2초 뒤 띠가 화면 가장자리로 밀려 8px만 보입니다. 마우스를 가져가거나 말풍선·알림이 뜨면 바로 돌아옵니다.'), sw('dock-autohide', dockCfg.autoHide))}
     ${row(t('선택 말풍선 표시'), t('세션이 선택을 기다릴 때 타일 위에 질문과 선택지를 띄웁니다. "선택지만"은 질문 본문을 숨깁니다.'), seg('dock-ask', dockCfg.ask, [['on', t('켬')], ['options', t('선택지만')], ['off', t('끔')]]), '', true)}
     ${row(t('쉬는 세션 모으기'), t('입력 대기·완료 상태로 이 시간 동안 활동이 없는 세션은 띠 오른쪽의 💤 타일로 모읍니다. 질문·승인 대기, 오류, 고정한 세션은 항상 띠에 남습니다. 💤를 누르면 펼쳐지고, 타일 메뉴(길게 누르기)의 "도크에서 숨기기"로 직접 보낼 수도 있습니다.'), seg('dock-idle', String(dockCfg.idleMin), [['30', t('30분')], ['60', t('1시간')], ['240', t('4시간')], ['0', t('끔')]]))}
@@ -11007,6 +11631,7 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'dock-enter') dockEnter();
   else if (name === 'dock-start') { dockCfg.start = !dockCfg.start; dockSave(); settingsRender(); }
   else if (name === 'dock-size' && ['sm', 'md', 'lg'].includes(v)) { dockCfg.size = v; dockSave(); if (dockOn) { dockSizeApply(); dockDraw(); } settingsRender(); }
+  else if (name === 'dock-edge' && ['bottom', 'right', 'left'].includes(v)) { dockCfg.edge = v; dockSave(); if (dockOn) { dockEdgeApply(); dockDraw(); } settingsRender(); }
   else if (name === 'dock-idle' && ['0', '30', '60', '240'].includes(v)) { dockCfg.idleMin = Number(v); dockSave(); if (dockOn) dockDraw(); settingsRender(); }
   else if (name === 'dock-yield-orca') { dockCfg.yieldOrca = !dockCfg.yieldOrca; dockSave(); dockFront.id = ''; dockFront.at = 0; if (dockOn) { dockAskSync(); dockFrontCheck(true); } settingsRender(); }
   else if (name === 'dock-autohide') { dockCfg.autoHide = !dockCfg.autoHide; dockSave(); if (!dockCfg.autoHide) dockHideSet(false); settingsRender(); }
@@ -12113,7 +12738,7 @@ function onboardRender() {
   if (onboardStep === 0) {
     body.innerHTML = `
       <h1>${esc(t('AgentDesk에 오신 것을 환영합니다'))}</h1>
-      <div class="onboard-check" style="margin-bottom:12px"><div class="st ok">🌐</div><div class="tx"><b>${esc(t('언어'))}</b><span>${esc(t('나중에 ⚙ 설정에서 바꿀 수 있습니다.'))}</span></div><div class="onboard-lang" style="margin:0"><button data-lang="en" class="${LANG === 'en' ? 'on' : ''}">English</button><button data-lang="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</button></div></div>
+      <div class="onboard-check" style="margin-bottom:12px"><div class="st ok">🌐</div><div class="tx"><b>${esc(t('언어'))}</b><span>${esc(t('나중에 ⚙ 설정에서 바꿀 수 있습니다.'))}</span></div><div class="onboard-lang" style="margin:0"><button data-lang="en" class="${LANG === 'en' ? 'on' : ''}">English</button><button data-lang="ko" class="${LANG === 'ko' ? 'on' : ''}">한국어</button><button data-lang="fr" class="${LANG === 'fr' ? 'on' : ''}">Français</button></div></div>
       <p>${esc(t('AgentDesk는 이 컴퓨터에서 실행 중인 AI 코딩 에이전트 세션을 한 화면에 모아 보여 주는 데스크톱 위젯입니다. 당신의 답이 필요할 때만 알립니다.'))}</p>
       ${feat('📋', t('세션'), t('터미널·tmux·Orca에서 띄운 Claude Code·Codex CLI·Gemini CLI 세션을 한 목록과 픽셀 오피스에 보여 줍니다.'))}
       ${feat('🚦', t('상태'), t('작업 중 · 입력 대기 · 선택 필요 · 완료 · 오류를 색과 배지로 구분합니다. 정확 감지(훅)를 켜면 추정이 아니라 이벤트로 받습니다.'))}

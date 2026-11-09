@@ -18,6 +18,7 @@ import "./core/timeline.js";   // globalThis.AgentDeskTimeline: the card's [타�
 import "./core/version.js";    // globalThis.AgentDeskVersion: release version comparison and installer choice for updates
 import "./core/dock.js";      // globalThis.AgentDeskDock: dock mode window bounds (bottom-centre bar)
 import "./core/desktop.js";   // globalThis.AgentDeskDesktop: global shortcuts, start-at-login entry
+import "./core/notify.js";    // globalThis.AgentDeskNotify: cooldownOk — caps the aggregate session-start notification
 import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, NODE_CANDIDATES, SHARE_ON, SHARE_OFF } from "./team/setup.mjs";
 import { relayState, installRelayAt, uninstallRelayAt } from "./statusline/install.mjs";
 import { scanInventory } from "./skillbook/scan.mjs";
@@ -73,7 +74,8 @@ const MARGIN = 16;
 
 let mainWindow = null;
 let tray = null;
-let prevRunningCount = 0;
+const startNotifyTr = globalThis.AgentDeskNotify.createTracker();
+let appLang = "en";   // the widget's language (ko / en / fr), reported by the renderer via orca:app-lang
 let saveBoundsTimer = null;
 
 // the app was called "roca" before it became AgentDesk: carry the old profile (window bounds, localStorage) over once
@@ -953,6 +955,15 @@ ipcMain.handle("roca:session-meta", async (_e, transcriptPath, cwd, agent) => {
   return out;
 });
 
+// desktop notifications follow the widget's language (the renderer reports it via orca:app-lang): ko keeps the
+// original Korean strings, en and fr are the same events in each language
+const NOTIF_STRINGS = {
+  ko: { started: n => `${n}개 세션이 새로 실행을 시작했습니다`, blockedTitle: "원격 입력 차단", blocked: (peer, rule) => `${peer}의 원격 입력을 차단했습니다: ${rule}` },
+  en: { started: n => n === 1 ? "A new session started" : `${n} new sessions started`, blockedTitle: "Remote input blocked", blocked: (peer, rule) => `Remote input from ${peer} blocked: ${rule}` },
+  fr: { started: n => n === 1 ? "Une nouvelle session a démarré" : `${n} nouvelles sessions ont démarré`, blockedTitle: "Saisie distante bloquée", blocked: (peer, rule) => `Saisie distante de ${peer} bloquée : ${rule}` },
+};
+const notifStrings = () => NOTIF_STRINGS[appLang] || NOTIF_STRINGS.en;
+ipcMain.on("orca:app-lang", (_e, l) => { if (l === "ko" || l === "en" || l === "fr") appLang = l; });
 ipcMain.on("orca:session-counts", (_e, counts) => {
   const { running, asks } = counts;
   if (tray) {
@@ -961,13 +972,16 @@ ipcMain.on("orca:session-counts", (_e, counts) => {
     if (asks > 0) parts.push(`?${asks}`);
     if (IS_MAC) tray.setTitle(parts.length ? ` ${parts.join(" ")}` : "");
   }
-  if (running > prevRunningCount && prevRunningCount >= 0) {
+  // a count dip (a flaky Orca poll shrinks the list for one tick) must not read as "N sessions started":
+  // the renderer sends the ids that are genuinely new since the previous tick; the 60 s cooldown caps a
+  // flapping status at one notification per minute
+  const fresh = Array.isArray(counts.newRunning) ? counts.newRunning : [];
+  if (fresh.length && globalThis.AgentDeskNotify.cooldownOk(startNotifyTr, "start", Date.now(), 60000)) {
     new Notification({
       title: "AgentDesk",
-      body: `${running - prevRunningCount}개 세션이 새로 실행을 시작했습니다`,
+      body: notifStrings().started(fresh.length),
     }).show();
   }
-  prevRunningCount = running;
 });
 
 let resizeAnim = null;
@@ -1035,8 +1049,11 @@ let dockCursor = null;   // { at, x, y }: the last cursor answer (reused for 50 
 const dockHooked = new WeakSet();
 let dockScreenHooked = false;
 const dockNum = (v, lo, hi) => (Number.isFinite(Number(v)) ? Math.min(Math.max(Number(v), lo), hi) : 0);
-// the bar's own rectangle inside the current window (the room for the card / queue is above or below it)
+// the bar's own rectangle inside the current window (the room for the card / queue is above / below it, or left / right)
 function dockStripRect(cur, last) {
+  if (last.dir === "left" || last.dir === "right") {
+    return { x: cur.x + (last.stripX || 0), y: cur.y + (last.stripY || 0), width: last.stripWidth || cur.width, height: last.stripHeight };
+  }
   return { x: cur.x + (last.stripX || 0), y: last.dir === "down" ? cur.y : cur.y + cur.height - last.stripHeight, width: last.stripWidth || cur.width, height: last.stripHeight };
 }
 function dockOnMove() {
@@ -1054,12 +1071,22 @@ const DOCK_PEEK = 8;
 function dockShape(b, pop, hidden) {
   if (IS_MAC || typeof mainWindow.setShape !== "function") return;
   let rects = [];
+  const v = b && (b.dir === "left" || b.dir === "right");
   if (b && hidden === true && IS_LINUX) {
-    rects = [{ x: b.stripX || 0, y: b.dir === "down" ? 0 : (b.extra || 0) + b.stripHeight - DOCK_PEEK, width: b.stripWidth || b.width, height: DOCK_PEEK }];
+    rects = v
+      ? [{ x: b.dir === "left" ? (b.stripX || 0) + (b.stripWidth || b.width) - DOCK_PEEK : b.stripX || 0, y: b.stripY || 0, width: DOCK_PEEK, height: b.stripHeight }]   // the sliver on the bar's outer edge
+      : [{ x: b.stripX || 0, y: b.dir === "down" ? 0 : (b.extra || 0) + b.stripHeight - DOCK_PEEK, width: b.stripWidth || b.width, height: DOCK_PEEK }];
   } else if (b && b.extra > 0 && pop && typeof pop === "object") {
-    const x = Math.round(dockNum(pop.x, 0, b.width)), w = Math.round(dockNum(pop.width, 0, b.width - x));
-    const bar = { x: b.stripX || 0, y: b.dir === "down" ? 0 : b.extra, width: b.stripWidth || b.width, height: b.stripHeight };
-    rects = w > 0 ? [bar, { x, y: b.dir === "down" ? b.stripHeight : 0, width: w, height: b.extra }] : [bar];
+    const bar = v
+      ? { x: b.stripX || 0, y: b.stripY || 0, width: b.stripWidth || b.width, height: b.stripHeight }
+      : { x: b.stripX || 0, y: b.dir === "down" ? 0 : b.extra, width: b.stripWidth || b.width, height: b.stripHeight };
+    if (v) {
+      const y = Math.round(dockNum(pop.y, 0, b.height)), h = Math.round(dockNum(pop.height, 0, b.height - y));
+      rects = h > 0 ? [bar, { x: b.dir === "left" ? 0 : bar.x + bar.width, y, width: b.extra, height: h }] : [bar];
+    } else {
+      const x = Math.round(dockNum(pop.x, 0, b.width)), w = Math.round(dockNum(pop.width, 0, b.width - x));
+      rects = w > 0 ? [bar, { x, y: b.dir === "down" ? b.stripHeight : 0, width: w, height: b.extra }] : [bar];
+    }
   }
   try { mainWindow.setShape(rects); } catch {}
 }
@@ -1074,14 +1101,19 @@ function dockApply(r) {
   });
   const wa = pick ? pick.workArea : screen.getDisplayMatching(cur).workArea;
   const b = globalThis.AgentDeskDock.dockBounds({
-    workArea: wa, contentWidth: dockNum(r.contentWidth, 0, 20000), height: dockNum(r.height, 0, 200), extra: dockNum(r.extra, 0, 2000), popWidth: dockNum(r.popWidth, 0, 4000), remembered: pick ? pick.rem : null,
+    workArea: wa, contentWidth: dockNum(r.contentWidth, 0, 20000), height: dockNum(r.height, 0, 200), extra: dockNum(r.extra, 0, 2000), popWidth: dockNum(r.popWidth, 0, 4000), remembered: pick ? pick.rem : null, edge: r.edge === "right" || r.edge === "left" ? r.edge : "bottom",
   });
   if (!b) return null;
   if (pick) b.displayId = pick.id;
   dockState.last = b; dockState.setAt = Date.now();
-  // maxWidth 480 is the panel's limit; the bar may be as wide as the work area
-  mainWindow.setMinimumSize(Math.min(280, b.width), Math.min(44, b.height));
-  mainWindow.setMaximumSize(Math.max(480, wa.width), Math.max(b.height, wa.height));
+  // the panel's limit is 480 wide / tall; the bar may be as long as the work area
+  if (b.dir === "left" || b.dir === "right") {
+    mainWindow.setMinimumSize(Math.min(64, b.width), Math.min(44, b.height));
+    mainWindow.setMaximumSize(Math.max(b.width, wa.width), Math.max(b.height, wa.height));
+  } else {
+    mainWindow.setMinimumSize(Math.min(280, b.width), Math.min(44, b.height));
+    mainWindow.setMaximumSize(Math.max(480, wa.width), Math.max(b.height, wa.height));
+  }
   mainWindow.setBounds({ x: b.x, y: b.y, width: b.width, height: b.height });
   dockShape(b, r.pop, r.hidden === true);
   return b;
@@ -2039,7 +2071,7 @@ const teamRemoteHandlers = {
     const entry = teamRemoteEvent(ev);
     if (ev.result === "blocked" && Date.now() - teamBlockNotifyAt > 30000) {
       teamBlockNotifyAt = Date.now();
-      try { new Notification({ title: "원격 입력 차단", body: `${ev.peer}의 원격 입력을 차단했습니다: ${ev.ruleLabel || ev.rule}` }).show(); } catch {}
+      try { new Notification({ title: notifStrings().blockedTitle, body: notifStrings().blocked(ev.peer, ev.ruleLabel || ev.rule) }).show(); } catch {}
     }
     return entry;
   },

@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { checkWidgetI18n, lexLiterals, makeTr } from '../scripts/i18n-check.mjs';
+import { checkWidgetI18n, lexLiterals, loadI18n, makeTr } from '../scripts/i18n-check.mjs';
 
 const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf-8');
 const allow = JSON.parse(readFileSync(new URL('../scripts/i18n-allow.json', import.meta.url), 'utf-8'));
@@ -40,6 +40,21 @@ test('checkWidgetI18n: a missing key, an untranslated literal, a language branch
   assert.equal(r.untranslated.length, 0, 'the Korean arm of a language branch is not flagged');
   r = check("const demo = ['매입'];", I18N, { strings: { 'demo fixtures for screenshots': ['매입'] } });
   assert.equal(r.untranslated.length, 0);
+});
+
+test('I18N_FR covers every I18N key and translates to non-Korean French', () => {
+  const { I18N, I18N_FR } = loadI18n(html);
+  assert.ok(I18N_FR, 'I18N_FR map missing from widget.html');
+  assert.deepEqual(Object.keys(I18N_FR).sort(), Object.keys(I18N).sort(), 'I18N_FR must cover every I18N key');
+  const trFr = makeTr(I18N_FR);
+  const bad = Object.keys(I18N).filter(k => /[가-힣]/.test(trFr(k)));
+  assert.equal(bad.length, 0, `French translation still Korean: ${bad.slice(0, 5).map(k => `${k} → ${trFr(k)}`).join(' | ')}`);
+});
+
+test('checkWidgetI18n: Korean left in French mode (even if English is covered) is flagged', () => {
+  const page = `<html><body><script>\nconst I18N = {"저장": "Save"};\nconst I18N_FR = {"저장": "저장"};\nconst I18N_KEYS = [];\nconst I18N_FR_KEYS = [];\nel.textContent = '저장';\n</script></body></html>`;
+  const r = checkWidgetI18n(page, {});
+  assert.equal(r.untranslated.length, 1, 'a piece untranslated in one non-Korean mode must be flagged');
 });
 
 test('makeTr: exact, trimmed, then longest-key substitution (as t() does)', () => {

@@ -325,6 +325,45 @@ test('dockBounds: a panel wider than the bar grows the window sideways around it
   assert.equal(tiny.width, 320); assert.equal(tiny.stripX, 0);
 });
 
+test('dockBounds: edge right / left — a vertical bar pinned to the edge, room opens inward', () => {
+  const b = dockBounds({ workArea: WA, edge: 'right', contentWidth: 500, height: 72 });
+  assert.deepEqual(b, { x: 1362, y: 213, width: 72, height: 500, stripX: 0, stripWidth: 72, stripY: 0, stripHeight: 500, extra: 0, dir: 'left', workWidth: 1440 });
+  assert.equal(b.x + b.width, 1440 - D.MARGIN, 'the bar touches the right edge minus the margin');
+  assert.equal(dockBounds({ workArea: WA, edge: 'right', contentWidth: 100 }).stripHeight, 320, 'stacked at least 320');
+  assert.equal(dockBounds({ workArea: WA, edge: 'right', contentWidth: 5000 }).stripHeight, Math.floor(875 * 0.9), 'stacked at most 90 % of the work area');
+  assert.equal(dockBounds({ workArea: WA, edge: 'right', height: 20 }).stripWidth, D.STRIP_MIN);
+  assert.equal(dockBounds({ workArea: WA, edge: 'right', height: 200 }).stripWidth, D.STRIP_MAX);
+  assert.equal(dockBounds({ workArea: WA, edge: 'right' }).stripWidth, 72);
+  const l = dockBounds({ workArea: WA, edge: 'left', contentWidth: 500 });
+  assert.equal(l.dir, 'right'); assert.equal(l.x, D.MARGIN); assert.equal(l.width, 72);
+  const narrow = dockBounds({ workArea: { x: 0, y: 0, width: 200, height: 500 }, edge: 'right', contentWidth: 800 });
+  assert.equal(narrow.x + narrow.width, 200 - D.MARGIN); assert.equal(narrow.stripHeight, Math.floor(500 * 0.9));
+});
+
+test('dockBounds (vertical): the room grows the window sideways; a tall panel grows it downward around the bar', () => {
+  const bar = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400 });
+  const b = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, extra: 332 });
+  assert.equal(b.dir, 'left'); assert.equal(b.extra, 332);
+  assert.equal(b.width, 72 + 332); assert.equal(b.x + b.width, 1440 - D.MARGIN);
+  assert.equal(b.x + b.stripX + b.stripWidth, 1440 - D.MARGIN, 'the bar keeps its screen x'); assert.equal(b.stripY, bar.stripY);
+  const tall = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, extra: 332, popWidth: 420 });
+  assert.equal(tall.height, 420 + 2 * D.MARGIN, 'the window grows for the panel');
+  assert.equal(tall.stripHeight, 400); assert.equal(tall.y + tall.stripY, bar.y + bar.stripY, 'the bar stays centred on its remembered y');
+  assert.equal(tall.x + tall.width, 1440 - D.MARGIN); assert.equal(tall.extra, 332);
+  const noRoom = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, extra: 0, popWidth: 420 });
+  assert.equal(noRoom.height, 400); assert.equal(noRoom.width, 72);
+});
+
+test('dockBounds (vertical): remembered y = the bar centre, clamped inside the work area', () => {
+  const r = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 300 } });
+  assert.equal(r.y, 100); assert.equal(r.stripY, 0); assert.equal(r.y + r.stripY + r.stripHeight / 2, 300, 'the bar is centred on the remembered y');
+  const clamped = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 60 } });
+  assert.equal(clamped.y, 25, 'clamped below the menu bar');
+  assert.equal(dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 10 } }).y, 263, 'a spot off the work area is ignored');
+  const def = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400 });
+  assert.deepEqual(dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 700, y: 9000 } }), def, 'a spot off the display is ignored');
+});
+
 test('popRect: centred on the anchor, clamped inside the window, above or below the bar, cut to the room', () => {
   assert.deepEqual(popRect({ winWidth: 1000, width: 420, anchor: 500, dir: 'up', stripHeight: 72, height: 320, room: 332 }),
     { x: 290, width: 420, height: 320, top: null, bottom: 78 });
@@ -336,6 +375,18 @@ test('popRect: centred on the anchor, clamped inside the window, above or below 
     for (const width of [300, 420, 720]) { const g = popRect({ winWidth: w, width, anchor: a }); assert.ok(g.x >= 6 && g.x + g.width <= w - 6, `${w}/${a}/${width}`); }
   }
   const j = popRect(null); assert.equal(j.width, 0); assert.equal(j.height, 0);
+});
+
+test('popRect (vertical): centred on the tile centre-y, clamped inside the window, beside the bar, cut to the room', () => {
+  assert.deepEqual(popRect({ winWidth: 800, width: 420, anchor: 400, dir: 'left', stripHeight: 72, height: 320, room: 332 }),
+    { y: 240, width: 332, height: 320, left: 6, right: null });
+  assert.equal(popRect({ winWidth: 800, width: 200, anchor: 20, dir: 'left', stripHeight: 72, height: 300 }).y, 6, 'top edge');
+  assert.equal(popRect({ winWidth: 800, width: 200, anchor: 790, dir: 'left', stripHeight: 72, height: 300 }).y, 800 - 6 - 300, 'bottom edge');
+  const d = popRect({ winWidth: 300, width: 200, anchor: 150, dir: 'right', stripHeight: 72, height: 420, room: 332 });
+  assert.equal(d.height, 288); assert.equal(d.y, 6); assert.equal(d.left, null); assert.equal(d.right, 6);
+  for (const [h, a] of [[1440, 0], [1440, 1440], [320, 160], [900, -50]]) {
+    for (const height of [220, 320, 420]) { const g = popRect({ winWidth: h, width: 300, anchor: a, dir: 'left', stripHeight: 72, height }); assert.ok(g.y >= 6 && g.y + g.height <= h - 6, `${h}/${a}/${height}`); }
+  }
 });
 
 test('screenLines: ANSI / format characters gone, masked row by row, control characters blanked, 200 lines / 24 KB', () => {
@@ -447,6 +498,16 @@ test('widget dock: hover opens the terminal window, a click goes to the terminal
   assert.match(between(main, 'function dockApply(', '\n}\n'), /popWidth: dockNum\(r\.popWidth, 0, 4000\)/);
 });
 
+test('dock vertical: the edge travels to main, the renderer branches on it, and the CSS turns the bar', () => {
+  assert.match(between(main, 'function dockApply(', '\n}\n'), /edge: r\.edge === "right" \|\| r\.edge === "left" \? r\.edge : "bottom"/);
+  assert.match(between(html, 'function dockBoundsSync(', '\n}\n'), /edge: dockCfg\.edge/);
+  assert.match(html, /dockCfg\.edge = \['bottom', 'right', 'left'\]\.includes\(c\.edge\) \? c\.edge : 'bottom'/);
+  assert.match(html, /seg\('dock-edge', dockCfg\.edge/);
+  assert.match(between(html, 'function dockEdgeApply(', '\n}'), /dock-v/);
+  assert.match(html, /\.dock-v \.dock-strip \{ flex-direction: column;/);
+  assert.match(html, /\.dock-v \.dock-name, \.dock-v \.dock-num \{ display: none; \}/);
+});
+
 // ── choice bubbles / tiles at work: layout, activity, tool marks, frames ──
 test('bubbleLayout: centred on their tiles, pushed apart, kept inside, the oldest dropped first', () => {
   const L = D.bubbleLayout;
@@ -476,6 +537,29 @@ test('bubbleLayout: centred on their tiles, pushed apart, kept inside, the oldes
   assert.deepEqual([pair.dropped, pair.placed.map(p => [p.key, p.width])], [['a'], [['b', 288]]], 'several: the oldest still goes (the default 320 clamped to the 300 px window)');
   assert.equal(D.popExtra('bubbles'), D.POP.bubbleH + D.POP.tail + 2 * D.POP.gap);
   assert.ok(D.popExtra('bubblesBig') > D.popExtra('bubbles'));
+});
+
+test('bubbleLayout (vertical): stacked along y, pushed apart, kept inside, the oldest dropped first', () => {
+  const L = D.bubbleLayout;
+  const one = L([{ key: 'a', anchor: 500, since: 1, height: 300 }], { winWidth: 1000, vertical: true });
+  assert.deepEqual(one, { placed: [{ key: 'a', y: 350, height: 300, tail: 150 }], dropped: [] });
+  // two tiles 50 px apart: stacked, no overlap, tails still on their tiles
+  const two = L([{ key: 'a', anchor: 300, since: 1, height: 300 }, { key: 'b', anchor: 350, since: 2, height: 300 }], { winWidth: 1000, vertical: true });
+  const [a, b] = two.placed;
+  assert.ok(a.y + a.height + 6 <= b.y, 'no overlap'); assert.equal(two.dropped.length, 0);
+  assert.equal(a.y + a.tail, 300); assert.ok(b.tail >= 14 && b.tail <= 286);
+  // edges: clamped inside the window (6 px margin)
+  const edge = L([{ key: 'a', anchor: 5, since: 1, height: 300 }, { key: 'b', anchor: 995, since: 2, height: 300 }], { winWidth: 1000, vertical: true });
+  assert.equal(edge.placed[0].y, 6); assert.equal(edge.placed[1].y + edge.placed[1].height, 994);
+  // three in 500 px: only one fits, the oldest go first
+  const many = L([{ key: 'new', anchor: 100, since: 30, height: 300 }, { key: 'old', anchor: 120, since: 10, height: 300 }, { key: 'mid', anchor: 140, since: 20, height: 300 }], { winWidth: 500, vertical: true });
+  assert.deepEqual(many.dropped, ['old', 'mid']); assert.deepEqual(many.placed.map(x => x.key), ['new']);
+  for (const p of many.placed) assert.ok(p.y >= 6 && p.y + p.height <= 494);
+  // one bubble taller than the window: narrowed to it, not dropped
+  assert.deepEqual(L([{ key: 'a', anchor: 50, height: 400 }], { winWidth: 300, vertical: true }).placed.map(p => [p.y, p.height]), [[6, 288]]);
+  assert.equal(L([{ key: 'a', anchor: 5, height: 400 }], { winWidth: 12, vertical: true }).dropped.length, 1, 'no room at all');
+  assert.deepEqual(L(null, { winWidth: 500, vertical: true }), { placed: [], dropped: [] });
+  assert.equal(L([{ key: 'a', anchor: 100 }], { winWidth: 1000, vertical: true }).placed[0].height, 300, 'default bubble height');
 });
 
 test('promptContext: the prompt box above a numbered choice (the command a permission prompt asks about)', () => {

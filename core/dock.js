@@ -429,6 +429,7 @@ function dockPickDisplay(input) {
 
 function dockBounds(input) {
   const i = input && typeof input === 'object' ? input : {};
+  if (i.edge === 'right' || i.edge === 'left') return dockBoundsSide(i);
   const w0 = i.workArea || {};
   const wa = { x: num(w0.x), y: num(w0.y), width: Math.max(0, num(w0.width)), height: Math.max(0, num(w0.height)) };
   if (!wa.width || !wa.height) return null;
@@ -459,6 +460,42 @@ function dockBounds(input) {
     stripY, stripHeight, extra, dir, workWidth: wa.width };
 }
 
+// vertical bar pinned to the right / left edge: the 1-D axis is y, the room opens to the left (bar on the right)
+// or the right (bar on the left); stripHeight here is the stacked extent along y, stripWidth the thickness
+function dockBoundsSide(input) {
+  const i = input && typeof input === 'object' ? input : {};
+  const w0 = i.workArea || {};
+  const wa = { x: num(w0.x), y: num(w0.y), width: Math.max(0, num(w0.width)), height: Math.max(0, num(w0.height)) };
+  if (!wa.width || !wa.height) return null;
+  const thickness = Math.min(Math.round(clamp(num(i.height) || STRIP_DEFAULT, STRIP_MIN, STRIP_MAX)), wa.width);
+  const minH = Math.min(MIN_WIDTH, wa.height);
+  const maxH = Math.max(minH, Math.floor(wa.height * MAX_FRAC));
+  const barH = Math.round(clamp(num(i.contentWidth) || MIN_WIDTH, minH, maxH));
+  const stripX0 = i.edge === 'right' ? wa.x + wa.width - thickness - MARGIN : wa.x + MARGIN;
+  let cy = wa.y + wa.height / 2;
+  const r = i.remembered;
+  if (r && Number.isFinite(Number(r.y))) {
+    const ry = Number(r.y);
+    if (ry >= wa.y && ry <= wa.y + wa.height) cy = ry;
+  }
+  // room for the hover card / review queue: on the inner side when it fits, else the outer side, cut to what is there
+  const want = Math.round(Math.max(0, num(i.extra)));
+  const leftRoom = Math.max(0, stripX0 - MARGIN - wa.x), rightRoom = Math.max(0, wa.x + wa.width - (stripX0 + thickness) - MARGIN);
+  const pref = i.edge === 'right' ? 'left' : 'right', prefRoom = pref === 'left' ? leftRoom : rightRoom;
+  const altRoom = pref === 'left' ? rightRoom : leftRoom;
+  const dir = want <= prefRoom || prefRoom >= altRoom ? pref : (pref === 'left' ? 'right' : 'left');
+  const extra = Math.min(want, dir === 'left' ? leftRoom : rightRoom);
+  // a panel taller than the bar: the window grows around the bar's centre, inside the work area
+  const popH = extra > 0 ? Math.round(Math.max(0, num(i.popWidth))) : 0;
+  const winH = Math.round(Math.min(wa.height, Math.max(barH, popH ? popH + 2 * MARGIN : 0)));
+  const winY = Math.round(clamp(cy - winH / 2, wa.y, wa.y + wa.height - winH));
+  const stripY = Math.round(clamp(cy - barH / 2, winY, winY + winH - barH));
+  const winW = thickness + extra;
+  const winX = Math.round(dir === 'left' ? stripX0 - extra : stripX0);
+  return { x: winX, y: winY, width: winW, height: winH, stripX: dir === 'left' ? extra : 0, stripWidth: thickness,
+    stripY: stripY - winY, stripHeight: barH, extra, dir, workWidth: wa.width };   // stripY window-relative, like stripX (main adds cur.y, the renderer uses it as margin-top)
+}
+
 // ── panels in the room above / below the bar ──
 const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 120, usageW: 300, usageH: 220, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 320, bubbleBigW: 440, bubbleH: 300, bubbleBigH: 420, bubbleMaxH: 560, bubbleBigMaxH: 680, doneW: 220, addW: 280, tail: 6 };
 const BUBBLE_ROWS = { head: 30, q: 66, qBig: 132, opt: 54, msg: 20, pad: 18 };   // larger type (13 px): the bubble is read from across the room
@@ -483,6 +520,18 @@ function bubbleHeight(optionCount, big) {
 }
 function popRect(input) {
   const i = input && typeof input === 'object' ? input : {};
+  if (i.dir === 'left' || i.dir === 'right') {   // vertical bar: winWidth is the window height, the room is left / right
+    const H = Math.max(0, Math.round(num(i.winWidth))), m2 = POP.margin;
+    let height = Math.round(Math.max(0, num(i.height)));
+    height = Math.min(height, Math.max(0, H - 2 * m2));
+    let width = Math.max(0, Math.round(num(i.width)));
+    if (i.room != null && Number.isFinite(Number(i.room))) width = Math.min(width, Math.max(0, Math.round(Number(i.room))));
+    const a = i.anchor != null && Number.isFinite(Number(i.anchor)) ? Number(i.anchor) : H / 2;
+    const y = Math.round(clamp(a - height / 2, m2, Math.max(m2, H - m2 - height)));
+    // the room is beside the bar (not above it): pin the panel to the room-side window edge, a gap in — no bar thickness to clear
+    const off = POP.gap;
+    return { y, width, height, left: i.dir === 'left' ? off : null, right: i.dir === 'left' ? null : off };
+  }
   const W = Math.max(0, Math.round(num(i.winWidth))), m = POP.margin;
   const width = Math.max(0, Math.min(Math.round(num(i.width)), W - 2 * m));
   const anchor = i.anchor != null && Number.isFinite(Number(i.anchor)) ? Number(i.anchor) : W / 2;
@@ -496,6 +545,33 @@ function popRect(input) {
 
 function bubbleLayout(items, opts) {
   const o = opts && typeof opts === 'object' ? opts : {};
+  if (o.vertical) {   // vertical bar: the bubbles stack along y; winWidth is the window height, items carry height
+    const H = Math.max(0, num(o.winWidth)), m2 = POP.margin, gap2 = o.gap == null ? POP.gap : Math.max(0, num(o.gap));
+    let list = (Array.isArray(items) ? items : []).filter(x => x && x.key != null)
+      .map((x, i) => ({ key: x.key, anchor: num(x.anchor), since: num(x.since), height: Math.max(1, Math.round(num(x.height) || POP.bubbleH)), i }));
+    const dropped = [];
+    const need = l => l.reduce((n, x) => n + x.height, 0) + Math.max(0, l.length - 1) * gap2;
+    while (list.length > 1 && need(list) > H - 2 * m2) {   // the oldest goes first (ties: the one listed first)
+      const old = list.reduce((a, b) => (b.since < a.since ? b : a));
+      dropped.push(old.key); list = list.filter(x => x !== old);
+    }
+    // the last one is narrowed to the window instead (nothing left at all only when there is no room)
+    if (list.length === 1 && list[0].height > H - 2 * m2) {
+      if (H - 2 * m2 >= 1) list[0].height = Math.floor(H - 2 * m2); else { dropped.push(list[0].key); list = []; }
+    }
+    list.sort((a, b) => a.anchor - b.anchor || a.i - b.i);
+    const ys = list.map(x => Math.max(m2, Math.round(x.anchor - x.height / 2)));
+    for (let k = 1; k < list.length; k++) ys[k] = Math.max(ys[k], ys[k - 1] + list[k - 1].height + gap2);   // push down
+    for (let k = list.length - 1; k >= 0; k--) {   // then back inside the bottom edge
+      const lim = k === list.length - 1 ? H - m2 - list[k].height : ys[k + 1] - gap2 - list[k].height;
+      ys[k] = Math.min(ys[k], lim);
+    }
+    const placed = list.map((x, k) => {
+      const lo = Math.min(14, x.height / 2), tail = Math.round(clamp(x.anchor - ys[k], lo, x.height - lo));
+      return { key: x.key, y: ys[k], height: x.height, tail };
+    });
+    return { placed, dropped };
+  }
   const W = Math.max(0, num(o.winWidth)), m = POP.margin, gap = o.gap == null ? POP.gap : Math.max(0, num(o.gap));
   let list = (Array.isArray(items) ? items : []).filter(x => x && x.key != null)
     .map((x, i) => ({ key: x.key, anchor: num(x.anchor), since: num(x.since), width: Math.max(1, Math.round(num(x.width) || POP.bubbleW)), i }));
