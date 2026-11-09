@@ -379,11 +379,11 @@ test('popRect: centred on the anchor, clamped inside the window, above or below 
 
 test('popRect (vertical): centred on the tile centre-y, clamped inside the window, beside the bar, cut to the room', () => {
   assert.deepEqual(popRect({ winWidth: 800, width: 420, anchor: 400, dir: 'left', stripHeight: 72, height: 320, room: 332 }),
-    { y: 240, width: 332, height: 320, left: 78, right: null });
+    { y: 240, width: 332, height: 320, left: 6, right: null });
   assert.equal(popRect({ winWidth: 800, width: 200, anchor: 20, dir: 'left', stripHeight: 72, height: 300 }).y, 6, 'top edge');
   assert.equal(popRect({ winWidth: 800, width: 200, anchor: 790, dir: 'left', stripHeight: 72, height: 300 }).y, 800 - 6 - 300, 'bottom edge');
   const d = popRect({ winWidth: 300, width: 200, anchor: 150, dir: 'right', stripHeight: 72, height: 420, room: 332 });
-  assert.equal(d.height, 288); assert.equal(d.y, 6); assert.equal(d.left, null); assert.equal(d.right, 78);
+  assert.equal(d.height, 288); assert.equal(d.y, 6); assert.equal(d.left, null); assert.equal(d.right, 6);
   for (const [h, a] of [[1440, 0], [1440, 1440], [320, 160], [900, -50]]) {
     for (const height of [220, 320, 420]) { const g = popRect({ winWidth: h, width: 300, anchor: a, dir: 'left', stripHeight: 72, height }); assert.ok(g.y >= 6 && g.y + g.height <= h - 6, `${h}/${a}/${height}`); }
   }

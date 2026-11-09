@@ -15,8 +15,9 @@ const META_RE = /(<meta http-equiv="Content-Security-Policy" content="[^"]*'sha2
 export function inlineScripts(html) {
   return [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 }
-// the browser normalizes CRLF to LF before hashing inline script content, so a CRLF checkout and an LF one hash alike
-export const scriptHash = text => createHash("sha256").update(text.replace(/\r\n/g, "\n"), "utf8").digest("base64");
+// the HTML parser normalizes newlines (CRLF / CR → LF) before the browser hashes the inline script, so hash the
+// LF-normalized text — a CRLF working copy (git autocrlf on Windows) must yield the same hash as the browser sees
+export const scriptHash = text => createHash("sha256").update(text.replace(/\r\n?/g, "\n"), "utf8").digest("base64");
 export function checkWidgetCsp(file) {
   const html = readFileSync(file, "utf-8");
   const m = html.match(META_RE), scripts = inlineScripts(html);
