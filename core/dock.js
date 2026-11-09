@@ -528,7 +528,8 @@ function popRect(input) {
     if (i.room != null && Number.isFinite(Number(i.room))) width = Math.min(width, Math.max(0, Math.round(Number(i.room))));
     const a = i.anchor != null && Number.isFinite(Number(i.anchor)) ? Number(i.anchor) : H / 2;
     const y = Math.round(clamp(a - height / 2, m2, Math.max(m2, H - m2 - height)));
-    const off = Math.round(Math.max(0, num(i.stripHeight))) + POP.gap;
+    // the room is beside the bar (not above it): pin the panel to the room-side window edge, a gap in — no bar thickness to clear
+    const off = POP.gap;
     return { y, width, height, left: i.dir === 'left' ? off : null, right: i.dir === 'left' ? null : off };
   }
   const W = Math.max(0, Math.round(num(i.winWidth))), m = POP.margin;

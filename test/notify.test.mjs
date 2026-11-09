@@ -154,6 +154,32 @@ test('cleanText strips bidi controls; peerAlerts cleans owner and session names'
   assert.equal(ev.owner, 'will'); assert.equal(ev.name, 'xy');
 });
 
+// ── source checks: desktop notifications follow the widget's language (ko / en / fr) ──
+const mainSrc = readFileSync(new URL('../main.mjs', import.meta.url), 'utf-8');
+const widgetSrc = readFileSync(new URL('../widget.html', import.meta.url), 'utf-8');
+const preloadSrc = readFileSync(new URL('../preload.cjs', import.meta.url), 'utf-8');
+
+test('desktop notifications follow the widget language: ko keeps the original Korean, en and fr are added', () => {
+  // the renderer reports the language on load (setLang at init) and on every change
+  assert.match(preloadSrc, /setAppLang: \(l\) => ipcRenderer\.send\("orca:app-lang", l\)/);
+  assert.match(widgetSrc, /window\.orca\.setAppLang\(l\)/);
+  // main accepts only the known languages and resolves the strings through the map (en as fallback)
+  assert.match(mainSrc, /ipcMain\.on\("orca:app-lang", \(_e, l\) => \{ if \(l === "ko" \|\| l === "en" \|\| l === "fr"\) appLang = l; \}\)/);
+  assert.match(mainSrc, /NOTIF_STRINGS\[appLang\] \|\| NOTIF_STRINGS\.en/);
+  // all three languages carry both notifications
+  const map = mainSrc.slice(mainSrc.indexOf('const NOTIF_STRINGS = {'), mainSrc.indexOf('};', mainSrc.indexOf('const NOTIF_STRINGS = {')));
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const lang of ['ko', 'en', 'fr']) for (const fn of ['started: n =>', 'blockedTitle:', 'blocked: (peer, rule) =>']) assert.match(map, new RegExp(`${lang}: \\{[\\s\\S]*?${esc(fn)}`), `${lang} ${fn}`);
+  // the Korean originals are unchanged, and the fr / en strings exist
+  assert.match(map, /개 세션이 새로 실행을 시작했습니다/);
+  assert.match(map, /원격 입력 차단/);
+  assert.match(map, /Une nouvelle session a démarré/);
+  assert.match(map, /A new session started/);
+  // both call sites use the map — no hardcoded bilingual string left
+  assert.match(mainSrc, /body: notifStrings\(\)\.started\(fresh\.length\)/);
+  assert.match(mainSrc, /title: notifStrings\(\)\.blockedTitle, body: notifStrings\(\)\.blocked\(ev\.peer, ev\.ruleLabel \|\| ev\.rule\)/);
+});
+
 test('peerAlerts: a per-teammate hourly cap survives new session ids and re-delegation', () => {
   const tr = N.createTracker();
   const kinds = [];
