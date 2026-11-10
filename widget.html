@@ -1,7 +1,7 @@
 <title>AgentDesk</title>
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-CoznxKqwXfDRvab1AIqHIsUq1s528ibaoC9SlopLFEg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-vr2BdVdURwBeCOfihmObbyHJ+m3fKHW5CtGPwgCou3M='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -712,7 +712,7 @@
     gap: 2px;
     flex-shrink: 0;
   }
-  .session:hover .s-actions { display: flex; }
+  .session:hover .s-actions, .session.selected .s-actions, .session:focus-within .s-actions { display: flex; }
   .s-act {
     appearance: none;
     border: none;
@@ -1812,6 +1812,28 @@
   .dock-spr.k10 { background-image: url('assets/pixel/char_10.png'); } .dock-spr.k11 { background-image: url('assets/pixel/char_11.png'); }
   .dock-tile.st-done .dock-spr { opacity: 0.5; filter: grayscale(0.7); }
   /* the office's pixelfx sheets on a tile (dockFx*): clipped to the tile, feet on the sprite's baseline */
+  /* the play layer (dockPlaySync): job hat, the test monster's hp, the file-clash mark and bump, the replay label, notes */
+  .dock-hat { position: absolute; left: 0; top: -2px; width: 16px; height: 8px; background: url('assets/pixel/fx/job-hats.png') no-repeat; image-rendering: pixelated; pointer-events: none; }
+  .dock-tile.st-run .dock-hat, .dock-tile.replay .dock-hat { top: 2px; }
+  .dock-tiles.s40 .dock-hat { top: -4px; } .dock-tiles.s40 .dock-tile.st-run .dock-hat, .dock-tiles.s40 .dock-tile.replay .dock-hat { top: 0; }
+  .dock-boss { position: absolute; right: 2px; bottom: 28px; z-index: 3; min-width: 11px; height: 11px; padding: 0 2px; border-radius: 4px; background: var(--red); color: #fff; font: 700 9px/11px var(--mono); text-align: center; pointer-events: none; }
+  .dock-boss::before { content: '👾'; margin-right: 1px; font-size: 8px; }
+  .dock-tiles.fx .dock-boss::before { content: none; }
+  .dock-tiles.s40 .dock-boss { bottom: 14px; }
+  .dock-clash { position: absolute; left: 50%; top: -8px; z-index: 3; margin-left: 6px; font: 12px/1 var(--sans); filter: drop-shadow(0 0 2px var(--yellow)); pointer-events: none; }
+  .dock-tiles.fx .dock-tile.bump-l { animation: dockBumpL 0.5s ease-out; } .dock-tiles.fx .dock-tile.bump-r { animation: dockBumpR 0.5s ease-out; }
+  @keyframes dockBumpL { 0% { transform: none; } 35% { transform: translateX(-7px) rotate(-4deg); } 55% { transform: translateX(3px); } 100% { transform: none; } }
+  @keyframes dockBumpR { 0% { transform: none; } 35% { transform: translateX(7px) rotate(4deg); } 55% { transform: translateX(-3px); } 100% { transform: none; } }
+  .dock-tile.replay { border-color: var(--accent); }
+  .dock-tile.replay .dock-spr { background-position-x: -48px; opacity: 1; }
+  .dock-tile.replay.replay-fail { border-color: var(--red); box-shadow: 0 0 8px color-mix(in srgb, var(--red) 60%, transparent); }
+  .dock-tile.replay .dock-name { visibility: hidden; }
+  .dock-replay-tag { position: absolute; bottom: 3px; left: 2px; right: 2px; z-index: 3; padding: 0 3px; border-radius: 6px; background: linear-gradient(90deg, var(--accent) var(--p, 0%), var(--surface-raised) var(--p, 0%)); color: var(--text); font: 600 9px/12px var(--sans); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+  .dock-tile.replay-fail .dock-replay-tag { background: var(--red); color: #fff; }
+  .tp-warn { color: var(--yellow); }
+  .dock-pop .dn-row { display: flex; flex-direction: column; gap: 3px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+  .dock-pop .dn-head { display: flex; align-items: baseline; gap: 6px; } .dock-pop .dn-head b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dock-pop .dn-text { color: var(--text2); font: 12px/1.35 var(--sans); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .dock-fxc { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; z-index: 2; }
   .dock-fx { position: absolute; background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; }
   /* a skill in use (dockCastSync): the tile glows purple and the skill's name takes the agent name's place for DOCK_CAST_MS
@@ -1888,7 +1910,7 @@
   /* a teammate's sessions folded into one tile: @name, how many, the most urgent state */
   .dock-cnt { position: absolute; top: 3px; left: 4px; font: 700 9px/12px var(--mono); color: var(--text2); pointer-events: none; }
   /* ⌘1 … ⌘9: the tile's number, faint, left of its name (not on 40 px tiles, which have no name) */
-  .dock-num { position: absolute; left: 3px; bottom: 3px; font: 600 8px/12px var(--mono); color: var(--text3); opacity: 0.75; pointer-events: none; }
+  .dock-num { position: absolute; left: 3px; bottom: 3px; font: 600 8px/12px var(--mono); color: var(--text3); pointer-events: none; }
   .dock-tile.numd .dock-name { left: 11px; }
   .dock-tiles.s40 .dock-num { display: none; }
   /* how long the tile has been in its state (top right; under the queue badge when there is one), yellow when long */
@@ -1909,6 +1931,7 @@
   .dock-msg[hidden] { display: none; }
   .dock-msg.err { border-color: var(--red); color: var(--red-text); }
   .dock-msg.info { border-color: var(--purple); color: var(--text); }
+  .dock-msg.warn { border-color: var(--yellow); color: var(--text); }
   .dock-perm[hidden], .dock-usage[hidden] { display: none; }
   .dock-perm { flex: 1 1 auto; min-width: 0; display: flex; }
   .dock-perm-in { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
@@ -2240,6 +2263,7 @@
 <script src="core/notify.js"></script>
 <script src="core/inbox.js"></script>
 <script src="core/dock.js"></script>
+<script src="core/play.js"></script>
 <script src="core/discover.js"></script>
 <script>
 // dev: ROCA_START_PAGE=…,set:<localStorage key>=<url-encoded value> presets a setting before anything reads it
@@ -2623,7 +2647,10 @@ Object.assign(I18N, {
   '시작 시 도크 모드': 'Start in dock mode', '위젯을 켤 때 도크 모드로 시작합니다.': 'The widget starts as the dock bar.',
   '도크 흐리게': 'Dock fade', '마우스가 띠를 떠나고 1.5초 뒤 이 불투명도로 흐려집니다. 띠에 마우스를 올리면 다시 선명해집니다.': 'When the pointer leaves the bar, it fades to this opacity after 1.5 s; pointing at it brings it back.',
   '도크: 세션': 'Sessions', '도크: 팀원 세션': 'Teammate sessions', '도크: 대기열': 'queue', '도크: 서브에이전트': 'subagents', '도크: 위임받음': 'delegated to you',
-  '도크: 스킬 사용': 'Skill used', '도크 정렬': 'Dock order', '최신순': 'Latest first', '직접 정한 순서': 'My order', '최신순: 가장 최근에 활동한 세션이 왼쪽에 옵니다. 마우스가 타일 위에 있는 동안에는 자리를 바꾸지 않습니다. 타일을 끌어 옮기면 직접 정한 순서로 바뀌고, 최신순을 다시 고르면 끌어 정한 순서를 지웁니다.': 'Latest first: the session with the latest activity sits on the left. Tiles hold still while the pointer is on them. Dragging a tile switches to My order; choosing Latest first again clears the dragged order.', '📌 직접 정한 순서로 바꿨습니다 — 설정의 "도크 정렬"에서 최신순으로 되돌립니다': '📌 Switched to My order — "Dock order" in Settings brings back Latest first',
+  '도크: 스킬 사용': 'Skill used', '도크: 보이기': 'Show', '도크: 숨기기': 'Hide', '놀이 표시': 'Play marks', '캐릭터의 직업 모자, 테스트 실패 몬스터, 컨텍스트 피로(땀·커피)를 도크 타일에 표시합니다. 꺼도 같은 파일을 함께 고치는 세션의 ⚡ 경고는 계속 표시됩니다.': 'Shows the job hat, the failing-test monster and context fatigue (sweat, coffee) on dock tiles. The ⚡ warning for sessions changing the same file stays on either way.', '도크: 해커': 'Hacker', '도크: 학자': 'Scholar', '도크: 장인': 'Smith', '도크: 서기': 'Scribe', '도크: 탐험가': 'Explorer', '도크: 지휘관': 'Commander', '도크: 마법사': 'Mage', '도크: 교환수': 'Operator',
+  '도크: 코드 수정': 'Editing code', '도크: 문서 작성': 'Writing docs', '도크: 읽기·검색': 'Reading', '도크: 웹': 'Web', '도크: 명령 실행': 'Shell', '도크: 서브에이전트 호출': 'Subagents', '도크: 스킬': 'Skill', '도크: MCP 도구': 'MCP tool', '도크: 생각': 'Thinking',
+  '도크: 테스트 실패': 'Failing tests', '도크: 테스트 통과!': 'Tests pass!', '도크: 같은 파일을 함께 고치는 중': 'changed by both', '도크: 다시 볼 기록이 아직 없습니다': 'Nothing to replay yet', '도크: 한 일 다시 보기': 'Replay what it did',
+  '도크: 퇴근 쪽지': 'Leave notes', '도크: 고친 파일': 'Files changed', '도크: 도구': 'Tools', '도크: 테스트': 'Tests', '도크: 이어서 하기': 'Pick it up', '도크: 버리기': 'Discard', '도크 정렬': 'Dock order', '최신순': 'Latest first', '직접 정한 순서': 'My order', '최신순: 가장 최근에 활동한 세션이 왼쪽에 옵니다. 마우스가 타일 위에 있는 동안에는 자리를 바꾸지 않습니다. 타일을 끌어 옮기면 직접 정한 순서로 바뀌고, 최신순을 다시 고르면 끌어 정한 순서를 지웁니다.': 'Latest first: the session with the latest activity sits on the left. Tiles hold still while the pointer is on them. Dragging a tile switches to My order; choosing Latest first again clears the dragged order.', '📌 직접 정한 순서로 바꿨습니다 — 설정의 "도크 정렬"에서 최신순으로 되돌립니다': '📌 Switched to My order — "Dock order" in Settings brings back Latest first',
   '도크: 작업 중': 'running', '도크: 입력 대기': 'waiting for input', '도크: 승인 필요': 'needs approval', '도크: 오류': 'error', '도크: 완료': 'done',
   '도크: 보냄': 'Sent', '도크: 허용': 'Allow', '도크: 이번만 허용': 'Allow once', '도크: 거부': 'Deny',
   '도크: 설정': 'Settings', '도크: 패널로 펼치기 (⌘⇧D)': 'Expand to the panel (⌘⇧D)', '도크: 검토 대기열': 'Review queue', '도크: 스킬북': 'Skillbook', '도크: 퀘스트': 'Quests', 'Jira 페이지에서 연결하세요': 'Connect on the Jira page', 'Jira 페이지 열기': 'Open the Jira page',
@@ -2728,7 +2755,7 @@ Object.assign(I18N, {
   '도크와 핵심 조작': 'Dock and core controls', '작게 띄워 두고, 필요할 때 바로 답합니다': 'Keep it small, answer right away when needed',
   '도크 모드: 위젯을 화면 아래 가장자리의 얇은 띠로 바꿉니다. 띠의 ▣ 버튼이나 같은 단축키로 패널에 돌아옵니다.': 'Dock mode: turns the widget into a thin bar on the bottom edge of the screen. The bar\'s ▣ button or the same keys bring the panel back.',
   '호버': 'Hover', '도크 타일에 마우스를 올리면 그 세션의 터미널 창이 띠 위에 열립니다. 입력 대기일 때 바로 메시지를 보낼 수 있습니다.': 'Point at a dock tile and that session\'s terminal window opens above the bar. While it waits for input you can send a message right there.',
-  '세션 카드나 타일을 누르면 그 에이전트의 실제 터미널(Orca·tmux·iTerm2·Terminal)로 전환합니다. 우클릭하면 이름 변경·인터럽트·위임 같은 메뉴가 열립니다.': 'Click a session card or tile to switch to the agent\'s real terminal (Orca, tmux, iTerm2, Terminal). Right-click for rename, interrupt, delegate and more.',
+  '세션 카드나 타일을 누르면 그 에이전트의 실제 터미널(Orca·tmux·iTerm2·Terminal)로 전환합니다. 카드를 우클릭하면 이름 변경·인터럽트·위임 같은 메뉴가 열리고, 도크 타일을 우클릭하거나 길게 누르면 고정 해제·숨기기·한 일 다시 보기 메뉴가 열립니다.': 'Click a session card or tile to switch to the agent\'s real terminal (Orca, tmux, iTerm2, Terminal). Right-click a card for rename, interrupt, delegate and more; right-click or long-press a dock tile for unpin, hide and replay.',
   '말풍선': 'Bubbles', '세션이 선택을 기다리면 타일 위에 질문과 선택지가 뜨고, 그 자리에서 고를 수 있습니다. 위험한 선택지는 가드레일이 잠급니다.': 'When a session waits for a choice, the question and options appear over its tile and you can pick one there. The guardrail locks risky options.',
   '왼쪽부터 n번째 내 세션의 터미널로 바로 전환합니다.': 'Switches straight to the terminal of your n-th session from the left.',
   '같은 사무실 망의 팀원 세션을 함께 봅니다': 'See your teammates\' sessions on the same office network', '초대 코드': 'Invite code',
@@ -3266,8 +3293,8 @@ async function enableHooks() {
   const r = await window.orca.hooksInstall().catch(e => ({ ok: false, error: e.message }));
   if (!r || r.ok === false) { showInAppToast(`${t('훅 설치 실패')}: ${r ? r.error : ''}`, 'error'); return false; }
   setHooksConsent('done');
-  hookSessions.clear();
-  for (const rec of await window.orca.hooksRecent()) { applyHookEvent(rec); questSkillNote(rec); }
+  hookSessions.clear(); playState.clear();
+  for (const rec of await window.orca.hooksRecent()) { applyHookEvent(rec); questSkillNote(rec); AgentDeskPlay.feed(playState, rec); }
   await refreshHooksStatus();
   return true;
 }
@@ -3283,13 +3310,13 @@ $('hooks-toggle').addEventListener('click', async () => {
   fetchData();
 });
 window.orca.onHookEvents(evts => {
-  for (const rec of evts) { applyHookEvent(rec); skillCastFrom(rec); }
+  for (const rec of evts) { applyHookEvent(rec); skillCastFrom(rec); dockNoteFrom(rec, AgentDeskPlay.feed(playState, rec)); }
   if (hooksEnabled) screenTick();
 });
 // replay recent hook events before the first session fetch so hook-only sessions appear immediately
 const hooksReady = refreshHooksStatus().then(async () => {
   if (!hooksEnabled) return;
-  for (const rec of await window.orca.hooksRecent()) { applyHookEvent(rec); questSkillNote(rec); }
+  for (const rec of await window.orca.hooksRecent()) { applyHookEvent(rec); questSkillNote(rec); AgentDeskPlay.feed(playState, rec); }
 }).catch(() => {});
 
 // ── "[스킬명] 스킬 사용": a live Skill tool call, or a /name prompt that names an installed skill, plays the skill-cast effect
@@ -3552,6 +3579,7 @@ try {
   // "도크에서 숨기기": session id → when it was hidden (AgentDeskDock.dockIdleSplit); at most 200, string ids only
   dockCfg.hidden = {};
   if (c.hidden && typeof c.hidden === 'object' && !Array.isArray(c.hidden)) for (const [k, v] of Object.entries(c.hidden).slice(0, 200)) if (k && k.length <= 500 && Number.isFinite(v) && v > 0) dockCfg.hidden[k] = v;
+  dockCfg.play = c.play !== false;             // the play marks (job hat, test monster, fatigue); the file-clash mark is not one of them
   dockCfg.sort = c.sort === 'manual' ? 'manual' : 'recent';   // the bar's order: latest activity first / the user's drag order
   dockCfg.order = Array.isArray(c.order) ? c.order.filter(v => typeof v === 'string' && v && v.length <= 200).slice(0, 50) : [];
   dockCfg.addRepo = typeof c.addRepo === 'string' && c.addRepo.length <= 500 ? c.addRepo : '';
@@ -3623,7 +3651,7 @@ const dockLocal = x => (x && !x.bundle && !x.peer ? sessions.find(s => s.id === 
 // everything in the bar but the tiles: padding, border, the separator, gaps, the right-hand buttons
 function dockFixedWidth() {
   const cs = getComputedStyle($('dock-strip')), gap = parseFloat(cs.columnGap) || 6;
-  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + 2 + 1 + 2 * gap + 4 + $('dock-right').offsetWidth + DOCK_ADD_W + (dockIdleN ? DOCK_IDLE_W : 0);
+  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + 2 + 1 + 2 * gap + 4 + $('dock-right').offsetWidth + DOCK_ADD_W + (dockIdleN ? DOCK_IDLE_W : 0) + (dockNotesLive().length ? DOCK_IDLE_W : 0);
 }
 // a tile's state start when the bar first sees it: the dashboard's status change time (askSince for a choice)
 function dockSeed(x) {
@@ -3702,7 +3730,7 @@ function dockDraw() {
   }
   for (const { key, n } of AgentDeskDock.numberedTiles(m.mine)) { const x = m.mine.find(y => y.key === key); if (x) x.num = n; }
   // a new selection alone only moves the highlight: the clicked tile stays the same node (its double-click still lands)
-  const sig = JSON.stringify([LANG, m.size, dockIdleN, dockIdleOpen, dockCfg.usage, m.mine.map(dockCtxHearts), [...m.mine, ...m.peers].map(({ age, ageWarn, ...x }) => ({ ...x, selected: false }))]);   // minutes: dockTileDeco
+  const sig = JSON.stringify([LANG, m.size, dockIdleN, dockIdleOpen, dockCfg.usage, m.mine.map(dockCtxHearts), dockNotesLive().length, [...m.mine, ...m.peers].map(({ age, ageWarn, ...x }) => ({ ...x, selected: false }))]);   // minutes: dockTileDeco
   if (sig !== dockSig && !(dockDrag && dockDrag.on)) { dockSig = sig; dockTilesDraw(m); }   // dragging: redrawn when it ends
   else for (const b of $('dock-tiles').querySelectorAll('.dock-tile:not(.more):not(.add):not(.idle)')) { const on = b.dataset.key === dockSel; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   dockTileDeco();
@@ -3750,7 +3778,9 @@ function dockTilesDraw(m) {
   const none = !m.mine.length && !m.peers.length ? `<span class="dock-empty">${esc(dockT('도크: 세션 없음 · 터미널에서 에이전트를 시작하세요'))}</span>` : '';
   const idleLab = `${dockT('도크: 쉬는 세션')} ${dockIdleN}`;
   const idle = dockIdleN ? `<button class="dock-tile idle${dockIdleOpen ? ' on' : ''}" data-key="idle:me" aria-label="${esc(idleLab)}" aria-pressed="${dockIdleOpen ? 'true' : 'false'}" title="${esc(idleLab)}" tabindex="-1">💤<span>${dockIdleN > 99 ? '99+' : dockIdleN}</span></button>` : '';
-  el.innerHTML = m.mine.map(dockTileHtml).join('') + add + idle + none + (m.peers.length ? '<span class="dock-gsep" aria-hidden="true"></span>' : '') + m.peers.map(dockTileHtml).join('');
+  const noteN = dockNotesLive().length, noteLab = `${dockT('도크: 퇴근 쪽지')} ${noteN}`;
+  const note = noteN ? `<button class="dock-tile idle note" data-key="note:me" aria-label="${esc(noteLab)}" title="${esc(noteLab)}" tabindex="-1">📝<span>${noteN}</span></button>` : '';
+  el.innerHTML = m.mine.map(dockTileHtml).join('') + add + idle + note + none + (m.peers.length ? '<span class="dock-gsep" aria-hidden="true"></span>' : '') + m.peers.map(dockTileHtml).join('');
   // one tab stop for the whole row (← → move inside it): the focused tile, else the selected one, else the first
   const tiles = [...el.querySelectorAll('.dock-tile')];
   const cur = tiles.find(b => b.dataset.key === fKey) || tiles.find(b => b.dataset.key === dockSel) || tiles[0];
@@ -3771,13 +3801,24 @@ let dockSkillMsgs = [];   // [{ text, until }]
 function dockSkillHint(text) {
   if (!dockOn || dockCfg.dnd) return;
   const el = $('dock-msg');
-  if (!el.hidden && el.classList.contains('err')) return;
+  if (!el.hidden && (el.classList.contains('err') || el.classList.contains('warn'))) return;
   const now = Date.now();
   dockSkillMsgs = dockSkillMsgs.filter(m => m.until > now && m.text !== text).slice(-2);
   dockSkillMsgs.push({ text, until: now + SKILL_CAST_TAG_MS });
   const all = dockSkillMsgs.map(m => m.text).join(' · ');
   el.textContent = all; el.title = all; el.className = 'dock-msg info'; el.hidden = false;
   clearTimeout(dockHintT); dockHintT = setTimeout(() => { el.hidden = true; dockSkillMsgs = []; }, SKILL_CAST_TAG_MS);
+}
+// a working warning (two sessions changing one file): the same pill in yellow for DOCK_WARN_MS. Shown with do-not-disturb
+// on too (it is not an alert of something finished: work is being overwritten now); it never replaces an error.
+const DOCK_WARN_MS = 5000;
+function dockWarnHint(text) {
+  if (!dockOn || !text) return;
+  const el = $('dock-msg');
+  if (!el.hidden && el.classList.contains('err')) return;
+  dockSkillMsgs = [];
+  el.textContent = text; el.title = text; el.className = 'dock-msg warn'; el.hidden = false;
+  clearTimeout(dockHintT); dockHintT = setTimeout(() => { el.hidden = true; }, DOCK_WARN_MS);
 }
 // [허용] [거부] for the open terminal window's session (its oldest request), in the window's input line: the permission
 // panel's own rules — permArm (0.8 s before the buttons work, [허용] stays off while data-truncated is 1) and permDecide
@@ -4020,8 +4061,8 @@ function dockTipHtml(x) {
   const since = s ? (Number(s.askSince) || Number(s.time) || 0) : 0;
   const st = AgentDeskDock.STATES.includes(x.state) ? x.state : 'done';
   return `<div class="tp-head"><b>${esc(x.peer ? `@${x.owner} / ${x.name}` : x.name)}</b><span class="tp-st st-${st}">${esc(dockT(DOCK_STATE_LABEL[st]))}</span>${x.delegated ? `<span>🔑 ${esc(dockT('도크: 위임받음'))}</span>` : ''}`
-    + (since ? `<span class="tp-meta">⏱ ${esc(LANG === 'en' ? `${timeAgo(since)} ago` : `${timeAgo(since)} 전`)}</span>` : '') + '</div>'
-    + (now ? `<div class="tp-now">${esc(clean(now, 120))}</div>` : '') + (msg ? `<div class="tp-msg">${esc(clean(msg, 200))}</div>` : '');
+    + (since ? `<span class="tp-meta">⏱ ${esc(LANG === 'en' ? `${timeAgo(since)} ago` : `${timeAgo(since)} 전`)}</span>` : '') + '</div>' + (x.peer ? '' : dockClashTip(x))
+    + (now ? `<div class="tp-now">${esc(clean(now, 120))}</div>` : '') + (msg ? `<div class="tp-msg">${esc(clean(msg, 200))}</div>` : '') + (x.peer ? '' : dockPlayTip(x));
 }
 function dockTipShow(key) {
   dockWake();
@@ -4823,7 +4864,10 @@ function dockMenuOpen(key) {
   const el = dockPopOpen('menu', key, `<div class="tp-head"><b>${esc(s.name)}</b></div>` + (fixed
     ? `<div class="dp-row"><button data-menu="unpin">📌 ${esc(dockT('도크: 고정 해제'))}</button></div>`
     : `<div class="tp-meta">${esc(t('고정되지 않은 세션입니다 — 끌어서 옮기면 고정됩니다'))}</div>`)
-    + `<div class="dp-row"><button data-menu="${hid ? 'unhide' : 'hide'}">${hid ? '👁' : '💤'} ${esc(dockT(hid ? '도크: 도크에 다시 표시' : '도크: 도크에서 숨기기'))}</button></div>`);
+    + `<div class="dp-row"><button data-menu="${hid ? 'unhide' : 'hide'}">${hid ? '👁' : '💤'} ${esc(dockT(hid ? '도크: 도크에 다시 표시' : '도크: 도크에서 숨기기'))}</button></div>`
+    + ((dockPlayOf(s) || { trail: [] }).trail.length >= 2 ? `<div class="dp-row"><button data-menu="replay">▶ ${esc(dockT('도크: 한 일 다시 보기'))}</button></div>` : ''));
+  const rpBtn = el.querySelector('[data-menu="replay"]');
+  if (rpBtn) rpBtn.onclick = () => { dockPopClose(); dockReplayStart(key); };
   const b = el.querySelector('[data-menu="unpin"]');
   if (b) b.onclick = () => { dockUnpin(s.id); dockPopClose(); dockTileFocus(key); };
   const h = el.querySelector('[data-menu="hide"], [data-menu="unhide"]');
@@ -5048,20 +5092,204 @@ function dockFxEl(b, kind, loop, t0 = performance.now()) {
   c.appendChild(el);
   return el;
 }
-// which activity loop a working session gets (OFFICE_FX act_*): its current tool — edits (docs files apart), reads and
-// searches, the web, the shell, subagents — and no tool (or one not listed: todos, MCP, a skill) = thinking
-function dockActKind(s) {
-  if (!s) return '';
-  const tool = s.tool ? String(s.tool) : '', base = tool.split(/[\s:(]/)[0];
-  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(base)) return OFFICE_DOC_RE.test(`${s.toolInput || ''} ${tool}`) ? 'act_docs' : 'act_code';
-  if (/^(Read|Grep|Glob|LS|NotebookRead|Search|Explore)$/.test(base)) return 'act_read';
-  if (/^(WebFetch|WebSearch)$/.test(base)) return 'act_web';
-  if (/^(Bash|Shell|Run|BashOutput|KillShell)$/.test(base)) return 'act_shell';
-  if (/^(Task|Agent)$/.test(base)) return 'act_agents';
-  return 'act_think';
+// which activity loop a working session gets (OFFICE_FX act_*): its current tool (AgentDeskPlay.kindOf) — edits (docs
+// files apart), reads and searches, the web, the shell, subagents, a skill, an MCP tool; no tool (or one not listed) = thinking
+function dockActKind(s) { return s ? `act_${AgentDeskPlay.kindOf(s.tool, s.toolInput)}` : ''; }
+
+// ── the play layer (core/play.js): what the hook log says a session of mine went through, shown on its tile ──
+//   boss     a test run failed: a monster at the feet, its hp = the failing tests; a passing run brings it down
+//   clash    two of my sessions changed the same file within DOCK_CLASH_MS: both tiles bump and carry ⚡
+//   fatigue  the context window fills (sweat from 70 %), compacting = a coffee, a compacted session wakes with a sparkle
+//   job      what the session mostly does puts a hat on its character (jobOf: 40 % of 12+ tool calls)
+//   replay   a tile's menu replays the session's activity trail on the tile in about 20 s
+//   notes    an ended session leaves a note (📝 tile): its last prompt and counts; a note reopens the session
+// The hat, the hp, the ⚡ and the replay label are plain marks (drawn with the dock animation off too); the monster, the
+// sweat, the coffee and the one-shots are pixelfx sheets (dockFxSync). Local only: nothing here reaches team peers.
+const playState = new Map();   // session id → play state (AgentDeskPlay.feed), from every hook record
+const DOCK_CLASH_MS = 5 * 60000, DOCK_PLAY_FRESH_MS = 60000, DOCK_BOSS_STALE_MS = 30 * 60000;
+const DOCK_JOBS = ['hacker', 'scholar', 'smith', 'scribe', 'explorer', 'commander', 'mage', 'operator'];   // job-hats.png frame order
+const DOCK_JOB_LABEL = { hacker: '도크: 해커', scholar: '도크: 학자', smith: '도크: 장인', scribe: '도크: 서기', explorer: '도크: 탐험가', commander: '도크: 지휘관', mage: '도크: 마법사', operator: '도크: 교환수' };
+const DOCK_KIND_LABEL = { code: '도크: 코드 수정', docs: '도크: 문서 작성', read: '도크: 읽기·검색', web: '도크: 웹', shell: '도크: 명령 실행', agents: '도크: 서브에이전트 호출', skill: '도크: 스킬', mcp: '도크: MCP 도구', think: '도크: 생각' };
+const dockPlayPrev = new Map();   // tile key → { boss, down, revived, clash }: what the last sync saw (one-shots fire on a change)
+let dockPlayPrimed = false, dockClashNow = new Map();   // tile key → { other, path }
+// a card's play state: its own session id, else the hook session of its folder (hookStateFor) — unless that session runs
+// in a folder another card stands for (a card for a parent folder must not show a child worktree's monster)
+function dockPlayOf(s) {
+  if (!s) return null;
+  let sid = s.sessionId || '';
+  if (!sid) {
+    const st = hookStateFor(s.id), dir = id => String(id || '').split('::').pop();
+    if (st && (st.cwd === dir(s.id) || !sessions.some(o => o !== s && dir(o.id) === st.cwd))) sid = st.sid;
+  }
+  return sid ? playState.get(sid) || null : null;
+}
+const dockBossOf = (ps, now) => (ps && ps.boss && !ps.boss.downAt && !ps.ended && now - ps.last < DOCK_BOSS_STALE_MS ? ps.boss : null);
+const dockFileName = p => String(p || '').split('/').filter(Boolean).pop() || '';
+function dockPlaySync() {
+  const tiles = $('dock-tiles'), now = Date.now(), rows = [], bySid = new Map();
+  for (const b of tiles.querySelectorAll('.dock-tile[data-key^="me:"]')) {
+    const x = dockTileOf(b.dataset.key); if (!x || x.bundle) continue;
+    const s = dockLocal(x), ps = dockPlayOf(s);
+    if (ps) bySid.set(ps.sid, { key: b.dataset.key, name: x.name });
+    rows.push({ b, k: b.dataset.key, x, s, ps });
+  }
+  dockClashNow = new Map();
+  for (const c of AgentDeskPlay.clashes(playState, now, DOCK_CLASH_MS)) {
+    const a = bySid.get(c.sids[0]), z = bySid.get(c.sids[1]); if (!a || !z) continue;
+    if (!dockClashNow.has(a.key)) dockClashNow.set(a.key, { other: z.name, otherKey: z.key, path: c.path });
+    if (!dockClashNow.has(z.key)) dockClashNow.set(z.key, { other: a.name, otherKey: a.key, path: c.path });
+  }
+  const live = new Set();
+  for (const { b, k, x, s, ps } of rows) {
+    live.add(k);
+    const prev = dockPlayPrev.get(k), fire = dockPlayPrimed && !!prev, play = dockCfg.play !== false;
+    // job: a hat on the character
+    const job = ps && play ? AgentDeskPlay.jobOf(ps.counts) : null, spr = b.querySelector('.dock-spr');
+    let hat = spr && spr.querySelector('.dock-hat');
+    if (job && spr) {
+      if (!hat) { hat = document.createElement('i'); hat.className = 'dock-hat'; spr.appendChild(hat); }
+      hat.style.backgroundPositionX = `${-16 * (DOCK_JOBS.indexOf(job.id) % 2)}px`; hat.style.backgroundPositionY = `${-8 * Math.floor(DOCK_JOBS.indexOf(job.id) / 2)}px`;
+    } else if (hat) hat.remove();
+    // boss: its hp beside it
+    const boss = play ? dockBossOf(ps, now) : null;
+    let hp = b.querySelector('.dock-boss');
+    if (boss) {
+      if (!hp) { hp = document.createElement('span'); hp.className = 'dock-boss'; hp.setAttribute('aria-hidden', 'true'); b.appendChild(hp); }
+      const txt = String(boss.hp > 99 ? '99+' : boss.hp); if (hp.textContent !== txt) hp.textContent = txt;
+    } else if (hp) hp.remove();
+    b.dataset.boss = boss ? '1' : '';
+    if (fire && boss && !prev.boss) dockSkillHint(`👾 ${x.name}: ${dockT('도크: 테스트 실패')} ${boss.hp}`);
+    const down = ps && ps.boss && ps.boss.downAt ? ps.boss.downAt : 0;
+    if (fire && prev.boss && down && down !== prev.down && now - down < DOCK_PLAY_FRESH_MS) { dockFxPlay(k, 'bossDown'); dockSkillHint(`⚔ ${x.name}: ${dockT('도크: 테스트 통과!')}`); }
+    // fatigue: sweat while working with a full context window, coffee while compacting, a sparkle after it
+    b.dataset.tired = !play ? '' : AgentDeskPlay.fatigue(s && b.classList.contains('st-run') ? s.ctxPct : null, !!(ps && ps.compacting && !ps.ended && now - ps.last < DOCK_BOSS_STALE_MS));
+    const revived = ps ? ps.revivedAt : 0;
+    if (fire && play && revived && revived !== prev.revived && now - revived < DOCK_PLAY_FRESH_MS) dockFxPlay(k, 'revive');
+    // clash: ⚡ on both tiles, a bump toward each other when it starts
+    const cl = dockClashNow.get(k), clKey = cl ? `${cl.otherKey}|${cl.path}` : '';
+    let zap = b.querySelector('.dock-clash');
+    if (cl) { if (!zap) { zap = document.createElement('span'); zap.className = 'dock-clash'; zap.setAttribute('aria-hidden', 'true'); zap.textContent = '⚡'; b.appendChild(zap); } }
+    else if (zap) zap.remove();
+    if (fire && cl && clKey !== prev.clash) {
+      dockFxPlay(k, 'clash');
+      const other = tiles.querySelector(`.dock-tile[data-key="${CSS.escape(cl.otherKey)}"]`), dir = other && other.offsetLeft < b.offsetLeft ? 'bump-l' : 'bump-r';
+      b.classList.remove('bump-l', 'bump-r'); void b.offsetWidth; b.classList.add(dir);
+      if (k < cl.otherKey) dockWarnHint(`⚡ ${x.name} ↔ ${cl.other}: ${dockFileName(cl.path)} ${dockT('도크: 같은 파일을 함께 고치는 중')}`);
+    }
+    dockPlayPrev.set(k, { boss: !!boss, down, revived, clash: clKey });
+  }
+  for (const k of [...dockPlayPrev.keys()]) if (!live.has(k)) dockPlayPrev.delete(k);
+  dockPlayPrimed = true;
+  dockReplayApply();
+}
+// a tile's quick card: the file it shares with another session (a warning, right under the head), and the play
+// lines (its job, the failing tests) at the end
+function dockClashTip(x) {
+  const cl = dockClashNow.get(x.key);
+  return cl ? `<div class="tp-now tp-warn">${esc(`⚡ ${dockFileName(cl.path)} ↔ ${cl.other} · ${dockT('도크: 같은 파일을 함께 고치는 중')}`)}</div>` : '';
+}
+function dockPlayTip(x) {
+  const s = dockLocal(x), ps = dockPlayOf(s); if (!ps || dockCfg.play === false) return '';
+  const out = [], job = AgentDeskPlay.jobOf(ps.counts), boss = dockBossOf(ps, Date.now());
+  if (job) out.push(`🎩 ${dockT(DOCK_JOB_LABEL[job.id])} Lv.${job.level}`);
+  if (boss) out.push(`👾 ${dockT('도크: 테스트 실패')} ${boss.hp}`);
+  return out.length ? `<div class="tp-meta">${esc(out.join(' · '))}</div>` : '';
+}
+
+// replay: the session's trail (AgentDeskPlay.replaySteps) on its tile — each step its activity loop and a label, a failed
+// step flashes red; about DOCK_REPLAY_MS in all. One at a time; another tile's replay, or the same one again, replaces it.
+const DOCK_REPLAY_MS = 20000;
+let dockReplay = null;   // { key, steps, i, per, t }
+function dockReplayStart(key) {
+  dockReplayStop();
+  const ps = dockPlayOf(dockLocal(dockTileOf(key))), steps = ps ? AgentDeskPlay.replaySteps(ps.trail, 40) : [];
+  if (steps.length < 2) { dockSkillHint(dockT('도크: 다시 볼 기록이 아직 없습니다')); return; }
+  dockReplay = { key, steps, i: -1, per: Math.max(350, Math.min(1500, Math.round(DOCK_REPLAY_MS / steps.length))), t: 0 };
+  dockReplayNext();
+}
+function dockReplayNext() {
+  const r = dockReplay; if (!r) return;
+  r.i++;
+  if (r.i >= r.steps.length || !dockOn || !dockTileOf(r.key)) { dockReplayStop(); return; }
+  dockReplayApply();
+  r.t = setTimeout(dockReplayNext, r.per);
+}
+function dockReplayStop() {
+  const r = dockReplay; if (!r) return;
+  clearTimeout(r.t); dockReplay = null;
+  for (const b of $('dock-tiles').querySelectorAll('.dock-tile.replay')) { b.classList.remove('replay', 'replay-fail'); const tag = b.querySelector('.dock-replay-tag'); if (tag) tag.remove(); }
+  if (dockOn) dockFxSync();
+}
+// put the current step on the tile (again after every redraw: dockPlaySync)
+function dockReplayApply() {
+  const r = dockReplay; if (!r || r.i < 0) return;
+  const b = $('dock-tiles').querySelector(`.dock-tile[data-key="${CSS.escape(r.key)}"]`); if (!b) return;
+  const st = r.steps[r.i];
+  b.classList.add('replay'); b.classList.toggle('replay-fail', !!st.fail);
+  let tag = b.querySelector('.dock-replay-tag');
+  if (!tag) { tag = document.createElement('span'); tag.className = 'dock-replay-tag'; tag.setAttribute('aria-hidden', 'true'); b.appendChild(tag); }
+  const txt = `${st.fail ? '✖ ' : ''}${dockT(DOCK_KIND_LABEL[st.k] || DOCK_KIND_LABEL.think)}${st.n > 1 ? ` ×${st.n}` : ''}`;
+  if (tag.textContent !== txt) tag.textContent = txt;
+  tag.style.setProperty('--p', `${Math.round((r.i + 1) / r.steps.length * 100)}%`);
+  if (dockFxAllowed()) {
+    const want = `act_${st.k}`, cur = b.querySelector('.dock-fx[data-fx^="act_"]');
+    if (cur && cur.dataset.fx !== want) cur.remove();
+    if (!cur || cur.dataset.fx !== want) dockFxEl(b, want, true);
+    dockFxStep();
+  }
+}
+
+// leave notes: what a session of mine left when it ended (AgentDeskPlay.noteOf) — kept on this machine (localStorage),
+// the newest DOCK_NOTE_MAX for DOCK_NOTE_DAYS; the 📝 tile lists them, a note reopens its session in a terminal
+const DOCK_NOTE_MAX = 8, DOCK_NOTE_DAYS = 3;
+let dockNotes = [];
+try { const v = JSON.parse(localStorage.getItem('roca-notes') || '[]'); if (Array.isArray(v)) dockNotes = v.filter(n => n && typeof n.sid === 'string' && typeof n.cwd === 'string').slice(0, DOCK_NOTE_MAX); } catch {}
+function dockNotesSave() { try { localStorage.setItem('roca-notes', JSON.stringify(dockNotes)); } catch {} }
+function dockNotesLive() {
+  const min = Date.now() - DOCK_NOTE_DAYS * 86400000, n = dockNotes.length;
+  dockNotes = dockNotes.filter(x => Number(x.at) >= min);
+  if (dockNotes.length !== n) dockNotesSave();
+  return dockNotes;
+}
+// a live hook record: a session that ended leaves its note; one that is back (a new prompt, a tool) takes it away
+function dockNoteFrom(rec, ps) {
+  const ev = rec && rec.ev; if (!ev || !ps) return;
+  if (ev.hook_event_name === 'SessionEnd') {
+    if (ev.reason === 'clear') return;   // /clear: the conversation goes on under a new id
+    const n = AgentDeskPlay.noteOf(ps); if (!n) return;
+    const st = hookSessions.get(ps.sid), card = sessions.find(s => s.sessionId === ps.sid || (st && hookStateFor(s.id) === st));
+    n.name = String((card && card.name) || ps.cwd.split('/').filter(Boolean).pop() || '').slice(0, 60);
+    dockNotes = [n, ...dockNotes.filter(x => x.sid !== n.sid)].slice(0, DOCK_NOTE_MAX);
+    dockNotesSave(); if (dockOn) dockRender();
+  } else if (/^(UserPromptSubmit|PreToolUse)$/.test(ev.hook_event_name) && dockNotes.some(x => x.sid === ps.sid)) {
+    dockNotes = dockNotes.filter(x => x.sid !== ps.sid); dockNotesSave(); if (dockOn) dockRender();
+  }
+}
+function dockNotesOpen() {
+  if (dockPop && dockPop.notes) { dockPopClose(); return; }
+  const list = dockNotesLive();
+  if (!list.length) return;
+  const row = (n, i) => `<div class="dn-row"><div class="dn-head"><b>${esc(n.name || '')}</b><span class="tp-meta">${esc(LANG === 'en' ? `${timeAgo(n.at)} ago` : `${timeAgo(n.at)} 전`)}</span></div>`
+    + (n.text ? `<div class="dn-text">${esc(AgentDeskMask.mask(String(n.text)))}</div>` : '')
+    + `<div class="tp-meta">${esc(`${dockT('도크: 고친 파일')} ${Number(n.edits) || 0} · ${dockT('도크: 도구')} ${Number(n.tools) || 0}${n.tests && (n.tests.pass || n.tests.fail) ? ` · ${dockT('도크: 테스트')} ✔${Number(n.tests.pass) || 0} ✖${Number(n.tests.fail) || 0}` : ''}`)}</div>`
+    + `<div class="dp-row"><button data-note-go="${i}">▶ ${esc(dockT('도크: 이어서 하기'))}</button><button data-note-del="${i}">${esc(dockT('도크: 버리기'))}</button></div></div>`;
+  const el = dockPopOpen('drop', 'note:me', `<div class="tp-head"><b>📝 ${esc(dockT('도크: 퇴근 쪽지'))}</b><span class="tp-meta">${list.length}</span></div>` + list.map(row).join(''));
+  dockPop.notes = true;
+  el.onclick = async e => {
+    const go = e.target.closest('[data-note-go]'), del = e.target.closest('[data-note-del]');
+    const n = list[Number((go || del || {}).dataset ? (go || del).dataset[go ? 'noteGo' : 'noteDel'] : -1)]; if (!n) return;
+    el.onclick = null;
+    if (go) {
+      const r = await window.orca.resumeSession(n.cwd, n.sid, n.agent || 'claude').catch(() => null);
+      if (!r || r.ok === false) { dockHint(t('다시 열기 실패'), 'err'); dockPopClose(); return; }
+    }
+    dockNotes = dockNotes.filter(x => x.sid !== n.sid); dockNotesSave();
+    dockPopClose(); dockRender();
+  };
 }
 function dockFxSync(changes) {
   dockCastSync();
+  dockPlaySync();
   const tiles = $('dock-tiles');
   if (!dockFxAllowed()) { for (const c of tiles.querySelectorAll('.dock-fxc')) c.remove(); dockFxSeen.clear(); dockFxPlaying.clear(); dockFxPrimed = false; return; }
   for (const c of changes || []) if (c.key.startsWith('me:') && c.from === 'run' && (c.to === 'input' || c.to === 'done')) dockFxPlay(c.key, 'collect');
@@ -5075,9 +5303,15 @@ function dockFxSync(changes) {
     if (!dockFxSeen.has(k)) { dockFxSeen.add(k); if (dockFxPrimed) dockFxPlay(k, 'blinkIn'); }
     for (const e of dockFxPlaying.get(k) || []) if (!b.querySelector(`.dock-fx[data-t0="${e.t0}"]`)) dockFxEl(b, e.kind, false, e.t0);
     // what a working session of mine is doing, as a loop over its tile (dockActKind); another kind replaces it
-    const want = b.classList.contains('st-run') ? dockActKind(dockLocal(dockTileOf(k))) : '', cur = b.querySelector('.dock-fx[data-fx^="act_"]');
+    const rp = dockReplay && dockReplay.key === k && dockReplay.i >= 0 ? `act_${dockReplay.steps[dockReplay.i].k}` : '';
+    const want = rp || (b.classList.contains('st-run') ? dockActKind(dockLocal(dockTileOf(k))) : ''), cur = b.querySelector('.dock-fx[data-fx^="act_"]');
     if (cur && cur.dataset.fx !== want) cur.remove();
     if (want && (!cur || cur.dataset.fx !== want)) dockFxEl(b, want, true);
+    // the play layer's loops (dockPlaySync marks the tile): the test monster, sweat, coffee
+    for (const [kind, on] of [['boss', b.dataset.boss === '1'], ['sweat', b.dataset.tired === 'sweat'], ['coffee', b.dataset.tired === 'coffee']]) {
+      const el = b.querySelector(`.dock-fx[data-fx="${kind}"]`);
+      if (on && !el) dockFxEl(b, kind, true); else if (!on && el) el.remove();
+    }
     const z = b.querySelector('.dock-fx[data-fx="sleep"]');
     if (b.classList.contains('st-done') && !z) dockFxEl(b, 'sleep', true);
     else if (!b.classList.contains('st-done') && z) z.remove();
@@ -5198,6 +5432,7 @@ $('dock-tiles').addEventListener('click', e => {
   const b = e.target.closest('.dock-tile');
   if (b && b.dataset.key === 'add:me') { dockAddOpen(); return; }
   if (b && b.dataset.key === 'idle:me') { dockIdleOpen = !dockIdleOpen; dockDraw(); return; }   // 💤: the idle sessions open / fold
+  if (b && b.dataset.key === 'note:me') { dockNotesOpen(); return; }   // 📝: the notes ended sessions left
   const x = b && dockTileOf(b.dataset.key); if (!x) return;
   if (x.bundle) { dockLeave(x.key === 'more:me' ? 'dashboard' : 'team'); return; }   // the "+N" pile / a teammate's group: the full list
   if (e.detail > 1) return;   // the second click of a double-click (the dblclick opens the panel card)
@@ -5228,6 +5463,7 @@ $('dock-tiles').addEventListener('keydown', e => {
   e.preventDefault(); e.stopPropagation();
   if (tiles[i].dataset.key === 'add:me') { dockAddOpen(); return; }
   if (tiles[i].dataset.key === 'idle:me') { dockIdleOpen = !dockIdleOpen; dockDraw(); dockTileFocus('idle:me'); return; }
+  if (tiles[i].dataset.key === 'note:me') { dockNotesOpen(); return; }
   const x = dockTileOf(tiles[i].dataset.key); if (!x) return;
   if (x.bundle) { dockLeave(x.key === 'more:me' ? 'dashboard' : 'team'); return; }
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -6255,7 +6491,7 @@ const tlTime = (at, secs) => { const d = new Date(at), p = n => String(n).padSta
 // short words translated here, not in I18N: there they would also be substituted inside other untranslated phrases
 const TL_EN = { 프롬프트: 'Prompt', 도구: 'Tool', 승인: 'Approval', 서브에이전트: 'Subagent', '응답 완료': 'Stop', '중단(오류)': 'Stop (error)', 정리: 'Compact', 작업: 'Task', 세션: 'Session',
   요청: 'asked', 허용: 'allowed', 거부: 'denied', 시작: 'start', 종료: 'end', 완료: 'done', 생성: 'created', 소요: 'took', '끝 기록 없음': 'no end recorded', '진행 중': 'running',
-  '1시간': '1 hour', 턴: 'Turns', 회: '×', 실패: 'failed', 서브: 'Sub', 대기: 'Wait', 편집: 'Edit', 기타: 'Other', '승인 대기': 'Approval wait' };
+  '1시간': '1 hour', 턴: 'Turns', 회: '×', 실패: 'failed', 서브: 'Sub', 대기: 'Wait', 편집: 'Edit', 기타: 'Other', '승인 대기': 'Pending approval' };
 const tlT = s => LANG === 'ko' ? s : (TL_EN[s] || t(s));
 const TL_KIND = { prompt: '프롬프트', tool: '도구', permission: '승인', subagent: '서브에이전트', stop: '응답 완료', 'stop-failure': '중단(오류)', compact: '정리', task: '작업', session: '세션' };
 const TL_STATE = { ask: '요청', allowed: '허용', denied: '거부', start: '시작', stop: '종료', end: '종료', done: '완료', created: '생성', completed: '완료' };
@@ -7144,7 +7380,7 @@ function officeSetSkin(sid, idx) {
 // sprite-sheet effects from pixelfx (MIT, patch-gg/pixelfx), baked by scripts/office-fx.mjs — rerun it and paste its
 // table here when the sheets change. px/py: the effect's origin (a character's feet) in the frame; dy: drawn that much
 // lower because pixelfx's stand-in is taller than our 16 x 32 characters.
-const OFFICE_FX = {"collect":{"src":"fx/collect-burst","w":112,"h":108,"px":56,"py":94,"cols":7,"n":42,"fps":30,"loop":false},"blinkIn":{"src":"fx/blink-in","w":136,"h":96,"px":68,"py":80,"cols":6,"n":43,"fps":30,"loop":false},"blinkOut":{"src":"fx/blink-out","w":136,"h":96,"px":68,"py":80,"cols":6,"n":49,"fps":30,"loop":false},"exclaim":{"src":"fx/exclamation","w":84,"h":104,"px":42,"py":92,"cols":8,"n":43,"fps":30,"loop":false,"dy":6},"sleep":{"src":"fx/zzz","w":24,"h":42,"px":4,"py":41,"cols":8,"n":30,"fps":10,"loop":true},"skillCast":{"src":"fx/skill-cast","w":56,"h":64,"px":28,"py":58,"cols":6,"n":30,"fps":20,"loop":false},"skillCastDock":{"src":"fx/skill-cast-dock","w":56,"h":64,"px":28,"py":58,"cols":6,"n":30,"fps":20,"loop":false},"steam":{"src":"fx/steam","w":12,"h":18,"px":6,"py":17,"cols":7,"n":30,"fps":15,"loop":true},"rackA":{"src":"fx/rack-a","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"rackB":{"src":"fx/rack-b","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"skyDay":{"src":"fx/sky-day","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyDusk":{"src":"fx/sky-dusk","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyNight":{"src":"fx/sky-night","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"act_code":{"src":"fx/act-code","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_docs":{"src":"fx/act-docs","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_read":{"src":"fx/act-read","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_web":{"src":"fx/act-web","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_shell":{"src":"fx/act-shell","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_agents":{"src":"fx/act-agents","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_think":{"src":"fx/act-think","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true}};
+const OFFICE_FX = {"collect":{"src":"fx/collect-burst","w":112,"h":108,"px":56,"py":94,"cols":7,"n":42,"fps":30,"loop":false},"blinkIn":{"src":"fx/blink-in","w":136,"h":96,"px":68,"py":80,"cols":6,"n":43,"fps":30,"loop":false},"blinkOut":{"src":"fx/blink-out","w":136,"h":96,"px":68,"py":80,"cols":6,"n":49,"fps":30,"loop":false},"exclaim":{"src":"fx/exclamation","w":84,"h":104,"px":42,"py":92,"cols":8,"n":43,"fps":30,"loop":false,"dy":6},"sleep":{"src":"fx/zzz","w":24,"h":42,"px":4,"py":41,"cols":8,"n":30,"fps":10,"loop":true},"skillCast":{"src":"fx/skill-cast","w":56,"h":64,"px":28,"py":58,"cols":6,"n":30,"fps":20,"loop":false},"skillCastDock":{"src":"fx/skill-cast-dock","w":56,"h":64,"px":28,"py":58,"cols":6,"n":30,"fps":20,"loop":false},"steam":{"src":"fx/steam","w":12,"h":18,"px":6,"py":17,"cols":7,"n":30,"fps":15,"loop":true},"rackA":{"src":"fx/rack-a","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"rackB":{"src":"fx/rack-b","w":16,"h":32,"px":0,"py":0,"cols":7,"n":24,"fps":10,"loop":true},"skyDay":{"src":"fx/sky-day","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyDusk":{"src":"fx/sky-dusk","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"skyNight":{"src":"fx/sky-night","w":36,"h":22,"px":0,"py":0,"cols":9,"n":120,"fps":10,"loop":true},"act_code":{"src":"fx/act-code","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_docs":{"src":"fx/act-docs","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_read":{"src":"fx/act-read","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_web":{"src":"fx/act-web","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_shell":{"src":"fx/act-shell","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_agents":{"src":"fx/act-agents","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_think":{"src":"fx/act-think","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_skill":{"src":"fx/act-skill","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"act_mcp":{"src":"fx/act-mcp","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"boss":{"src":"fx/play-boss","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"sweat":{"src":"fx/play-sweat","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"coffee":{"src":"fx/play-coffee","w":56,"h":56,"px":28,"py":38,"cols":5,"n":24,"fps":12,"loop":true},"bossDown":{"src":"fx/play-boss-down","w":56,"h":56,"px":28,"py":38,"cols":5,"n":19,"fps":20,"loop":false},"clash":{"src":"fx/play-clash","w":56,"h":56,"px":28,"py":38,"cols":5,"n":19,"fps":20,"loop":false},"revive":{"src":"fx/play-revive","w":56,"h":56,"px":28,"py":38,"cols":5,"n":19,"fps":20,"loop":false},"jobHats":{"src":"fx/job-hats","w":16,"h":8,"px":0,"py":0,"cols":2,"n":8,"fps":1,"loop":true}};
 const officeFx = [];   // one-shots playing: { kind, x, y (feet), t, ch (follow that character while it lives) }
 function officeFxPlay(kind, x, y, ch = null) {
   if (OFFICE_FX[kind] && officeFx.length < 24) officeFx.push({ kind, x, y, t: 0, ch });
@@ -10920,6 +11156,7 @@ function settingsRender() {
     ${row(t('선택 말풍선 표시'), t('세션이 선택을 기다릴 때 타일 위에 질문과 선택지를 띄웁니다. "선택지만"은 질문 본문을 숨깁니다.'), seg('dock-ask', dockCfg.ask, [['on', t('켬')], ['options', t('선택지만')], ['off', t('끔')]]), '', true)}
     ${row(t('쉬는 세션 모으기'), t('입력 대기·완료 상태로 이 시간 동안 활동이 없는 세션은 띠 오른쪽의 💤 타일로 모읍니다. 질문·승인 대기, 오류, 고정한 세션은 항상 띠에 남습니다. 💤를 누르면 펼쳐지고, 타일 메뉴(길게 누르기)의 "도크에서 숨기기"로 직접 보낼 수도 있습니다.'), seg('dock-idle', String(dockCfg.idleMin), [['30', t('30분')], ['60', t('1시간')], ['240', t('4시간')], ['0', t('끔')]]))}
     ${row(t('Orca 사용 중엔 말풍선 접기'), t('Orca가 앞에 있으면 질문이 이미 터미널에 보이므로 선택 말풍선을 띄우지 않고 타일의 !만 표시합니다. 타일에 마우스를 올리거나 다른 앱으로 넘어가면 말풍선이 펼쳐집니다. macOS 전용입니다.'), sw('dock-yield-orca', dockCfg.yieldOrca))}
+    ${row(t('놀이 표시'), t('캐릭터의 직업 모자, 테스트 실패 몬스터, 컨텍스트 피로(땀·커피)를 도크 타일에 표시합니다. 꺼도 같은 파일을 함께 고치는 세션의 ⚡ 경고는 계속 표시됩니다.'), seg('dock-play', dockCfg.play !== false ? 'on' : 'off', [['on', dockT('도크: 보이기')], ['off', dockT('도크: 숨기기')]]))}
     ${row(t('도크 정렬'), t('최신순: 가장 최근에 활동한 세션이 왼쪽에 옵니다. 마우스가 타일 위에 있는 동안에는 자리를 바꾸지 않습니다. 타일을 끌어 옮기면 직접 정한 순서로 바뀌고, 최신순을 다시 고르면 끌어 정한 순서를 지웁니다.'), seg('dock-sort', dockCfg.sort, [['recent', t('최신순')], ['manual', t('직접 정한 순서')]]))}
     ${row(t('완료 말풍선'), t('내 세션이 작업을 마치면(작업 중 → 입력 대기·완료) 그 타일 위에 마지막 응답의 첫 줄을 8초 동안 띄웁니다. 누르면 터미널로 갑니다.'), sw('dock-done', dockCfg.done))}
     ${row(t('한도 표시'), t('도크의 5시간·주간 한도와 세션별 컨텍스트를 하트(5시간)·스태미나 링(주간)·타일 옆 하트 3개(컨텍스트)로 보여 줍니다. 막대를 고르면 예전의 가는 막대 두 개로 돌아갑니다.'), seg('dock-usage', dockCfg.usage, [['hearts', t('하트')], ['bars', t('막대')]]))}
@@ -11011,6 +11248,7 @@ $('settings-body').addEventListener('click', async (e) => {
   else if (name === 'dock-yield-orca') { dockCfg.yieldOrca = !dockCfg.yieldOrca; dockSave(); dockFront.id = ''; dockFront.at = 0; if (dockOn) { dockAskSync(); dockFrontCheck(true); } settingsRender(); }
   else if (name === 'dock-autohide') { dockCfg.autoHide = !dockCfg.autoHide; dockSave(); if (!dockCfg.autoHide) dockHideSet(false); settingsRender(); }
   else if (name === 'dock-ask' && ['on', 'options', 'off'].includes(v)) { dockCfg.ask = v; dockSave(); if (dockOn) dockAskSync(); settingsRender(); }
+  else if (name === 'dock-play' && (v === 'on' || v === 'off')) { dockCfg.play = v === 'on'; dockSave(); if (dockOn) dockDraw(); settingsRender(); }
   else if (name === 'dock-sort' && (v === 'recent' || v === 'manual')) { dockCfg.sort = v; if (v === 'recent') dockCfg.order = []; dockSave(); if (dockOn) dockDraw(); settingsRender(); }
   else if (name === 'dock-done') { dockCfg.done = !dockCfg.done; dockSave(); if (dockOn) dockDoneSync(); settingsRender(); }
   else if (name === 'dock-anim') { dockCfg.anim = !dockCfg.anim; dockSave(); settingsRender(); }
@@ -12143,7 +12381,7 @@ function onboardRender() {
       <div class="onboard-art" aria-hidden="true"><i class="run"></i><i class="ask"></i><i class="input"></i><i class="done"></i><i class="err"></i><span>📥 2</span></div>
       ${tip(mod + (PLATFORM === 'darwin' ? '⇧D' : 'Shift+D'), t('도크 모드: 위젯을 화면 아래 가장자리의 얇은 띠로 바꿉니다. 띠의 ▣ 버튼이나 같은 단축키로 패널에 돌아옵니다.'))}
       ${tip(t('호버'), t('도크 타일에 마우스를 올리면 그 세션의 터미널 창이 띠 위에 열립니다. 입력 대기일 때 바로 메시지를 보낼 수 있습니다.'))}
-      ${tip(t('클릭'), t('세션 카드나 타일을 누르면 그 에이전트의 실제 터미널(Orca·tmux·iTerm2·Terminal)로 전환합니다. 우클릭하면 이름 변경·인터럽트·위임 같은 메뉴가 열립니다.'))}
+      ${tip(t('클릭'), t('세션 카드나 타일을 누르면 그 에이전트의 실제 터미널(Orca·tmux·iTerm2·Terminal)로 전환합니다. 카드를 우클릭하면 이름 변경·인터럽트·위임 같은 메뉴가 열리고, 도크 타일을 우클릭하거나 길게 누르면 고정 해제·숨기기·한 일 다시 보기 메뉴가 열립니다.'))}
       ${tip(t('말풍선'), t('세션이 선택을 기다리면 타일 위에 질문과 선택지가 뜨고, 그 자리에서 고를 수 있습니다. 위험한 선택지는 가드레일이 잠급니다.'))}
       ${tip(mod + '1~9', t('왼쪽부터 n번째 내 세션의 터미널로 바로 전환합니다.'))}`;
   } else if (onboardStep === 3) {

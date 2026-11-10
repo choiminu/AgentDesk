@@ -1,14 +1,14 @@
 // AgentDesk dock: what a working session is doing, as a small loop around its character on a 56 x 56 dock tile —
 // code bits flying off the keyboard (edit), lines written on a floating page (docs), a magnifier sweeping (read /
 // search), a spinning globe (web), a terminal scrolling (shell), helper orbs circling (subagents), thought dots
-// (thinking: working, no tool yet). Baked by scripts/office-fx.mjs from a pixelfx checkout, one sheet per kind.
+// (thinking: working, no tool yet), a spellbook with rising runes (a skill), a server box with packets on a cable (an MCP tool). Baked by scripts/office-fx.mjs from a pixelfx checkout, one sheet per kind.
 // The tile's corners are taken (tool chip top left, badges top right, context hearts left, the name below the feet),
 // so everything happens over the head and on the right of the character.
 import { fit, TAU, clamp } from "../../core/index.js";
 
 export const meta = {
   name: "Dock activity",
-  desc: "A small loop beside a 16 x 28 character on a 56 px dock tile that says what the agent is doing: code, docs, read, web, shell, agents or thinking.",
+  desc: "A small loop beside a 16 x 28 character on a 56 px dock tile that says what the agent is doing: code, docs, read, web, shell, agents, thinking, a skill or an MCP tool.",
   tags: ["office", "dock", "status", "activity", "loop"],
   size: [56, 56],
   origin: [28, 38],   // the character's feet, 18 px above the tile's bottom
@@ -27,6 +27,8 @@ const PALS = {
   shell: ["#10151c", "#6b7c94", "#ffc861", "#fff4d6"],
   agents: ["#7a3d12", "#d9822b", "#ffc46b", "#fff3d0"],
   think: ["#4a4a66", "#8e8fb8", "#d5d6f2", "#ffffff"],
+  skill: ["#3d1f6b", "#8a5cf0", "#cdb4ff", "#fbf5ff"],
+  mcp: ["#5c1a40", "#d6408f", "#ff9ccc", "#fff0f7"],
 };
 
 // mini glyphs (3 x 5) for the code bits
@@ -142,7 +144,6 @@ const DRAW = {
       }
     }
   },
-  // three thought dots over the head, lighting up one after another, in a small cloud
   // a thought cloud over the head: three dots light up one after another
   think(p, t, C) {
     const u = t / meta.duration;
@@ -154,6 +155,47 @@ const DRAW = {
       const c = on > 0.55 ? C[3] : C[1];
       p.rect(x, -35, 2, 2, c, 1);
       if (on > 0.55) p.glow(x + 1, -34, 3, C[2], (on - 0.55) * 1.2);
+    }
+  },
+  // a skill: an open spellbook floats over the right shoulder, runes rise off its pages and fade
+  skill(p, t, C) {
+    const u = t / meta.duration, X = 10, Y = -22, bob = Math.round(Math.sin(u * TAU) * 1);
+    const by = Y + bob;
+    p.rect(X, by, 6, 6, C[2], 1); p.rect(X + 7, by, 6, 6, C[2], 1);         // pages
+    p.line(X, by + 6, X + 5, by + 6, C[1], 1); p.line(X + 7, by + 6, X + 12, by + 6, C[1], 1);
+    p.line(X + 6, by - 1, X + 6, by + 6, C[0], 1);                             // spine
+    p.line(X - 1, by + 7, X + 13, by + 7, C[0], 1);                            // cover
+    for (let k = 0; k < 2; k++) p.line(X + 1, by + 1 + k * 2, X + 4, by + 1 + k * 2, C[1], 1);
+    for (let k = 0; k < 2; k++) p.line(X + 8, by + 1 + k * 2, X + 11, by + 1 + k * 2, C[1], 1);
+    p.glow(X + 6, by + 2, 6, C[1], 0.35);
+    for (let i = 0; i < 4; i++) {                                              // runes: little four-point stars
+      const age = (u + i / 4) % 1, x = X + 3 + ((i * 5) % 8) + Math.round(Math.sin(age * TAU + i) * 1.5), y = by - 2 - Math.round(age * 9);
+      const a = clamp(age / 0.15, 0, 1) * clamp((1 - age) / 0.35, 0, 1), c = age < 0.4 ? C[3] : C[2];
+      p.blend(x, y, c, a); p.blend(x - 1, y, C[2], a * 0.7); p.blend(x + 1, y, C[2], a * 0.7); p.blend(x, y - 1, C[2], a * 0.7); p.blend(x, y + 1, C[2], a * 0.7);
+      p.glow(x, y, 3, C[1], 0.4 * a);
+    }
+  },
+  // an MCP tool: a little server box over the right shoulder, a cable down to the hands, packets running both ways
+  mcp(p, t, C) {
+    const u = t / meta.duration, X = 12, Y = -32, W = 10, H = 9;
+    p.rect(X, Y, W, H, C[0], 1);
+    p.line(X, Y, X + W - 1, Y, C[2], 1); p.line(X, Y, X, Y + H - 1, C[1], 1);
+    p.line(X + W - 1, Y, X + W - 1, Y + H - 1, C[1], 0.7); p.line(X, Y + H - 1, X + W - 1, Y + H - 1, C[1], 0.7);
+    for (let r = 0; r < 2; r++) {                                              // two drive bays with blinking leds
+      const yy = Y + 2 + r * 3;
+      p.line(X + 2, yy, X + 5, yy, C[1], 1);
+      const on = Math.floor(u * 6 + r * 3) % 3 !== 0;
+      p.px(X + 7, yy, on ? C[3] : C[1]); if (on) p.glow(X + 7, yy, 2, C[2], 0.4);
+    }
+    const path = [];                                                           // the cable: hands (6,-12) up to the box's bottom
+    for (let i = 0; i <= 14; i++) { const v = i / 14; path.push([Math.round(6 + v * 11), Math.round(-12 - v * 11 + Math.sin(v * Math.PI) * 3)]); }
+    for (const [x, y] of path) p.blend(x, y, C[1], 0.85);
+    p.rect(15, Y + H, 4, 2, C[1], 1);                                          // the plug
+    p.px(16, Y + H + 2, C[2]); p.px(18, Y + H + 2, C[2]);
+    for (let i = 0; i < 2; i++) {                                              // a request up, a reply down
+      const v = (u * 2 + i * 0.5) % 1, up = i === 0, q = up ? v : 1 - v, j = Math.min(path.length - 1, Math.round(q * (path.length - 1)));
+      const [x, y] = path[j];
+      p.rect(x - 1, y - 1, 2, 2, up ? C[3] : C[2], 1); p.glow(x, y, 3, C[2], 0.6);
     }
   },
 };

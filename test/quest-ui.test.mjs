@@ -75,7 +75,7 @@ test('quest ui: prune after board load; party inputs carry hasPerm, doing and sk
   const party = fn('questParty');
   match(party, /hasPerm:/); match(party, /doing: nowSummaries\.get\(s\.id\)/); match(party, /skills: questSkills\.get\(sid\)/);
   match(party, /AgentDeskQuest\.partyOf\(src, handles\)/);
-  match(html, /hooksRecent\(\)\) \{ applyHookEvent\(rec\); questSkillNote\(rec\); \}/);
+  match(html, /hooksRecent\(\)\) \{ applyHookEvent\(rec\); questSkillNote\(rec\); AgentDeskPlay\.feed\(playState, rec\); \}/);
   match(q, /onHookEvents\(evts => \{ for \(const rec of evts\) questSkillNote\(rec\)/);
   match(fn('questRepoList'), /window\.orca\.repos\(\)/);
 });

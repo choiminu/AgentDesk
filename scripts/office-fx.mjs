@@ -42,6 +42,15 @@ const EFFECTS = [
   { key: "act_shell", id: "office/activity", file: "act-shell", options: { kind: "shell" } },
   { key: "act_agents", id: "office/activity", file: "act-agents", options: { kind: "agents" } },
   { key: "act_think", id: "office/activity", file: "act-think", options: { kind: "think" } },
+  { key: "act_skill", id: "office/activity", file: "act-skill", options: { kind: "skill" } },
+  { key: "act_mcp", id: "office/activity", file: "act-mcp", options: { kind: "mcp" } },
+  { key: "boss", id: "office/play", file: "play-boss", options: { kind: "boss" } },
+  { key: "sweat", id: "office/play", file: "play-sweat", options: { kind: "sweat" } },
+  { key: "coffee", id: "office/play", file: "play-coffee", options: { kind: "coffee" } },
+  { key: "bossDown", id: "office/play-burst", file: "play-boss-down", options: { kind: "bossDown" } },
+  { key: "clash", id: "office/play-burst", file: "play-clash", options: { kind: "clash" } },
+  { key: "revive", id: "office/play-burst", file: "play-revive", options: { kind: "revive" } },
+  { key: "jobHats", id: "office/job-hats", file: "job-hats", options: {} },
 ];
 mkdirSync(join(PFX, "src", "fx", "office"), { recursive: true });
 for (const f of readdirSync(join(ROOT, "scripts", "office-fx"))) if (f.endsWith(".js")) copyFileSync(join(ROOT, "scripts", "office-fx", f), join(PFX, "src", "fx", "office", f));
