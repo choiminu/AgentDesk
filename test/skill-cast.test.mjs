@@ -37,7 +37,7 @@ test('skill cast: Skill PreToolUse and /name prompts of installed skills are det
 });
 
 test('skill cast: only live records trigger it, never the replay', () => {
-  assert.match(html, /window\.orca\.onHookEvents\(evts => \{\n\s+for \(const rec of evts\) \{ applyHookEvent\(rec\); skillCastFrom\(rec\); \}/);
+  assert.match(html, /window\.orca\.onHookEvents\(evts => \{\n\s+for \(const rec of evts\) \{ applyHookEvent\(rec\); skillCastFrom\(rec\); dockNoteFrom\(rec, AgentDeskPlay\.feed\(playState, rec\)\); \}/);
   for (const m of html.matchAll(/for \(const rec of await window\.orca\.hooksRecent\(\)\)[^\n]*/g)) assert.doesNotMatch(m[0], /skillCast/);
   // main's first read of the events file can push the whole file as "new": old records are skipped
   assert.match(fn('skillCastFrom'), /Date\.now\(\) - rec\.ts \* 1000 > SKILL_CAST_LIVE_MS/);
