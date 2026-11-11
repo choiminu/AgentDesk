@@ -80,3 +80,15 @@ test('dock activity loops: the tool a working session uses picks its loop (dockA
   const bake = readFileSync(new URL('../scripts/office-fx.mjs', import.meta.url), 'utf8');
   for (const kind of ['code', 'docs', 'read', 'web', 'shell', 'agents', 'think', 'skill', 'mcp']) assert.match(bake, new RegExp(`key: "act_${kind}", id: "office/activity", file: "act-${kind}", options: \\{ kind: "${kind}" \\}`));
 });
+
+// the town look (scripts/office-town.mjs): every file the widget swaps in exists, with the size of the sheet it replaces
+test('office town look: each swapped file exists at the size of its classic sheet', () => {
+  const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+  const m = /const OFFICE_TOWN = new Set\(\[([^\]]+)\]\)/.exec(html);
+  assert.ok(m, 'OFFICE_TOWN list');
+  const names = m[1].split(',').map(x => x.trim().replace(/'/g, '')).filter(Boolean);
+  assert.ok(names.length >= 26);
+  const size = u => { const b = readFileSync(u); return [b.readUInt32BE(16), b.readUInt32BE(20)]; };
+  for (const n of names) assert.deepEqual(size(new URL(`../assets/pixel/town/${n}.png`, import.meta.url)), size(new URL(`../assets/pixel/${n}.png`, import.meta.url)), n);
+  for (let i = 0; i < 12; i++) assert.match(html, new RegExp(`\\.look-town \\.dock-spr\\.k${i} \\{ background-image: url\\('assets/pixel/town/char_${i}\\.png'\\)`));
+});

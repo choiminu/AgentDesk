@@ -22,6 +22,8 @@ import { defaultTeamConfig, defaultName, lanAddress, nodeRunner, NODE_CANDIDATES
 import { relayState, installRelayAt, uninstallRelayAt } from "./statusline/install.mjs";
 import { scanInventory } from "./skillbook/scan.mjs";
 import { createUsageStore, backfill as skillbookBackfill } from "./skillbook/usage.mjs";
+import { createDailyStore } from "./daily/store.mjs";
+import { createOwnTerms } from "./term/own.mjs";   // AgentDesk's own terminals (tmux sessions it starts); loads core/tmuxctl.js   // also loads core/play.js and core/daily.js
 import { actOn as skillbookActOn, listRemoved as skillbookRemoved } from "./skillbook/actions.mjs";
 import { skillbookPayload } from "./skillbook/payload.mjs";
 import { loadCatalog } from "./shop/catalog.mjs";
@@ -31,7 +33,8 @@ import { openPermEndpoint, ensurePrivateDir, writePrivate, permHookScript as per
 import { readJsonStrict, writeJsonAtomic, backupPrivate, isOurPermHook, isOurGuardHook, permHookPresent, installPermHookAt, uninstallPermHookAt, guardHookPresent, installGuardHookAt, uninstallGuardHookAt } from "./perm/settings.mjs";
 import { createGuardHandler, createGuardLog, writeGuardConfig, defaultGuardConfig, GUARD_MODES } from "./guard/guard.mjs";
 import * as jiraOAuth from "./jira-oauth.mjs";
-import { diffStat, diffFile, insideRepo, setGitPath } from "./diff/git.mjs";   // also loads core/diff.js (globalThis.AgentDeskDiff)
+import { diffStat, diffFile, insideRepo, setGitPath, aheadCount, repoRoot, worktreeAdd } from "./diff/git.mjs";
+import "./core/projects.js";   // globalThis.AgentDeskProjects: worktreeName (the names AgentDesk gives its worktrees)   // also loads core/diff.js (globalThis.AgentDeskDiff)
 import { createQuestState } from "./quest/state.mjs";
 import { createDesk, spawnRun, killAllDesk } from "./quest/desk.mjs";
 
@@ -82,6 +85,8 @@ let saveBoundsTimer = null;
   if (!existsSync(nu) && existsSync(old)) { try { cpSync(old, nu, { recursive: true }); } catch {} }
 }
 const boundsFile = join(app.getPath("userData"), "window-bounds.json");
+const workBoundsFile = join(app.getPath("userData"), "workspace-bounds.json");
+let workState = null;   // workspace mode (a large, freely sized window): { panel: the widget's bounds before it }
 
 function loadBounds() {
   try {
@@ -92,8 +97,9 @@ function loadBounds() {
 function saveBounds() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try {
-    const b = dockState ? dockState.panel : mainWindow.getBounds();   // docked: keep the panel's place for the next start
+    const b = dockState ? dockState.panel : workState ? workState.panel : mainWindow.getBounds();   // docked / workspace: keep the panel's place for the next start
     writeFileSync(boundsFile, JSON.stringify(b));
+    if (workState && !dockState) writeFileSync(workBoundsFile, JSON.stringify(mainWindow.getBounds()));   // the workspace window has its own place and size
   } catch {}
 }
 
@@ -550,6 +556,57 @@ async function tmuxSwitch(pane) {
 
 ipcMain.handle("roca:tmux-panes", () => tmuxPanes());
 
+// ── AgentDesk's own terminals (term/own.mjs): tmux sessions named agentdesk-…, streamed to the widget's terminal page.
+// The session lives in tmux (it outlives the widget); the view attaches and detaches. Bytes cross as base64.
+const ownTerms = createOwnTerms({
+  findTmux, env: { ...process.env, PATH: EXEC_PATH },
+  onData: (name, data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:own-term-data", { name, b64: Buffer.from(data).toString("base64") }); },
+  onExit: name => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("roca:own-term-exit", { name }); },
+});
+const ownTermErr = e => ({ ok: false, error: e && e.message === "tmux not installed" ? "tmux not installed" : "terminal failed" });
+ipcMain.handle("roca:own-term-list", async () => { try { return { ok: true, tmux: !!(await findTmux()), terms: await ownTerms.list() }; } catch (e) { return { ...ownTermErr(e), tmux: false, terms: [] }; } });
+ipcMain.handle("roca:own-term-new", async (_e, req = {}) => { try { return await ownTerms.create(req || {}); } catch (e) { return ownTermErr(e); } });
+ipcMain.handle("roca:own-term-attach", async (_e, req = {}) => { try { return await ownTerms.attach(req && req.name, req && req.cols, req && req.rows); } catch (e) { return ownTermErr(e); } });
+ipcMain.handle("roca:own-term-kill", async (_e, req = {}) => { try { return await ownTerms.kill(req && req.name); } catch (e) { return ownTermErr(e); } });
+ipcMain.on("roca:own-term-input", (_e, req) => { try { if (req && typeof req.name === "string" && typeof req.b64 === "string" && req.b64.length <= 90000) ownTerms.input(req.name, Buffer.from(req.b64, "base64")); } catch {} });
+ipcMain.on("roca:own-term-resize", (_e, req) => { try { if (req && typeof req.name === "string") ownTerms.resize(req.name, req.cols, req.rows); } catch {} });
+ipcMain.on("roca:own-term-detach", (_e, req) => { try { if (req && typeof req.name === "string") ownTerms.detach(req.name); } catch {} });
+app.on("will-quit", () => ownTerms.closeAll());
+
+// ── worktrees AgentDesk makes itself (no Orca needed): a new terminal can open in a fresh git worktree of the folder's
+// repository, on a branch of the same name, under ~/agentdesk/worktrees/<repository>/<name>. Which worktree belongs to
+// which repository is kept (own-worktrees.json) so the workspace lists it under that repository's project.
+const OWN_WT_DIR = join(homedir(), "agentdesk", "worktrees"), ownWtFile = () => join(ROCA_DIR, "own-worktrees.json");   // a function: ROCA_DIR is declared further down
+function ownWtLinks() {
+  try {
+    const o = JSON.parse(readFileSync(ownWtFile(), "utf-8")), out = {};
+    for (const [wt, root] of Object.entries(o && typeof o === "object" ? o : {})) if (typeof root === "string" && isAbsolute(wt) && isAbsolute(root) && existsSync(wt)) out[wt] = root;   // a removed worktree drops out
+    return out;
+  } catch { return {}; }
+}
+const ownWtDir = cwd => typeof cwd === "string" && isAbsolute(cwd) && cwd.length <= 4096 && existsSync(cwd) && statSync(cwd).isDirectory();
+ipcMain.handle("roca:own-worktree-info", async (_e, req = {}) => {
+  try { if (!ownWtDir(req && req.cwd)) return { ok: true, git: false }; const root = await repoRoot(req.cwd); return { ok: true, git: !!root, repo: root ? basename(root) : "" }; }
+  catch { return { ok: true, git: false }; }
+});
+ipcMain.handle("roca:own-worktree-list", () => ({ ok: true, links: ownWtLinks() }));
+ipcMain.handle("roca:own-worktree-new", async (_e, req = {}) => {
+  try {
+    const name = AgentDeskProjects.worktreeName(req && req.name);
+    if (!name) return { ok: false, error: "invalid name" };
+    if (!ownWtDir(req && req.cwd)) return { ok: false, error: "folder not found" };
+    const root = await repoRoot(req.cwd);
+    if (!root) return { ok: false, error: "not a git repository" };
+    const path = join(OWN_WT_DIR, basename(root).replace(/[^A-Za-z0-9._-]+/g, "-") || "repo", name);
+    if (existsSync(path)) return { ok: false, error: "a worktree of that name exists" };
+    mkdirSync(dirname(path), { recursive: true });
+    await worktreeAdd(root, path, name);
+    const links = ownWtLinks(); links[path] = root;
+    try { writeFileSync(ownWtFile(), JSON.stringify(links)); } catch {}
+    return { ok: true, path, branch: name, repo: basename(root) };
+  } catch (e) { console.error("[worktree]", e && e.code); return { ok: false, error: "git worktree failed (the branch may be checked out elsewhere)" }; }
+});
+
 // claude processes running in ordinary terminal tabs: handle "term:<pid>". iTerm2 sessions are matched by the
 // ITERM_SESSION_ID the process inherited (Claude Code may sit on its own pty, so tty alone is unreliable);
 // Terminal.app tabs are matched by tty.
@@ -971,8 +1028,43 @@ ipcMain.on("orca:session-counts", (_e, counts) => {
 });
 
 let resizeAnim = null;
+// ── workspace mode: the widget as an ordinary large window — a session list beside AgentDesk's own terminal. It is
+// freely resizable (up to the work area), not always on top, and remembers its own bounds; leaving puts the small
+// widget back where it was. The renderer asks (the 작업 공간 page); dock mode and the page sizes do not apply while on.
+const WORK_MIN = { w: 760, h: 440 }, WORK_DEFAULT = { w: 1280, h: 800 };
+ipcMain.handle("roca:workspace", (_e, on) => {
+  if (!mainWindow || mainWindow.isDestroyed() || dockState) return { ok: false };
+  if (resizeAnim) { clearInterval(resizeAnim); resizeAnim = null; }
+  if (on) {
+    if (workState) return { ok: true };
+    const panel = mainWindow.getBounds();
+    const wa = screen.getDisplayMatching(panel).workArea;
+    let b = null; try { b = JSON.parse(readFileSync(workBoundsFile, "utf-8")); } catch {}
+    const ok = b && [b.x, b.y, b.width, b.height].every(Number.isFinite) && b.width >= WORK_MIN.w && b.height >= WORK_MIN.h;
+    const width = Math.min(wa.width, ok ? b.width : WORK_DEFAULT.w), height = Math.min(wa.height, ok ? b.height : WORK_DEFAULT.h);
+    const x = Math.max(wa.x, Math.min(wa.x + wa.width - width, ok ? b.x : wa.x + Math.round((wa.width - width) / 2)));
+    const y = Math.max(wa.y, Math.min(wa.y + wa.height - height, ok ? b.y : wa.y + Math.round((wa.height - height) / 2)));
+    workState = { panel };
+    mainWindow.setResizable(true);
+    mainWindow.setMaximumSize(10000, 10000);
+    mainWindow.setMinimumSize(Math.min(WORK_MIN.w, wa.width), Math.min(WORK_MIN.h, wa.height));
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.setBounds({ x, y, width, height });
+    return { ok: true };
+  }
+  if (!workState) return { ok: true };
+  try { writeFileSync(workBoundsFile, JSON.stringify(mainWindow.getBounds())); } catch {}
+  const p = workState.panel;
+  workState = null;
+  const wa = screen.getDisplayMatching(p).workArea;
+  mainWindow.setMinimumSize(280, Math.min(300, p.height));
+  mainWindow.setBounds(p);
+  mainWindow.setMaximumSize(Math.max(480, p.width), Math.max(p.height, wa.height));
+  mainWindow.setAlwaysOnTop(true);
+  return { ok: true };
+});
 ipcMain.on("orca:resize-window", (_e, w, h, forceHeight) => {
-  if (!mainWindow || dockState) return;   // dock mode places the window itself (orca:dock)
+  if (!mainWindow || dockState || workState) return;   // dock mode places the window itself (orca:dock); the workspace is sized by the user
   const [curW, curH] = mainWindow.getSize();
   const [curX, curY] = mainWindow.getPosition();
 
@@ -1329,6 +1421,22 @@ function startSkillbookBackfill() {
 }
 app.on("will-quit", () => { if (SINGLE_INSTANCE) sbSave(); });
 
+// ── daily numbers (daily/store.mjs): one small object per day from the hook feed — sessions, prompts, tool calls,
+// failures, test runs, waits, permission families. Numbers only; the activity calendar, the approval-rule suggestions
+// and the achievements read it. Saved like the skillbook store: debounced, and once more on quit.
+const DAILY_FILE = join(ROCA_DIR, "daily.json");
+let dailyStore = null, dailySaveTimer = null;
+function dStore() {
+  if (dailyStore) return dailyStore;
+  dailyStore = createDailyStore({ file: DAILY_FILE });
+  dailyStore.load();
+  return dailyStore;
+}
+function dailySave() { clearTimeout(dailySaveTimer); dailySaveTimer = null; if (dailyStore) { try { dailyStore.save(); } catch (e) { console.error("[daily] save", sbErrCode(e)); } } }
+function dailyFeed(o) { if (!SINGLE_INSTANCE) return; try { if (dStore().feed(o) && !dailySaveTimer) dailySaveTimer = setTimeout(dailySave, 10000); } catch (e) { console.error("[daily] feed", sbErrCode(e)); } }
+app.on("will-quit", () => { if (SINGLE_INSTANCE) dailySave(); });
+ipcMain.handle("roca:daily", () => { try { pushEvents(readNewEvents()); return { ok: true, days: dStore().days() }; } catch (e) { console.error("[daily]", sbErrCode(e)); return { ok: false, days: {} }; } });
+
 let eventsOffset = 0;
 let eventsWatcher = null;
 let eventsPollTimer = null;
@@ -1348,7 +1456,7 @@ function readNewEvents() {
     const out = [];
     for (const line of buf.toString("utf-8").split("\n")) {
       if (!line.trim()) continue;
-      try { const o = JSON.parse(line.replace(/^\uFEFF/, "")); noteKnownSession(o); timelineIndex.add(o); sbFeed(o); out.push(o); } catch {}   // PowerShell may write a BOM
+      try { const o = JSON.parse(line.replace(/^\uFEFF/, "")); noteKnownSession(o); timelineIndex.add(o); sbFeed(o); dailyFeed(o); out.push(o); } catch {}   // PowerShell may write a BOM
     }
     return out;
   } catch { return []; }
@@ -2565,6 +2673,33 @@ ipcMain.handle("roca:shop-list", (_e, req) => shop.list(req));
 ipcMain.handle("roca:shop-link", (_e, req) => shop.link(req));
 ipcMain.handle("roca:shop-install", (_e, req) => shop.install(req));
 // ── Shop end
+// search across every session's timeline (masked summaries only): what a prompt said, which command ran, what failed
+ipcMain.handle("roca:timeline-search", (_e, req = {}) => {
+  try {
+    const q = req && typeof req.q === "string" ? req.q.slice(0, 200) : "";
+    if (q.trim().length < 2) return { ok: true, results: [], sessions: timelineIndex.size() };
+    pushEvents(readNewEvents());
+    return { ok: true, results: timelineIndex.search(q, 60), sessions: timelineIndex.size() };
+  } catch (e) { console.error("[timeline] search", e && e.message); return { ok: false, results: [] }; }
+});
+// the closing checklist: for each session's work folder, how many files are changed / untracked and how many commits
+// are not pushed. One folder at a time (git runs at most GIT_MAX at once anyway); counts only, never a path.
+ipcMain.handle("roca:closing-check", async (_e, req = {}) => {
+  const ids = Array.isArray(req && req.sessionIds) ? req.sessionIds.filter(v => typeof v === "string" && v && v.length <= 4096).slice(0, 30) : [];
+  const out = [], seen = new Map();
+  for (const sessionId of ids) {
+    try {
+      const cwd = await diffSessionCwd(sessionId);
+      if (!cwd) { out.push({ sessionId, unknown: true }); continue; }
+      if (seen.has(cwd)) { out.push({ sessionId, same: seen.get(cwd) }); continue; }   // two sessions in one folder: one row
+      seen.set(cwd, sessionId);
+      const r = await diffStat(cwd, "working");
+      const all = r.empty ? 0 : (r.total && r.total.files) || 0, fresh = r.empty ? 0 : (r.untracked || []).length;   // the total counts untracked files too
+      out.push({ sessionId, files: Math.max(0, all - fresh), untracked: fresh, ahead: await aheadCount(cwd) });
+    } catch { out.push({ sessionId, error: true }); }
+  }
+  return { ok: true, rows: out };
+});
 ipcMain.handle("roca:diff-stat", async (_e, req = {}) => {
   const sessionId = req && typeof req.sessionId === "string" ? req.sessionId : "", scope = req && req.scope === "branch" ? "branch" : "working";
   const seq = diffStatSeq.next(sessionId);
@@ -2702,7 +2837,7 @@ ipcMain.handle("orca:hooks-recent", () => {
     const cutoff = Math.floor(Date.now() / 1000) - 24 * 3600;
     const out = [];
     timelineIndex.clear();   // the whole file is read here: rebuild the timeline index from it (no duplicates)
-    for (const l of lines) { try { const o = JSON.parse(l.replace(/^\uFEFF/, "")); timelineIndex.add(o); sbFeed(o); if (o.ts >= cutoff) { noteKnownSession(o); out.push(o); } } catch {} }   // skillbook: de-duplicated
+    for (const l of lines) { try { const o = JSON.parse(l.replace(/^\uFEFF/, "")); timelineIndex.add(o); sbFeed(o); dailyFeed(o); if (o.ts >= cutoff) { noteKnownSession(o); out.push(o); } } catch {} }   // skillbook: de-duplicated
     return out;
   } catch { return []; }
 });

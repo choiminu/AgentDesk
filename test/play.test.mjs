@@ -149,7 +149,24 @@ test('widget: loads core/play.js, feeds it every hook record, and draws the play
   assert.match(html, /const boss = play \? dockBossOf\(ps, now\) : null;/);
   assert.match(html, /if \(k < cl\.otherKey\) dockWarnHint\(/, 'a file clash is a warning (yellow pill), not a skill note, and not a play mark');
   assert.doesNotMatch(html, /\.dock-tile:has\(\.dock-clash\)/, 'yellow borders stay the approval colour');
-  assert.match(html, /\(x\.peer \? '' : dockClashTip\(x\)\)\n\s+\+ \(now \?/, 'the clash line comes first in the quick card');
+  assert.match(html, /\(x\.peer \? '' : dockClashTip\(x\)\)\n\s+\+ \(now \|\| tool \?/, 'the clash line comes first in the quick card');
   const hats = readFileSync(new URL('../scripts/office-fx/job-hats.js', import.meta.url), 'utf8');
   assert.equal((hats.match(/\{ pal: /g) || []).length, 8);
+});
+
+test('repeatFails / activityShare: the same command failing the same way; who makes the tool calls now', () => {
+  const m = new Map();
+  const fail = (sid, cmd, error, t) => { P.feed(m, { ts: t, ev: { session_id: sid, cwd: '/w/repo', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd } } }); P.feed(m, { ts: t + 1, ev: { session_id: sid, cwd: '/w/repo', hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_input: { command: cmd }, error } }); };
+  fail('a', 'cd app && tsc --noEmit', 'Exit code 2\nsrc/a.ts(12,3): error TS2304: Cannot find name foo', 100);
+  fail('b', 'tsc --noEmit', 'Exit code 2\nsrc/zz.ts(7,1): error TS2304: Cannot find name foo', 200);
+  fail('a', 'ls /nope', 'Exit code 1\nls: /nope: No such file or directory', 300);
+  fail('a', 'npm test', 'Exit code 1\nℹ fail 2', 400);
+  const r = P.repeatFails(m);
+  assert.equal(r.length, 1, 'one failure alone and a failing test run are not repeated mistakes');
+  assert.deepEqual([r[0].repo, r[0].cmd, r[0].sessions, r[0].n], ['repo', 'tsc', 2, 2]);
+  assert.match(r[0].err, /error TS#: Cannot find name foo/, 'numbers and the file path are blanked, so the two compare equal');
+  assert.doesNotMatch(r[0].err, /src\/a\.ts/);
+  const sh = P.activityShare(m, 401000, 120000);
+  assert.deepEqual(sh.map(x => [x.sid, x.n]), [['a', 2]], 'only the window counts (the calls at 100 s and 200 s are older)');
+  assert.equal(sh[0].share, 1);
 });

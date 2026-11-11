@@ -9,8 +9,8 @@
 //   issuesFrom(res) / issueFrom(res) → normalized issues out of a list/search or an issue reply
 //   connectionFrom(res)              → { connected, sites, error }
 //   worktreeName(key)                → safe worktree name ("abc-123")
-//   worktreePrompt(issue, opts)      → prompt for a fresh worktree agent (guidance first, autopilot appended)
-//   sessionMessage(issue, guidance)  → message for an existing session: guidance first, then the ticket, then REPORT
+//   worktreePrompt(issue, opts)      → prompt for a fresh worktree agent (which ticket first, then guidance; autopilot appended)
+//   sessionMessage(issue, guidance, lang, url) → message for an existing session: which ticket, guidance, details, REPORT
 //   extractReport(text)              → REPORT body or null (ignores the echoed format hint)
 //   reportToComment(report, meta)    → plain-text Jira comment body, secrets masked
 //   reportToCommentDraft(report, meta) → { text: that body, masked: [MASKED…] markers added in header + body }
@@ -104,35 +104,42 @@ function worktreeName(key) {
   return String(key || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'jira-ticket';
 }
 
-function ticketFacts(issue, en) {
-  const out = [`${en ? 'Jira ticket' : 'Jira 티켓'} ${issue.key}: ${issue.summary}`];
-  const meta = [issue.status && `${en ? 'status' : '상태'} ${issue.status}`, issue.priority && `${en ? 'priority' : '우선순위'} ${issue.priority}`, issue.labels && issue.labels.length && `${en ? 'labels' : '라벨'} ${issue.labels.join(', ')}`].filter(Boolean);
-  if (meta.length) out.push(`(${meta.join(' · ')})`);
-  if (issue.description) out.push(`${en ? 'Description' : '설명'}: ${issue.description}`);
-  return out.join('\n');
+// the first thing the agent reads: which ticket this is (key, title, link). Prompts are sent as one line, so every part
+// carries its own [label].
+function ticketHead(issue, en, url) {
+  const u = String(url || issue.url || '').trim();
+  return `${en ? '[Jira ticket]' : '[Jira 티켓]'} ${issue.key} · ${issue.summary}${u ? ` · ${u}` : ''}`;
 }
-const reportLine = en => en ? `When done, finish with ${REPORT_HINT}` : `작업이 끝나면 ${REPORT_HINT} 형식으로 마무리하세요.`;
+function ticketFacts(issue, en) {
+  const meta = [issue.status && `${en ? 'status' : '상태'} ${issue.status}`, issue.priority && `${en ? 'priority' : '우선순위'} ${issue.priority}`, issue.labels && issue.labels.length && `${en ? 'labels' : '라벨'} ${issue.labels.join(', ')}`].filter(Boolean);
+  const out = [];
+  if (meta.length) out.push(meta.join(' · '));
+  if (issue.description) out.push(`${en ? 'Description' : '설명'}: ${issue.description}`);
+  return out.length ? `${en ? '[Ticket details]' : '[티켓 내용]'} ${out.join('\n')}` : '';
+}
+const reportLine = en => en ? `[Report] When done, finish with ${REPORT_HINT}` : `[보고 형식] 작업이 끝나면 ${REPORT_HINT} 형식으로 마무리하세요.`;
 
 function worktreePrompt(issue, opts) {
   const o = opts || {}, en = o.lang === 'en';
-  const parts = [];
+  const parts = [ticketHead(issue, en, o.url)];
   const g = String(o.guidance || '').trim();
-  if (g) parts.push(`${en ? 'Approach' : '접근 지침'}: ${g}`);
+  if (g) parts.push(`${en ? '[Approach]' : '[접근 지침]'} ${g}`);
   parts.push(ticketFacts(issue, en));
   parts.push(en ? 'Work in this worktree. Do not commit or push unless the guidance says so.' : '이 워크트리에서 작업하세요. 지침에 없으면 커밋·푸시하지 마세요.');
   parts.push(reportLine(en));
   if (o.autopilot) parts.push('autopilot');
-  return parts.join('\n\n');
+  return parts.filter(Boolean).join('\n\n');
 }
 
-function sessionMessage(issue, guidance, lang) {
+function sessionMessage(issue, guidance, lang, url) {
   const en = lang === 'en', g = String(guidance || '').trim();
   if (!g) return '';
   return [
-    `${en ? 'Before reading the ticket, here is how to approach it' : '티켓을 읽기 전에, 이렇게 접근해 주세요'}: ${g}`,
+    ticketHead(issue, en, url),
+    `${en ? '[Approach — read this before the details]' : '[접근 지침 — 티켓 내용보다 먼저 읽으세요]'} ${g}`,
     ticketFacts(issue, en),
     reportLine(en),
-  ].join('\n\n');
+  ].filter(Boolean).join('\n\n');
 }
 
 // last REPORT_START…REPORT_END block; null when absent or when it is only the echoed "[한 일] [변경 파일] …" hint

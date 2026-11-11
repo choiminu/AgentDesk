@@ -262,8 +262,10 @@ test('main: dock mode turns the system window shadow off (stale shadows showed a
 });
 
 test('main: resize-window ignored while docked, saveBounds keeps the panel bounds, displays re-place the bar', () => {
-  assert.match(between(main, 'ipcMain.on("orca:resize-window"', 'const [curW'), /if \(!mainWindow \|\| dockState\) return;/);
-  assert.match(between(main, 'function saveBounds()', '\n}'), /dockState \? dockState\.panel : mainWindow\.getBounds\(\)/);
+  assert.match(between(main, 'ipcMain.on("orca:resize-window"', 'const [curW'), /if \(!mainWindow \|\| dockState \|\| workState\) return;/);
+  assert.match(between(main, 'function saveBounds()', '\n}'), /dockState \? dockState\.panel : workState \? workState\.panel : mainWindow\.getBounds\(\)/, 'docked or in the workspace: the small widget\'s bounds are what is kept');
+  assert.match(between(main, 'ipcMain.handle("roca:workspace"', '\n});'), /if \(!mainWindow \|\| mainWindow\.isDestroyed\(\) \|\| dockState\) return \{ ok: false \};/, 'no workspace while docked');
+  assert.match(between(main, 'ipcMain.handle("roca:workspace"', '\n});'), /mainWindow\.setAlwaysOnTop\(false\);[\s\S]*mainWindow\.setAlwaysOnTop\(true\);/, 'the workspace is an ordinary window; the widget is on top again after it');
   for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) assert.ok(main.includes(`"${ev}"`), ev);
   assert.match(between(main, 'function dockReflow()', '\n}\n'), /dockApply\(dockState\.req\)/);
 });
@@ -304,7 +306,7 @@ test('popWidth / popExtra: terminal window min(720, 90 %), compact card as befor
   assert.equal(popWidth('inbox', 1440), 0); assert.equal(popWidth('tip', 1440), 0, 'the old history panel is gone'); assert.equal(popWidth('term', 'x'), 0);
   assert.equal(popExtra('tip'), 0);
   assert.equal(popExtra('term'), POP.termH + 2 * POP.gap); assert.equal(POP.termH, 420);
-  assert.equal(popExtra('tipSmall'), 132, 'the compact card keeps the old room');
+  assert.equal(popExtra('tipSmall'), 162, 'the compact card: 150 px (it carries the numbers the tiles no longer show)');
   assert.equal(popExtra(''), 0); assert.equal(popExtra('inbox'), 0);
 });
 
@@ -365,7 +367,7 @@ test('widget dock: hover opens the terminal window, a click goes to the terminal
   // hover: the terminal window (setting on, a session with a terminal / delegated to me), else the card
   const hover = between(html, 'function dockHover(key)', '\nfunction dockHoverLeave');
   assert.match(hover, /if \(open && dockTyping\(\)\) return;/, 'typing in a window: another tile does not switch it');
-  assert.match(hover, /if \(!dockCfg\.hoverTerm \|\| !dockTermable\(x\)\) \{[\s\S]*dockTipShow\(key\)/);
+  assert.match(hover, /if \(!dockCfg\.hoverTerm \|\| !dockTermable\(x\) \|\| x\.kids\) \{[\s\S]*dockTipShow\(key\)/);
   assert.match(hover, /dockTermFor\(y\); dockHoverOpened = !!dockTermBg\(\);\n\s*\}, open \? 80 : DOCK_HOVER_MS\)/);
   assert.match(html, /const DOCK_HOVER_MS = 200, DOCK_LEAVE_MS = 300;/);
   assert.match(between(html, 'function dockTermFor(x)', '\n}\n'), /dockTermOpen\(x\)/);
@@ -770,7 +772,7 @@ test('renderer: ⌘1 … ⌘9 go to the terminal as a click; tiles carry their n
   assert.match(kd, /AgentDeskDock\.numberedTiles\(dockModelNow \? dockModelNow\.mine : \[\]\)\[n - 1\]/);
   assert.match(kd, /dockTermClose\(true\); dockTipHide\(\); dockSel = x\.key; dockDraw\(\);\n\s*dockFocusTerminal\(x\);/, 'the hovered window closes first');
   assert.match(between(html, 'function dockTileHtml(x)', '\n}\n'), /<span class="dock-num" aria-hidden="true">\$\{num\}<\/span>/);
-  assert.match(html, /\.dock-tiles\.s40 \.dock-num \{ display: none; \}/);
+  assert.match(html, /#dock-strip:hover \.dock-num, #page-dock\.keys \.dock-num \{ visibility: visible; \}/, 'numbers show on hover or while ⌘ / Ctrl is held (40 px tiles too)');
 });
 
 test('bubbleKeyAllowed: a held key never answers', () => {
@@ -849,11 +851,13 @@ test('renderer: do not disturb stops bubbles, pills and desktop alerts while doc
   // L4: still on after a restart — said once when the bar opens
   assert.match(between(html, 'function dockEnter()', '\n}\n'), /if \(dockCfg\.dnd\) dockHint\(dockT\('도크: 방해 금지 켬'\), '', true\);/);
   assert.match(between(html, 'function dockAskSync()', '\n}\n'), /if \(dockCfg\.ask === 'off' \|\| dockCfg\.dnd\)/);
-  // the switch lives in Settings (the bar's 🔕 button is gone)
-  const sw = between(html, "else if (name === 'dock-dnd') {", '\n  }\n');
+  // the switch lives in Settings; while it is on the bar says so with 🔕 (hidden otherwise), a click turns it off
+  const sw = between(html, 'function dockDndSet(on) {', '\n}\n');
   assert.match(sw, /dockSave\(\)/); assert.match(sw, /dockAskSync\(\)/, 'off: the waiting bubbles come back at once');
+  assert.match(html, /else if \(name === 'dock-dnd'\) \{ dockDndSet\(!dockCfg\.dnd\); settingsRender\(\); \}/);
   assert.match(html, /\$\{row\(t\('방해 금지'\), [^\n]*sw\('dock-dnd', dockCfg\.dnd\)\)\}/);
-  assert.ok(!html.includes('id="dock-dnd"'), 'no 🔕 on the bar');
+  assert.match(html, /<button class="dock-btn" id="dock-dnd" hidden>🔕<\/button>/, '🔕 only while do not disturb is on');
+  assert.match(html, /\$\('dock-dnd'\)\.hidden = !dockCfg\.dnd;/);
 });
 
 // ── choice bubbles with many options: the height grows with them, the box never spills ──
@@ -1044,7 +1048,7 @@ test('main / renderer: the hit plan is used on both sides; Linux shapes the hidd
 test('renderer: hidden edge colour and a new approval un-hides; the summary line reads its width only on resize', () => {
   const draw = between(html, 'function dockDraw() {', '\n}\n');
   assert.match(draw, /const edge = AgentDeskDock\.dockEdge\(full\.mine\)/);
-  assert.match(draw, /if \(\[\.\.\.asks\]\.some\(k => !dockAskKeys\.has\(k\)\)\) \{[^\n]*\n\s*dockFrontCheck\(true\)\.then\(\(\) => \{ if \(!dockOn \|\| dockYieldOn\(\)\) return; dockHideSet\(false\); if \(dockPop && dockPop\.kind === 'menu'\) dockPopClose\(\); \}\);/, 'a new approval: back, and a tile menu makes way for its bubble — unless Orca is in front');
+  assert.match(draw, /if \(\[\.\.\.asks\]\.some\(k => !dockAskKeys\.has\(k\)\)\) \{[^\n]*\n\s*dockFrontCheck\(true\)\.then\(\(\) => \{ if \(!dockOn \|\| dockYieldOn\(\)\) return; dockHideSet\(false\); if \(dockPop && \(dockPop\.kind === 'menu' \|\| dockPop\.menu\)\) dockPopClose\(\); \}\);/, 'a new approval: back, and a tile menu makes way for its bubble — unless Orca is in front');
   assert.match(html, /#page-dock\.dock-hidden\.edge-ask \.dock-strip \{ box-shadow: inset 0 4px 0 var\(--yellow\); \}/);
 });
 
@@ -1331,4 +1335,46 @@ test('dock limit card: says what the hearts / ring (or the bars) mean, then used
   assert.match(f, /: \{ s: '도크: 위 막대 = 5시간 한도를 쓴 양', w: '도크: 아래 막대 = 주간 한도를 쓴 양' \}/);
   assert.match(f, /\$\{esc\(dockT\('도크: 남음'\)\)\} \$\{100 - r\.pct\}%/);
   assert.ok(D.popExtra('usage') >= 200, 'room for the explanation');
+});
+
+test('nestSessions: children fold under the nearest ancestor that is in the row', () => {
+  const S = (id, status = 'done', extra = {}) => ({ id, name: id, status, ...extra });
+  const list = [S('p', 'waiting'), S('a', 'running'), S('lone'), S('b'), S('g'), S('orphan')];
+  const parents = new Map([['a', 'p'], ['b', 'p'], ['g', 'a'], ['orphan', 'gone'], ['gone', 'nowhere']]);
+  let r = D.nestSessions(list, parents, {});
+  assert.deepEqual(r.rows.map(x => x.id), ['p', 'lone', 'orphan'], 'children and the grandchild are folded; a child of a missing parent stands alone');
+  assert.equal(r.rows[0].kids, 3); assert.equal(r.rows[0].kidState, 'run'); assert.equal(r.rows[0].kidsOpen, false);
+  assert.deepEqual(r.kids.get('p').map(k => k.id), ['a', 'b', 'g']);
+  // unfolded: the children follow their parent, in row order
+  r = D.nestSessions(list, parents, { open: new Set(['p']) });
+  assert.deepEqual(r.rows.map(x => x.id), ['p', 'a', 'b', 'g', 'lone', 'orphan']);
+  assert.ok(r.rows[1].child && r.rows[1].top === 'p' && r.rows[0].kidsOpen);
+  // a child that needs the user, and the selected one, show even while folded
+  r = D.nestSessions([S('p'), S('a', 'waiting', { hasPerm: true }), S('b'), S('c', 'error')], { a: 'p', b: 'p', c: 'p' }, { keep: 'b' });
+  assert.deepEqual(r.rows.map(x => x.id), ['p', 'a', 'b', 'c']);
+  assert.equal(r.rows[0].kidState, 'done', 'only the folded children colour the count');
+  // a loop in the record does not hang, and junk is ignored
+  r = D.nestSessions([S('x'), S('y'), null, {}], { x: 'y', y: 'x' }, {});
+  assert.deepEqual(r.rows.map(x => x.id), ['x', 'y'], 'a loop: both stand on their own');
+  assert.deepEqual(D.nestSessions(null, null).rows, []);
+});
+
+test('dockModel carries the child-session marks to the tiles', () => {
+  const m = D.dockModel({ sessions: [{ id: 'p', name: 'p', status: 'done', kids: 3, kidState: 'ask', kidsOpen: true }, { id: 'a', name: 'a', status: 'running', child: true }] });
+  assert.equal(m.mine[0].kids, 3); assert.equal(m.mine[0].kidState, 'ask'); assert.equal(m.mine[0].kidsOpen, true);
+  assert.equal(m.mine[1].child, true); assert.equal(m.mine[1].kids, undefined);
+  assert.equal(D.dockModel({ sessions: [{ id: 'p', status: 'done', kids: 2, kidState: 'bogus' }] }).mine[0].kidState, 'done');
+});
+
+test('widget dock: a parent\'s hover card is a clickable family tree', () => {
+  const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+  assert.match(html, /if \(!x\.peer && x\.kids\) return dockTreeHtml\(/, 'a parent shows the tree instead of the plain card');
+  assert.match(html, /\.dock-tip\.tree \{ pointer-events: auto; \}/, 'the tree takes the pointer');
+  assert.match(html, /const DOCK_HOVER_SEL = '[^']*\.dock-tip\.tree'/, 'it stays while the pointer is on it');
+  assert.match(html, /\.dock-pop, \.dock-tip\.tree'\)\);/, 'and is not clicked through');
+  const i = html.indexOf("$('dock-tip').addEventListener('click'"), wire = html.slice(i, i + 600);
+  assert.match(wire, /dockFocusTerminal\(\{ id \}\)/, 'a tile goes to that session\'s terminal');
+  assert.match(wire, /dockKidsOpen\.add\(more\.dataset\.kidMore\)/, '+N unfolds the rest in the bar');
+  const tree = html.slice(html.indexOf('function dockTreeHtml('), html.indexOf('function dockTipShow('));
+  assert.match(tree, /AgentDeskMask\.mask\(k\.name\)/); assert.match(tree, /data-kid="\$\{esc\(id\)\}"/);
 });

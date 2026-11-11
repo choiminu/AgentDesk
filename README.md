@@ -74,6 +74,10 @@ cd AgentDesk && npm install && npm start
 - **Live dashboard**: every agent session in a terminal, tmux or Orca with its real state: working, waiting for input, needs a choice, done, error. With Exact detection on, state comes from hook events; Claude Code sessions without hooks are judged from the terminal screen.
 - **Pixel office**: each recent session is a character. Working agents sit at station desks (Dev / Research / Exec / Docs, picked from the tools they use) with a live tool tag and a context-window gauge. Subagents appear next to their parent, idle agents rest on the lounge sofa, and a whiteboard on the wall summarizes the room. Finished work bursts into sparkles, a question puts an exclamation mark over the head, subagents teleport in and out, resting agents breathe out zzz, an agent in error glitches, and an agent that uses a skill opens a small spell book over its head (effects: [pixelfx](https://github.com/patch-gg/pixelfx), MIT).
 - **Dock mode**: turns the widget into a thin bar along the bottom edge of the screen. See [Dock mode](#dock-mode) below.
+- **Workspace and the AgentDesk terminal**: turns the widget into a large window with the session list on the left and a terminal inside AgentDesk on the right. See [Workspace](#workspace) below.
+- **My day**: the ◷ button in the header shows the morning set, the bottleneck, an activity calendar, allow-rule suggestions, repeated failures and a closing checklist on one sheet. See [My day](#my-day) below.
+- **Search every session**: ⌘K (Windows and Linux: Ctrl+K) finds prompts, commands, changed files and session names across all sessions. It searches the masked summaries the hook log still holds.
+- **Scheduled prompts**: ⏰ in a session's menu sends a text "when this session finishes" or "when the 5-hour limit resets". It is sent once, never while the session asks for a choice or a permission, and a permission request is never answered. A schedule expires after 24 hours.
 - **PM teams**: drag an agent onto the PM seat to form a team and drag others in as members. Give the PM a goal: it writes a team brief and proposes a task split, and after your approval each member receives the brief plus its task. Reports flow back to the PM automatically.
 - **Needs-input alerts**: notifications, toast, tray badge and an optional chime fire only when an agent is really waiting on you (a permission prompt or a question).
 - **Repeat reminders and delegated-session alerts**: a pending approval or an unresponsive session is announced again at a set interval (15 minutes by default, at most twice an hour per session). A teammate's session delegated to you alerts once when it becomes ready for input, needs approval, finishes, fails or stops responding. Set the interval and the unresponsive threshold (30 minutes by default) in ⚙ Settings → Detection & alerts.
@@ -92,6 +96,7 @@ cd AgentDesk && npm install && npm start
 - **Masking of outgoing text**: Jira comments, Slack replies and team-shared data have secret patterns replaced with `[MASKED]` right before they leave. Test card numbers and email addresses are masked too, and a comment draft says how many places were masked.
 - **Slack front desk, morning briefing, session notes**: a front desk that hands Slack requests to a session and posts the REPORT back to the thread, a daily briefing, and session notes (recall). These run only on a machine with a source checkout (`recall/`). See [Session notes (recall)](#session-notes-recall).
 - **English and Korean UI**: English by default, switch in ⚙ Settings.
+- **Pixel look**: Settings → Display switches between "Town" (bright virtual-office characters, floors and furniture; the default) and "Classic" (the original art). The town art is drawn in code by `scripts/office-town.mjs`.
 - **Pixel icons**: the interface draws its icons as 12 × 12 pixel art in the office's palette instead of colour emoji (drawn in `scripts/pixel-icons.mjs`).
 - **Timer**: a Pomodoro timer page; the dock bar shows the time left as well.
 
@@ -113,7 +118,33 @@ The ▭ button in the header or ⌘⇧D (Windows and Linux: Ctrl+Shift+D) turns 
 - **New session (＋)**: the ＋ tile at the end of your tiles creates a Claude worktree session from an Orca repository and a name. Without Orca, it opens Claude Code (or Codex CLI / Gemini CLI when installed) in a new terminal window in a folder you pick: a recent folder, one of your sessions' folders, or **Choose folder…**; the new session's tile is selected when it shows up.
 - **Drag and drop**: drop text, a URL or a file from another app onto one of your tiles that is waiting for input; after a masked preview, [Send] types it into that session. Files are sent as paths only, and text starting with `/`, `!` or `#` is not sent.
 - **Position**: the bar position is remembered per monitor. With "Hide when the pointer is away", the bar slides to the edge 2 s after the pointer leaves and only 8 px stay visible.
-- **Settings**: ⚙ Settings → Appearance has start in dock mode, dock size (small, normal, large), auto-hide, done bubbles, dock animation, open the terminal window on hover, and the fade level (off by default).
+- **Activity effects and play marks**: a working tile shows what it is doing as a small effect (editing code, writing docs, reading, the web, the shell, subagents, a skill, an MCP tool, thinking). A failing test run puts a monster at the character's feet until a run passes. Past 70 % of the context window the character sweats, it holds a coffee while compacting, and what a session mostly does gives it a job hat. ⚙ Settings → Dock → **Play marks** turns them off.
+- **File clash warning**: when two of your sessions change the same file within 5 minutes, both tiles carry ⚡ and a yellow alert appears. It stays on with the play marks off.
+- **Tile menu**: right-click, long-press or press M on a tile for rename, interrupt, open its card, scheduled prompt, end session, pin, hide, and replay (the session's activity again in about 20 seconds).
+- **Leave notes (📝)**: an ended session leaves its last request, the files it changed and its test results (7 days, 20 notes). A note reopens the session.
+- **Settings**: ⚙ Settings → Dock has start in dock mode, dock size (small, normal, large), auto-hide, done bubbles, dock animation, open the terminal window on hover, and the fade level (off by default).
+
+### Workspace
+
+The **Workspace** tab turns the widget into a large, freely sized window. It is not always on top and remembers its own size and place; a widget left wide starts wide the next time.
+
+- **Left**: search (⌘K), new terminal, the pages as a menu (Terminal, Dashboard, Office, Team, Jira, Skillbook, Timer, Settings), then every session grouped by folder. Sessions that need an answer come first; sessions finished more than a day ago fold behind "Show older sessions". **Small widget** at the bottom goes back.
+- **AgentDesk terminal**: ＋ New terminal opens a folder with an agent (Claude Code, Codex, Gemini CLI or a shell). tmux holds the session, so it keeps running when the widget closes and is there when you come back. It needs tmux (macOS, Linux); Windows is not supported yet. Only sessions AgentDesk made (named `agentdesk-…`) are listed; your other tmux sessions are never touched.
+- **Open in a new worktree**: when the folder is a git repository, a new terminal can open in a fresh worktree of it (on a branch of the same name). The worktree is made under `~/agentdesk/worktrees/<repository>/<name>` and is listed under the same project as its repository. A folder that is not a git repository just opens.
+- **Projects**: the session list is grouped by folder. An Orca repository is one project with its worktrees; otherwise the folder a session works in is its project (git or not). Projects keep their place; right-click a project's name to rename it, widen it to the folder above, merge it with another, or move it. Sessions that need an answer are listed on top under "Needs you now".
+- **Sessions of other apps**: a session running in Orca, iTerm2 or Terminal opens in place as a read view of its screen with an input line instead of switching apps; the button on top goes to the app. An ended session is reopened in an AgentDesk terminal.
+- **Keys**: ⌘C copies the selection and ⌘V pastes (Windows and Linux: Ctrl+Shift+C); ⌘+ ⌘- ⌘0 change the text size.
+
+### My day
+
+The ◷ button in the header. What spans days is kept in `~/.roca/daily.json` as numbers per day (no prompts, paths or commands).
+
+- **Morning set**: reopen several leave notes at once, one after another (up to 6).
+- **Bottleneck**: the sessions waiting for your answer now, and how long agents waited for you today. Gaps longer than 10 minutes are not counted.
+- **Activity calendar**: the last 12 weeks, the streak, and the last 7 days' numbers.
+- **Allow-rule suggestions**: command families allowed 5 times or more in 7 days and never denied, as allow-rule text to copy. AgentDesk never stores or applies a rule, and never suggests families that delete, publish or escalate.
+- **Repeated failures and limit share**: the same command failing the same way, and each session's share of the last 30 minutes' tool calls (an estimate).
+- **Closing checklist**: work folders with uncommitted changes or unpushed commits.
 
 ## Support by agent
 
