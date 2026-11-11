@@ -98,6 +98,19 @@ function createIndex(opts) {
       return true;
     },
     get(sid) { const s = map.get(sid); return s ? { entries: s.list.slice(), truncated: s.dropped } : null; },
+    // every session's entries whose (already masked) text holds all the words of q: newest first, at most `limit`.
+    // What a search can reach is what the index holds: prompts, tool summaries, errors — never raw input.
+    search(q, limit) {
+      const words = str(q).toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6), max = Math.max(1, Math.min(200, Number(limit) || 50));
+      if (!words.length || words.some(w => w.length > 80)) return [];
+      const out = [];
+      for (const [sid, s] of map) for (const x of s.list) {
+        if (x.e !== 'UserPromptSubmit' && x.e !== 'PreToolUse' && x.e !== 'PostToolUseFailure') continue;
+        const hay = `${x.tool || ''} ${x.detail || ''} ${x.err || ''}`.toLowerCase();
+        if (words.every(w => hay.includes(w))) out.push({ sid, at: x.at, kind: x.e === 'UserPromptSubmit' ? 'prompt' : x.e === 'PreToolUse' ? 'tool' : 'fail', tool: x.tool || '', text: x.e === 'PostToolUseFailure' && x.err ? `${x.detail || ''} · ${x.err}` : x.detail || '' });
+      }
+      return out.sort((a, b) => b.at - a.at).slice(0, max);
+    },
     clear() { map.clear(); },
     size() { return map.size; },
   };

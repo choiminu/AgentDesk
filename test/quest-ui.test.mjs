@@ -40,7 +40,8 @@ test('quest ui: cards render through questRender(root) into any container, state
 test('quest ui: picker disables non-eligible sessions and ends with the new-worktree row', () => {
   const p = fn('questPickerHtml');
   match(p, /p\.eligible \?/);
-  match(p, /<button disabled>\$\{esc\(t\('작업 중'\)\)\}/);
+  match(p, /\$\{p\.eligible \? '' : ' disabled'\}/);
+  match(p, /class="dock-spr k\$\{skin\(p\.id\)\}"/, 'each agent shows its own character');
   match(p, /b\.eligible \? 1 : 0\) - \(a\.eligible \? 1 : 0\)/);
   match(p, /data-q="wt"[^\n]*새 워크트리에서 시작/);
   match(p, /p\.skills/);

@@ -218,9 +218,14 @@ function dockModel(input) {
     const id = rawId(s.id), key = meKey(id);
     if (seen.has(key)) continue; seen.add(key);
     const state = stateOf(s);
-    mineAll.push({ key, id, peer: '', name: clip(s.name || id, NAME_MAX), state, badge: badges.get(key) || 0,
+    const tile = { key, id, peer: '', name: clip(s.name || id, NAME_MAX), state, badge: badges.get(key) || 0,
       subs: subsOf(s.subs), delegated: false,
-      canInput: state === 'input' && !!s.handle, selected: key === sel, bundle: false });
+      canInput: state === 'input' && !!s.handle, selected: key === sel, bundle: false };
+    // nestSessions: a parent carries how many child sessions it folds (and their most urgent state); a shown child is marked
+    const kids = Math.max(0, Math.min(99, Math.floor(num(s.kids))));
+    if (kids) { tile.kids = kids; tile.kidState = STATES.includes(s.kidState) ? s.kidState : 'done'; tile.kidsOpen = s.kidsOpen === true; }
+    if (s.child === true) tile.child = true;
+    mineAll.push(tile);
   }
   const peersAll = [];
   for (const s of Array.isArray(i.peers) ? i.peers : []) {
@@ -460,7 +465,7 @@ function dockBounds(input) {
 }
 
 // ── panels in the room above / below the bar ──
-const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 120, usageW: 300, usageH: 220, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 320, bubbleBigW: 440, bubbleH: 300, bubbleBigH: 420, bubbleMaxH: 560, bubbleBigMaxH: 680, doneW: 220, addW: 280, tail: 6 };
+const POP = { gap: 6, margin: 6, tipSmallW: 260, tipSmallH: 150, usageW: 300, usageH: 220, termW: 720, termFrac: 0.9, termH: 420, bubbleW: 320, bubbleBigW: 440, bubbleH: 300, bubbleBigH: 420, bubbleMaxH: 560, bubbleBigMaxH: 680, doneW: 220, addW: 280, tail: 6 };
 const BUBBLE_ROWS = { head: 30, q: 66, qBig: 132, opt: 54, msg: 20, pad: 18 };   // larger type (13 px): the bubble is read from across the room
 function popWidth(kind, workWidth) {
   const ww = Math.max(0, Math.floor(num(workWidth))), room = Math.max(0, ww - 2 * POP.margin);
@@ -714,6 +719,56 @@ function screenLines(lines, opts) {
 //   hiddenAt }, "도크에서 숨기기"): idle until it does something after it was hidden (time > hiddenAt: unhide). pinned
 //   (Set of ids) and keep (the selected id): shown. idleMs > 0: waiting / done with no activity for idleMs → idle; a
 //   session without a time stays shown (nothing says it is old); running never goes.
+// child sessions fold under their parent (Orca records which worktree a worktree was made from):
+//   nestSessions(list, parents, { open, keep }) → { rows, kids }
+//     list: my sessions in row order ({ id, status, needsInput, hasPerm, … }); parents: child id → parent id (a Map or
+//     an object; ids that are not in the list are fine — a child whose parent is gone climbs to the nearest ancestor
+//     that is in the list, and stands on its own when there is none); open: the parent ids the user unfolded;
+//     keep: an id that stays in the row (the selected tile).
+//     rows: the parents in their order, each followed by the children that show — all of them when it is open,
+//     otherwise only the ones that need the user (ask / err) and the kept one. A parent row gets kids (how many it
+//     has), kidState (the most urgent of the folded ones: err > ask > run > input > done) and kidsOpen; a child row gets
+//     child: true and top (its parent's id). kids: Map parent id → its children ({ id, name, state, time }).
+const KID_RANK = { err: 4, ask: 3, run: 2, input: 1, done: 0 };
+function nestSessions(list, parents, o) {
+  const opt = o && typeof o === 'object' ? o : {};
+  const open = opt.open instanceof Set ? opt.open : new Set(), keep = opt.keep ? rawId(opt.keep) : '';
+  const par = parents instanceof Map ? k => parents.get(k) : parents && typeof parents === 'object' ? k => (Object.prototype.hasOwnProperty.call(parents, k) ? parents[k] : undefined) : () => undefined;
+  const all = (Array.isArray(list) ? list : []).filter(s => s && typeof s === 'object' && s.id);
+  const ids = new Set(all.map(s => rawId(s.id)));
+  const topOf = id => {
+    let cur = id, best = '';
+    const seen = new Set([id]);
+    for (let n = 0; n < 16; n++) {
+      const p = par(cur); if (typeof p !== 'string' || !p) break;
+      if (seen.has(p)) return '';   // a loop in the record: nobody's child
+      seen.add(p); cur = p; if (ids.has(p)) best = p;
+    }
+    return best;
+  };
+  const kids = new Map(), tops = [];
+  for (const s of all) {
+    const id = rawId(s.id), top = topOf(id);
+    if (!top) { tops.push(s); continue; }
+    if (!kids.has(top)) kids.set(top, []);
+    kids.get(top).push(s);
+  }
+  const rows = [];
+  for (const s of tops) {
+    const id = rawId(s.id), mine = kids.get(id) || [];
+    if (!mine.length) { rows.push(s); continue; }
+    const isOpen = open.has(id);
+    const shown = mine.filter(k => isOpen || rawId(k.id) === keep || ['ask', 'err'].includes(stateOf(k)));
+    const folded = mine.filter(k => !shown.includes(k));
+    const kidState = folded.reduce((b, k) => (KID_RANK[stateOf(k)] > KID_RANK[b] ? stateOf(k) : b), 'done');
+    rows.push({ ...s, kids: mine.length, kidState, kidsOpen: isOpen });
+    for (const k of shown) rows.push({ ...k, child: true, top: id });
+  }
+  const info = new Map();
+  for (const [top, xs] of kids) info.set(top, xs.map(k => ({ id: rawId(k.id), name: clip(k.name || k.id, NAME_MAX), state: stateOf(k), time: num(k.time) })));
+  return { rows, kids: info };
+}
+
 function dockIdleSplit(list, o) {
   const { now, idleMs, pinned, keep, hidden } = o && typeof o === 'object' ? o : {};
   const t0 = num(now), limit = num(idleMs), pin = pinned instanceof Set ? pinned : new Set();
@@ -757,7 +812,7 @@ function permAllowable(sm) {
   return !!v.trim() && !/[\r\n]/.test(v) && [...v].length <= PERM_LINE_MAX;
 }
 
-const AgentDeskDock = { dropSafeText, dragStep, DRAG_PX, orderSessions, keepOrder, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
+const AgentDeskDock = { nestSessions, dropSafeText, dragStep, DRAG_PX, orderSessions, keepOrder, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
   POP, SCREEN, popWidth, popExtra, bubbleHeight, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame,
   numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows, isOrcaApp, askYield, dockIdleSplit };
 root.AgentDeskDock = AgentDeskDock;

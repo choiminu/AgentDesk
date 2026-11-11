@@ -56,6 +56,19 @@ async function git(cwd, args, { maxBuffer = STAT_BYTES_MAX, okCodes = [0] } = {}
 }
 const gitText = async (cwd, args) => { try { return (await git(cwd, args)).stdout.trim(); } catch { return ""; } };
 
+// commits not on the branch's upstream yet: a count, or null when the branch has no upstream (or this is no repository)
+export async function aheadCount(cwd) {
+  const out = await gitText(cwd, ["rev-list", "--count", "@{upstream}..HEAD"]);
+  return /^\d+$/.test(out) ? Number(out) : null;
+}
+
+// a new worktree of the repository at `root`, in `path`, on branch `branch` (made from HEAD; an existing branch of that
+// name is checked out instead). Throws when git refuses (the path exists, the branch is checked out elsewhere).
+export async function worktreeAdd(root, path, branch) {
+  const has = await gitText(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+  await git(root, has ? ["worktree", "add", "--", path, branch] : ["worktree", "add", "-b", branch, "--", path]);
+}
+
 // the repository root (realpath) of a directory, or "" when it is not a git work tree
 export async function repoRoot(cwd) {
   let real;

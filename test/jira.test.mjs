@@ -58,21 +58,25 @@ test('worktreeName lowercases and strips unsafe characters', () => {
 
 const issue = { key: 'PROJ-7', summary: '배포 오류', status: 'To Do', priority: 'High', labels: ['ops'], description: '캐시 불일치' };
 
-test('worktreePrompt: guidance first, ticket facts, REPORT hint, autopilot last only when asked', () => {
-  const p = J.worktreePrompt(issue, { guidance: '로그부터 확인', autopilot: true });
-  assert.ok(p.indexOf('로그부터 확인') < p.indexOf('PROJ-7'));
+test('worktreePrompt: which ticket first, guidance before the details, REPORT hint, autopilot last only when asked', () => {
+  const p = J.worktreePrompt(issue, { guidance: '로그부터 확인', autopilot: true, url: 'https://x.example/browse/PROJ-7' });
+  assert.ok(p.startsWith('[Jira 티켓] PROJ-7 · 배포 오류 · https://x.example/browse/PROJ-7'));
+  assert.ok(p.indexOf('로그부터 확인') < p.indexOf('캐시 불일치'));
   assert.ok(p.includes('캐시 불일치') && p.includes(J.REPORT_HINT));
   assert.ok(p.trimEnd().endsWith('autopilot'));
   assert.ok(!J.worktreePrompt(issue, {}).includes('autopilot'));
   assert.ok(!J.worktreePrompt(issue, {}).includes('접근 지침'));
 });
 
-test('sessionMessage puts the guidance before the ticket and requires guidance', () => {
+test('sessionMessage names the ticket first, puts the guidance before the details and requires guidance', () => {
   const m = J.sessionMessage(issue, '테스트 DB만 사용');
-  const g = m.indexOf('테스트 DB만 사용'), k = m.indexOf('PROJ-7'), r = m.indexOf('REPORT_START');
-  assert.ok(g >= 0 && g < k && k < r);
+  const k = m.indexOf('PROJ-7'), g = m.indexOf('테스트 DB만 사용'), d = m.indexOf('캐시 불일치'), r = m.indexOf('REPORT_START');
+  assert.ok(k >= 0 && k < g && g < d && d < r);
+  assert.ok(m.startsWith('[Jira 티켓] PROJ-7 · 배포 오류'));
   assert.equal(J.sessionMessage(issue, '   '), '');
-  assert.ok(J.sessionMessage(issue, 'x', 'en').startsWith('Before reading the ticket'));
+  assert.ok(J.sessionMessage(issue, 'x', 'en').startsWith('[Jira ticket] PROJ-7'));
+  assert.ok(J.sessionMessage({ ...issue, url: 'https://x.example/browse/PROJ-7' }, 'x').includes('https://x.example/browse/PROJ-7'));
+  assert.ok(!J.sessionMessage({ key: 'PROJ-8', summary: '제목만' }, 'x').includes('[티켓 내용]'), 'no empty details part');
 });
 
 test('extractReport takes the last real block and ignores the echoed format hint', () => {

@@ -10,6 +10,9 @@
 //   clashes(map, now, windowMs)    → [{ path, sids: [a, b] }]   live sessions that changed the same file inside the window
 //   replaySteps(trail, max)        → [{ k, fail, n }]   the trail folded (runs of one kind) and thinned to at most max steps
 //   noteOf(ps)                     → { sid, cwd, agent, text, edits, tools, tests, at } | null   what an ended session leaves
+//   activityShare(map, now, ms)    → [{ sid, n, share }]   each session's part of the tool calls in the last ms (most first)
+//   repeatFails(map)               → [{ repo, cmd, err, n, sessions }]   the same command failing the same way, again and again
+//   errKey(text)                   → an error's first telling line with numbers and paths blanked (what "the same way" compares)
 //
 // A play state: { sid, cwd, agent, counts, total, trail, boss, files, compacting, revivedAt, prompt, ended, endedAt, tests }
 //   boss: null | { hp, max, at, downAt }   hp = failing tests of the last failed run; downAt set when a run passed after it
@@ -65,7 +68,7 @@ function feed(map, rec) {
   const sid = typeof ev.session_id === 'string' ? ev.session_id : ''; if (!sid) return null;
   const ts = (Number(rec.ts) || 0) * 1000;
   let ps = map.get(sid);
-  if (!ps) { ps = { sid, cwd: '', agent: 'claude', counts: {}, total: 0, trail: [], boss: null, files: [], compacting: false, revivedAt: 0, prompt: '', ended: false, endedAt: 0, tests: { pass: 0, fail: 0 }, last: 0 }; map.set(sid, ps); }
+  if (!ps) { ps = { sid, cwd: '', agent: 'claude', counts: {}, total: 0, trail: [], recent: [], fails: [], boss: null, files: [], compacting: false, revivedAt: 0, prompt: '', ended: false, endedAt: 0, tests: { pass: 0, fail: 0 }, last: 0 }; map.set(sid, ps); }
   if (typeof ev.cwd === 'string' && ev.cwd) ps.cwd = ev.cwd;
   if (rec.agent) ps.agent = String(rec.agent);
   ps.last = Math.max(ps.last, ts);
@@ -82,6 +85,7 @@ function feed(map, rec) {
       const k = kindOf(tool, input.file_path || input.path || input.notebook_path || '');
       if (k !== 'think') { ps.counts[k] = (ps.counts[k] || 0) + 1; ps.total++; }
       ps.trail.push({ k, f: 0 }); if (ps.trail.length > TRAIL_MAX) ps.trail.splice(0, ps.trail.length - TRAIL_MAX);
+      ps.recent.push(ts); if (ps.recent.length > 300) ps.recent.splice(0, ps.recent.length - 300);
       break;
     }
     case 'PostToolUse': {
@@ -99,6 +103,10 @@ function feed(map, rec) {
     case 'PostToolUseFailure':
       if (sub) break;
       if (ps.trail.length) ps.trail[ps.trail.length - 1].f = 1;
+      if (!ev.is_interrupt && !(tool === 'Bash' && isTestCmd(input.command))) {   // a failing test run is the boss's business, not a repeated mistake
+        const cmd = tool === 'Bash' ? cmdHead(input.command) : tool, err = errKey(ev.error || ev.error_message);
+        if (cmd && err) { ps.fails.push({ cmd, err, at: ts }); if (ps.fails.length > 40) ps.fails.shift(); }
+      }
       if (tool === 'Bash' && isTestCmd(input.command) && !ev.is_interrupt) bossHit(ps, failCount(ev.error) || 1, ts);
       break;
     case 'PreCompact': ps.compacting = true; break;
@@ -112,6 +120,41 @@ function bossHit(ps, n, ts) {
   ps.tests.fail++;
   const live = ps.boss && !ps.boss.downAt;
   ps.boss = { hp: n, max: live ? Math.max(ps.boss.max, n) : n, at: live ? ps.boss.at : ts, downAt: 0 };
+}
+
+// a shell command's first word (and its subcommand), without arguments
+function cmdHead(c) {
+  const w = String(c || '').trim().replace(/^(cd\s+\S+\s*&&\s*)+/, '').split(/\s+/);
+  if (!w[0] || !/^[\w.@/+-]{1,40}$/.test(w[0])) return '';
+  return w[1] && /^[a-z][\w:-]{0,30}$/.test(w[1]) ? `${w[0]} ${w[1]}` : w[0];
+}
+function errKey(text) {
+  const mask = root.AgentDeskMask && root.AgentDeskMask.mask ? root.AgentDeskMask.mask : v => v;
+  const lines = String(text == null ? '' : text).slice(0, 2000).split('\n').map(l => l.trim()).filter(l => l && !/^Exit code \d+$/i.test(l));
+  const line = lines.find(l => /error|fail|not found|denied|cannot|unknown|invalid|no such|undefined|exception|refused|missing/i.test(l)) || lines[0] || '';
+  return clip(mask(line).replace(/(\/|[A-Za-z]:\\)[^\s'":,)]+/g, '…').replace(/\b0x[0-9a-f]+\b/gi, '#').replace(/\d+/g, '#'), 90);
+}
+function activityShare(map, now, windowMs) {
+  const rows = [];
+  let total = 0;
+  for (const ps of map.values()) { const n = (ps.recent || []).filter(t => now - t <= windowMs && now - t >= 0).length; if (n) { rows.push({ sid: ps.sid, n }); total += n; } }
+  for (const r of rows) r.share = r.n / total;
+  return rows.sort((a, b) => b.n - a.n);
+}
+// the same command failing the same way in two sessions of one folder, or three times in all
+function repeatFails(map) {
+  const groups = new Map();
+  for (const ps of map.values()) {
+    const repo = String(ps.cwd || '').split('/').filter(Boolean).pop() || '';
+    for (const f of ps.fails || []) {
+      const k = `${repo}\u0000${f.cmd}\u0000${f.err}`;
+      let g = groups.get(k);
+      if (!g) { g = { repo, cmd: f.cmd, err: f.err, n: 0, sids: new Set(), at: 0 }; groups.set(k, g); }
+      g.n++; g.sids.add(ps.sid); if (f.at > g.at) g.at = f.at;
+    }
+  }
+  return [...groups.values()].filter(g => g.sids.size >= 2 || g.n >= 3).map(g => ({ repo: g.repo, cmd: g.cmd, err: g.err, n: g.n, sessions: g.sids.size, at: g.at }))
+    .sort((a, b) => (b.sessions - a.sessions) || (b.n - a.n) || (b.at - a.at)).slice(0, 8);
 }
 
 // what a session mostly does: a kind holding 40 % of at least 12 tool calls; the level doubles with the work done
@@ -166,7 +209,7 @@ function noteOf(ps) {
   return { sid: ps.sid, cwd: ps.cwd, agent: ps.agent || 'claude', text: ps.prompt || '', edits: new Set(ps.files.map(f => f.path)).size, tools: ps.total, tests: { pass: ps.tests.pass, fail: ps.tests.fail }, at: ps.endedAt || ps.last };
 }
 
-const AgentDeskPlay = { kindOf, feed, failCount, isTestCmd, jobOf, fatigue, clashes, replaySteps, noteOf, KINDS, JOBS, JOB_MIN };
+const AgentDeskPlay = { kindOf, feed, failCount, isTestCmd, jobOf, fatigue, clashes, replaySteps, noteOf, activityShare, repeatFails, errKey, KINDS, JOBS, JOB_MIN };
 root.AgentDeskPlay = AgentDeskPlay;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskPlay;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
