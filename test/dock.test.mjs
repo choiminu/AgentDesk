@@ -401,6 +401,12 @@ test('widget dock: hover opens the terminal window, a click goes to the terminal
   assert.doesNotMatch(click, /setTimeout/, 'no delay');
   assert.match(click, /if \(x\.delegated && dockTermKey\(\) !== x\.key\) dockTermFor\(x\)/);
   assert.match(between(html, 'async function dockFocusTerminal(', '\n}\n'), /await api\.switchTo\(h\)/);
+  assert.match(between(html, 'async function dockFocusTerminal(', '\n}\n'), /if \(!h\) \{ if \(!\(await dockReopen\(x\.id\)\)\)/, 'no terminal: an ended session is reopened');
+  const reopen = between(html, 'async function dockReopen(', '\n}\n');
+  assert.match(reopen, /if \(!ended && !wt\) return false/, 'only a session that ended with its id known');
+  assert.match(reopen, /dockReopening\.has\(id\)\) return true/, 'a second click does not open a second tab');
+  assert.match(reopen, /window\.orca\.resumeSession\(s\.cwd, s\.sessionId, s\.agent \|\| 'claude'\)/);
+  assert.match(reopen, /window\.orca\.worktreeReopen\(id, agent \|\| 'claude'\)/, 'an Orca worktree with no terminal: a new tab there');
   assert.match(open, /if \(!st\.alive\) return;[^\n]*\n\s*const now = cur\(\); if \(!now\.hh\) return;\n\s*const r = await window\.orca\.terminalInterrupt\(now\.hh\)/, 'looked up again after the confirm');
   const keys = between(html, "$('dock-tiles').addEventListener('keydown'", '\n});');
   assert.match(keys, /e\.key === 'Enter' && \(e\.metaKey \|\| e\.ctrlKey\)[\s\S]*dockFocusTerminal\(x\)/, '⌘Enter: the terminal');
@@ -1369,12 +1375,65 @@ test('dockModel carries the child-session marks to the tiles', () => {
 test('widget dock: a parent\'s hover card is a clickable family tree', () => {
   const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
   assert.match(html, /if \(!x\.peer && x\.kids\) return dockTreeHtml\(/, 'a parent shows the tree instead of the plain card');
-  assert.match(html, /\.dock-tip\.tree \{ pointer-events: auto; \}/, 'the tree takes the pointer');
+  assert.match(html, /\.dock-tip\.tree \{ pointer-events: auto;/, 'the tree takes the pointer');
   assert.match(html, /const DOCK_HOVER_SEL = '[^']*\.dock-tip\.tree'/, 'it stays while the pointer is on it');
   assert.match(html, /\.dock-pop, \.dock-tip\.tree'\)\);/, 'and is not clicked through');
   const i = html.indexOf("$('dock-tip').addEventListener('click'"), wire = html.slice(i, i + 600);
   assert.match(wire, /dockFocusTerminal\(\{ id \}\)/, 'a tile goes to that session\'s terminal');
   assert.match(wire, /dockKidsOpen\.add\(more\.dataset\.kidMore\)/, '+N unfolds the rest in the bar');
   const tree = html.slice(html.indexOf('function dockTreeHtml('), html.indexOf('function dockTipShow('));
+  assert.match(tree, /class="tp-now one tk-say" hidden/, 'no sentence until a tile is pointed at');
+  assert.match(tree, /function dockTreeSay\(id\)[\s\S]*AgentDeskMask\.mask\(/, 'the caption is masked');
+  assert.match(html, /\$\('dock-tip'\)\.addEventListener\('mouseover', e => \{ const b = e\.target\.closest\('\[data-kid\]'\); dockTreeSay\(/);
   assert.match(tree, /AgentDeskMask\.mask\(k\.name\)/); assert.match(tree, /data-kid="\$\{esc\(id\)\}"/);
+});
+
+test('usedAt: the latest of the activity time, the last question and the newest tool call', () => {
+  assert.equal(D.usedAt({ time: 100, askSince: 50, recentTools: [{ ts: 900 }, { ts: 300 }, null] }), 900, 'a stale activity time does not hide a session at work');
+  assert.equal(D.usedAt({ time: 100, askSince: 400 }), 400);
+  assert.equal(D.usedAt({ time: 'x', recentTools: 'junk' }), 0);
+  assert.equal(D.usedAt(null), 0);
+  const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+  assert.match(html, /const shown = live\.map\(s => \(\{ \.\.\.s, time: famAt\(s\) \}\)\);/, 'the bar sorts by when the session (or a child of it) was last used');
+});
+
+test('worktreeOf: the worktree at the folder, else the deepest one around it; archived and unrelated ones never', () => {
+  const list = [{ worktreeId: 'r::/a', path: '/a' }, { worktreeId: 'r::/a/b', path: '/a/b/' }, { worktreeId: 'r::/a/old', path: '/a/old', isArchived: true }, { path: '/a/b/c' }];
+  assert.equal(AgentDeskDock.worktreeOf(list, '/a').worktreeId, 'r::/a');
+  assert.equal(AgentDeskDock.worktreeOf(list, '/a/b/c/d/').worktreeId, 'r::/a/b');
+  assert.equal(AgentDeskDock.worktreeOf(list, '/a/old').worktreeId, 'r::/a', 'an archived worktree is skipped');
+  assert.equal(AgentDeskDock.worktreeOf(list, '/ab'), null, 'a name that only starts the same is another folder');
+  assert.equal(AgentDeskDock.worktreeOf(null, '/a'), null);
+  assert.equal(AgentDeskDock.worktreeOf(list, ''), null);
+});
+
+test('tileLabels: names the tile would cut to the same text keep the end that tells them apart', () => {
+  const L = AgentDeskDock.tileLabels;
+  assert.deepEqual(L(['[CodeSomething] alpha', '[CodeSomething] beta', 'roca', 'KakaoPYT'], 8), ['[C…alpha', '[C…beta', 'roca', 'KakaoPYT']);
+  assert.deepEqual(L(['a long name here', 'another long one'], 8), ['a long name here', 'another long one'], 'no collision: the tile cuts it as before');
+  assert.deepEqual(L(['same-start-and-end-x', 'same-start-and-end-x'], 8), ['same-start-and-end-x', 'same-start-and-end-x'], 'equal at both ends: left alone');
+  assert.deepEqual(L(['문서정리 워크트리 하나', '문서정리 워크트리 둘'], 8), ['문…하나', '문…리 둘'], 'Hangul counts two units');
+  assert.deepEqual(L(null, 8), []);
+  const m = AgentDeskDock.dockModel({ sessions: [{ id: 'a', name: '[CodeSomething] alpha', status: 'done' }, { id: 'b', name: '[CodeSomething] beta', status: 'done' }, { id: 'c', name: 'roca', status: 'done' }], size: 'md' });
+  assert.deepEqual(m.mine.map(x => x.label), ['[C…alpha', '[C…beta', undefined], 'the model carries a label only where it differs');
+});
+test('reopenKind: what a click does to a session with no terminal', () => {
+  const K = AgentDeskDock.reopenKind;
+  assert.equal(K({ id: 'r::/a' }, false), 'wt');
+  assert.equal(K({ id: 'r::/a' }, true), '', 'it has a terminal');
+  assert.equal(K({ id: 'hook:abc::/a', hookOnly: true, sessionId: 'abcdefgh' }, false), 'resume');
+  assert.equal(K({ id: 'hook:abc::/a', hookOnly: true }, false), '', 'ended with no id known');
+  assert.equal(K({ id: 'term:1', detected: true }, false), '');
+  assert.equal(K(null, false), '');
+});
+test('widget dock: reopen marks, the agent choice and the nesting switch', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8'), main = readFileSync(new URL('../main.mjs', import.meta.url), 'utf8');
+  assert.match(html, /b\.classList\.toggle\('re', !!re\); b\.classList\.toggle\('re-new', re === 'new'\)/);
+  assert.match(html, /dockTalk\.get\(s\.id\) === false \? 'new' : 'cont'/, 'unknown yet: shown as "continues"');
+  assert.match(html, /if \(act\.startsWith\('re-'\)\) \{ dockReopen\(s\.id, act\.slice\(3\)\); return; \}/);
+  assert.match(html, /nestSessions\(ordered, dockCfg\.nest \? wtParents : new Map\(\)/);
+  assert.match(html, /dockCfg\.nest = c\.nest !== false;/, 'on unless turned off');
+  assert.match(main, /agent !== "claude" && Object\.prototype\.hasOwnProperty\.call\(NEW_SESSION_CMD, agent\) \? agent : ""/, 'another agent only from the allow-list');
+  assert.match(main, /other \? NEW_SESSION_CMD\[other\] : fresh \? "claude" : "claude --continue"/);
 });

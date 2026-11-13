@@ -129,6 +129,8 @@ contextBridge.exposeInMainWorld("orca", {
   tmuxPanes: () => ipcRenderer.invoke("roca:tmux-panes"),
   ttyTargets: () => ipcRenderer.invoke("roca:tty-targets"),
   resumeSession: (cwd, sessionId, agent) => ipcRenderer.invoke("roca:resume-session", cwd, sessionId, agent),
+  worktreeReopen: (worktreeId, agent) => ipcRenderer.invoke("roca:worktree-reopen", worktreeId, agent),
+  worktreeTalk: ids => ipcRenderer.invoke("roca:worktree-talk", ids),
   openSession: (cwd, agent) => ipcRenderer.invoke("roca:open-session", cwd, agent),
   pickFolder: (defaultPath) => ipcRenderer.invoke("roca:pick-folder", defaultPath),
   statuslineStatus: () => ipcRenderer.invoke("roca:statusline-status"),

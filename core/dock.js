@@ -227,6 +227,7 @@ function dockModel(input) {
     if (s.child === true) tile.child = true;
     mineAll.push(tile);
   }
+  tileLabels(mineAll.map(x => x.name), 8).forEach((lab, k) => { if (lab !== mineAll[k].name) mineAll[k].label = lab; });
   const peersAll = [];
   for (const s of Array.isArray(i.peers) ? i.peers : []) {
     if (!s || !s.id || !s.peer || s.ended === true) continue;
@@ -298,6 +299,55 @@ function dockEdge(tiles) {
     if ((st === 'ask' || st === 'err' || st === 'run') && (!best || RANK[st] < RANK[best])) best = st;
   }
   return best;
+}
+// when a session was last used: its activity time, its last question, or its newest tool call — whichever is latest
+// (a host's activity time can lag far behind a session that is at work)
+// names the tile would cut to the same text: each keeps its start, an ellipsis, and the end that tells them apart.
+// Widths are counted in half-width units (Hangul, kana and CJK count two); a name that fits, or that no other name
+// collides with, is left alone. Names equal at both ends stay as they are.
+const wideCh = ch => (/[\u1100-\u11ff\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/.test(ch) ? 2 : 1);
+function cutUnits(str, units, fromEnd) {
+  const cs = [...String(str)]; let n = 0, out = '';
+  for (let k = 0; k < cs.length; k++) { const ch = fromEnd ? cs[cs.length - 1 - k] : cs[k], w = wideCh(ch); if (n + w > units) break; n += w; out = fromEnd ? ch + out : out + ch; }
+  return out;
+}
+function tileLabels(names, max) {
+  const m = Math.max(6, Math.floor(num(max)) || 8), list = (Array.isArray(names) ? names : []).map(n => String(n == null ? '' : n));
+  const width = n => [...n].reduce((a, ch) => a + wideCh(ch), 0);
+  const groups = new Map();
+  list.forEach((n, k) => { if (width(n) <= m) return; const h = cutUnits(n, m - 1); if (!groups.has(h)) groups.set(h, []); groups.get(h).push(k); });
+  const out = list.slice();
+  for (const ks of groups.values()) {
+    if (ks.length < 2) continue;
+    const labs = ks.map(k => `${cutUnits(list[k], 2)}…${cutUnits(list[k], m - 3, true).trim()}`);
+    ks.forEach((k, j) => { if (labs.filter(v => v === labs[j]).length === 1) out[k] = labs[j]; });
+  }
+  return out;
+}
+// what a click does to a session with no terminal: '' (it has one, or nothing can be done), 'resume' (an ended agent
+// session whose id is known), 'wt' (an Orca worktree whose terminals are gone)
+function reopenKind(s, hasHandle) {
+  if (!s || typeof s !== 'object' || hasHandle) return '';
+  if (s.hookOnly === true && s.sessionId) return 'resume';
+  const id = String(s.id || '');
+  return !s.hookOnly && !s.detected && id.includes('::') && !id.startsWith('hook:') ? 'wt' : '';
+}
+// the Orca worktree a folder belongs to: the one at that path, else the deepest one that contains it (archived ones never)
+function worktreeOf(list, dir) {
+  const d = String(dir || '').replace(/\/+$/, '');
+  let best = null;
+  if (!d) return best;
+  for (const w of Array.isArray(list) ? list : []) {
+    const p = w && !w.isArchived && typeof w.path === 'string' && w.worktreeId ? w.path.replace(/\/+$/, '') : '';
+    if (p && (d === p || d.startsWith(p + '/')) && (!best || p.length > best.path.replace(/\/+$/, '').length)) best = w;
+  }
+  return best;
+}
+function usedAt(s) {
+  if (!s || typeof s !== 'object') return 0;
+  let t = Math.max(num(s.time), num(s.askSince));
+  for (const v of Array.isArray(s.recentTools) ? s.recentTools : []) t = Math.max(t, num(v && v.ts));
+  return t;
 }
 function orderSessions(list, order, pinned) {
   const ord = new Map();
@@ -812,7 +862,7 @@ function permAllowable(sm) {
   return !!v.trim() && !/[\r\n]/.test(v) && [...v].length <= PERM_LINE_MAX;
 }
 
-const AgentDeskDock = { nestSessions, dropSafeText, dragStep, DRAG_PX, orderSessions, keepOrder, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
+const AgentDeskDock = { usedAt, worktreeOf, tileLabels, reopenKind, nestSessions, dropSafeText, dragStep, DRAG_PX, orderSessions, keepOrder, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
   POP, SCREEN, popWidth, popExtra, bubbleHeight, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame,
   numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows, isOrcaApp, askYield, dockIdleSplit };
 root.AgentDeskDock = AgentDeskDock;

@@ -712,9 +712,47 @@ async function appRunning(name) { if (!IS_MAC) return false; try { return (await
 // reopen an ended Claude Code session in a new terminal tab: cd <cwd> && claude --resume <id>
 const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
 const RESUME_CMD = { claude: id => `claude --resume ${id}`, gemini: id => `gemini --resume ${id}`, codex: id => `codex resume ${id}` };
+// the folder is an Orca worktree (or inside one): the session comes back as a new tab of that worktree in Orca, shown at
+// once. Anything else (no Orca, another folder, the create refused) → null and the caller opens the system terminal.
+async function resumeInOrca(cwd, command) {
+  const dir = typeof cwd === "string" && isAbsolute(cwd) ? cwd.replace(/\/+$/, "") : "";
+  if (!dir) return null;
+  try {
+    const wt = globalThis.AgentDeskDock.worktreeOf(await orcaWorktreeList(), dir);
+    if (!wt) return null;
+    const cmd = wt.path.replace(/\/+$/, "") === dir ? command : `cd ${shq(dir)} && ${command}`;
+    const r = await orca("terminal", "create", "--worktree", `id:${wt.worktreeId}`, "--command", cmd, "--focus");
+    return r && r.ok !== false ? { ok: true, app: "Orca" } : null;
+  } catch { return null; }
+}
+// an Orca worktree whose terminals are all gone: a new tab there, the agent continuing that folder's last conversation
+// (a folder with none starts a fresh one). The id must be one Orca lists now; the command is one of two fixed ones.
+// Claude Code keeps a folder's conversations under ~/.claude/projects/<the path, every other character a dash>
+function claudeHasTalk(dir) {
+  try { return readdirSync(join(homedir(), ".claude", "projects", String(dir).replace(/[^a-zA-Z0-9]/g, "-"))).some(f => f.endsWith(".jsonl")); } catch { return false; }
+}
+// which of these worktrees have a Claude Code conversation to continue: { id: true | false } (ids Orca lists, 200 at most)
+ipcMain.handle("roca:worktree-talk", async (_e, ids) => {
+  const want = new Set((Array.isArray(ids) ? ids : []).filter(v => typeof v === "string" && v && v.length <= 4096).slice(0, 200)), out = {};
+  if (!want.size) return out;
+  for (const w of await orcaWorktreeList()) if (w && want.has(w.worktreeId) && typeof w.path === "string") out[w.worktreeId] = claudeHasTalk(w.path.replace(/\/+$/, ""));
+  return out;
+});
+ipcMain.handle("roca:worktree-reopen", async (_e, worktreeId, agent) => {
+  const id = typeof worktreeId === "string" && worktreeId.length <= 4096 ? worktreeId : "";
+  diffPsCache = { at: 0, list: [] };   // a worktree made a moment ago counts
+  const wt = id && (await orcaWorktreeList()).find(w => w && w.worktreeId === id && !w.isArchived);
+  if (!wt) return { ok: false, error: "not an Orca worktree" };
+  const other = typeof agent === "string" && agent !== "claude" && Object.prototype.hasOwnProperty.call(NEW_SESSION_CMD, agent) ? agent : "";   // another agent from the allow-list: started fresh
+  const fresh = !!other || !claudeHasTalk(String(wt.path || "").replace(/\/+$/, ""));   // nothing to continue: a new conversation
+  const r = await orca("terminal", "create", "--worktree", `id:${wt.worktreeId}`, "--command", other ? NEW_SESSION_CMD[other] : fresh ? "claude" : "claude --continue", "--focus");
+  return r && r.ok !== false ? { ok: true, app: "Orca", fresh, agent: other || "claude" } : { ok: false, error: (r && (r.detail || r.error)) || "failed" };
+});
 ipcMain.handle("roca:resume-session", async (_e, cwd, sessionId, agent) => {
   if (!/^[0-9a-zA-Z_-]{8,}$/.test(String(sessionId || ""))) return { ok: false, error: "invalid session id" };
   const mk = RESUME_CMD[agent] || RESUME_CMD.claude;
+  const inOrca = await resumeInOrca(cwd, mk(sessionId));
+  if (inOrca) return inOrca;
   return openTerminalAt(cwd || homedir(), mk(sessionId));
 });
 // a new agent session from a folder (the dock "+" without Orca): the agent only from this list, run without arguments
@@ -1172,9 +1210,13 @@ function dockApply(r) {
   if (pick) b.displayId = pick.id;
   dockState.last = b; dockState.setAt = Date.now();
   // maxWidth 480 is the panel's limit; the bar may be as wide as the work area
-  mainWindow.setMinimumSize(Math.min(280, b.width), Math.min(44, b.height));
-  mainWindow.setMaximumSize(Math.max(480, wa.width), Math.max(b.height, wa.height));
-  mainWindow.setBounds({ x: b.x, y: b.y, width: b.width, height: b.height });
+  // the window already has these bounds (most requests: only the shape changes): the frame is left alone. Every frame
+  // change is a round trip to the window server, and the app once hung inside one.
+  if (cur.x !== b.x || cur.y !== b.y || cur.width !== b.width || cur.height !== b.height) {
+    mainWindow.setMinimumSize(Math.min(280, b.width), Math.min(44, b.height));
+    mainWindow.setMaximumSize(Math.max(480, wa.width), Math.max(b.height, wa.height));
+    mainWindow.setBounds({ x: b.x, y: b.y, width: b.width, height: b.height });
+  }
   dockShape(b, r.pop, r.hidden === true);
   return b;
 }
