@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld("orca", {
   questPrune: (o) => ipcRenderer.invoke("roca:quest-prune", o),
   questDeskCancel: (o) => ipcRenderer.invoke("roca:quest-desk-cancel", o),
   notify: (title, body) => ipcRenderer.invoke("orca:notify", title, body),
+  setAppLang: (l) => ipcRenderer.send("orca:app-lang", l),
   version: () => ipcRenderer.invoke("orca:version"),
   platform: process.platform,
   appVersion: () => ipcRenderer.invoke("roca:app-version"),

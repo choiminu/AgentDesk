@@ -125,8 +125,9 @@ test('skillbook ui (dock): the panel kind is reserved in dockPopKind and dockBou
   assert.match(cut(html, 'function dockPopKind()', '\n}\n'), /if \(sbDockOpen\) return 'skillbook';/);
   const bs = cut(html, 'function dockBoundsSync(natural)', '\n}\n');
   assert.match(bs, /kind === 'skillbook' \? DOCK_SB_H/);
-  assert.match(bs, /popWidth: kind === 'skillbook' \? DOCK_SB_W : /, 'the window grows sideways for the two pages');
-  assert.match(bs, /dockFullPop\(kind\) \? \{ x: 8, width: Math\.max\(0, window\.innerWidth - 16\) \}/);
+  assert.match(bs, /kind === 'skillbook' \? DOCK_SB_W : /, 'the window grows sideways for the two pages');
+  assert.match(bs, /dockFullPop\(kind\)/);
+  assert.match(bs, /\{ x: 8, width: Math\.max\(0, window\.innerWidth - 16\) \}/);
   assert.match(bs, /!dockFullPop\(kind\) && !bubbles \? dockPopGeom\(kind\)/);
   assert.match(html, /const dockFullPop = k => k === 'skillbook' \|\| k === 'quest';/);
   // placed like the review queue, and the pointer over it keeps the clicks

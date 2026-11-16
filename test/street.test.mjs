@@ -51,6 +51,7 @@ test('widget: the street is off unless turned on, follows the animation setting 
   assert.match(html, /<script src="core\/street\.js"><\/script>/);
   assert.match(html, /dockCfg\.bg = \['solid', 'street', 'clear'\]\.includes\(c\.bg\) \? c\.bg : c\.street === true \? 'street' : 'solid';/, 'the plain bar unless chosen; the earlier on/off setting carries over');
   assert.match(html, /strip\.classList\.toggle\('clear', dockOn && dockCfg\.bg === 'clear'\)/);
+  assert.match(html, /on = dockOn && dockCfg\.bg === 'street' && dockCfg\.edge === 'bottom';/, 'a side (vertical) bar keeps the plain plate');
   assert.match(html, /const DOCK_CLEAR_HIT = '\.dock-tile, \.dock-kids, \.dock-right, \.dock-msg, /, 'no bar: only what is drawn takes the pointer');
   assert.match(html, /if \(!dockOn \|\| !\(dockPopKind\(\) \|\| clear\)\) return;/);
   assert.match(html, /classList\.remove\('street', 'clear'\)/, 'off the dock neither look stays');
