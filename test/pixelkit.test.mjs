@@ -583,7 +583,7 @@ test('export: the files on disk hold what the code draws (pixel for pixel), and 
   try {
     execFileSync(process.execPath, [join(KIT, 'tools', 'export-app.mjs'), '--out', dir]);
     assert.equal(readdirSync(dir).length, a.length);
-    for (const f of a) assert.ok(readFileSync(join(dir, `${f.name}.png`)).equals(readFileSync(join(TOWN, `${f.name}.png`))), f.name);
+    for (const f of a) assert.ok(fromPNG(readFileSync(join(dir, `${f.name}.png`))).equals(fromPNG(readFileSync(join(TOWN, `${f.name}.png`)))), f.name);   // pixels (see above)
     assert.equal(spawnSync(process.execPath, [join(KIT, 'tools', 'export-app.mjs'), '--check', '--out', dir]).status, 0);
     rmSync(join(dir, 'street_cloud.png'));
     assert.equal(spawnSync(process.execPath, [join(KIT, 'tools', 'export-app.mjs'), '--check', '--out', dir]).status, 1, 'a missing file is reported');
