@@ -270,7 +270,31 @@ function responseTextFromScreen(lines) {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-const AgentDeskStatus = { SPINNER_RE, DONE_FRESH_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus, loopStateFor, relPath, recordTouch, touchedFiles, TOUCH_WINDOW_MS, displayCols, responseTextFromScreen };
+// Which terminal screens to read this tick. Every read starts a process (the orca CLI), so with many terminals open the
+// quiet ones are read less often. Every tick: a screen never read, one that shows a question, one whose session is
+// working. A session waiting at its prompt: every WAIT_EVERY_MS. A finished one (or one with no status): by how long
+// its terminal has been quiet — printed in the last HOT_MS, every QUIET_EVERY_MS (an idle agent's screen still redraws
+// now and then, so output alone is no sign of work), quiet longer, every IDLE_EVERY_MS. With no status known at all,
+// recent output counts as work (every tick). A read still running is never started again; at most MAX per tick, a
+// working one first, then the longest unread.
+//   entries: [{ id, status ('running' | 'waiting' | 'done' | …), lastOut (ms, 0 = unknown), choice, busy }]  → [id…]
+const SCREEN_PLAN = { HOT_MS: 120000, WAIT_EVERY_MS: 8000, QUIET_EVERY_MS: 60000, IDLE_EVERY_MS: 120000, MAX: 6 };
+function screenPlan(entries, readAt, now, o) {
+  const P = { ...SCREEN_PLAN, ...(o && typeof o === 'object' ? o : {}) }, at = readAt instanceof Map ? readAt : new Map(), t = Number(now) || 0;
+  const due = [];
+  for (const e of Array.isArray(entries) ? entries : []) {
+    if (!e || !e.id || e.busy) continue;
+    const last = Number(at.get(e.id)) || 0, out = Number(e.lastOut) || 0, quiet = out ? t - out : Infinity;
+    const st = typeof e.status === 'string' ? e.status : '';
+    const every = !last || e.choice || st === 'running' || (!st && quiet < P.HOT_MS) ? 0
+      : st === 'waiting' ? P.WAIT_EVERY_MS : quiet < P.HOT_MS ? P.QUIET_EVERY_MS : P.IDLE_EVERY_MS;
+    if (t - last >= every) due.push({ id: e.id, hot: every === 0, last });
+  }
+  due.sort((a, b) => (b.hot - a.hot) || (a.last - b.last));
+  return due.slice(0, Math.max(1, Math.floor(P.MAX))).map(d => d.id);
+}
+
+const AgentDeskStatus = { SCREEN_PLAN, screenPlan, SPINNER_RE, DONE_FRESH_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus, loopStateFor, relPath, recordTouch, touchedFiles, TOUCH_WINDOW_MS, displayCols, responseTextFromScreen };
 // the widget loads this as a classic <script> (globals); tests `import()` it and read globalThis.AgentDeskStatus
 root.AgentDeskStatus = AgentDeskStatus;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskStatus;

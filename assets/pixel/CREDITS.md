@@ -26,8 +26,12 @@ scripts/office-skins.mjs
 
 ## Town look
 
-town/*.png (characters char_0 … char_11, floors, desk, monitor, chair, sofa, coffee table) are our own drawings, made pixel
-by pixel in code by scripts/office-town.mjs (`node scripts/office-town.mjs`). They are not taken from any other product's art.
+town/*.png are our own drawings, made pixel by pixel in code. They are not taken from any other product's art.
+
+- Floors, desk, monitor, chair, sofa and coffee table: scripts/office-town.mjs (`node scripts/office-town.mjs`).
+- The twelve characters (char_0 … char_11), their umbrella / jump / carry sheets (char_N_umbrella, char_N_jump,
+  char_N_carry) and the dock's street (street_*.png): pixelkit (`node pixelkit/tools/export-app.mjs`). pixelkit's drawing
+  core adapts parts of pixelfx (MIT); see pixelkit/NOTICE.md.
 
 ## UI pixel icons
 

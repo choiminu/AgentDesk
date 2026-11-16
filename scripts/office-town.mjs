@@ -273,7 +273,8 @@ function furniture() {
 // ── run ──
 mkdirSync(OUT, { recursive: true });
 const made = [];
-CHARS.forEach((c, i) => { charSheet(c).save(`char_${i}`); made.push(`char_${i}`); });
+// the twelve characters are drawn by pixelkit now (node pixelkit/tools/export-app.mjs): this script leaves their files alone
+CHARS.forEach((c, i) => { made.push(`char_${i}`); });
 for (const [n, g] of Object.entries({ ...floors(), ...furniture() })) { g.save(n); made.push(n); }
 writeFileSync(join(OUT, "names.json"), JSON.stringify(made.sort()) + "\n");
 console.log(`town: ${made.length} files → ${OUT}`);

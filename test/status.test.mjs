@@ -201,3 +201,43 @@ test('CwdChanged updates cwd; unknown events are ignored', () => {
   S.applyHookEvent(claude('SomethingNew'), m);
   assert.equal(JSON.stringify([st.status, st.tool, st.needsInput]), before);
 });
+
+test('screenPlan: working screens every tick, waiting every 8 s, finished every 60 / 120 s, never twice at once, a few per tick', () => {
+  const S = globalThis.AgentDeskStatus, now = 10_000_000, at = new Map();
+  const e = (id, status, quietMs, o = {}) => ({ id, status, lastOut: quietMs == null ? 0 : now - quietMs, ...o });
+  assert.deepEqual(S.screenPlan([e('a', 'done', 1000), e('b', 'done', 5 * 60000)], at, now).sort(), ['a', 'b'], 'never read yet: every one');
+  for (const id of ['r', 'w', 'q', 'c', 'n']) at.set(id, now - 3000);
+  at.set('w9', now - 9000).set('d31', now - 31000).set('d61', now - 61000).set('d90', now - 90000).set('d121', now - 121000).set('x', now - 3000);
+  const list = [e('r', 'running', 600000), e('w', 'waiting', 1000), e('w9', 'waiting', 600000), e('q', 'done', 1000), e('c', 'done', 9e6, { choice: true }),
+    e('d31', 'done', 1000), e('d61', 'done', 1000), e('d90', 'done', 9e6), e('d121', 'done', 9e6), e('x', undefined, 1000)];
+  assert.deepEqual(S.screenPlan(list, at, now, { MAX: 20 }).sort(), ['c', 'd121', 'd61', 'r', 'w9', 'x'],
+    'working / a question / no status but printing: every tick; waiting: after 8 s; finished and printing (a redraw): after 60 s; finished and quiet: after 120 s');
+  assert.deepEqual(S.screenPlan([e('a', 'running', 1000, { busy: true })], new Map(), now), [], 'a read still running is not started again');
+  const many = Array.from({ length: 30 }, (_, i) => e(`s${i}`, 'running', 1000));
+  assert.equal(S.screenPlan(many, new Map(), now).length, S.SCREEN_PLAN.MAX, 'thirty working terminals: a few per tick');
+  const old = new Map(many.map((x, i) => [x.id, now - 3000 - i]));
+  assert.deepEqual(S.screenPlan(many, old, now, { MAX: 2 }), ['s29', 's28'], 'the longest unread first');
+  assert.deepEqual(S.screenPlan([e('d', 'done', 9e6), e('r', 'running', 9e6)], new Map([['d', now - 99000], ['r', now - 3000]]), now, { MAX: 1 }), ['r'], 'a working one before a long-unread finished one');
+  assert.deepEqual(S.screenPlan(null, null, now), []);
+});
+
+test('main: plan limits are asked of Orca at most every 30 s (one process per call)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const main = readFileSync(new URL('../main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /const RATE_TTL_MS = 30000;/);
+  assert.match(main, /if \(rateCache\.res && Date\.now\(\) - rateCache\.at < RATE_TTL_MS\) return rateCache\.res;/);
+  assert.match(main, /else rateCache\.run = null; return res;/, 'a failed call is not cached');
+});
+
+test('main: slow-changing answers are cached (terminal list 10 s, process scan 10 s, tmux 3 s, repos 60 s) and dropped when this app opens or closes a terminal', async () => {
+  const { readFileSync } = await import('node:fs');
+  const main = readFileSync(new URL('../main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /const terminalsCached = cached\(10000, \(\) => orca\("terminal", "list"\)\);/);
+  assert.match(main, /const reposCached = cached\(60000, \(\) => orca\("repo", "list"\)\);/);
+  assert.match(main, /const ttyCached = cached\(10000, \(\) => ttyTargets\(\)\);/);
+  assert.match(main, /const panesCached = cached\(3000, \(\) => tmuxPanes\(\)\);/);
+  assert.match(main, /if \(v && v\.ok !== false\) \{ val = v; at = Date\.now\(\); \}/, 'a failed answer is not kept');
+  assert.match(main, /cacheDrop\(\);\n  return orca\("terminal", "close", "--terminal", handle\);/);
+  assert.ok((main.match(/cacheDrop\(\)/g) || []).length >= 5, 'every open / close path forgets the lists');
+  assert.match(main, /ipcMain\.handle\("orca:ps", \(\) => orca\("worktree", "ps"\)\);/, 'the worktree list (the status source) is still read every poll');
+});

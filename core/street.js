@@ -9,6 +9,9 @@
 //                            share of the limit (null / not a number: clear)
 //   usagePct(rows)         → the highest `pct` of AgentDeskDock.usageRows(), or null when there is none
 //   layout(width, seed)    → { buildings, stars, clouds } for a bar that wide (logical px), the same for the same input
+//   paintArt(g, scene)     → the same frame from drawn pictures (scene.art: { skyDay, skyDusk, skyNight, front, lights,
+//                            lamp, lampLit, cloud } — anything drawImage takes), one picture pixel per screen pixel;
+//                            the characters carry their own umbrellas, so `heads` is not used
 //   paint(g, scene)        → draws one frame. scene: { w, h, hour, pct, tick, still, lay, heads: [{ x, y }],
 //                            lamps: [x…], dimFrom } — heads: where a character's head is (an umbrella goes over it in
 //                            the rain); dimFrom: from this x on the bar's buttons sit, so the picture is darkened;
@@ -134,10 +137,52 @@ function paint(g, scene) {
   // the bar's buttons: the picture steps back
   const dim = num(o.dimFrom);
   if (dim > 0 && dim < W) { R(dim - 6, 0, 3, H, 'rgba(10,12,20,0.2)'); R(dim - 3, 0, 3, H, 'rgba(10,12,20,0.4)'); R(dim, 0, W - dim, H, 'rgba(10,12,20,0.6)'); }
-  return { stage: wx.stage, lit, dark: dk, drops, flash, ground: GY, moving: !still && (wx.rain > 0 || wx.cloud > 0) };
+  return { stage: wx.stage, lit, dark: dk, drops, flash, ground: GY, moving: !still && wx.rain > 0, drift: !still && wx.cloud > 0 };
 }
 
-const AgentDeskStreet = { SKY, STAGES, skyAt, darkAt, lampOn, weatherOf, usagePct, layout, paint };
+// how much of the dusk sky shows: around sunrise and sunset
+function duskAt(hour) { const h = hourOf(hour); return clamp(Math.max(1 - Math.abs(h - 18.6) / 1.6, 1 - Math.abs(h - 6.3) / 1.3), 0, 1); }
+const ART = { frontW: 512, frontH: 72, skyW: 64, ground: 40, feet: 46, lampW: 16, lampH: 36 };
+function paintArt(g, scene) {
+  const o = scene && typeof scene === 'object' ? scene : {}, a = o.art && typeof o.art === 'object' ? o.art : null;
+  const W = clamp(Math.floor(num(o.w)), 0, 4000), H = clamp(Math.floor(num(o.h)), 0, 400);
+  if (!g || !W || !H || !a || typeof g.drawImage !== 'function') return null;
+  const R = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), w, h); };
+  const img = (im, x, y, alpha) => { if (!im || alpha <= 0.01) return; g.globalAlpha = clamp(alpha, 0, 1); g.drawImage(im, Math.round(x), Math.round(y)); g.globalAlpha = 1; };
+  const tile = (im, step, y, alpha) => { for (let x = 0; x < W; x += step) img(im, x, y, alpha); };
+  const tick = Math.floor(num(o.tick)), still = o.still === true, lay = o.lay && typeof o.lay === 'object' ? o.lay : layout(W, 7);
+  const wx = weatherOf(o.pct), dk = darkAt(o.hour), lit = lampOn(o.hour);
+  const top = H - ART.frontH, GY = top + ART.ground;   // the pictures sit on the bar's bottom edge
+  // sky: day under dusk under night
+  if (top > 0) R(0, 0, W, top, mix(skyAt(o.hour)[0], '#8a93a0', wx.cloud * 0.6));
+  tile(a.skyDay, ART.skyW, top, 1); tile(a.skyDusk, ART.skyW, top, duskAt(o.hour)); tile(a.skyNight, ART.skyW, top, (dk - 0.45) / 0.55);
+  if (wx.cloud > 0) R(0, 0, W, GY, rgba(mix('#8a93a0', '#1a1d29', dk), wx.cloud * 0.6));
+  for (const c of lay.clouds || []) { if (c.need > 0.12 + wx.cloud * 0.9) continue; img(a.cloud, ((c.x + (still ? 0 : tick * c.v)) % (W + 80)) - 40, top + c.y - 2, 1 - dk * 0.6); }
+  tile(a.front, ART.frontW, top, 1);
+  const lamps = (Array.isArray(o.lamps) ? o.lamps : []).map(num).filter(x => x >= 4 && x < W - 4);
+  for (const x of lamps) img(a.lamp, x - ART.lampW / 2, top + ART.feet + 2 - ART.lampH, 1);
+  if (wx.rain) for (let i = 0; i < Math.round(W / 40); i++) R((i * 83 + 12) % W, GY + 6 + (i % 4) * 5, 8 + (i % 3) * 4, 1, rgba('#a9c8e8', 0.25 + wx.rain * 0.25));
+  // night: the buildings go dark, the pavement only a little (the tile names are read there)
+  if (dk > 0.01) { R(0, 0, W, GY + 4, rgba('#060a22', dk * 0.5)); R(0, GY + 4, W, H - GY - 4, rgba('#060a22', dk * 0.22)); }
+  if (wx.rain) R(0, 0, W, H, rgba('#1c2433', wx.rain * 0.18));
+  if (lit) { tile(a.lights, ART.frontW, top, 0.35 + dk * 0.65); for (const x of lamps) img(a.lampLit, x - ART.lampW / 2, top + ART.feet + 2 - ART.lampH, 1); }
+  let drops = 0;
+  if (wx.rain && !still) {
+    drops = Math.round(wx.rain * W * 0.22);
+    const len = wx.rain > 0.8 ? 6 : 4, speed = 5 + Math.round(wx.rain * 4);
+    for (let i = 0; i < drops; i++) {
+      const y = ((i * 7919) % (H + 10) + tick * speed + (i % 5)) % (H + 10) - 6, x = ((i * 104729) % (W + 24) - tick * 2 + W * 8) % (W + 24);
+      R(x, y, 1, len, 'rgba(200,222,248,0.5)');
+    }
+  }
+  const flash = !still && wx.stage === 'storm' && tick % 97 < 2;
+  if (flash) R(0, 0, W, H, 'rgba(255,255,255,0.2)');
+  const dim = num(o.dimFrom);
+  if (dim > 0 && dim < W) { R(dim - 12, 0, 6, H, 'rgba(10,12,20,0.2)'); R(dim - 6, 0, 6, H, 'rgba(10,12,20,0.4)'); R(dim, 0, W - dim, H, 'rgba(10,12,20,0.62)'); }
+  return { stage: wx.stage, lit, dark: dk, drops, flash, ground: GY, rain: wx.rain > 0, moving: !still && wx.rain > 0, drift: !still && wx.cloud > 0 };
+}
+
+const AgentDeskStreet = { SKY, STAGES, ART, skyAt, darkAt, duskAt, lampOn, weatherOf, usagePct, layout, paint, paintArt };
 root.AgentDeskStreet = AgentDeskStreet;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskStreet;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

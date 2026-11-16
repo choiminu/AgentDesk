@@ -38,6 +38,7 @@ test('paint: draws inside the canvas; rain only when it rains and motion is allo
   g = recorder(); r = S.paint(g, scene({ pct: 90, hour: 22 }));
   assert.equal(r.stage, 'rain'); assert.equal(r.lit, true); assert.ok(r.drops > 0); assert.equal(r.moving, true);
   assert.ok(g.calls.some(c => c[0] === '#d9534f'), 'an umbrella over the first character');
+  assert.deepEqual([S.paint(recorder(), scene({ pct: 70 })).moving, S.paint(recorder(), scene({ pct: 70 })).drift], [false, true], 'clouds only drift: a slow redraw, no rain loop');
   g = recorder(); r = S.paint(g, scene({ pct: 99, still: true, tick: 0 }));
   assert.equal(r.drops, 0, 'still: no falling rain'); assert.equal(r.flash, false, 'still: no lightning'); assert.equal(r.moving, false);
   assert.ok(g.calls.some(c => c[0] === '#d9534f'), 'the umbrella stays');
@@ -48,8 +49,36 @@ test('paint: draws inside the canvas; rain only when it rains and motion is allo
 test('widget: the street is off unless turned on, follows the animation setting and stops off the dock', () => {
   const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
   assert.match(html, /<script src="core\/street\.js"><\/script>/);
-  assert.match(html, /dockCfg\.street = c\.street === true;/);
+  assert.match(html, /dockCfg\.bg = \['solid', 'street', 'clear'\]\.includes\(c\.bg\) \? c\.bg : c\.street === true \? 'street' : 'solid';/, 'the plain bar unless chosen; the earlier on/off setting carries over');
+  assert.match(html, /strip\.classList\.toggle\('clear', dockOn && dockCfg\.bg === 'clear'\)/);
+  assert.match(html, /const DOCK_CLEAR_HIT = '\.dock-tile, \.dock-kids, \.dock-right, \.dock-msg, /, 'no bar: only what is drawn takes the pointer');
+  assert.match(html, /if \(!dockOn \|\| !\(dockPopKind\(\) \|\| clear\)\) return;/);
+  assert.match(html, /classList\.remove\('street', 'clear'\)/, 'off the dock neither look stays');
   assert.match(html, /still: !dockAnimAllowed\(\)/);
   assert.match(html, /dockOn = false; dockStreetStop\(\);/);
   assert.match(html, /<canvas class="dock-street" id="dock-street" aria-hidden="true" hidden><\/canvas>/);
+});
+
+test('paintArt: the drawn street — pictures tiled across the bar, lights only by night, no umbrellas of its own', () => {
+  const rec = () => { const calls = []; return { calls, fillStyle: '', globalAlpha: 1, fillRect(x, y, w, h) { calls.push(['rect', this.fillStyle, x, y, w, h]); }, drawImage(im, x, y) { calls.push(['img', im, x, y, this.globalAlpha]); } }; };
+  const art = { skyDay: 'skyDay', skyDusk: 'skyDusk', skyNight: 'skyNight', front: 'front', lights: 'lights', lamp: 'lamp', lampLit: 'lampLit', cloud: 'cloud' };
+  const scene = o => ({ w: 700, h: 72, hour: 13, pct: 10, tick: 3, lay: S.layout(700, 7), lamps: [100, 300], art, dimFrom: 600, ...o });
+  let g = rec(), r = S.paintArt(g, scene());
+  const imgs = n => g.calls.filter(c => c[0] === 'img' && c[1] === n);
+  assert.equal(imgs('front').length, 2, '512 px wide: two copies cover 700');
+  assert.deepEqual(imgs('front').map(c => c[2]), [0, 512]);
+  assert.equal(imgs('skyDay').length, 11); assert.equal(imgs('skyNight').length, 0); assert.equal(imgs('lights').length, 0); assert.equal(imgs('lampLit').length, 0);
+  assert.equal(imgs('lamp').length, 2); assert.deepEqual(imgs('lamp').map(c => c[3]), [12, 12], 'the lamp stands on the pavement');
+  assert.equal(r.rain, false); assert.equal(r.lit, false);
+  g = rec(); r = S.paintArt(g, scene({ hour: 22, pct: 90 }));
+  assert.equal(imgs('lights').length, 2); assert.equal(imgs('lampLit').length, 2); assert.equal(imgs('skyNight').length, 11);
+  assert.equal(r.rain, true); assert.ok(r.drops > 0); assert.equal(g.globalAlpha, 1, 'the alpha is put back');
+  assert.equal(S.paintArt(rec(), scene({ pct: 99, still: true })).drops, 0);
+  assert.equal(S.paintArt(rec(), scene({ art: null })), null, 'no pictures: the caller draws the plain street');
+  assert.equal(S.paintArt({ fillRect() {} }, scene()), null);
+  assert.ok(S.duskAt(18.6) > 0.9 && S.duskAt(12) === 0 && S.duskAt(0) === 0);
+  const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+  assert.match(html, /const r = art \? AgentDeskStreet\.paintArt\(cv\.getContext\('2d'\), scene\) : AgentDeskStreet\.paint\(cv\.getContext\('2d'\), scene\);/);
+  assert.match(html, /im\.onerror = \(\) => \{ bad = true; left--; \};/, 'a missing picture keeps the plain street');
+  for (const n of [0, 11]) { assert.ok(html.includes(`char_${n}_umbrella.png`)); assert.ok(html.includes(`char_${n}_jump.png`)); }
 });

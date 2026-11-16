@@ -2,7 +2,7 @@ import { app, BrowserWindow, clipboard, ipcMain, screen, Tray, Menu, nativeImage
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { dirname, join, extname, basename, isAbsolute, delimiter as PATH_DELIM } from "node:path";
+import { dirname, join, extname, basename, isAbsolute, resolve, sep, delimiter as PATH_DELIM } from "node:path";
 import { readdirSync, readFileSync, writeFileSync, statSync, lstatSync, createReadStream, mkdirSync, existsSync, openSync, readSync, writeSync, closeSync, renameSync, watch as fsWatch, chmodSync, copyFileSync, cpSync, readlinkSync, unlinkSync, mkdtempSync, rmSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
@@ -251,10 +251,33 @@ async function orcaTimed(timeout, ...args) {
   }
 }
 
+// Answers that change slowly are kept a while and shared by everyone asking meanwhile: each call starts a process (the
+// orca CLI, ps, tmux), and the widget polls every 5 s. A failed answer is not kept. cacheDrop() forgets them when this
+// app itself opens or closes a terminal, so its own change shows on the next poll.
+function cached(ms, fn) {
+  let at = 0, val = null, run = null;
+  const get = () => {
+    if (val && Date.now() - at < ms) return Promise.resolve(val);
+    if (!run) run = Promise.resolve().then(fn).then(v => { run = null; if (v && v.ok !== false) { val = v; at = Date.now(); } return v; }, e => { run = null; throw e; });
+    return run;
+  };
+  get.drop = () => { at = 0; val = null; };
+  return get;
+}
+const terminalsCached = cached(10000, () => orca("terminal", "list"));
+const reposCached = cached(60000, () => orca("repo", "list"));
+const cacheDrop = () => { terminalsCached.drop(); ttyCached.drop(); };
 ipcMain.handle("orca:ps", () => orca("worktree", "ps"));
-ipcMain.handle("orca:terminals", () => orca("terminal", "list"));
-ipcMain.handle("orca:rate-limits", () => orca("account", "list"));
-ipcMain.handle("orca:repos", () => orca("repo", "list"));
+ipcMain.handle("orca:terminals", () => terminalsCached());
+// plan limits move slowly: one `orca account list` per RATE_TTL_MS, shared by every poll (each call starts a process)
+const RATE_TTL_MS = 30000;
+let rateCache = { at: 0, res: null, run: null };
+ipcMain.handle("orca:rate-limits", () => {
+  if (rateCache.res && Date.now() - rateCache.at < RATE_TTL_MS) return rateCache.res;
+  if (!rateCache.run) rateCache.run = orca("account", "list").then(res => { if (res && res.ok !== false) rateCache = { at: Date.now(), res, run: null }; else rateCache.run = null; return res; });
+  return rateCache.run;
+});
+ipcMain.handle("orca:repos", () => reposCached());
 
 // ── Jira: Atlassian OAuth (jira-oauth.mjs) when signed in, otherwise Orca's own Jira connection; and a worktree per ticket ──
 const JIRA_KEY_RE = /^[A-Z][A-Z0-9]+-\d+$/;
@@ -377,6 +400,7 @@ ipcMain.handle("roca:quest-desk-cancel", (_e, o = {}) => {
   return { ok: questDesk().cancel(key) };
 });
 ipcMain.handle("orca:worktree-create", async (_e, opts = {}) => {
+  setTimeout(cacheDrop, 2000);   // its terminal appears a moment later
   const name = String(opts.name || "");
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(name)) return badArg("invalid worktree name");
   const args = ["worktree", "create", "--name", name, "--no-parent"];
@@ -554,7 +578,8 @@ async function tmuxSwitch(pane) {
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
-ipcMain.handle("roca:tmux-panes", () => tmuxPanes());
+const panesCached = cached(3000, () => tmuxPanes());
+ipcMain.handle("roca:tmux-panes", () => panesCached());
 
 // ── AgentDesk's own terminals (term/own.mjs): tmux sessions named agentdesk-…, streamed to the widget's terminal page.
 // The session lives in tmux (it outlives the widget); the view attaches and detaches. Bytes cross as base64.
@@ -565,7 +590,7 @@ const ownTerms = createOwnTerms({
 });
 const ownTermErr = e => ({ ok: false, error: e && e.message === "tmux not installed" ? "tmux not installed" : "terminal failed" });
 ipcMain.handle("roca:own-term-list", async () => { try { return { ok: true, tmux: !!(await findTmux()), terms: await ownTerms.list() }; } catch (e) { return { ...ownTermErr(e), tmux: false, terms: [] }; } });
-ipcMain.handle("roca:own-term-new", async (_e, req = {}) => { try { return await ownTerms.create(req || {}); } catch (e) { return ownTermErr(e); } });
+ipcMain.handle("roca:own-term-new", async (_e, req = {}) => { cacheDrop(); try { return await ownTerms.create(req || {}); } catch (e) { return ownTermErr(e); } });
 ipcMain.handle("roca:own-term-attach", async (_e, req = {}) => { try { return await ownTerms.attach(req && req.name, req && req.cols, req && req.rows); } catch (e) { return ownTermErr(e); } });
 ipcMain.handle("roca:own-term-kill", async (_e, req = {}) => { try { return await ownTerms.kill(req && req.name); } catch (e) { return ownTermErr(e); } });
 ipcMain.on("roca:own-term-input", (_e, req) => { try { if (req && typeof req.name === "string" && typeof req.b64 === "string" && req.b64.length <= 90000) ownTerms.input(req.name, Buffer.from(req.b64, "base64")); } catch {} });
@@ -677,7 +702,8 @@ async function ttyTargets() {
     return out;
   } catch { return []; }
 }
-ipcMain.handle("roca:tty-targets", () => ttyTargets());
+const ttyCached = cached(10000, () => ttyTargets());   // the whole process list: every 10 s is enough to find a new agent
+ipcMain.handle("roca:tty-targets", () => ttyCached());
 
 // first-run onboarding: what this Mac has — Claude Code, the widget hooks, the Orca CLI, running terminal apps
 const CLAUDE_PATHS = ["/usr/local/bin/claude", "/opt/homebrew/bin/claude", join(homedir(), ".local", "bin", "claude"), join(homedir(), ".claude", "local", "claude"), join(homedir(), ".npm-global", "bin", "claude")];
@@ -722,6 +748,7 @@ async function resumeInOrca(cwd, command) {
     if (!wt) return null;
     const cmd = wt.path.replace(/\/+$/, "") === dir ? command : `cd ${shq(dir)} && ${command}`;
     const r = await orca("terminal", "create", "--worktree", `id:${wt.worktreeId}`, "--command", cmd, "--focus");
+    cacheDrop();
     return r && r.ok !== false ? { ok: true, app: "Orca" } : null;
   } catch { return null; }
 }
@@ -745,6 +772,7 @@ ipcMain.handle("roca:worktree-reopen", async (_e, worktreeId, agent) => {
   if (!wt) return { ok: false, error: "not an Orca worktree" };
   const other = typeof agent === "string" && agent !== "claude" && Object.prototype.hasOwnProperty.call(NEW_SESSION_CMD, agent) ? agent : "";   // another agent from the allow-list: started fresh
   const fresh = !!other || !claudeHasTalk(String(wt.path || "").replace(/\/+$/, ""));   // nothing to continue: a new conversation
+  cacheDrop();
   const r = await orca("terminal", "create", "--worktree", `id:${wt.worktreeId}`, "--command", other ? NEW_SESSION_CMD[other] : fresh ? "claude" : "claude --continue", "--focus");
   return r && r.ok !== false ? { ok: true, app: "Orca", fresh, agent: other || "claude" } : { ok: false, error: (r && (r.detail || r.error)) || "failed" };
 });
@@ -956,6 +984,7 @@ async function terminalRead(handle, screen, cursor, limit, { joinWrapped = false
 ipcMain.handle("orca:terminal-close", async (_e, handle) => {
   if (isTmux(handle)) { try { await tmux("kill-pane", "-t", paneOf(handle)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } }
   if (isTerm(handle)) return { ok: false, error: "close is not supported for plain terminal tabs" };
+  cacheDrop();
   return orca("terminal", "close", "--terminal", handle);
 });
 
@@ -1949,6 +1978,33 @@ function transcriptTailText(path, agent) {
   }
   return { key: `${st.mtimeMs}:${size}`, text: turns.slice(-8).join("\n") };
 }
+// the session's last answer as the agent wrote it (Claude Code transcript): every assistant text after the last real user
+// prompt, joined. The Slack front desk reports from this, not from the terminal screen (hard-wrapped, indented, cut off).
+// Only a .jsonl under ~/.claude/projects; the last 400 KB; "" when there is none
+const CLAUDE_PROJECTS = join(homedir(), ".claude", "projects");
+ipcMain.handle("roca:transcript-answer", (_e, transcriptPath) => {
+  try {
+    const p = typeof transcriptPath === "string" ? resolve(transcriptPath) : "";
+    if (!p.endsWith(".jsonl") || !p.startsWith(CLAUDE_PROJECTS + sep) || !existsSync(p)) return { text: "" };
+    const size = statSync(p).size, from = Math.max(0, size - 400000);
+    const fd = openSync(p, "r"), buf = Buffer.alloc(size - from); readSync(fd, buf, 0, buf.length, from); closeSync(fd);
+    let parts = [];
+    for (const line of buf.toString("utf-8").split("\n")) {
+      if (!line.startsWith("{")) continue; let rec; try { rec = JSON.parse(line); } catch { continue; }
+      if (rec.isSidechain || rec.isMeta) continue;
+      const c = rec.message && rec.message.content;
+      if (rec.type === "user") {
+        const toolOnly = Array.isArray(c) && c.length && c.every(x => x && x.type === "tool_result");
+        const tx = Array.isArray(c) ? c.map(x => (x && x.type === "text" ? x.text : "")).join("") : String(c || "");
+        if (!toolOnly && tx.trim() && !/^\s*<(command-name|local-command|system-reminder)/.test(tx)) parts = [];   // a new prompt: the answer starts over
+        continue;
+      }
+      if (rec.type !== "assistant" || !Array.isArray(c)) continue;
+      for (const x of c) if (x && x.type === "text" && x.text && x.text.trim()) parts.push(x.text.trim());
+    }
+    return { text: parts.join("\n\n").slice(-60000) };
+  } catch { return { text: "" }; }
+});
 ipcMain.handle("roca:now-summary", async (_e, transcriptPath, agent) => {
   if (!transcriptPath || !existsSync(transcriptPath)) { if (process.env.ROCA_DEBUG) console.log("[now] no transcript", transcriptPath); return null; }
   let tail; try { tail = transcriptTailText(transcriptPath, agent || "claude"); } catch (e) { if (process.env.ROCA_DEBUG) console.log("[now] tail failed", e.message); return null; }
@@ -2077,6 +2133,14 @@ ipcMain.handle("roca:inbox-reply", (_e, reply) => {
   try { mkdirSync(INBOX_REPLIES, { recursive: true }); writeFileSync(join(INBOX_REPLIES, `${p.reply.id}-${Date.now()}.json`), JSON.stringify(p.reply)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; }
 });
 ipcMain.handle("roca:inbox-status", () => ({ ...slackStatus, configured: existsSync(SLACK_CFG) }));
+// what the Slack front desk may see to pick a session (core/outbound.js inboxContext: known fields, masked, cut). Kept
+// next to the inbox, not in it: every *.json in inbox/ is read as a task. Only while the bridge is configured.
+const INBOX_CONTEXT = join(homedir(), ".agentdesk", "inbox-context.json");
+ipcMain.handle("roca:inbox-context", (_e, ctx) => {
+  if (!existsSync(SLACK_CFG)) return { ok: false, error: "slack not configured" };
+  try { writeFileSync(INBOX_CONTEXT, JSON.stringify(globalThis.AgentDeskOutbound.inboxContext(ctx)), { mode: 0o600 }); return { ok: true }; }
+  catch (e) { return { ok: false, error: e.message }; }
+});
 ipcMain.handle("roca:inbox-restart", () => { if (slackChild) { try { slackChild.kill(); } catch {} } slackRestartAt = 0; setTimeout(startSlackBridge, 500); return { ok: true }; });
 // session notes written by recall/ (MongoDB) for a checkout: spawn the CLI, which knows the worktree/repo rules; [] when unavailable
 const RECALL_CLI = [join(__dirname, "recall", "cli.mjs"), join(homedir(), "project", "agentdesk-internal", "recall", "cli.mjs"), join(homedir(), "orca-widget", "recall", "cli.mjs")].find(p => existsSync(p)) || null;
