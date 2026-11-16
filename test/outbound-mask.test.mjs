@@ -78,7 +78,7 @@ test('replyPayload masks report, text, title and session (code blocks included) 
   assert.deepEqual(leaks(all), []);
   assert.match(all, /SLACK_BOT_TOKEN=\[MASKED\]/);
   assert.match(all, /\[MASKED URI\]/);
-  assert.deepEqual(replyPayload({ text: `▶ 시작 ${URI}` }), { text: '▶ 시작 [MASKED URI]' });
+  assert.deepEqual(replyPayload({ text: `▶ 시작 ${URI}` }), { text: '시작 [MASKED URI]' });
 });
 
 test('widget.html loads core/mask.js before core/jira.js', () => {
@@ -143,15 +143,15 @@ test('maskForSend refuses input over 100 KB before masking', () => {
   assert.deepEqual(maskForSend('y'.repeat(100001), { max: 200000, truncate: true }), { ok: false, error: 'body is too long' });
 });
 
-test('replyPayload: icon only from the fixed set, unknown fields ignored, every free-text path escaped', () => {
+test('replyPayload: no icon in the post (an icon field is ignored), unknown fields ignored, every free-text path escaped', () => {
   const evil = { title: 't', report: '[한 일] ok', icon: 'SECRET 4111111111111111 xoxb-0000000000-FAKEFAKEFAKE <!channel>', extra: '<!here>' };
   const p = replyPayload(evil), all = JSON.stringify(p);
   assert.deepEqual([...O.REPLY_ICONS], ['✅', '⏸', '▶', '⚠️', '⏱']);
   assert.ok(!all.includes('4111111111111111') && !all.includes('xoxb-0000000000') && !all.includes('<!channel>') && !all.includes('<!here>'));
-  assert.ok(p.blocks[0].text.text.startsWith('✅ *t*'));
-  assert.equal(replyPayload({ title: 't', report: 'x', icon: '⚠️' }).text, '⚠️ t');
+  assert.ok(p.blocks[0].text.text.startsWith('*t*'));
+  assert.equal(replyPayload({ title: 't', report: 'x', icon: '⚠️' }).text, 't');
   assert.deepEqual(replyPayload({ text: '<!channel> 끝 & <@U123|x>' }), { text: '&lt;!channel&gt; 끝 &amp; &lt;@U123|x&gt;' });
-  assert.equal(replyPayload({ title: '<!everyone>', session: '<!here>', report: '[한 일] <!channel>' }).text, '✅ &lt;!everyone&gt; · &lt;!here&gt;');
+  assert.equal(replyPayload({ title: '<!everyone>', session: '<!here>', report: '[한 일] <!channel>' }).text, '&lt;!everyone&gt; · &lt;!here&gt;');
   assert.ok(!JSON.stringify(replyPayload({ title: 'a', report: '[한 일] <!channel> 끝\n```\n<!here>\n```' }).blocks).match(/<!(channel|here)>/));
 });
 

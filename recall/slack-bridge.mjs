@@ -1,27 +1,33 @@
 #!/usr/bin/env node
 // Slack front desk: "@agentdesk PROJ-206 이 티켓 처리해줘" in Slack → a task file for the widget → the agent's REPORT comes back in the thread.
-// Config ~/.agentdesk/slack.json: { "appToken": "xapp-…", "botToken": "xoxb-…", "allowUsers": ["U…"] (optional), "allowChannels": ["C…"] (optional) }
+// Config ~/.agentdesk/slack.json: { "appToken": "xapp-…", "botToken": "xoxb-…", "allowUsers": ["U…"] (optional), "allowChannels": ["C…"] (optional),
+//   "owner": "U…" (optional: this PC's owner; requests the guardrail flags go ahead only for them), "threadSource": "mcp" (optional) }
 // Jira details come from ~/.agentdesk/jira.json when present. Communication with the widget goes through files under
 // ~/.agentdesk/inbox/ (tasks) and ~/.agentdesk/inbox/replies/ (results), so no port is opened.
+// A mention inside a thread also reads the parent message and every reply (recall/slack-thread.mjs) into
+// ~/.agentdesk/inbox/threads/<task id>.md; the task names that file (threadFile) for the session. Without the bot's
+// history scope (or "threadSource": "mcp" in slack.json) the task carries threadRef and the session reads it via the Slack MCP.
+// The dispatcher sees the running sessions (~/.agentdesk/inbox-context.json, written by the widget) and picks one to
+// continue (sessionId) or a place for a new session (workspace + name); the widget routes it (core/outbound.js inboxTarget).
 import { SocketModeClient } from "@slack/socket-mode";
 import { WebClient } from "@slack/web-api";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, renameSync } from "node:fs";
-import { replyPayload, routeFromTask } from "./slack-format.mjs";
-import { spawnSync } from "node:child_process";
-import { homedir } from "node:os";
+import { replyPayload, answerPayload, routeFromTask } from "./slack-format.mjs";
+import { fetchThread, formatThread } from "./slack-thread.mjs";
+import { dispatch, deskContext } from "./slack-desk.mjs";
 import { join } from "node:path";
 import { log, mask, HOME_DIR } from "./lib.mjs";
 
 const CFG_FILE = join(HOME_DIR, "slack.json"), JIRA_CFG = join(HOME_DIR, "jira.json");
-const INBOX = join(HOME_DIR, "inbox"), REPLIES = join(INBOX, "replies");
-mkdirSync(REPLIES, { recursive: true });
+const INBOX = join(HOME_DIR, "inbox"), REPLIES = join(INBOX, "replies"), THREADS = join(INBOX, "threads");
+mkdirSync(REPLIES, { recursive: true }); mkdirSync(THREADS, { recursive: true });
+const THREAD_FILES_MAX = 50;
 let cfg; try { cfg = JSON.parse(readFileSync(CFG_FILE, "utf-8")); } catch { console.error("slack.json missing or invalid"); process.exit(1); }
 if (!cfg.appToken || !cfg.botToken) { console.error("slack.json needs appToken (xapp-) and botToken (xoxb-)"); process.exit(1); }
 const web = new WebClient(cfg.botToken);
 const sock = new SocketModeClient({ appToken: cfg.appToken });
 let botUserId = null;
 
-function zones() { try { const z = JSON.parse(readFileSync(join(homedir(), ".roca", "zones.json"), "utf-8")); return (z.zones || []).map(x => ({ id: x.id, name: x.name, icon: x.icon })); } catch { return []; } }
 async function jiraIssue(key) {
   if (!existsSync(JIRA_CFG)) return null;
   try {
@@ -33,15 +39,24 @@ async function jiraIssue(key) {
     return { key, summary: f.summary || "", status: f.status?.name || "", priority: f.priority?.name || "", assignee: f.assignee?.displayName || "", labels: f.labels || [], description: text(f.description).slice(0, 2500) };
   } catch (e) { return { key, error: e.message }; }
 }
-const DISPATCH_PROMPT = `You are the front desk of an office of AI coding agents. A teammate sent a Slack message asking for work.
-Given the message, the Jira issue (if any) and the list of prompt zones (work categories), decide where it goes and write the instruction the agent will receive.
-Return ONLY JSON: {"zoneId": "<zone id or null>", "title": "<≤ 50 chars>", "prompt": "<complete, self-contained instruction in the message's language: what to do, the ticket facts that matter, what to deliver, and: finish with REPORT_START [한 일] [변경 파일] [막힌 점] [다음 제안] REPORT_END>", "ack": "<one short sentence for the Slack thread saying what was understood and where it went>"}.
-Pick the zone whose name best matches the work; null when none fits. Never invent ticket facts.`;
-async function dispatch(text, issues) {
-  const input = `MESSAGE: ${text}\n\nJIRA: ${issues.length ? JSON.stringify(issues) : "(none)"}\n\nZONES: ${JSON.stringify(zones())}`;
-  const r = spawnSync("claude", ["-p", "--model", process.env.AGENTDESK_RECALL_MODEL || "haiku", "--output-format", "json", "--json-schema", JSON.stringify({ type: "object", additionalProperties: false, required: ["zoneId", "title", "prompt", "ack"], properties: { zoneId: { type: ["string", "null"] }, title: { type: "string" }, prompt: { type: "string" }, ack: { type: "string" } } }), "--system-prompt", DISPATCH_PROMPT, "--disable-slash-commands", "--disallowedTools", "Bash", "Edit", "Write", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "Agent", "Task"], { input: mask(input), encoding: "utf-8", timeout: 120000, env: { ...process.env, AGENTDESK_RECALL: "1", DISABLE_OMC: "1", OMC_SKIP_HOOKS: "all" }, maxBuffer: 8 * 1024 * 1024 });
-  if (r.status !== 0) throw new Error(`dispatcher failed: ${(r.stderr || "").slice(0, 200)}`);
-  const env2 = JSON.parse(r.stdout); return env2.structured_output || JSON.parse(env2.result);
+async function threadContext(ev) {
+  const r = await fetchThread(web, ev.channel, ev.thread_ts);
+  if (r.error) { log("slack thread read failed", r.error, r.needed || ""); return { error: r.error, needed: r.needed }; }
+  const kept = r.messages.filter(m => !(botUserId && m.user === botUserId));
+  return { text: formatThread(r.messages, { botUserId, mentionTs: ev.ts }), count: kept.length };
+}
+function pruneThreads() {
+  try { const fs = readdirSync(THREADS).filter(f => f.endsWith(".md")).sort(); for (const f of fs.slice(0, Math.max(0, fs.length - THREAD_FILES_MAX))) unlinkSync(join(THREADS, f)); } catch {}
+}
+// the same request again in the same thread within 3 minutes (sent twice, "요약해줘" then "요약해줘.", a Slack retry): once
+const recent = new Map(), RECENT_MS = 3 * 60 * 1000;
+function seenRecently(ev, thread, text) {
+  const now = Date.now();
+  for (const [k, at] of recent) if (now - at > RECENT_MS) recent.delete(k);
+  const key = `${ev.channel}:${thread}:${ev.user}:${text.replace(/[\s.!?~。]+/g, "").toLowerCase()}`;
+  const hit = recent.has(key) || recent.has(`ts:${ev.ts}`);
+  recent.set(key, now); recent.set(`ts:${ev.ts}`, now);
+  return hit;
 }
 async function handle(ev) {
   if (!ev || ev.bot_id || (botUserId && ev.user === botUserId)) return;
@@ -49,19 +64,46 @@ async function handle(ev) {
   if (cfg.allowChannels && !cfg.allowChannels.includes(ev.channel)) return;
   const text = String(ev.text || "").replace(/<@[A-Z0-9]+>/g, "").trim(); if (!text) return;
   const thread = ev.thread_ts || ev.ts;
+  // an option number ("1") may answer a new question each time: only the same event (ts) counts as a repeat for it
+  const dedupeText = ev.thread_ts && globalThis.AgentDeskOutbound.slackChoice(text) ? `${text}@${ev.ts}` : text;
+  if (seenRecently(ev, thread, dedupeText)) { log("slack duplicate skipped", ev.channel, thread); return; }
   const keys = [...new Set((text.match(/\b[A-Z][A-Z0-9]+-\d+\b/g) || []))].slice(0, 3);
-  try {
-    await web.reactions.add({ channel: ev.channel, timestamp: ev.ts, name: "eyes" }).catch(() => {});
-    const issues = (await Promise.all(keys.map(jiraIssue))).filter(Boolean);
-    const d = await dispatch(text, issues);
+  // "owner" in slack.json: this PC's owner. A request the guardrail flags goes ahead only for them (widget inboxGuard)
+  const fromOwner = !!cfg.owner && ev.user === cfg.owner;
+  // "2" / "2번" in a thread answers the question its session is asking: straight to the widget, no dispatcher round trip
+  const pick = ev.thread_ts ? globalThis.AgentDeskOutbound.slackChoice(text) : 0;
+  if (pick) {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const task = { id, ts: Date.now(), channel: ev.channel, thread, user: ev.user, text, tickets: keys, issues, zoneId: d.zoneId, title: d.title, prompt: d.prompt };
+    writeFileSync(join(INBOX, `${id}.json`), JSON.stringify({ id, ts: Date.now(), channel: ev.channel, thread, user: ev.user, fromOwner, text, kind: "control", op: "choose", input: String(pick), sessionId: null, title: `${pick}번 선택` }, null, 2));
+    log("slack choice", id, pick);
+    return;
+  }
+  try {
+    const issues = (await Promise.all(keys.map(jiraIssue))).filter(Boolean);
+    // a mention inside a thread: read the parent and every reply so the agent gets the whole conversation.
+    // Without the history scope (or with threadSource "mcp") the session reads it itself with the Slack MCP (threadRef)
+    const th = ev.thread_ts && cfg.threadSource !== "mcp" ? await threadContext(ev) : null;
+    const threadRef = ev.thread_ts && !th?.text ? { channel: ev.channel, ts: ev.thread_ts } : null;
+    const d = await dispatch(text, issues, th?.text || "", deskContext(), threadRef, ev.user);
+    // lookup (a question) and clarify (one question back): answered in the thread, nothing is handed to a session
+    if (d.action === "lookup" || d.action === "clarify") {
+      await web.chat.postMessage({ channel: ev.channel, thread_ts: thread, ...answerPayload(d.reply || d.ack, d.title) });
+      log("slack answer", JSON.stringify(d.title));
+      return;
+    }
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const task = { id, ts: Date.now(), channel: ev.channel, thread, user: ev.user, fromOwner, text, tickets: keys, issues, sessionId: d.sessionId, workspace: d.workspace, name: d.name, title: d.title, prompt: d.prompt };
+    // control: the widget acts on that session (stop it, read its screen, type into it) and answers in the thread
+    if (d.action === "control") Object.assign(task, { kind: "control", op: d.op, input: d.input });
+    if (th?.text) { const f = join(THREADS, `${id}.md`); writeFileSync(f, th.text); task.threadFile = f; task.threadCount = th.count; pruneThreads(); }
+    else if (threadRef) task.threadRef = threadRef;
+    if (th?.error) task.threadError = th.error;
     writeFileSync(join(INBOX, `${id}.json`), JSON.stringify(task, null, 2));
-    await web.chat.postMessage({ channel: ev.channel, thread_ts: thread, text: `📥 ${mask(d.ack)}` });
+    // no "received" post here: the widget posts the one line that says which session took it (▶ …)
     log("slack task", id, JSON.stringify(d.title));
   } catch (e) {
     log("slack error", e.message);
-    await web.chat.postMessage({ channel: ev.channel, thread_ts: thread, text: `⚠️ 접수 실패: ${mask(e.message)}` }).catch(() => {});
+    await web.chat.postMessage({ channel: ev.channel, thread_ts: thread, text: `접수 실패: ${mask(e.message)}` }).catch(() => {});
   }
 }
 // replies written by the widget → Slack thread

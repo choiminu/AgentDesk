@@ -45,8 +45,8 @@ test('toMrkdwn: sections, bullets, code, escaping', () => {
   const txt = S.responseTextFromScreen(screen.map(pad));
   const report = txt.slice(txt.indexOf('REPORT_START') + 12, txt.indexOf('REPORT_END')).trim();
   const md = toMrkdwn(report);
-  assert.match(md, /\*🛠 한 일\*\nREADME를 읽고/);
-  assert.match(md, /\*📄 변경 파일\*\n없음/);
+  assert.match(md, /\*한 일\*\nREADME를 읽고/);
+  assert.match(md, /\*변경 파일\*\n없음/);
   assert.match(md, /```\nSELECT CODE, CODENAME\n  FROM codelist WHERE CODEGROUP = 'A7';\n```/);
   assert.match(md, /• 코드 &lt;step1 MERCHANTNO&gt; 확인/);
   assert.match(md, /\n1\. 다음에 할 일/);
@@ -68,20 +68,25 @@ test('splitMrkdwn keeps fences balanced', () => {
 
 test('replyPayload: report → header + divider + sections; plain text otherwise', () => {
   const p = replyPayload({ title: 'PROJ-1 요약', session: 'front-desk', report: '[한 일] 했음', text: 'fallback' });
-  assert.equal(p.blocks[0].text.text, '✅ *PROJ-1 요약*  ·  _front-desk_');
+  assert.equal(p.blocks[0].text.text, '*PROJ-1 요약*  ·  _front-desk_');
   assert.equal(p.blocks[1].type, 'divider');
-  assert.equal(p.blocks[2].text.text, '*🛠 한 일*\n했음');
-  assert.equal(p.text, '✅ PROJ-1 요약 · front-desk');
-  assert.deepEqual(replyPayload({ text: '▶ 시작' }), { text: '▶ 시작' });
+  assert.equal(p.blocks[2].text.text, '*한 일*\n했음');
+  assert.equal(p.text, 'PROJ-1 요약 · front-desk');
+  assert.deepEqual(replyPayload({ text: '▶ 시작' }), { text: '시작' });
 });
 
 test('toMrkdwn: a line starting with a [MASKED…] marker stays a plain line, not a section title', () => {
   assert.equal(toMrkdwn('[MASKED EMAIL] 에게 회신함'), '[MASKED EMAIL] 에게 회신함');
   assert.equal(toMrkdwn('[MASKED] 토큰 교체'), '[MASKED] 토큰 교체');
-  assert.equal(toMrkdwn('[한 일] 수정'), '*🛠 한 일*\n수정');
+  assert.equal(toMrkdwn('[한 일] 수정'), '*한 일*\n수정');
 });
 
 test('toMrkdwn: a markdown link whose URL holds a [MASKED…] marker is still a Slack link', () => {
   assert.equal(toMrkdwn('회신: [메일함](https://mail.invalid/?u=[MASKED EMAIL]&x=1)'), '회신: <https://mail.invalid/?u=[MASKED%20EMAIL]&amp;x=1|메일함>');
   assert.equal(toMrkdwn('참고 [docs](https://docs.invalid/a)'), '참고 <https://docs.invalid/a|docs>');
+});
+
+test('toMrkdwn: a Markdown rule (---) is a blank line, not a code block; SQL comments stay code', () => {
+  assert.equal(toMrkdwn('위\n---\n아래'), '위\n\n아래');
+  assert.match(toMrkdwn('-- 주석\nSELECT 1;'), /^```\n-- 주석\nSELECT 1;\n```$/);
 });
