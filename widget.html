@@ -2,7 +2,7 @@
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
 <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-8JRrLY/2djHTyqvcQFgn30rZu6OQXKaKZKfkmI5Losw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-aK48at1vrRowPsXqJJFCiHY97xKnqn/teESfMrk1lns='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -6966,7 +6966,7 @@ window.orca.onDockMoved(p => {
   const id = /^\d{1,20}$/.test(String(p.displayId || '')) ? String(p.displayId) : 'legacy';
   const pos = Object.assign(Object.create(null), dockCfg.pos || {});
   if (id !== 'legacy') delete pos.legacy;
-  pos[id] = { cx: Math.round(cx), y: Math.round(y), at: Date.now() };
+  pos[id] = { cx: Math.round(cx), y: Math.round(y), at: Date.now(), ...(dockCfg.edge !== 'bottom' ? { side: true } : {}) };   // side: a side bar's spot (its top edge), never read by a bottom bar
   dockCfg.pos = Object.fromEntries(Object.entries(pos).sort((a, b) => (b[1].at || 0) - (a[1].at || 0)).slice(0, 8));
   dockSave();
 });

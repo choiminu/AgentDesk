@@ -460,7 +460,7 @@ function posEntries(rem) {
   const fin = v => v != null && v !== '' && Number.isFinite(Number(v));
   if (fin(rem.cx) && fin(rem.y)) return [{ id: 'legacy', cx: Number(rem.cx), y: Number(rem.y), at: 0 }];
   return Object.keys(rem).slice(0, 16).map(id => [id, rem[id]]).filter(([, p]) => p && typeof p === 'object' && fin(p.cx) && fin(p.y))
-    .map(([id, p]) => ({ id: String(id), cx: Number(p.cx), y: Number(p.y), at: num(p.at) }));
+    .map(([id, p]) => ({ id: String(id), cx: Number(p.cx), y: Number(p.y), at: num(p.at), side: p.side === true }));   // side: saved by a bar on a side edge
 }
 function dockPickDisplay(input) {
   const i = input && typeof input === 'object' ? input : {};
@@ -470,7 +470,7 @@ function dockPickDisplay(input) {
   const inside = (wa, p) => p.cx >= num(wa.x) && p.cx <= num(wa.x) + num(wa.width) && p.y >= num(wa.y) && p.y < num(wa.y) + num(wa.height);
   const entries = posEntries(i.remembered);
   const dispOf = e => (e.id === 'legacy' ? ds.find(d => inside(d.workArea, e)) || null : byId(e.id));
-  const spotOn = d => { const e = entries.find(x => dispOf(x) === d); return e ? { cx: e.cx, y: e.y } : null; };
+  const spotOn = d => { const e = entries.find(x => dispOf(x) === d); return e ? (e.side ? { cx: e.cx, y: e.y, side: true } : { cx: e.cx, y: e.y }) : null; };
   const out = d => ({ id: String(d.id), workArea: d.workArea, rem: spotOn(d) });
   const bar = byId(i.barId);
   if (bar) return out(bar);   // placed already: it stays on its display
@@ -495,7 +495,7 @@ function dockBounds(input) {
   let cx = wa.x + wa.width / 2;
   let stripY = wa.y + wa.height - stripHeight - MARGIN;
   const r = i.remembered;
-  if (r && Number.isFinite(Number(r.cx)) && Number.isFinite(Number(r.y))) {
+  if (r && r.side !== true && Number.isFinite(Number(r.cx)) && Number.isFinite(Number(r.y))) {   // a spot a side bar saved is not a bottom bar's
     const rx = Number(r.cx), ry = Number(r.y);
     if (rx >= wa.x && rx <= wa.x + wa.width && ry >= wa.y && ry < wa.y + wa.height) { cx = rx; stripY = ry; }
   }
@@ -529,9 +529,11 @@ function dockBoundsSide(input) {
   const stripX0 = i.edge === 'right' ? wa.x + wa.width - thickness - MARGIN : wa.x + MARGIN;
   let cy = wa.y + wa.height / 2;
   const r = i.remembered;
-  if (r && Number.isFinite(Number(r.y))) {
+  // the spot a side bar saved after a drag: its top edge (main reports the bar's top, as for a bottom bar). A bottom
+  // bar's spot is not used here: its y is the bottom edge, and as a centre it would pull a side bar to the bottom.
+  if (r && r.side === true && Number.isFinite(Number(r.y))) {
     const ry = Number(r.y);
-    if (ry >= wa.y && ry <= wa.y + wa.height) cy = ry;
+    if (ry >= wa.y && ry <= wa.y + wa.height) cy = ry + barH / 2;
   }
   // room for the hover card / review queue: on the inner side when it fits, else the outer side, cut to what is there
   const want = Math.round(Math.max(0, num(i.extra)));

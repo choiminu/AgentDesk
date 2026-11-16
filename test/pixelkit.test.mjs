@@ -568,13 +568,15 @@ test('export: the lamp is one lamp in two states, and a cloud', () => {
   assert.ok(c.w >= 24 && c.h >= 10 && K.emptyPixels(c) > 0 && K.softPixels(c) === 0);
 });
 
-test('export: the files on disk are what the code draws, and drawing again gives the same bytes', () => {
+test('export: the files on disk hold what the code draws (pixel for pixel), and drawing again gives the same picture', () => {
   const a = appFiles(), b = appFiles();
   for (const [i, f] of a.entries()) {
     assert.ok(f.canvas.equals(b[i].canvas), `${f.name} draws the same twice`);
     const file = join(TOWN, `${f.name}.png`);
     assert.ok(existsSync(file), `${f.name}.png exists`);
-    assert.ok(readFileSync(file).equals(toPNG(f.canvas)), `${f.name}.png is stale: run node pixelkit/tools/export-app.mjs`);
+    // pixels, not bytes: the compressed stream depends on the zlib build (Node 20 on CI and a newer Node write different
+    // bytes for the same picture), the picture does not
+    assert.ok(fromPNG(readFileSync(file)).equals(f.canvas), `${f.name}.png is stale: run node pixelkit/tools/export-app.mjs`);
   }
   assert.equal(spawnSync(process.execPath, [join(KIT, 'tools', 'export-app.mjs'), '--check']).status, 0);
   const dir = mkdtempSync(join(tmpdir(), 'pixelkit-export-'));

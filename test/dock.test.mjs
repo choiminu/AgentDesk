@@ -356,14 +356,15 @@ test('dockBounds (vertical): the room grows the window sideways; a tall panel gr
   assert.equal(noRoom.height, 400); assert.equal(noRoom.width, 72);
 });
 
-test('dockBounds (vertical): remembered y = the bar centre, clamped inside the work area', () => {
-  const r = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 300 } });
-  assert.equal(r.y, 100); assert.equal(r.stripY, 0); assert.equal(r.y + r.stripY + r.stripHeight / 2, 300, 'the bar is centred on the remembered y');
-  const clamped = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 60 } });
-  assert.equal(clamped.y, 25, 'clamped below the menu bar');
-  assert.equal(dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 10 } }).y, 263, 'a spot off the work area is ignored');
+test('dockBounds (vertical): a side spot is the bar\'s top edge (as main reports it), clamped inside the work area', () => {
+  const r = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 100, side: true } });
+  assert.equal(r.y, 100); assert.equal(r.stripY, 0); assert.equal(r.y + r.stripY + r.stripHeight / 2, 300, 'the bar comes back with its top where it was');
+  const clamped = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 840, side: true } });
+  assert.equal(clamped.y + clamped.height, 900, 'clamped inside the work area');
+  assert.equal(dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 1400, y: 10, side: true } }).y, 263, 'a spot off the work area is ignored');
   const def = dockBounds({ workArea: WA, edge: 'right', contentWidth: 400 });
-  assert.deepEqual(dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 700, y: 9000 } }), def, 'a spot off the display is ignored');
+  assert.deepEqual(dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 700, y: 9000, side: true } }), def, 'a spot off the display is ignored');
+  assert.deepEqual(dockBounds({ workArea: WA, edge: 'right', contentWidth: 400, remembered: { cx: 700, y: 100 } }), def, "a bottom bar's spot is ignored");
 });
 
 test('popRect: centred on the anchor, clamped inside the window, above or below the bar, cut to the room', () => {
@@ -1056,7 +1057,7 @@ test('main: the bar\'s display comes from dockPickDisplay; moves and reflows rep
   assert.match(between(main, 'function dockReflow()', '\n}\n'), /dockState\.last = null;/, 'a display change places it afresh (the primary display when its own is gone)');
   const moved = between(html, 'window.orca.onDockMoved(p => {', '\n});');
   assert.match(moved, /\/\^\\d\{1,20\}\$\/\.test\(String\(p\.displayId \|\| ''\)\)/, 'only digit ids become keys');
-  assert.match(moved, /pos\[id\] = \{ cx: Math\.round\(cx\), y: Math\.round\(y\), at: Date\.now\(\) \}/);
+  assert.match(moved, /pos\[id\] = \{ cx: Math\.round\(cx\), y: Math\.round\(y\), at: Date\.now\(\), \.\.\.\(dockCfg\.edge !== 'bottom' \? \{ side: true \} : \{\}\) \}/);
   assert.match(html, /const es = AgentDeskDock\.posEntries\(c\.pos\);/, 'the old single spot migrates');
 });
 
@@ -1520,4 +1521,21 @@ test('widget dock: reopen marks, the agent choice and the nesting switch', async
   assert.match(html, /dockCfg\.nest = c\.nest !== false;/, 'on unless turned off');
   assert.match(main, /agent !== "claude" && Object\.prototype\.hasOwnProperty\.call\(NEW_SESSION_CMD, agent\) \? agent : ""/, 'another agent only from the allow-list');
   assert.match(main, /other \? NEW_SESSION_CMD\[other\] : fresh \? "claude" : "claude --continue"/);
+});
+
+test('side dock: a drag keeps its spot (top edge saved, centre restored), no creep; bottom and side spots do not mix', () => {
+  const wa = { x: 0, y: 30, width: 2560, height: 1343 };
+  const put = rem => D.dockBounds({ workArea: wa, contentWidth: 600, height: 72, edge: 'left', remembered: rem });
+  const first = put(null);
+  assert.equal(first.y + first.stripY + first.stripHeight / 2, Math.round(wa.y + wa.height / 2), 'nothing saved: centred on the edge');
+  // main reports the bar's top after a drag; the next placement puts the bar back exactly there (not half a bar higher)
+  let top = 400;
+  for (let k = 0; k < 5; k++) { const b = put({ cx: 37, y: top, side: true }); assert.equal(b.y + b.stripY, top, `placement ${k}: the same top`); top = b.y + b.stripY; }
+  const fromBottom = put({ cx: 1280, y: 1290 });
+  assert.equal(fromBottom.y + fromBottom.stripY + fromBottom.stripHeight / 2, Math.round(wa.y + wa.height / 2), "a bottom bar's spot: the side bar stays centred");
+  const bottom = D.dockBounds({ workArea: wa, contentWidth: 600, height: 72, remembered: { cx: 37, y: 400, side: true } });
+  assert.ok(bottom.y + bottom.height > wa.y + wa.height - 100, "a side bar's spot: the bottom bar stays at the bottom");
+  assert.deepEqual(D.posEntries({ 3: { cx: 37, y: 400, at: 5, side: true }, 4: { cx: 9, y: 9, at: 1 } }).map(e => e.side), [true, false]);
+  const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+  assert.match(html, /\.\.\.\(dockCfg\.edge !== 'bottom' \? \{ side: true \} : \{\}\)/);
 });

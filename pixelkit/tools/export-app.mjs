@@ -12,7 +12,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { savePNG, toPNG } from "../core/index.js";
+import { savePNG, fromPNG } from "../core/index.js";
 import { appFiles } from "../app.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -23,7 +23,7 @@ let stale = 0;
 for (const { name, canvas } of appFiles()) {
   const file = join(out, `${name}.png`);
   if (check) {
-    const same = existsSync(file) && readFileSync(file).equals(toPNG(canvas));
+    const same = existsSync(file) && fromPNG(readFileSync(file)).equals(canvas);   // pixels: the zlib build changes the bytes, not the picture
     if (!same) { stale++; console.log(`stale  ${name}.png`); }
   } else {
     savePNG(file, canvas);
