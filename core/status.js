@@ -109,6 +109,8 @@ function applyHookEvent(rec, sessions) {
   sessions = sessions || (typeof hookSessions !== 'undefined' ? hookSessions : null);
   if (!sessions) return;
   const ev = rec.ev || {}; const ts = (rec.ts || 0) * 1000;
+  // Windows hooks report C:\Users\..., Orca lists C:/Users/...: one form so the worktree ↔ session path match works
+  if (typeof ev.cwd === 'string' && /^[A-Za-z]:\\/.test(ev.cwd)) ev.cwd = ev.cwd.replace(/\\/g, '/');
   const sid = ev.session_id; if (!sid) return;
   let st = sessions.get(sid);
   if (!st) { st = { sid, cwd: ev.cwd, transcript: ev.transcript_path || '', first: ts, status: 'waiting', tool: '', toolInput: '', needsInput: false, since: ts, last: ts, subagents: new Map(), ended: false, recentTools: [], runMs: 0, askAt: 0, askMs: 0, askN: 0 }; sessions.set(sid, st); }

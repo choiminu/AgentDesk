@@ -2,7 +2,7 @@
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
 <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-aK48at1vrRowPsXqJJFCiHY97xKnqn/teESfMrk1lns='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-D1Yf9GJPhsUTitstpMPLZuwC3ba7eiItYXGAzmY9/ks='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -112,6 +112,18 @@
   }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offset: 0; }
+
+  /* Windows: the transparent window has no native resize border — these strips at its edges drive roca:edge-resize */
+  .edge-grip { position: fixed; z-index: 2147483000; -webkit-app-region: no-drag; }
+  .edge-grip[data-edge="n"] { top: 0; left: 10px; right: 10px; height: 5px; cursor: ns-resize; }
+  .edge-grip[data-edge="s"] { bottom: 0; left: 10px; right: 10px; height: 5px; cursor: ns-resize; }
+  .edge-grip[data-edge="e"] { right: 0; top: 10px; bottom: 10px; width: 5px; cursor: ew-resize; }
+  .edge-grip[data-edge="w"] { left: 0; top: 10px; bottom: 10px; width: 5px; cursor: ew-resize; }
+  .edge-grip[data-edge="ne"] { top: 0; right: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+  .edge-grip[data-edge="sw"] { bottom: 0; left: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+  .edge-grip[data-edge="nw"] { top: 0; left: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+  .edge-grip[data-edge="se"] { bottom: 0; right: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+  body:has(.widget.docked) .edge-grip, body:has(.widget.minimized) .edge-grip { display: none; }
 
   .widget {
     display: flex;
@@ -5058,6 +5070,7 @@ function dockBoundsSync(natural) {
     if (dv) { const y0 = Math.min(pop.y, c.y); pop = { y: y0, height: Math.max(pop.y + pop.height, c.y + c.height) - y0 }; }
     else { const x0 = Math.min(pop.x, c.x); pop = { x: x0, width: Math.max(pop.x + pop.width, c.x + c.width) - x0 }; }
   }
+  if (pop && !dv && !dockFullPop(kind)) { const band = dockCardBand(); if (band) pop = { ...pop, ...band }; }
   const req = { on: true, contentWidth: dockNatural, height: DOCK_H, edge: dockCfg.edge, extra,
     popWidth: dv ? (kind === 'skillbook' ? DOCK_SB_H : kind === 'quest' ? DOCK_Q_H : AgentDeskDock.popExtra(kind, dockAskH))
       : (kind === 'skillbook' ? DOCK_SB_W : kind === 'quest' ? DOCK_Q_W : bubbles ? dockAskWant : g ? g.want : 0),
@@ -5068,6 +5081,37 @@ function dockBoundsSync(natural) {
   dockReqSig = sig;
   if (!extra) dockHit = null;   // main makes the whole (bar-only) window clickable again
   window.orca.dock(req).then(b => { if (dockOn && b) dockWinSet(b); }).catch(() => {});
+}
+// horizontal bar: where the open cards really are (their top edge above the bar / bottom edge below it), so Linux, whose
+// dock window is opaque, cuts the room to them instead of the room's full height (a black block over a short card).
+// macOS / Windows windows are transparent and never cut (main's dockShape): nothing is measured or sent there.
+const DOCK_CARD_IDS = ['dock-tip', 'dock-utip', 'dock-pop', 'dock-asks'];
+const DOCK_CUT = ((window.orca && window.orca.platform) || '') === 'linux';
+function dockCardBand() {
+  if (!DOCK_CUT) return null;
+  let top = Infinity, bottom = -Infinity;
+  for (const id of DOCK_CARD_IDS) {
+    const el = $(id); if (!el || el.hidden) continue;
+    const r = el.getBoundingClientRect(); if (r.height <= 0) continue;
+    top = Math.min(top, r.top); bottom = Math.max(bottom, r.bottom);
+  }
+  if (!(top < bottom)) return null;
+  return dockDir === 'down' ? { bottom: Math.ceil(bottom) + 2 } : { top: Math.max(0, Math.floor(top) - 2) };
+}
+// a card that appears or changes size moves the band: send the new one (dockBoundsSync skips an unchanged request)
+if (DOCK_CUT && typeof ResizeObserver === 'function') {
+  const ro = new ResizeObserver(() => { if (dockOn) dockBoundsSync(); });
+  for (const id of DOCK_CARD_IDS) { const el = $(id); if (el) ro.observe(el); }
+}
+// Windows: edge grips for the transparent window (no native resize border); main reads the cursor and sizes the window
+if (window.orca && window.orca.platform === 'win32' && typeof window.orca.edgeResize === 'function') {
+  for (const ed of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
+    const g = document.createElement('div'); g.className = 'edge-grip'; g.dataset.edge = ed; g.setAttribute('aria-hidden', 'true');
+    g.addEventListener('pointerdown', e => { if (e.button !== 0 || dockOn) return; e.preventDefault(); g.setPointerCapture(e.pointerId); window.orca.edgeResize('start', ed); });
+    g.addEventListener('pointermove', e => { if (g.hasPointerCapture(e.pointerId)) window.orca.edgeResize('move'); });
+    g.addEventListener('lostpointercapture', () => window.orca.edgeResize('end'));
+    document.body.appendChild(g);
+  }
 }
 // main's answer: the bar keeps its own width and place inside a window that may be wider (a panel wider than the bar)
 const DOCK_NARROW = 420;

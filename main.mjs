@@ -64,7 +64,11 @@ const BUILD_SIGNED = (() => { try { const v = JSON.parse(readFileSync(join(__dir
 // `command -v` (POSIX) / `where` (Windows) with the widget's extended PATH
 async function whichCmd(name) {
   try {
-    if (IS_WIN) return (await exec("where", [name], { timeout: 4000 })).stdout.split(/\r?\n/)[0].trim() || null;
+    if (IS_WIN) {
+      // process.env holds it as "Path" on Windows: drop that key so the child sees only the extended PATH
+      const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k.toUpperCase() !== "PATH"));
+      return (await exec(join(process.env.SystemRoot || "C:\\Windows", "System32", "where.exe"), [name], { timeout: 4000, env: { ...env, PATH: EXEC_PATH } })).stdout.split(/\r?\n/)[0].trim() || null;
+    }
     return (await exec("/bin/sh", ["-lc", `command -v ${name}`], { timeout: 4000, env: { ...process.env, PATH: EXEC_PATH } })).stdout.trim() || null;
   } catch { return null; }
 }
@@ -125,11 +129,13 @@ function createWindow() {
     maxWidth: 480,
     alwaysOnTop: true,
     frame: false,
-    transparent: IS_MAC,
+    // Windows too: the dock's cards / bubbles have rounded corners and gaps an opaque window paints black. A transparent
+    // window there has no native resize border, so the page draws its own edges (roca:edge-resize below).
+    transparent: IS_MAC || IS_WIN,
     hasShadow: true,
     resizable: true,
     skipTaskbar: false,
-    ...(IS_MAC ? { vibrancy: "under-window", visualEffectState: "active" } : { backgroundColor: "#0e1014", icon: APP_ICON }),
+    ...(IS_MAC ? { vibrancy: "under-window", visualEffectState: "active" } : IS_WIN ? { backgroundColor: "#00000000", icon: APP_ICON } : { backgroundColor: "#0e1014", icon: APP_ICON }),
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -167,6 +173,13 @@ function createWindow() {
   };
   mainWindow.on("move", debounceSave);
   mainWindow.on("resize", debounceSave);
+  // Windows: another app can strip the topmost flag (seen: NVIDIA Overlay in a bad state), and isAlwaysOnTop() reads the
+  // real flag there — put it back on blur / show and every 5 s. Workspace mode turns it off on purpose (workState).
+  if (IS_WIN) {
+    const keepTop = () => { if (mainWindow && !mainWindow.isDestroyed() && !workState && mainWindow.isVisible() && !mainWindow.isAlwaysOnTop()) mainWindow.setAlwaysOnTop(true); };
+    mainWindow.on("blur", keepTop); mainWindow.on("show", keepTop);
+    setInterval(keepTop, 5000).unref();
+  }
 
   mainWindow.on("close", (e) => {
     if (!app.isQuitting) {
@@ -212,11 +225,19 @@ const ORCA_BIN = [
   join(homedir(), "Applications", "Orca.app", "Contents", "Resources", "bin", "orca"),
   "orca",
 ];
-const EXEC_PATH = [process.env.PATH || "", ...(IS_WIN ? [] : ["/usr/local/bin", "/opt/homebrew/bin", join(homedir(), ".local", "bin"), "/Applications/Orca.app/Contents/Resources/bin"])].join(PATH_DELIM);
+// Windows: the app keeps the PATH it was launched with, so a CLI installed afterwards (claude's native installer →
+// ~/.local/bin, npm -g → %APPDATA%\npm) is invisible to `where` until these are added
+const EXEC_PATH = [process.env.PATH || "", ...(IS_WIN ? [join(homedir(), ".local", "bin"), ...(process.env.APPDATA ? [join(process.env.APPDATA, "npm")] : [])] : ["/usr/local/bin", "/opt/homebrew/bin", join(homedir(), ".local", "bin"), "/Applications/Orca.app/Contents/Resources/bin"])].join(PATH_DELIM);
 
 async function findOrca() {
   if (process.env.ROCA_ORCA_BIN) return process.env.ROCA_ORCA_BIN;
-  if (!IS_MAC) return (await whichCmd("orca")) || "orca";   // Orca ships for macOS; elsewhere only an explicit install counts
+  if (!IS_MAC) {   // Orca ships for macOS; elsewhere only an explicit install counts
+    const found = await whichCmd("orca");
+    // Windows: `where` finds orca.cmd, which Node (>= 18.20.2) refuses to execFile without a shell (spawn EINVAL), so
+    // every Orca call failed. The .cmd only forwards to orca.exe beside it: run that directly, no shell in between.
+    if (IS_WIN && found && /\.(cmd|bat)$/i.test(found)) { const exe = join(dirname(found), "orca.exe"); if (existsSync(exe)) return exe; }
+    return found || "orca";
+  }
   for (const bin of ORCA_BIN) {
     try {
       await exec("test", ["-x", bin]);
@@ -708,7 +729,7 @@ const ttyCached = cached(10000, () => ttyTargets());   // the whole process list
 ipcMain.handle("roca:tty-targets", () => ttyCached());
 
 // first-run onboarding: what this Mac has — Claude Code, the widget hooks, the Orca CLI, running terminal apps
-const CLAUDE_PATHS = ["/usr/local/bin/claude", "/opt/homebrew/bin/claude", join(homedir(), ".local", "bin", "claude"), join(homedir(), ".claude", "local", "claude"), join(homedir(), ".npm-global", "bin", "claude")];
+const CLAUDE_PATHS = ["/usr/local/bin/claude", "/opt/homebrew/bin/claude", join(homedir(), ".local", "bin", "claude"), join(homedir(), ".local", "bin", "claude.exe"), join(homedir(), ".claude", "local", "claude"), join(homedir(), ".npm-global", "bin", "claude")];
 ipcMain.handle("roca:env-check", async () => {
   await orcaReady;
   let claudePath = CLAUDE_PATHS.find(p => existsSync(p)) || null;
@@ -1228,7 +1249,9 @@ function dockOnMove() {
 // no click-through: while the bar is auto-hidden only the 8 px edge it still shows takes the pointer
 const DOCK_PEEK = 8;
 function dockShape(b, pop, hidden) {
-  if (IS_MAC || typeof mainWindow.setShape !== "function") return;
+  // macOS / Windows windows are transparent (the page's empty room shows through, clicks pass via setIgnoreMouseEvents):
+  // only Linux's opaque window is cut to the bar and the open card
+  if (IS_MAC || IS_WIN || typeof mainWindow.setShape !== "function") return;
   let rects = [];
   const v = b && (b.dir === "left" || b.dir === "right");
   if (b && hidden === true && IS_LINUX) {
@@ -1244,7 +1267,12 @@ function dockShape(b, pop, hidden) {
       rects = h > 0 ? [bar, { x: b.dir === "left" ? 0 : bar.x + bar.width, y, width: b.extra, height: h }] : [bar];
     } else {
       const x = Math.round(dockNum(pop.x, 0, b.width)), w = Math.round(dockNum(pop.width, 0, b.width - x));
-      rects = w > 0 ? [bar, { x, y: b.dir === "down" ? b.stripHeight : 0, width: w, height: b.extra }] : [bar];
+      // the window is opaque here (transparent only on macOS): cut the room to the card the page measured (pop.top /
+      // pop.bottom), not the whole room, or the room above a short card is drawn as a black block
+      let y = b.dir === "down" ? b.stripHeight : 0, h = b.extra;
+      if (b.dir === "down" && Number.isFinite(pop.bottom)) h = Math.round(dockNum(pop.bottom - b.stripHeight, 0, b.extra));
+      else if (b.dir !== "down" && Number.isFinite(pop.top)) { y = Math.round(dockNum(pop.top, 0, b.extra)); h = b.extra - y; }
+      rects = w > 0 && h > 0 ? [bar, { x, y, width: w, height: h }] : [bar];
     }
   }
   try { mainWindow.setShape(rects); } catch {}
@@ -1351,6 +1379,27 @@ ipcMain.handle("orca:notify", (_e, title, body) => {
 // ── Clipboard (copy only: session id, team board, Jira key/link) ──
 ipcMain.handle("orca:clipboard-write", (_e, text) => { clipboard.writeText(text); return true; });
 
+// Windows: the transparent window has no native resize border; the page's edge grips drive this. The cursor is read here
+// (screen DIPs), not taken from the page, and the window's own min / max sizes still bound the result.
+let edgeDrag = null;
+const EDGES = new Set(["n", "s", "e", "w", "ne", "nw", "se", "sw"]);
+ipcMain.on("roca:edge-resize", (e, phase, edge) => {
+  if (!IS_WIN || !mainWindow || mainWindow.isDestroyed() || e.sender !== mainWindow.webContents) return;
+  if (phase === "start") {
+    edgeDrag = !dockState && mainWindow.isResizable() && EDGES.has(edge) ? { edge, b: mainWindow.getBounds(), p: screen.getCursorScreenPoint() } : null;
+    return;
+  }
+  if (phase !== "move" || !edgeDrag) { edgeDrag = null; return; }
+  const { edge: ed, b, p } = edgeDrag, c = screen.getCursorScreenPoint(), dx = c.x - p.x, dy = c.y - p.y;
+  const [minW, minH] = mainWindow.getMinimumSize(), [maxW, maxH] = mainWindow.getMaximumSize();
+  const fitW = w => Math.min(Math.max(w, minW || 1), maxW || 100000), fitH = h => Math.min(Math.max(h, minH || 1), maxH || 100000);
+  let { x, y, width, height } = b;
+  if (ed.includes("e")) width = fitW(b.width + dx);
+  if (ed.includes("s")) height = fitH(b.height + dy);
+  if (ed.includes("w")) { width = fitW(b.width - dx); x = b.x + b.width - width; }
+  if (ed.includes("n")) { height = fitH(b.height - dy); y = b.y + b.height - height; }
+  mainWindow.setBounds({ x, y, width, height });
+});
 ipcMain.on("orca:set-opacity", (_e, val) => {
   if (!mainWindow) return;
   mainWindow.setOpacity(val);
@@ -1389,7 +1438,7 @@ $f = Join-Path $env:USERPROFILE ".roca\\events.jsonl"
 if ($env:AGENTDESK_RECALL) { exit 0 }
 $payload = ([Console]::In.ReadToEnd()) -replace "\\r?\\n", ""
 if (-not $payload) { exit 0 }
-$ts = [int][double]::Parse((Get-Date -UFormat %s))
+$ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()   # Windows PowerShell 5.1's Get-Date -UFormat %s is local time, not UTC
 $term = ($env:TERM_PROGRAM -replace "[^A-Za-z0-9._-]", "")
 Add-Content -Path $f -Value ('{"ts":' + $ts + ',"term":"' + $term + '","agent":"' + $Agent + '","ev":' + $payload + '}') -Encoding UTF8
 exit 0
