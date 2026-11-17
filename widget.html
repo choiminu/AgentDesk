@@ -2,7 +2,7 @@
 <meta charset="utf-8">
 <!-- one inline script, allowed by hash (no inline event handlers anywhere) — after editing it run: node scripts/csp-hash.mjs --write -->
 <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-D1Yf9GJPhsUTitstpMPLZuwC3ba7eiItYXGAzmY9/ks='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-uYRO5I4SLurTxREzyCXXUggpSQZGHPmCBHQB6psgoes='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'">
 
 <style>
   /* bundled UI fonts (OFL): Manrope for text, JetBrains Mono for meta — the app must render offline */
@@ -124,6 +124,9 @@
   .edge-grip[data-edge="nw"] { top: 0; left: 0; width: 10px; height: 10px; cursor: nwse-resize; }
   .edge-grip[data-edge="se"] { bottom: 0; right: 0; width: 10px; height: 10px; cursor: nwse-resize; }
   body:has(.widget.docked) .edge-grip, body:has(.widget.minimized) .edge-grip { display: none; }
+  /* Windows panel / workspace: there is no vibrancy behind the window, so the rounded panel's corners would show the raw
+     window behind it (white over a light app) — paint the window dark as before. The dock (.widget.docked) stays transparent. */
+  html.win:not(:has(.widget.docked)) { background: #0e1014; }
 
   .widget {
     display: flex;
@@ -5104,6 +5107,7 @@ if (DOCK_CUT && typeof ResizeObserver === 'function') {
   for (const id of DOCK_CARD_IDS) { const el = $(id); if (el) ro.observe(el); }
 }
 // Windows: edge grips for the transparent window (no native resize border); main reads the cursor and sizes the window
+if (window.orca && window.orca.platform === 'win32') document.documentElement.classList.add('win');   // html.win: the panel's dark window background
 if (window.orca && window.orca.platform === 'win32' && typeof window.orca.edgeResize === 'function') {
   for (const ed of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
     const g = document.createElement('div'); g.className = 'edge-grip'; g.dataset.edge = ed; g.setAttribute('aria-hidden', 'true');
