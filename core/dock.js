@@ -332,6 +332,22 @@ function reopenKind(s, hasHandle) {
   const id = String(s.id || '');
   return !s.hookOnly && !s.detected && id.includes('::') && !id.startsWith('hook:') ? 'wt' : '';
 }
+// What changed in the families since the last look: a child that appeared ('out': it walks out of its parent) and a
+// child that finished ('back': it walks back with its papers). prev / next: Map(parent id → [{ id, state }]).
+// Nothing on the first look (prev null), and at most `max` events so a burst does not fill the bar.
+function kidEvents(prev, next, max) {
+  if (!(prev instanceof Map) || !(next instanceof Map)) return [];
+  const out = [], cap = Math.max(1, Math.floor(num(max)) || 4), busy = s => s === 'run' || s === 'ask' || s === 'err';
+  for (const [parent, kids] of next) {
+    const before = new Map((prev.get(parent) || []).map(k => [k.id, k.state]));
+    for (const k of Array.isArray(kids) ? kids : []) {
+      if (!k || !k.id) continue;
+      if (!before.has(k.id)) { if (prev.has(parent) || busy(k.state)) out.push({ kind: 'out', parent, id: k.id }); }
+      else if (busy(before.get(k.id)) && (k.state === 'done' || k.state === 'input')) out.push({ kind: 'back', parent, id: k.id });
+    }
+  }
+  return out.slice(0, cap);
+}
 // the Orca worktree a folder belongs to: the one at that path, else the deepest one that contains it (archived ones never)
 function worktreeOf(list, dir) {
   const d = String(dir || '').replace(/\/+$/, '');
@@ -940,7 +956,7 @@ function permAllowable(sm) {
   return !!v.trim() && !/[\r\n]/.test(v) && [...v].length <= PERM_LINE_MAX;
 }
 
-const AgentDeskDock = { usedAt, worktreeOf, tileLabels, reopenKind, nestSessions, dropSafeText, dragStep, DRAG_PX, orderSessions, keepOrder, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
+const AgentDeskDock = { usedAt, kidEvents, worktreeOf, tileLabels, reopenKind, nestSessions, dropSafeText, dragStep, DRAG_PX, orderSessions, keepOrder, moveInOrder, dropOrder, worktreeNameOf, dropAccepts, dropPayload, dockHitPlan, dockEdge, TILE_SIZES, STRIP_HEIGHTS, PEER_GROUP_AT, stripHeight, dockPickDisplay, posEntries, EDIT_TOOLS, PERM_LINE_MAX, permLine, permAllowable, STATES, TILE, MAX_PEERS, STRIP_MIN, STRIP_MAX, STRIP_DEFAULT, MIN_WIDTH, MAX_FRAC, MARGIN, stateOf, badgeCounts, dockModel, dockBounds, tilesWidth, clip,
   POP, SCREEN, popWidth, popExtra, bubbleHeight, popRect, screenLines, bubbleLayout, activityLevels, promptContext, promptBox, guardTexts, permPrompt, optionRun, PERM_NEVER_RE, toolGlyph, workFrame,
   numberedTiles, digitOf, bubbleKeyTarget, bubbleKeyAllowed, stateClock, ageLabel, ageWarn, usageRows, isOrcaApp, askYield, dockIdleSplit };
 root.AgentDeskDock = AgentDeskDock;

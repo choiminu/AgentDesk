@@ -458,7 +458,7 @@ test('widget dock: hover opens the terminal window, a click goes to the terminal
   assert.match(reopen, /if \(!ended && !wt\) return false/, 'only a session that ended with its id known');
   assert.match(reopen, /dockReopening\.has\(id\)\) return true/, 'a second click does not open a second tab');
   assert.match(reopen, /window\.orca\.resumeSession\(s\.cwd, s\.sessionId, s\.agent \|\| 'claude'\)/);
-  assert.match(reopen, /window\.orca\.worktreeReopen\(id, agent \|\| 'claude'\)/, 'an Orca worktree with no terminal: a new tab there');
+  assert.match(reopen, /window\.orca\.worktreeReopen\(id, agent \|\| 'claude', talkId\)/, 'an Orca worktree with no terminal: a new tab there');
   assert.match(open, /if \(!st\.alive\) return;[^\n]*\n\s*const now = cur\(\); if \(!now\.hh\) return;\n\s*const r = await window\.orca\.terminalInterrupt\(now\.hh\)/, 'looked up again after the confirm');
   const keys = between(html, "$('dock-tiles').addEventListener('keydown'", '\n});');
   assert.match(keys, /e\.key === 'Enter' && \(e\.metaKey \|\| e\.ctrlKey\)[\s\S]*dockFocusTerminal\(x\)/, '⌘Enter: the terminal');
@@ -514,7 +514,8 @@ test('dock vertical: the edge travels to main, the renderer branches on it, and 
   assert.match(html, /seg\('dock-edge', dockCfg\.edge/);
   assert.match(between(html, 'function dockEdgeApply(', '\n}'), /dock-v/);
   assert.match(html, /\.dock-v \.dock-strip \{ flex-direction: column;/);
-  assert.match(html, /\.dock-v \.dock-name, \.dock-v \.dock-num \{ display: none; \}/);
+  assert.doesNotMatch(html, /\.dock-v \.dock-name[^{]*\{ display: none/, 'a side bar shows the names like the bottom bar (56 px tiles)');
+  assert.match(html, /#page-dock\.dock-v:not\(\.dock-sz-sm\) \.dock-tiles\.s40 \.dock-name \{ display: block;/, 'many sessions shrink the tiles to 40 px: a side bar keeps the names');
 });
 
 // ── choice bubbles / tiles at work: layout, activity, tool marks, frames ──
@@ -1064,7 +1065,7 @@ test('main: the bar\'s display comes from dockPickDisplay; moves and reflows rep
 test('renderer: timer ring follows the timer page, opens it, flashes when it ends', () => {
   assert.match(between(html, 'function updatePomoDisplay()', '\n}\n'), /dockTimerDraw\(\);/);
   assert.match(between(html, 'function pomoTick()', '\n}\n'), /dockTimerEnd\(\);/);
-  assert.match(between(html, 'function dockTimerDraw()', '\n}\n'), /const on = !!pomoRunning && pomoTotal > 0/);
+  assert.match(between(html, 'function dockTimerDraw()', '\n}\n'), /const on = !TIMER_OFF && !!pomoRunning && pomoTotal > 0/, 'the timer page is off for now: the ring never shows');
   assert.match(html, /\$\('dock-timer'\)\.addEventListener\('click', e => \{ e\.stopPropagation\(\); dockLeave\('pomodoro'\); \}\);/);
   assert.match(html, /\.dock-strip\.flash \{ animation: dockFlash/);
 });
@@ -1210,9 +1211,8 @@ test('renderer: tiles follow orderSessions; the drag runs through dragStep; a dr
   assert.match(step, /const prev = dockDrag, r = AgentDeskDock\.dragStep\(prev, ev\);/);
   assert.match(step, /src\.addEventListener\('lostpointercapture', \(\) => dockDragDo\(\{ type: 'cancel' \}\), \{ once: true \}\)/);
   assert.match(step, /AgentDeskDock\.dropOrder\(visible, prev\.id, bx \? bx\.id : null\)/);
-  assert.match(step, /pinnedSessions\.add\(prev\.id\); dockPinSave\(\);/);
-  assert.match(step, /: t\('📌 고정됨 — 우클릭으로 해제'\), '', true\);/, 'L2: the pin is announced');
-  assert.match(step, /dockHint\(wasRecent \? t\('📌 직접 정한 순서로 바꿨습니다/, 'the switch to the user\'s order is announced');
+  assert.doesNotMatch(step, /pinnedSessions\.add/, 'a drag does not pin: a pinned tile never joins the resting ones');
+  assert.match(step, /if \(wasRecent\) dockHint\(t\('📌 직접 정한 순서로 바꿨습니다/, 'the switch to the user\'s order is announced');
   assert.equal((step.match(/dropOrder/g) || []).length, 1, 'only the drop action changes the order');
   assert.match(between(html, "$('dock-tiles').addEventListener('pointerdown'", '\n});'), /movable: !!\(x && !x\.bundle && !x\.peer\)/);
   assert.match(html, /document\.addEventListener\('pointermove', e => \{ if \(dockDrag\) dockDragDo\(\{ type: 'move', x: e\.clientX, y: e\.clientY, buttons: e\.buttons \}, e\); \}\);/);
@@ -1520,7 +1520,8 @@ test('widget dock: reopen marks, the agent choice and the nesting switch', async
   assert.match(html, /nestSessions\(ordered, dockCfg\.nest \? wtParents : new Map\(\)/);
   assert.match(html, /dockCfg\.nest = c\.nest !== false;/, 'on unless turned off');
   assert.match(main, /agent !== "claude" && Object\.prototype\.hasOwnProperty\.call\(NEW_SESSION_CMD, agent\) \? agent : ""/, 'another agent only from the allow-list');
-  assert.match(main, /other \? NEW_SESSION_CMD\[other\] : fresh \? "claude" : "claude --continue"/);
+  assert.match(main, /other \? NEW_SESSION_CMD\[other\] : pick \? `claude --resume \$\{pick\}` : fresh \? "claude" : "claude --continue"/);
+  assert.match(main, /TALK_ID_RE\.test\(talkId\) && existsSync\(join\(talkDir\(/, 'a picked conversation: its id by shape, its file in this worktree');
 });
 
 test('side dock: a drag keeps its spot (top edge saved, centre restored), no creep; bottom and side spots do not mix', () => {
@@ -1538,4 +1539,15 @@ test('side dock: a drag keeps its spot (top edge saved, centre restored), no cre
   assert.deepEqual(D.posEntries({ 3: { cx: 37, y: 400, at: 5, side: true }, 4: { cx: 9, y: 9, at: 1 } }).map(e => e.side), [true, false]);
   const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
   assert.match(html, /\.\.\.\(dockCfg\.edge !== 'bottom' \? \{ side: true \} : \{\}\)/);
+});
+
+test('kidEvents: a new child walks out, a finished one walks back; nothing on the first look', () => {
+  const K = AgentDeskDock.kidEvents, m = o => new Map(Object.entries(o));
+  assert.deepEqual(K(null, m({ p: [{ id: 'a', state: 'run' }] })), [], 'first look');
+  assert.deepEqual(K(m({ p: [] }), m({ p: [{ id: 'a', state: 'run' }] })), [{ kind: 'out', parent: 'p', id: 'a' }]);
+  assert.deepEqual(K(m({ p: [{ id: 'a', state: 'run' }] }), m({ p: [{ id: 'a', state: 'done' }] })), [{ kind: 'back', parent: 'p', id: 'a' }]);
+  assert.deepEqual(K(m({ p: [{ id: 'a', state: 'done' }] }), m({ p: [{ id: 'a', state: 'done' }] })), [], 'nothing changed');
+  assert.deepEqual(K(m({}), m({ q: [{ id: 'x', state: 'done' }] })), [], 'a family first seen with a finished child: no walk');
+  assert.deepEqual(K(m({}), m({ q: [{ id: 'x', state: 'run' }] })), [{ kind: 'out', parent: 'q', id: 'x' }], 'a first child that is working: it walks out');
+  assert.equal(K(m({ p: [] }), m({ p: Array.from({ length: 9 }, (_, i) => ({ id: `k${i}`, state: 'run' })) }), 3).length, 3, 'a burst is capped');
 });

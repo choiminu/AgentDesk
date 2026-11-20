@@ -251,3 +251,48 @@ test('main: slow-changing answers are cached (terminal list 10 s, process scan 1
   assert.ok((main.match(/cacheDrop\(\)/g) || []).length >= 5, 'every open / close path forgets the lists');
   assert.match(main, /ipcMain\.handle\("orca:ps", \(\) => orca\("worktree", "ps"\)\);/, 'the worktree list (the status source) is still read every poll');
 });
+
+test('pages off for now: the timer and team sharing are hidden, redirected and (team) not started in main; settings are tabbed panels', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8'), main = readFileSync(new URL('../main.mjs', import.meta.url), 'utf8');
+  assert.match(html, /const PAGE_OFF = new Set\(\['pomodoro', 'team'\]\);/);
+  assert.match(html, /if \(PAGE_OFF\.has\(name\)\) name = 'dashboard';/, 'a link to a page that is off lands on the dashboard');
+  assert.match(html, /data-page="team" hidden>/); assert.match(html, /data-page="pomodoro" hidden>/);
+  assert.match(html, /\]\.filter\(\(\[p\]\) => !PAGE_OFF\.has\(p\)\);/, 'the wide window nav too');
+  assert.match(html, /if \(TEAM_OFF\) return;   \/\/ team sharing is off/);
+  assert.match(html, /if \(TEAM_OFF \|\| !st \|\| !st\.configured \|\| st\.error\) return \[\];/, 'no teammate tiles on the dock');
+  assert.match(main, /const TEAM_OFF = true;\nif \(!TEAM_OFF\) \{\n  setTimeout\(\(\) => \{ teamFirstRun\(\); teamReload\(\); teamPoll\(\); \}, 3000\);/, 'no team server or polling');
+  assert.match(html, /cur = document\.createElement\('section'\); cur\.className = 'set-panel';/);
+  assert.match(html, /localStorage\.setItem\('roca-settings-panel', settingsPanel\)/, 'the last panel is kept');
+});
+
+test('settings: a side list with group headers, icons and a search box; narrow widgets open one panel at a time', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
+  assert.match(html, /const SET_GROUPS = \[/);
+  assert.match(html, /toc\.className = 'set-nav'/);
+  assert.match(html, /<input id="set-q" type="search"/);
+  assert.match(html, /const hit = r\.textContent\.toLowerCase\(\)\.includes\(q\); r\.hidden = !hit;/, 'search hides the rows that do not match');
+  assert.match(html, /#settings-body \.set-row\[hidden\][^{]*\{ display: none; \}/, 'a hidden row really hides (.set-row is a flex box)');
+  assert.match(html, /\.settings\.set-narrow\[data-view="list"\] \.set-main \{ display: none; \}/);
+  assert.match(html, /String\(e\.key\)\.toLowerCase\(\) !== 'f'\) return;\n  const qi = \$\('set-q'\)/, '⌘F / Ctrl+F focuses the search');
+});
+
+test('talkTitle / cleanupList: a conversation\'s name, and the tabs worth closing', () => {
+  const S = globalThis.AgentDeskStatus, J = o => JSON.stringify(o);
+  const user = (c, o = {}) => J({ type: 'user', message: { content: c }, ...o });
+  assert.equal(S.talkTitle([user('<command-name>/model</command-name>'), user([{ type: 'tool_result' }, { type: 'text', text: '도크   이름\n고쳐줘' }]), 'junk', user('second')]), '도크 이름 고쳐줘');
+  assert.equal(S.talkTitle([user('first'), J({ type: 'ai-title', aiTitle: 'AI title' })]), 'AI title');
+  assert.equal(S.talkTitle([J({ type: 'ai-title', aiTitle: 'AI' }), J({ type: 'custom-title', customTitle: 'Mine' })]), 'Mine', '/rename wins');
+  assert.equal(S.talkTitle([user('x'.repeat(200))]).length, 80);
+  assert.equal(S.talkTitle([user('side', { isSidechain: true }), '{broken']), ''); assert.equal(S.talkTitle(null), '');
+  const now = 100 * 3600000, h = n => now - n * 3600000;
+  const list = [{ id: 'old', name: 'Old', status: 'done', time: h(30) }, { id: 'mid', status: 'waiting', time: h(5) }, { id: 'new', status: 'done', time: h(1) },
+    { id: 'run', status: 'running', time: h(40) }, { id: 'ask', status: 'waiting', needsInput: true, time: h(40) }, { id: 'pin', status: 'done', time: h(40) },
+    { id: 'front', status: 'done', time: h(40) }, { id: 'noterm', status: 'done', time: h(40) }, { id: 'unk', status: 'done', time: 0 }];
+  const handles = new Map(list.filter(x => x.id !== 'noterm').map(x => [x.id, 't']));
+  const out = S.cleanupList(list, { now, minMs: 3 * 3600000, handles, pinned: new Set(['pin']), keep: 'front' });
+  assert.deepEqual(out.map(x => x.id), ['unk', 'old', 'mid'], 'working, asking, pinned, in front, no terminal and recent ones stay; the longest quiet first');
+  assert.equal(out[1].name, 'Old'); assert.equal(Math.round(out[1].quietMs / 3600000), 30);
+  assert.deepEqual(S.cleanupList(null, null), []);
+});

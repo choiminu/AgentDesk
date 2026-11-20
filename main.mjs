@@ -253,8 +253,10 @@ const orcaReady = findOrca().then(b => { orcaBin = b; orcaBinFound = b !== "orca
 
 function orca(...args) { return orcaTimed(15000, ...args); }
 // same as orca() with a caller-chosen timeout (worktree creation, Jira network calls)
+const orcaCallLog = [];   // when each orca CLI call started (the last minute's count is shown in Settings → 진단)
 async function orcaTimed(timeout, ...args) {
   await orcaReady;
+  orcaCallLog.push(Date.now()); if (orcaCallLog.length > 5000) orcaCallLog.splice(0, 2500);
   try {
     const { stdout } = await exec(orcaBin, [...args, "--json"], {
       timeout,
@@ -781,6 +783,31 @@ async function resumeInOrca(cwd, command) {
 function claudeHasTalk(dir) {
   try { return readdirSync(join(homedir(), ".claude", "projects", String(dir).replace(/[^a-zA-Z0-9]/g, "-"))).some(f => f.endsWith(".jsonl")); } catch { return false; }
 }
+// the Claude Code conversations of one Orca worktree, newest first: [{ id, at, title }] (8 at most; the title from the
+// transcript's head and tail — AgentDeskStatus.talkTitle). Only a worktree Orca lists; ids are file names checked by shape.
+const TALK_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const talkDir = dir => join(homedir(), ".claude", "projects", String(dir).replace(/[^a-zA-Z0-9]/g, "-"));
+ipcMain.handle("roca:worktree-talks", async (_e, worktreeId) => {
+  const id = typeof worktreeId === "string" && worktreeId.length <= 4096 ? worktreeId : "";
+  const wt = id && (await orcaWorktreeList()).find(w => w && w.worktreeId === id && !w.isArchived);
+  if (!wt || typeof wt.path !== "string") return [];
+  const dir = talkDir(wt.path.replace(/\/+$/, ""));
+  try {
+    const files = readdirSync(dir).filter(f => f.endsWith(".jsonl") && TALK_ID_RE.test(f.slice(0, -6)))
+      .map(f => { try { const st = statSync(join(dir, f)); return { f, at: st.mtimeMs, size: st.size }; } catch { return null; } }).filter(Boolean)
+      .sort((a, b) => b.at - a.at).slice(0, 8);
+    return files.map(x => { let title = ""; try { title = globalThis.AgentDeskStatus.talkTitle(readHeadTail(join(dir, x.f), x.size)); } catch {} return { id: x.f.slice(0, -6), at: Math.round(x.at), title: globalThis.AgentDeskMask.mask(title) }; });
+  } catch { return []; }
+});
+// what the app itself is costing: CPU and memory of its processes (Electron's own numbers), how many orca CLI calls it
+// made in the last minute, and whether the pieces it leans on answer. Numbers only.
+ipcMain.handle("roca:diag", async () => {
+  const now = Date.now();
+  while (orcaCallLog.length && now - orcaCallLog[0] > 60000) orcaCallLog.shift();
+  let cpu = 0, memKb = 0, procs = 0;
+  try { for (const m of app.getAppMetrics()) { procs++; cpu += (m.cpu && m.cpu.percentCPUUsage) || 0; memKb += (m.memory && m.memory.workingSetSize) || 0; } } catch {}
+  return { cpu: Math.round(cpu * 10) / 10, memMb: Math.round(memKb / 1024), procs, orcaCalls: orcaCallLog.length, orcaFound: orcaBinFound === true, uptimeMin: Math.round(process.uptime() / 60), electron: process.versions.electron, node: process.versions.node, platform: process.platform };
+});
 // which of these worktrees have a Claude Code conversation to continue: { id: true | false } (ids Orca lists, 200 at most)
 ipcMain.handle("roca:worktree-talk", async (_e, ids) => {
   const want = new Set((Array.isArray(ids) ? ids : []).filter(v => typeof v === "string" && v && v.length <= 4096).slice(0, 200)), out = {};
@@ -788,15 +815,17 @@ ipcMain.handle("roca:worktree-talk", async (_e, ids) => {
   for (const w of await orcaWorktreeList()) if (w && want.has(w.worktreeId) && typeof w.path === "string") out[w.worktreeId] = claudeHasTalk(w.path.replace(/\/+$/, ""));
   return out;
 });
-ipcMain.handle("roca:worktree-reopen", async (_e, worktreeId, agent) => {
+ipcMain.handle("roca:worktree-reopen", async (_e, worktreeId, agent, talkId) => {
   const id = typeof worktreeId === "string" && worktreeId.length <= 4096 ? worktreeId : "";
   diffPsCache = { at: 0, list: [] };   // a worktree made a moment ago counts
   const wt = id && (await orcaWorktreeList()).find(w => w && w.worktreeId === id && !w.isArchived);
   if (!wt) return { ok: false, error: "not an Orca worktree" };
   const other = typeof agent === "string" && agent !== "claude" && Object.prototype.hasOwnProperty.call(NEW_SESSION_CMD, agent) ? agent : "";   // another agent from the allow-list: started fresh
   const fresh = !!other || !claudeHasTalk(String(wt.path || "").replace(/\/+$/, ""));   // nothing to continue: a new conversation
+  // one conversation picked from roca:worktree-talks: its id by shape, and its file must be in this worktree's folder
+  const pick = !other && typeof talkId === "string" && TALK_ID_RE.test(talkId) && existsSync(join(talkDir(String(wt.path || "").replace(/\/+$/, "")), `${talkId}.jsonl`)) ? talkId : "";
   cacheDrop();
-  const r = await orca("terminal", "create", "--worktree", `id:${wt.worktreeId}`, "--command", other ? NEW_SESSION_CMD[other] : fresh ? "claude" : "claude --continue", "--focus");
+  const r = await orca("terminal", "create", "--worktree", `id:${wt.worktreeId}`, "--command", other ? NEW_SESSION_CMD[other] : pick ? `claude --resume ${pick}` : fresh ? "claude" : "claude --continue", "--focus");
   return r && r.ok !== false ? { ok: true, app: "Orca", fresh, agent: other || "claude" } : { ok: false, error: (r && (r.detail || r.error)) || "failed" };
 });
 ipcMain.handle("roca:resume-session", async (_e, cwd, sessionId, agent) => {
@@ -2509,9 +2538,14 @@ function teamDiscoveredList() {
   for (const [id, p] of teamFound) if (Date.now() - p.at > 20000) teamFound.delete(id);
   return [...teamFound.values()].filter(p => p.id !== teamCfg.instanceId && !hosts.has(p.host) && !ids.has(p.id));
 }
-setTimeout(() => { teamFirstRun(); teamReload(); teamPoll(); }, 3000);
-setInterval(teamReload, 30000);
-setInterval(teamPoll, 1000);   // each peer keeps its own 3 s / 15 s schedule (nextAt)
+// team sharing (teammates' sessions over the LAN) is taken out for now: no server, no beacon, no polling, no team.json
+// written on a first run. Set TEAM_OFF to false to bring it back (the widget's PAGE_OFF shows its pages again).
+const TEAM_OFF = true;
+if (!TEAM_OFF) {
+  setTimeout(() => { teamFirstRun(); teamReload(); teamPoll(); }, 3000);
+  setInterval(teamReload, 30000);
+  setInterval(teamPoll, 1000);   // each peer keeps its own 3 s / 15 s schedule (nextAt)
+}
 ipcMain.handle("roca:team-status", () => ({ ...teamStatus, safety: (() => { try { return teamSafety(); } catch { return null; } })(), ip: lanAddress(), discovered: teamDiscoveredList(), pending: [...teamPendingHellos.values()], notesNew: teamNotes.filter(n => n.state === "new").length, delegations: teamDelegations.list() }));
 // "turn on": the same token-less, local-only team.json a first run writes (create or join a team afterwards)
 ipcMain.handle("roca:team-setup", () => {

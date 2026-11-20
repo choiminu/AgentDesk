@@ -182,7 +182,33 @@ function paintArt(g, scene) {
   return { stage: wx.stage, lit, dark: dk, drops, flash, ground: GY, rain: wx.rain > 0, moving: !still && wx.rain > 0, drift: !still && wx.cloud > 0 };
 }
 
-const AgentDeskStreet = { SKY, STAGES, ART, skyAt, darkAt, duskAt, lampOn, weatherOf, usagePct, layout, paint, paintArt };
+// A side (vertical) bar has no street to stand on: only the sky by the clock and the weather by the limit, top to
+// bottom — bands of sky, stars by night, a grey veil when clouded, rain, lightning in a storm.
+function paintSky(g, scene) {
+  const o = scene && typeof scene === 'object' ? scene : {};
+  const W = clamp(Math.floor(num(o.w)), 0, 4000), H = clamp(Math.floor(num(o.h)), 0, 4000);
+  if (!g || !W || !H) return null;
+  const R = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), w, h); };
+  const tick = Math.floor(num(o.tick)), still = o.still === true, wx = weatherOf(o.pct), dk = darkAt(o.hour);
+  let [top, bot] = skyAt(o.hour); const grey = mix('#8a93a0', '#1a1d29', dk);
+  top = mix(top, grey, wx.cloud * 0.75); bot = mix(bot, grey, wx.cloud * 0.65);
+  const bands = Math.max(6, Math.min(24, Math.round(H / 20)));
+  for (let i = 0; i < bands; i++) R(0, Math.floor(i * H / bands), W, Math.ceil(H / bands) + 1, mix(top, bot, i / (bands - 1)));
+  const r = rng(11);
+  for (let i = 0, n = Math.round(H / 14); i < n; i++) { const x = Math.floor(r() * W), y = Math.floor(r() * H), p = r(), a = dk * (1 - wx.cloud) * (still || (tick + Math.floor(p * 40)) % 30 > 4 ? 1 : 0.4); if (a > 0.05) R(x, y, 1, 1, rgba('#ffffff', a * (0.5 + p * 0.5))); }
+  R(0, 0, W, H, rgba('#060a22', dk * 0.25 + 0.12));   // the tiles' marks read on any sky
+  let drops = 0;
+  if (wx.rain && !still) {
+    drops = Math.round(wx.rain * H * 0.12);
+    const len = wx.rain > 0.8 ? 6 : 4, speed = 5 + Math.round(wx.rain * 4);
+    for (let i = 0; i < drops; i++) R(((i * 104729) % (W + 12) - tick + W * 40) % (W + 12), ((i * 7919) % (H + 10) + tick * speed) % (H + 10) - 6, 1, len, 'rgba(200,222,248,0.5)');
+  }
+  const flash = !still && wx.stage === 'storm' && tick % 97 < 2;
+  if (flash) R(0, 0, W, H, 'rgba(255,255,255,0.2)');
+  return { stage: wx.stage, lit: lampOn(o.hour), dark: dk, drops, flash, rain: false, moving: !still && wx.rain > 0, drift: false };
+}
+
+const AgentDeskStreet = { SKY, STAGES, ART, paintSky, skyAt, darkAt, duskAt, lampOn, weatherOf, usagePct, layout, paint, paintArt };
 root.AgentDeskStreet = AgentDeskStreet;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskStreet;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -51,7 +51,7 @@ test('widget: the street is off unless turned on, follows the animation setting 
   assert.match(html, /<script src="core\/street\.js"><\/script>/);
   assert.match(html, /dockCfg\.bg = \['solid', 'street', 'clear'\]\.includes\(c\.bg\) \? c\.bg : c\.street === true \? 'street' : 'solid';/, 'the plain bar unless chosen; the earlier on/off setting carries over');
   assert.match(html, /strip\.classList\.toggle\('clear', dockOn && dockCfg\.bg === 'clear'\)/);
-  assert.match(html, /on = dockOn && dockCfg\.bg === 'street' && dockCfg\.edge === 'bottom';/, 'a side (vertical) bar keeps the plain plate');
+  assert.match(html, /const r = side \? AgentDeskStreet\.paintSky\(cv\.getContext\('2d'\), scene\) : art \?/, 'a side (vertical) bar: the sky and the weather only');
   assert.match(html, /const DOCK_CLEAR_HIT = '\.dock-tile, \.dock-kids, \.dock-right, \.dock-msg, /, 'no bar: only what is drawn takes the pointer');
   assert.match(html, /if \(!dockOn \|\| !\(dockPopKind\(\) \|\| clear\)\) return;/);
   assert.match(html, /classList\.remove\('street', 'clear'\)/, 'off the dock neither look stays');
@@ -79,7 +79,18 @@ test('paintArt: the drawn street — pictures tiled across the bar, lights only 
   assert.equal(S.paintArt({ fillRect() {} }, scene()), null);
   assert.ok(S.duskAt(18.6) > 0.9 && S.duskAt(12) === 0 && S.duskAt(0) === 0);
   const html = readFileSync(new URL('../widget.html', import.meta.url), 'utf8');
-  assert.match(html, /const r = art \? AgentDeskStreet\.paintArt\(cv\.getContext\('2d'\), scene\) : AgentDeskStreet\.paint\(cv\.getContext\('2d'\), scene\);/);
+  assert.match(html, /: art \? AgentDeskStreet\.paintArt\(cv\.getContext\('2d'\), scene\) : AgentDeskStreet\.paint\(cv\.getContext\('2d'\), scene\);/);
   assert.match(html, /im\.onerror = \(\) => \{ bad = true; left--; \};/, 'a missing picture keeps the plain street');
   for (const n of [0, 11]) { assert.ok(html.includes(`char_${n}_umbrella.png`)); assert.ok(html.includes(`char_${n}_jump.png`)); }
+});
+
+test('paintSky: a side bar gets the sky and the weather, top to bottom', () => {
+  const rec = () => { const calls = []; return { calls, fillStyle: '', fillRect(x, y, w, h) { calls.push([this.fillStyle, x, y, w, h]); } }; };
+  let g = rec(), r = S.paintSky(g, { w: 36, h: 400, hour: 13, pct: 10, tick: 1 });
+  assert.equal(r.stage, 'clear'); assert.equal(r.drops, 0); assert.equal(r.moving, false);
+  assert.ok(g.calls.length >= 6 && g.calls.every(c => c.slice(1).every(Number.isFinite)));
+  r = S.paintSky(rec(), { w: 36, h: 400, hour: 23, pct: 90, tick: 1 });
+  assert.equal(r.stage, 'rain'); assert.ok(r.drops > 0); assert.equal(r.moving, true);
+  assert.equal(S.paintSky(rec(), { w: 36, h: 400, hour: 23, pct: 99, tick: 1, still: true }).drops, 0);
+  assert.equal(S.paintSky(null, { w: 36, h: 400 }), null);
 });

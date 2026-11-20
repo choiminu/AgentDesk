@@ -299,7 +299,41 @@ function screenPlan(entries, readAt, now, o) {
   return due.slice(0, Math.max(1, Math.floor(P.MAX))).map(d => d.id);
 }
 
-const AgentDeskStatus = { SCREEN_PLAN, screenPlan, SPINNER_RE, DONE_FRESH_MS, HOOK_STALE_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus, loopStateFor, relPath, recordTouch, touchedFiles, TOUCH_WINDOW_MS, displayCols, responseTextFromScreen };
+// One line that names a Claude Code conversation, from its transcript lines: the /rename title, else the AI title, else
+// the first thing the user typed (commands and tool results skipped), cut to 80 characters. '' when there is none.
+function talkTitle(lines) {
+  let custom = '', ai = '', first = '';
+  for (const line of Array.isArray(lines) ? lines : []) {
+    if (typeof line !== 'string' || line[0] !== '{') continue;
+    let r; try { r = JSON.parse(line); } catch { continue; }
+    if (!r || typeof r !== 'object') continue;
+    if (r.type === 'custom-title' && r.customTitle) custom = String(r.customTitle);
+    else if (r.type === 'ai-title' && r.aiTitle) ai = String(r.aiTitle);
+    else if (!first && r.type === 'user' && r.message && !r.isMeta && !r.isSidechain) {
+      const c = r.message.content, txt = typeof c === 'string' ? c : Array.isArray(c) ? (c.find(x => x && x.type === 'text' && x.text) || {}).text || '' : '';
+      if (txt && !/^\s*<|^\s*\/|^\[Request interrupted/.test(txt)) first = txt;
+    }
+  }
+  return (custom || ai || first).replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+// Sessions worth closing: an Orca worktree whose terminal is still open, finished (or waiting at its prompt) and quiet
+// for at least `minMs`. Never one that asks something, works, is pinned, or is the one in front. Longest quiet first.
+//   sessions: [{ id, name, status, needsInput, time }], o: { now, minMs, handles: Map|Set of ids with a terminal, pinned: Set, keep }
+function cleanupList(sessions, o) {
+  const q = o && typeof o === 'object' ? o : {}, now = Number(q.now) || 0, min = Math.max(0, Number(q.minMs) || 0);
+  const has = id => (q.handles instanceof Map ? !!q.handles.get(id) : q.handles instanceof Set ? q.handles.has(id) : false);
+  const pinned = q.pinned instanceof Set ? q.pinned : new Set(), out = [];
+  for (const s of Array.isArray(sessions) ? sessions : []) {
+    if (!s || !s.id || !has(s.id) || pinned.has(s.id) || s.id === q.keep) continue;
+    if (s.needsInput === true || s.status === 'running' || s.status === 'error') continue;
+    const t = Number(s.time) || 0, quiet = t ? now - t : Infinity;
+    if (quiet < min) continue;
+    out.push({ id: s.id, name: String(s.name || ''), quietMs: Number.isFinite(quiet) ? quiet : 0, unknown: !t });
+  }
+  return out.sort((a, b) => (b.unknown - a.unknown) || (b.quietMs - a.quietMs));
+}
+
+const AgentDeskStatus = { SCREEN_PLAN, screenPlan, talkTitle, cleanupList, SPINNER_RE, DONE_FRESH_MS, HOOK_STALE_MS, statusFromScreen, doneLineStatus, screenHasChoice, parseAgentPanel, parseCtxPct, hookToolInput, applyHookEvent, hookStatusFor, resolveStatus, loopStateFor, relPath, recordTouch, touchedFiles, TOUCH_WINDOW_MS, displayCols, responseTextFromScreen };
 // the widget loads this as a classic <script> (globals); tests `import()` it and read globalThis.AgentDeskStatus
 root.AgentDeskStatus = AgentDeskStatus;
 if (typeof module !== 'undefined' && module.exports) module.exports = AgentDeskStatus;
